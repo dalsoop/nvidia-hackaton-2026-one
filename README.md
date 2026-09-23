@@ -7,6 +7,9 @@
 
 ## 먼저 읽기
 
+처음 합류했다면 [개발 시작 안내](docs/DEVELOPMENT.md)에서 읽는 순서·실행 확인·작업 후보를 볼 수 있습니다.
+이 저장소는 개발 기반 PoC이며 완성된 서비스가 아닙니다. 특히 [reviewer 재시도 오류](docs/KNOWN_ISSUES.md)는 미해결입니다.
+
 | 문서 | 무엇을 알 수 있나요? |
 |---|---|
 | [아이디어 소개](docs/OVERVIEW.md) | 스테이징이 무엇인지, 왜 이 문제를 에이전트로 푸는지 |
@@ -15,6 +18,8 @@
 | [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
 | [NVIDIA 활용](docs/NVIDIA_STACK.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |
 | [재현 검증](docs/VERIFICATION.md) | 현재 통과한 검사와 아직 확인하지 않은 항목 |
+| [개발 시작 안내](docs/DEVELOPMENT.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
+| [알려진 문제](docs/KNOWN_ISSUES.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |
 | [UI·형상 참고](docs/DESIGN_REFERENCES.md) | 화면·형상 선택에 사용한 관찰과 공개 출처 |
 
 ## 예선에서 보여줄 것
@@ -53,6 +58,19 @@ uv run cualign serve --host 127.0.0.1
 브라우저에서 <http://localhost:8000/ui/>를 엽니다.
 에이전트 대화는 NVIDIA API 키와 네트워크가 필요합니다. 화면은 three.js를 외부 CDN에서 가져옵니다.
 현재 서버에는 사용자 인증과 사용자별 데이터 격리가 없으므로 로컬 시연 환경을 기준으로 합니다.
+
+### Docker 실행
+
+Docker 엔진이 실행 중인 환경에서 저장소 루트의 추적 파일만 빌드에 전달합니다.
+
+```sh
+git archive HEAD | docker build -t cualign:local -
+docker run --rm -p 127.0.0.1:8000:8000 --env-file .env cualign:local
+```
+
+이 빌드는 미커밋 변경을 포함하지 않습니다. 키 없는 UI·규칙 폴백만 볼 때는 `--env-file .env`를 생략할 수 있습니다.
+키를 Dockerfile이나 이미지에 넣지 않습니다. 기본 실행 결과는 컨테이너 안에 남으며, 위 `--rm` 실행을 종료하면 사라지므로 필요한 파일은 먼저 다운로드합니다.
+확인한 플랫폼은 Linux arm64이며 다른 플랫폼의 결과는 [검증 기록](docs/VERIFICATION.md)과 구별합니다.
 
 ## 어떻게 동작하나요?
 

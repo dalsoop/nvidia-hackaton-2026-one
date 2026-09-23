@@ -8,8 +8,9 @@
 
 1. `README.md`: 실행 방법과 현재 범위
 2. `CONTRIBUTING.md`: 공통 개발·검증 규칙
-3. `docs/PRD.md` · `docs/TRD.md`: 제품 요구사항과 기술 계약
+3. `docs/PRD.md` · `docs/TRD.md`: 제품 요구사항과 현재 기술 구조·필요한 계약
 4. `docs/CODE_MAP.md` · `docs/NVIDIA_STACK.md`: 파일 위치와 NVIDIA 통합 수준
+5. `docs/DEVELOPMENT.md` · `docs/KNOWN_ISSUES.md`: 작업 후보와 인수 시 알려진 문제
 
 ## 기술 개요
 
@@ -19,4 +20,5 @@ Python 3.12·uv, NeMo Agent Toolkit, Nemotron/NIM, NeMo Guardrails를 사용한�
 
 개인 기기의 절대경로·전용 스킬·다른 레포 접근을 요구하지 않는다.
 세션 시작 시 서버나 유료 모델 호출을 자동 실행하지 않는다. 필요한 검증만 실행하며 명령은 `CONTRIBUTING.md`를 따른다.
-미확정 제품 동작은 추정 구현하지 않는다. 기존 변경을 보존하고 요청 범위 밖 변경·공개 배포·파괴적 동작은 사전 확인한다.
+미확정 제품 동작은 확정 요구사항으로 취급하지 않는다. 가정을 명시한 실험은 가능하며, 제품 정책 확정은 관련 담당과 논의한다.
+현재 스택과 파일 구조는 팀이 변경할 수 있다. 기존 변경을 보존하고 요청 범위 밖 변경·공개 배포·파괴적 동작은 사전 확인한다.
