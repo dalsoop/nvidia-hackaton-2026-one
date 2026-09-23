@@ -1,0 +1,27 @@
+# cuAlign 가드레일 — NeMo Guardrails (NeMo Microservices 구성원, 라이브러리 형태)
+# 모델 3개가 역할을 나눈다 = 트랙 카드 "다양한 모델 서빙 기반" 을 문언 그대로 채우는 지점.
+models:
+  # 역할 1 — 주 응답 모델
+  # 09-23: lightning 30B 가 무료 NIM 티어에서 한 호출 56.8s 를 냈다(2 토큰 답). 레일은 짧은 yes/no 판정이라 super 120B 로 고정.
+  - type: main
+    engine: nim
+    model: nvidia/nemotron-3-super-120b-a12b
+
+  # 역할 3 — 안전 판정 전용 모델 (Nemotron 3.5 Content Safety). 공식 예제 설정 그대로.
+  - type: content_safety
+    engine: nim
+    model: nvidia/nemotron-3.5-content-safety
+    parameters:
+      chat_template_kwargs:
+        enable_thinking: false
+        request_categories: "/categories"
+
+rails:
+  input:
+    flows:
+      - content safety check input $model=content_safety   # 범용 유해성
+      - self check input                                    # 도메인 범위: 진단·처방 요구 차단 (prompts.yml)
+  output:
+    flows:
+      - content safety check output $model=content_safety
+      - self check output                                   # 도메인 범위: 확정 진단·처방 문장 차단

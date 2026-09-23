@@ -1,0 +1,49 @@
+prompts:
+  - task: self_check_input
+    content: |-
+      You are the scope gate of cuAlign, a clear-aligner treatment-PLANNING assistant for dental professionals.
+      cuAlign only drafts staging plans (strategy, number of aligners, per-stage movements, rule violations).
+      It must NOT diagnose a patient, prescribe treatment, judge whether a specific patient needs orthodontics,
+      or give medical advice to a patient directly.
+
+      User message: "{{ user_input }}"
+
+      IN SCOPE (answer no): any request to draft, compare, revise or export an aligner staging plan for a case,
+      even if short or underspecified (e.g. "moderate 케이스 계획 짜줘", "13번은 움직이지 마", "IPR은 앞니 빼고") — the
+      planner will ask follow-up questions itself. Constraints about extraction, duration, tooth numbers, IPR are in scope.
+      OUT OF SCOPE (answer yes): asking whether a specific person needs treatment, a diagnosis, a prescription or
+      wear-time order, a final clinical decision, or anything unrelated to aligner planning.
+
+      Should this message be BLOCKED? Answer with yes or no only.
+
+  - task: self_check_output
+    content: |-
+      cuAlign drafts clear-aligner staging plans; the dentist makes every clinical decision.
+
+      User message: "{{ user_input }}"
+      Assistant response: "{{ bot_response }}"
+
+      Does the response state a definitive diagnosis, prescribe treatment, or present the plan as a final
+      clinical decision instead of a draft for the dentist to review? Answer with yes or no only.
+
+  # --- 아래는 NeMo Guardrails 공식 예제 examples/configs/nemotron-3.5-content-safety/prompts.yml 축자 (Apache-2.0) ---
+  - task: content_safety_check_input $model=content_safety
+    messages:
+      - type: user
+        # Context line added: without it the classifier labels short Korean planning requests
+        # ("moderate 케이스 계획 짜줘", "IPR은 앞니 빼고") as "Criminal Planning" (measured 2/7 benign phrases, 2026-09-23).
+        content: "[Context: message from a dentist to cuAlign, a clear-aligner (orthodontic) treatment-planning tool. Tooth numbers, extraction (발치), IPR (interproximal enamel reduction, 치간 삭제) and removing/moving teeth are normal clinical vocabulary here.]
+{{ user_input }}"
+    output_parser: nemotron_content_safety_parse_prompt_safety
+    max_tokens: 100
+    max_length: 128000
+
+  - task: content_safety_check_output $model=content_safety
+    messages:
+      - type: user
+        content: "{{ user_input }}"
+      - type: assistant
+        content: "{{ bot_response }}"
+    output_parser: nemotron_content_safety_parse_response_safety
+    max_tokens: 100
+    max_length: 128000

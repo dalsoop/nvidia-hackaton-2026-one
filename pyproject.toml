@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cualign"
+version = "0.1.0"
+description = "cuAlign — clear-aligner staging agent on NVIDIA NeMo Agent Toolkit + Nemotron (NIM) + NeMo Guardrails. Drafts only; the dentist decides."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "nvidia-nat[langchain]>=1.9.0,<2",
+  "nemoguardrails>=0.24,<1",
+  "numpy>=2",
+  "scipy>=1.14",
+  "trimesh>=4.4",
+  "manifold3d>=3",
+  "fast-simplification>=0.1",
+  "python-dotenv>=1",
+  "fastapi>=0.110",
+  "uvicorn>=0.30",
+  "pydantic>=2",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+render = ["matplotlib>=3.8", "imageio>=2.34"]
+
+[project.scripts]
+cualign = "cualign.cli:main"
+
+[project.entry-points."nat.components"]
+cualign = "cualign.agent.register"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"cualign.core" = ["templates/*.stl", "templates/ATTRIBUTION.md"]
+"cualign.server" = ["static/*.html", "static/*.js", "static/*.css"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

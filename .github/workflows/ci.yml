@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev
+      - run: uv build --wheel
+      - run: uv run python scripts/check_wheel.py dist/cualign-0.1.0-py3-none-any.whl
+      - run: uv run pytest -q -p no:warnings
+      - run: uv run nat validate --config_file configs/workflow.yml
+      - run: uv run cualign plan "발치 없이 12개월 안에 끝나는 계획 짜줘" --case moderate
+      - run: uv run cualign bench
