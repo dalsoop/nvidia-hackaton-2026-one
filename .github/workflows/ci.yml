@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: md 파일 위치
+        run: |
+          bad=$(git ls-files '*.md' | grep -v -E '^(README|AGENTS|ARCHITECTURE)\.md$|^\.github/(CONTRIBUTING|pull_request_template)\.md$|^apps/[^/]+/' || true)
+          if [ -n "$bad" ]; then
+            echo "허용되지 않은 위치의 md 파일 (ARCHITECTURE.md '경계' 참고):"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: 앱 README
+        run: |
+          missing=0
+          for dir in apps/*/; do
+            [ -d "$dir" ] || continue
+            if [ ! -f "${dir}README.md" ]; then
+              echo "README.md가 없는 앱: $dir"
+              missing=1
+            fi
+          done
+          exit $missing
