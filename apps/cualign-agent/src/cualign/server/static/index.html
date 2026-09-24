@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cuAlign — 투명교정 스테이징 에이전트</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">cu<b>Align</b></span>
+      <span class="tagline">투명교정 스테이징 에이전트 <em>(초안 전용 · 최종 판단은 의사)</em></span>
+    </div>
+    <div class="controls">
+      <button id="caseBtn" class="btn ghost case-pill" title="케이스 바꾸기">
+        <span class="k">케이스</span> <span id="caseName">—</span>
+      </button>
+      <button id="fallbackBtn" class="btn ghost" title="LLM 없이 규칙 기반 루프만 돌립니다">규칙 기반 폴백</button>
+    </div>
+  </header>
+
+  <!-- 시작점: 환자 케이스 선택 (임상 SW 관례 — 환자 목록 → 스캔 → 계획) -->
+  <div id="caseGate" class="gate" hidden>
+    <div class="gate-panel">
+      <h1>환자 케이스 선택</h1>
+      <p class="muted">스캔된 상악 케이스를 고르면 3D 뷰어에 로드되고, 에이전트가 제약 조건을 묻습니다. 환자 데이터가 아닌 합성 케이스입니다.</p>
+      <div id="caseCards" class="cards"></div>
+      <div class="gate-foot">
+        <label class="btn ghost" for="uploadInput">치아별 STL 업로드 (Universal 번호.stl)</label>
+        <input id="uploadInput" type="file" accept=".stl" multiple hidden />
+        <button id="gateClose" class="btn ghost small" hidden>닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="layout">
+    <section class="chat">
+      <div id="transcript" class="transcript" aria-live="polite"></div>
+
+      <div class="chips" id="chips">
+        <button class="chip">발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.</button>
+        <button class="chip">발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.</button>
+        <button class="chip">발치안이랑 비발치안 둘 다 만들어서 비교해줘.</button>
+        <button class="chip">13번은 움직이지 말고 다시 짜줘.</button>
+        <button class="chip">IPR은 앞니(7~10번) 빼고 해줘.</button>
+      </div>
+
+      <form id="chatForm" class="composer">
+        <textarea id="chatInput" rows="2" placeholder="제약과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
+        <button id="sendBtn" type="submit" class="btn primary">전송</button>
+      </form>
+    </section>
+
+    <section class="viewer">
+      <div id="canvasWrap" class="canvas-wrap">
+        <canvas id="viewCanvas"></canvas>
+        <div id="labels" class="labels"></div>
+        <div class="view-head">
+          <span id="archLabel" class="arch">상악 · 교합면에서 본 모습</span>
+          <span class="view-btns">
+            <button class="btn ghost small" data-view="occlusal" title="교합면(위에서)">교합면</button>
+            <button class="btn ghost small" data-view="frontal" title="정면">정면</button>
+          </span>
+        </div>
+        <div id="tip" class="tip" hidden></div>
+        <div class="legend">
+          <span><i class="sw ivory"></i>치아 <small>(진해질수록 이동량 큼)</small></span>
+          <span><i class="sw red"></i>충돌</span>
+          <span><i class="sw amber"></i>장당 이동 한계 초과</span>
+          <span><i class="sw blue"></i>고정</span>
+          <span><i class="sw ghost"></i>발치</span>
+          <span><i class="sw ipr"></i>IPR mm</span>
+          <span><i class="sw gum"></i>잇몸 <small>(표시용)</small></span>
+        </div>
+      </div>
+
+      <div class="stage-bar">
+        <button id="playBtn" class="btn ghost small" title="재생/정지">▶</button>
+        <input id="stageSlider" type="range" min="0" max="0" value="0" step="1" disabled />
+        <span id="stageLabel" class="stage-label">계획 없음</span>
+      </div>
+
+      <div class="result">
+        <div class="result-head">
+          <span id="statusBadge" class="badge neutral">계획 없음</span>
+          <div class="plan-pick">
+            <select id="planSelect" title="계획 선택"><option value="">계획 선택…</option></select>
+            <a id="stlLink" class="btn ghost small disabled" href="#" download>STL 다운로드 (zip)</a>
+          </div>
+        </div>
+        <dl id="resultCard" class="card">
+          <div><dt>전략</dt><dd id="rStrategy">—</dd></div>
+          <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
+          <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
+          <div><dt>위반</dt><dd id="rViol">—</dd></div>
+          <div><dt>plan_id</dt><dd id="rPlan">—</dd></div>
+        </dl>
+        <table class="viol" id="violTable">
+          <thead><tr><th>단계</th><th>치아</th><th>종류</th><th>값</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

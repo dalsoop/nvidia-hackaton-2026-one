@@ -1,0 +1,403 @@
+# scenario 2 (honest-fail) · llm=nim_super · exit=0 · 89.7s
+# input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+
+      1) \uD55C \uC904 \uC694\uC57D (\uC804\uB7B5 \xB7 \uC7A5\uC218 \xB7 \uAE30\uAC04\
+      \ \xB7 \uD1B5\uACFC/\uC704\uBC18)\n2) \uD655\uC778\uD560 \uC9C0\uC810 \u2014\
+      \ top_moves_mm \uC758 \uCE58\uC544 \uBC88\uD638\uC640 \uC774\uB3D9\uB7C9, IPR\
+      \ \uC81C\uC678/\uACE0\uC815 \uCE58\uC544, \uBC1C\uCE58 \uCE58\uC544, \uC21C\uC11C\
+      \ \uD328\uD134. \uB370\uC774\uD130\uC5D0 \uC5C6\uB294 \uC784\uC0C1 \uC8FC\uC7A5\
+      \uC740 \uD558\uC9C0 \uC54A\uB294\uB2E4.\n3) \uC704\uBC18\uC774 \uC788\uC73C\uBA74\
+      \ \uC5B4\uB5A4 \uC870\uAC74(\uBC1C\uCE58 \uD5C8\uC6A9, \uAE30\uAC04, \uD655\uC7A5\
+      \uB7C9)\uC744 \uC644\uD654\uD574\uC57C \uD558\uB294\uC9C0 \uB370\uC774\uD130\
+      \ \uAE30\uC900\uC73C\uB85C \uD55C \uC904\n4) \uC758\uC0AC\uC5D0\uAC8C \uBB3C\
+      \uC744 \uC9C8\uBB38 1~2\uAC1C\nEnd with: \"\uAC80\uD1A0 \uBA54\uBAA8\uB3C4 \uCD08\
+      \uC548\uC785\uB2C8\uB2E4. \uCD5C\uC885 \uD310\uB2E8\uC740 \uC758\uC0AC\uAC00\
+      \ \uD569\uB2C8\uB2E4.\" Never diagnose or prescribe.\n"
+    description: "cuAlign \uAC80\uD1A0 \uC5D0\uC774\uC804\uD2B8. \uC785\uB825\uC740\
+      \ plan_id \uBB38\uC790\uC5F4(\uC608: \"p3\"). \uACC4\uD68D\uACFC \uC704\uBC18\
+      \ \uB9AC\uD3EC\uD2B8\uB97C \uC77D\uACE0 \uC758\uC0AC\uC6A9 \uAC80\uD1A0 \uBA54\
+      \uBAA8\uB97C \uD55C\uAD6D\uC5B4\uB85C \uB3CC\uB824\uC900\uB2E4: \uD655\uC778\
+      \uD560 \uCE58\uC544\xB7\uB2E8\uACC4, \uC870\uAC74 \uC644\uD654\uAC00 \uD544\uC694\
+      \uD55C \uD56D\uBAA9, \uC758\uC0AC\uC5D0\uAC8C \uBB3C\uC744 \uC9C8\uBB38 1~2\uAC1C\
+      . \uACC4\uD68D\uC774 \uD655\uC815\uB41C \uB4A4(\uD1B5\uACFC \uB610\uB294 \uC804\
+      \uB7B5 \uC18C\uC9C4) \uD55C \uBC88 \uD638\uCD9C\uD55C\uB2E4.\n"
+    llm_name: nim_super
+    max_iterations: 6
+    tool_names:
+    - cualign_ro
+    use_native_tool_calling: true
+    verbose: true
+general:
+  front_end:
+    _type: fastapi
+    cors:
+      allow_origins:
+      - '*'
+    runner_class: cualign.server.worker.CuAlignWorker
+llms:
+  nim_lightning:
+    _type: nim
+    chat_template_kwargs:
+      enable_thinking: false
+    max_tokens: 2048
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    temperature: 0.0
+  nim_super:
+    _type: nim
+    max_tokens: 2048
+    model_name: nvidia/nemotron-3-super-120b-a12b
+    temperature: 0.0
+workflow:
+  _type: react_agent
+  additional_instructions: "You are cuAlign, a clear-aligner treatment-PLANNING agent\
+    \ for dentists. You produce DRAFT staging plans only;\nthe dentist makes every\
+    \ clinical decision. Never diagnose, never prescribe, never call a plan final.\n\
+    Tool names must be used EXACTLY as listed (they carry the cualign__ prefix, e.g.\
+    \ cualign__validate).\n\nInterview first when a load-bearing constraint is missing:\
+    \ if the request does not say whether extraction is\nallowed, or gives no time\
+    \ limit, ask ONE short Korean question covering both (\uBC1C\uCE58 \uD5C8\uC6A9\
+    \ \uC5EC\uBD80 \xB7 \uAE30\uAC04) and stop.\nDo not ask if the request already\
+    \ answers them.\n\nLoop: cualign__clinical_limits (once) -> cualign__load_case\
+    \ (case the user named, else moderate) ->\npick a strategy. Allowed strategies:\
+    \ expansion, ipr, expansion_ipr, extraction. If the user refuses extraction\n\
+    (\"\uBC1C\uCE58 \uC5C6\uC774\", \"\uBC1C\uCE58\uB294 \uC808\uB300 \uC548 \uB3FC\
+    \"), never use extraction. Default order: expansion -> ipr -> expansion_ipr ->\
+    \ extraction.\ncualign__propose_target -> cualign__plan_stages (order: anterior_first\
+    \ if the user says \uC55E\uB2C8 \uBA3C\uC800, sequential if\nthey ask for anchorage-safe/slow\
+    \ staging, else simultaneous) -> cualign__validate (pass stage_cap = round(months*30.4/7)\n\
+    when a time limit is given). If validate reports violations, switch to the next\
+    \ allowed strategy and repeat.\nStop when passed is true, or when every allowed\
+    \ strategy failed: then keep the plan with the fewest violations\nand state plainly\
+    \ which constraint would have to be relaxed (e.g. \"\uBC1C\uCE58 \uC5C6\uC774\uB294\
+    \ \uACF5\uAC04\uC774 1.2mm \uBD80\uC871\uD569\uB2C8\uB2E4\").\nWhen the user asks\
+    \ to compare options (\uBE44\uAD50, \uB458 \uB2E4, \uC5EC\uB7EC \uC548), call\
+    \ cualign__compare_strategies once instead.\nWhen the user asks to modify a plan\
+    \ (13\uBC88\uC740 \uC6C0\uC9C1\uC774\uC9C0 \uB9C8, IPR \uC740 \uC55E\uB2C8 \uBE7C\
+    \uACE0), re-run propose_target with lock /\nipr_exclude and validate again. When\
+    \ asked for files, call cualign__export_stl and give the download_url.\n\nHand-off:\
+    \ once the plan is settled (passed, or strategies exhausted, or a comparison is\
+    \ done), call the `reviewer`\ntool ONCE with the chosen plan_id (for a comparison,\
+    \ the passing plan or the best one) and include its memo verbatim\nunder the heading\
+    \ \"\uAC80\uD1A0 \uBA54\uBAA8\". Do not call the reviewer before validate has\
+    \ run, and never more than once per answer.\n\nThe final answer MUST be a non-empty\
+    \ Korean summary: \uC804\uB7B5 \xB7 \uCD1D \uC7A5\uC218 \xB7 \uC608\uC0C1 \uAE30\
+    \uAC04(\uAC1C\uC6D4) \xB7 \uC704\uBC18(\uC885\uB958\uBCC4) \xB7\nplan_id \xB7\
+    \ \uD638\uCD9C\uD55C \uB3C4\uAD6C \uC21C\uC11C \xB7 \uAC80\uD1A0 \uBA54\uBAA8\
+    . End with: \"\uC774 \uACC4\uD68D\uC740 \uCD08\uC548\uC785\uB2C8\uB2E4. \uCD5C\
+    \uC885 \uD310\uB2E8\uC740 \uC758\uC0AC\uAC00 \uD569\uB2C8\uB2E4.\"\n"
+  llm_name: nim_super
+  max_iterations: 26
+  parse_agent_response_max_retries: 3
+  tool_call_max_retries: 3
+  tool_names:
+  - cualign
+  - reviewer
+  - current_datetime
+  use_native_tool_calling: true
+  verbose: true
+2026-09-23 06:28:10 - INFO     - nat.runtime.session:332 - Shared workflow built (entry_function=None)
+2026-09-23 06:28:19 - INFO     - nat.plugins.langchain.agent.react_agent.agent:231 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We need to follow the interview rule: The user gave: severe case, extraction absolutely not allowed, 8 months time limit. So we have both extraction allowed? They said extraction absolutely not allowed, so extraction is disallowed. Time limit given: 8 months. So we have both constraints, no need to ask.
+We need to load case severe. Then we need to pick strategies in order: expansion -> ipr -> expansion_ipr -> extraction (but extraction disallowed, so we skip it). We'll try each until passed or exhausted.
+We need to compute stage_cap = round(months*30.4/7). months=8 => 8*30.4=243.2; /7 = 34.742857; round => 35 aligners max.
+We need to call clinical_limits once (as per loop). Then load_case severe.
+Then propose_target for each strategy, plan_stages with order: user didn't specify anterior_first or sequential, so default simultaneous. Validate with stage_cap.
+If violations, try next strategy.
+We need to output final answer in Korean with strategy, total aligners, estimated months, violations, plan_id, tools called order, reviewer memo.
+Let's start.
+First, call clinical_limits.
+[39m
+------------------------------
+2026-09-23 06:28:19 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__clinical_limits
+[33mTool's input: {'unused': ''}
+[36mTool's response: 
+[{'max_linear_mm_per_aligner': 0.25, 'ipr_mm_per_surface': 0.25, 'max_expansion_mm_per_side': 2.0, 'extraction_threshold_mm': 8.0, 'wear_days_per_aligner': 7, 'stage_cap_formula': 'round(months * 30.4 / 7)', 'strategies': ['expansion', 'ipr', 'expansion_ipr', 'extraction'], 'orders': ['simultaneous', 'anterior_first', 'sequential'], 'sources': 'MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016'}][39m
+------------------------------
+2026-09-23 06:28:20 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have clinical limits. Now load case severe.
+[39m
+------------------------------
+2026-09-23 06:28:20 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__load_case
+[33mTool's input: {'case_id': 'severe'}
+[36mTool's response: 
+[{'case_id': 'severe', 'teeth': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 'n_teeth': 14, 'crowding_mm': 7.9, 'baseline_overlap_mm3': 191.0}][39m
+------------------------------
+2026-09-23 06:28:22 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have severe case: crowding 7.9 mm. Extraction not allowed. We'll try expansion first.
+We need to propose_target with strategy expansion. No lock or ipr_exclude specified. Let's call propose_target.
+[39m
+------------------------------
+2026-09-23 06:28:22 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__propose_target
+[33mTool's input: {'strategy': 'expansion'}
+[36mTool's response: 
+[{'target_id': 't1', 'case_id': 'severe', 'strategy': 'expansion', 'space_gain_mm': 3.46, 'crowding_mm': 7.9, 'space_deficit_mm': 4.44, 'needed_mm': 110.0, 'mean_move_mm': 2.23, 'max_move_mm': 3.22, 'notes': ['악궁 편측 2.0mm 확장'], 'removed': [], 'locked': []}][39m
+------------------------------
+2026-09-23 06:28:25 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have target_id t1, space deficit 4.44 mm (still needed). Now plan_stages with order simultaneous (default). Let's call plan_stages.
+[39m
+------------------------------
+2026-09-23 06:28:25 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__plan_stages
+[33mTool's input: {'order': 'simultaneous', 'target_id': 't1'}
+[36mTool's response: 
+[{'plan_id': 'p1', 'target_id': 't1', 'strategy': 'expansion', 'n_stages': 13, 'order': 'simultaneous', 'stages_per_group': [13], 'max_move_mm': 3.22, 'per_stage_mm': 0.248, 'months': 3.0}][39m
+------------------------------
+2026-09-23 06:28:28 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have plan_id p1, n_stages 13, months 3.0 (makes sense: 13 stages * 0.25 mm per stage = 3.25 mm total movement? Actually per_stage_mm 0.248, times 13 = 3.224 mm, matches max_move_mm). Now validate with stage_cap = 35 (since 8 months). Let's call validate.
+[39m
+------------------------------
+2026-09-23 06:28:28 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__validate
+[33mTool's input: {'stage_cap': 35, 'plan_id': 'p1'}
+[36mTool's response: 
+[{'plan_id': 'p1', 'strategy': 'expansion', 'passed': False, 'violations': 1, 'by_type': {'space_deficit': 1}, 'sample': [{'stage': None, 'type': 'space_deficit', 'mm': 4.44, 'limit': 0.5}], 'n_stages': 13, 'months': 3.0, 'viewer_url': '/ui/?plan=p1'}][39m
+------------------------------
+2026-09-23 06:28:29 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have a space_deficit violation: still 4.44 mm deficit > limit 0.5 mm. So expansion alone insufficient.
+Now we try next strategy: ipr (since extraction disallowed). We'll propose_target with strategy ipr. No lock or ipr_exclude specified. Let's call propose_target.
+[39m
+------------------------------
+2026-09-23 06:28:29 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__propose_target
+[33mTool's input: {'strategy': 'ipr'}
+[36mTool's response: 
+[{'target_id': 't2', 'case_id': 'severe', 'strategy': 'ipr', 'space_gain_mm': 3.25, 'crowding_mm': 7.9, 'space_deficit_mm': 4.65, 'needed_mm': 106.8, 'mean_move_mm': 1.23, 'max_move_mm': 2.89, 'notes': ['IPR 면당 0.25mm x 26면'], 'removed': [], 'locked': []}][39m
+------------------------------
+2026-09-23 06:28:30 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have target_id t2, space deficit 4.65 mm (still high). Now plan_stages with order simultaneous. Let's call plan_stages.
+[39m
+------------------------------
+2026-09-23 06:28:30 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__plan_stages
+[33mTool's input: {'order': 'simultaneous', 'target_id': 't2'}
+[36mTool's response: 
+[{'plan_id': 'p2', 'target_id': 't2', 'strategy': 'ipr', 'n_stages': 12, 'order': 'simultaneous', 'stages_per_group': [12], 'max_move_mm': 2.89, 'per_stage_mm': 0.241, 'months': 2.8}][39m
+------------------------------
+2026-09-23 06:28:31 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We need to validate p2 with stage_cap 35. Let's call validate.
+[39m
+------------------------------
+2026-09-23 06:28:31 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__validate
+[33mTool's input: {'plan_id': 'p2', 'stage_cap': 35}
+[36mTool's response: 
+[{'plan_id': 'p2', 'strategy': 'ipr', 'passed': False, 'violations': 1, 'by_type': {'space_deficit': 1}, 'sample': [{'stage': None, 'type': 'space_deficit', 'mm': 4.65, 'limit': 0.5}], 'n_stages': 12, 'months': 2.8, 'viewer_url': '/ui/?plan=p2'}][39m
+------------------------------
+2026-09-23 06:28:33 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We need to try expansion_ipr next. Propose_target with strategy expansion_ipr. No lock or ipr_exclude. Let's call propose_target.
+[39m
+------------------------------
+2026-09-23 06:28:33 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__propose_target
+[33mTool's input: {'strategy': 'expansion_ipr'}
+[36mTool's response: 
+[{'target_id': 't3', 'case_id': 'severe', 'strategy': 'expansion_ipr', 'space_gain_mm': 6.71, 'crowding_mm': 7.9, 'space_deficit_mm': 1.19, 'needed_mm': 106.8, 'mean_move_mm': 2.06, 'max_move_mm': 2.54, 'notes': ['악궁 편측 2.0mm 확장', 'IPR 면당 0.25mm x 26면'], 'removed': [], 'locked': []}][39m
+------------------------------
+2026-09-23 06:28:34 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have target_id t3, space deficit 1.19 mm. Now plan_stages with order simultaneous. Let's call plan_stages.
+[39m
+------------------------------
+2026-09-23 06:28:34 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__plan_stages
+[33mTool's input: {'order': 'simultaneous', 'target_id': 't3'}
+[36mTool's response: 
+[{'plan_id': 'p3', 'target_id': 't3', 'strategy': 'expansion_ipr', 'n_stages': 11, 'order': 'simultaneous', 'stages_per_group': [11], 'max_move_mm': 2.54, 'per_stage_mm': 0.231, 'months': 2.5}][39m
+------------------------------
+2026-09-23 06:28:35 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We need to validate p3 with stage_cap 35. Let's call validate.
+[39m
+------------------------------
+2026-09-23 06:28:35 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__validate
+[33mTool's input: {'plan_id': 'p3', 'stage_cap': 35}
+[36mTool's response: 
+[{'plan_id': 'p3', 'strategy': 'expansion_ipr', 'passed': False, 'violations': 1, 'by_type': {'space_deficit': 1}, 'sample': [{'stage': None, 'type': 'space_deficit', 'mm': 1.19, 'limit': 0.5}], 'n_stages': 11, 'months': 2.5, 'viewer_url': '/ui/?plan=p3'}][39m
+------------------------------
+2026-09-23 06:28:38 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+We have tried expansion, ipr, expansion_ipr. All have space deficit violations. Extraction is disallowed by user. So all allowed strategies failed. We need to pick the plan with fewest violations. All have 1 violation (space_deficit). We need to compare the deficit amounts: expansion: 4.44 mm, ipr: 4.65 mm, expansion_ipr: 1.19 mm. The smallest deficit is expansion_ipr (1.19 mm). So we choose plan p3 as best.
+We need to state which constraint would have to be relaxed: space deficit of 1.19 mm would need to be alleviated (e.g., allow extraction or increase IPR/expansion beyond limits). We'll say: "발치 없이는 공간이 1.19mm 부족합니다" or similar.
+Now we need to call reviewer with plan_id p3. Let's call reviewer. We need to provide input_message or messages. According to spec, reviewer expects either messages or input_message. We'll provide input_message with plan_id? Actually the description: reviewer input is plan_id string (e.g., "p3"). So we can set input_message: "p3". Let's do that.
+[39m
+------------------------------
+2026-09-23 06:28:40 - INFO     - nat.plugins.langchain.agent.react_agent.agent:231 - 
+------------------------------
+[AGENT]
+[33mAgent input: p3
+[36mAgent's thoughts: 
+We need to answer the user's question: they gave "p3". Likely they want a review memo for plan_id p3. We need to call cualign_ro__get_plan with plan_id "p3". Then possibly also get clinical limits if needed for violation interpretation. Let's first get the plan.
+[39m
+------------------------------
+2026-09-23 06:28:40 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign_ro__get_plan
+[33mTool's input: {'plan_id': 'p3'}
+[36mTool's response: 
+[{'plan_id': 'p3', 'case_id': 'severe', 'strategy': 'expansion_ipr', 'passed': False, 'n_stages': 11, 'months': 2.5, 'order': 'simultaneous', 'stage_cap': 35, 'space_deficit_mm': 1.19, 'crowding_mm': 7.9, 'space_gain_mm': 6.71, 'notes': ['악궁 편측 2.0mm 확장', 'IPR 면당 0.25mm x 26면'], 'removed_teeth': [], 'locked_teeth': [], 'top_moves_mm': [(4, 2.54), (10, 2.39), (6, 2.36), (15, 2.29), (12, 2.24)], 'violations': [{'stage': None, 'type': 'space_deficit', 'mm': 1.19, 'limit': 0.5}], 'by_type': {'space_deficit': 1}}][39m
+------------------------------
+2026-09-23 06:29:12 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: p3
+[36mAgent's thoughts: 
+We have the plan data. Need to produce a short Korean review memo for dentist, grounded only in returned data.
+We need:
+1) 한 줄 요약 (전략 · 장수 · 기간 · 통과/위반)
+2) 확인할 지점 — top_moves_mm 의 치아 번호와 이동량, IPR 제외/고정 치아, 발치 치아, 순서 패턴. 데이터에 없는 임상 주장은 하지 않는다.
+3) 위반이 있으면 어떤 조건(발치 허용, 기간, 확장량)을 완화해야 하는지 데이터 기준으로 한 줄
+4) 의사에게 물을 질문 1~2개
+End with: "검토 메모도 초안입니다. 최종 판단은 의사가 합니다."
+We have data: plan_id p3, case_id severe, strategy expansion_ipr, passed False, n_stages 11, months 2.5, order simultaneous, stage_cap 35, space_deficit_mm 1.19, crowding_mm 7.9, space_gain_mm 6.71, notes: ['악궁 편측 2.0mm 확장', 'IPR 면당 0.25mm x 26면'], removed_teeth: [], locked_teeth: [], top_moves_mm: [(4,2.54),(10,2.39),(6,2.36),(15,2.29),(12,2.24)], violations: [{'stage': None, 'type': 'space_deficit', 'mm': 1.19, 'limit': 0.5}], by_type: {'space_deficit':1}.
+We need to reference clinical limits if needed for violation interpretation. The violation is space_deficit: 1.19 mm > limit 0.5 mm. We might need to know the clinical limit for space deficit? The plan already includes limit 0.5 mm. But we could call clinical_limits to see what the limit is per A-grade literature. However we already have limit in the violation. But the instruction says: "call cualign_ro__get_plan (and cualign_ro__clinical_limits if you need a limit value)". We have limit already, but maybe we should still call clinical_limits to confirm? It's optional. But we can call to be safe.
+Let's call clinical_limits with unused empty string.
+[39m
+------------------------------
+2026-09-23 06:29:12 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign_ro__clinical_limits
+[33mTool's input: {'unused': ''}
+[36mTool's response: 
+[{'max_linear_mm_per_aligner': 0.25, 'ipr_mm_per_surface': 0.25, 'max_expansion_mm_per_side': 2.0, 'extraction_threshold_mm': 8.0, 'wear_days_per_aligner': 7, 'stage_cap_formula': 'round(months * 30.4 / 7)', 'strategies': ['expansion', 'ipr', 'expansion_ipr', 'extraction'], 'orders': ['simultaneous', 'anterior_first', 'sequential'], 'sources': 'MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016'}][39m
+------------------------------
+2026-09-23 06:29:25 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: p3
+[36mAgent's thoughts: 
+Thought: I now know the final answer
+Final Answer: 
+1) 한 줄 요약: 전략 expansion_ipr, 장수 11단계, 기간 2.5개월, 위반 발생(공간 부족 1.19mm > 허용 0.5mm).  
+2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.54mm), 10번(2.39mm), 6번(2.36mm), 15번(2.29mm), 12번(2.24mm). IPR 제외·고정 치아는 없으며, 발치 치아도 없음. 순서는 simultaneous(동시 이동).  
+3) 위반이 있으면 어떤 조건을 완화해야 하는지: 공간 부족을 해결하려면 발치 허용(임상 한계 8.0mm에 근접한 치아군 7.9mm), 또는 IPR·확장량 상한(각각 0.25mm/면, 2.0mm/측) 확장이 필요하나 현재 계획은 이미 상한에 근접함.  
+4) 의사에게 물을 질문:  
+   - 발치 가능성을 검토해 보시겠습니까?  
+   - 현재 IPR량(0.25mm/면) 증가가 임상적으로 가능한지 확인해 주시겠습니까?  
+검토 메모도 초안입니다. 최종 판단은 의사가 합니다.[39m
+------------------------------
+2026-09-23 06:29:25 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: reviewer
+[33mTool's input: {'input_message': 'p3'}
+[36mTool's response: 
+1) 한 줄 요약: 전략 expansion_ipr, 장수 11단계, 기간 2.5개월, 위반 발생(공간 부족 1.19mm > 허용 0.5mm).  
+2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.54mm), 10번(2.39mm), 6번(2.36mm), 15번(2.29mm), 12번(2.24mm). IPR 제외·고정 치아는 없으며, 발치 치아도 없음. 순서는 simultaneous(동시 이동).  
+3) 위반이 있으면 어떤 조건을 완화해야 하는지: 공간 부족을 해결하려면 발치 허용(임상 한계 8.0mm에 근접한 치아군 7.9mm), 또는 IPR·확장량 상한(각각 0.25mm/면, 2.0mm/측) 확장이 필요하나 현재 계획은 이미 상한에 근접함.  
+4) 의사에게 물을 질문:  
+   - 발치 가능성을 검토해 보시겠습니까?  
+   - 현재 IPR량(0.25mm/면) 증가가 임상적으로 가능한지 확인해 주시겠습니까?  
+검토 메모도 초안입니다. 최종 판단은 의사가 합니다.[39m
+------------------------------
+2026-09-23 06:29:25 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+[39m
+------------------------------
+2026-09-23 06:29:25 - INFO     - nat.plugins.langchain.agent.react_agent.agent:342 - [AGENT] Retrying ReAct Agent, including output parsing Observation
+2026-09-23 06:29:37 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.
+[36mAgent's thoughts: 
+Thought: I now know the final answer
+Final Answer: 전략: expansion_ipr, 총 장수: 11단계, 예상 기간: 2.5개월, 위반: space_deficit 1.19mm (허용 0.5mm 초과), plan_id: p3, 호출한 도구 순서: cualign__clinical_limits → cualign__load_case(severe) → cualign__propose_target(expansion) → cualign__plan_stages(t1, simultaneous) → cualign__validate(p1, stage_cap=35) → cualign__propose_target(ipr) → cualign__plan_stages(t2, simultaneous) → cualign__validate(p2, stage_cap=35) → cualign__propose_target(expansion_ipr) → cualign__plan_stages(t3, simultaneous) → cualign__validate(p3, stage_cap=35) → reviewer(p3)
+검토 메모:
+1) 한 줄 요약: 전략 expansion_ipr, 장수 11단계, 기간 2.5개월, 위반 발생(공간 부족 1.19mm > 허용 0.5mm).  
+2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.54mm), 10번(2.39mm), 6번(2.36mm), 15번(2.29mm), 12번(2.24mm). IPR 제외·고정 치아는 없으며, 발치 치아도 없음. 순서는 simultaneous(동시 이동).  
+3) 위반이 있으면 어떤 조건을 완화해야 하는지: 공간 부족을 해결하려면 발치 허용(임상 한계 8.0mm에 근접한 치아군 7.9mm), 또는 IPR·확장량 상한(각각 0.25mm/면, 2.0mm/측) 확장이 필요하나 현재 계획은 이미 상한에 근접함.  
+4) 의사에게 물을 질문:  
+   - 발치 가능성을 검토해 보시겠습니까?  
+   - 현재 IPR량(0.25mm/면) 증가가 임상적으로 가능한지 확인해 주시겠습니까?  
+검토 메모도 초안입니다. 최종 판단은 의사가 합니다.
+이 계획은 초안입니다. 최종 판단은 의사가 합니다.[39m
+------------------------------
+2026-09-23 06:29:37 - INFO     - nat.front_ends.console.console_front_end_plugin:183 - --------------------------------------------------
+[32mWorkflow Result:
+전략: expansion_ipr, 총 장수: 11단계, 예상 기간: 2.5개월, 위반: space_deficit 1.19mm (허용 0.5mm 초과), plan_id: p3, 호출한 도구 순서: cualign__clinical_limits → cualign__load_case(severe) → cualign__propose_target(expansion) → cualign__plan_stages(t1, simultaneous) → cualign__validate(p1, stage_cap=35) → cualign__propose_target(ipr) → cualign__plan_stages(t2, simultaneous) → cualign__validate(p2, stage_cap=35) → cualign__propose_target(expansion_ipr) → cualign__plan_stages(t3, simultaneous) → cualign__validate(p3, stage_cap=35) → reviewer(p3)
+검토 메모:
+1) 한 줄 요약: 전략 expansion_ipr, 장수 11단계, 기간 2.5개월, 위반 발생(공간 부족 1.19mm > 허용 0.5mm).  
+2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.54mm), 10번(2.39mm), 6번(2.36mm), 15번(2.29mm), 12번(2.24mm). IPR 제외·고정 치아는 없으며, 발치 치아도 없음. 순서는 simultaneous(동시 이동).  
+3) 위반이 있으면 어떤 조건을 완화해야 하는지: 공간 부족을 해결하려면 발치 허용(임상 한계 8.0mm에 근접한 치아군 7.9mm), 또는 IPR·확장량 상한(각각 0.25mm/면, 2.0mm/측) 확장이 필요하나 현재 계획은 이미 상한에 근접함.  
+4) 의사에게 물을 질문:  
+   - 발치 가능성을 검토해 보시겠습니까?  
+   - 현재 IPR량(0.25mm/면) 증가가 임상적으로 가능한지 확인해 주시겠습니까?  
+검토 메모도 초안입니다. 최종 판단은 의사가 합니다.
+이 계획은 초안입니다. 최종 판단은 의사가 합니다.[39m
+--------------------------------------------------
+[0m

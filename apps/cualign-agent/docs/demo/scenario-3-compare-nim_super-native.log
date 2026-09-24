@@ -1,0 +1,163 @@
+# scenario 3 (compare) · llm=nim_super · exit=0 · 14.8s
+# input: severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어.
+
+Configuration Summary:
+--------------------
+Workflow Type: react_agent
+Number of Functions: 1
+Number of Function Groups: 1
+Number of LLMs: 2
+Number of Embedders: 0
+Number of Memory: 0
+Number of Object Stores: 0
+Number of Retrievers: 0
+Number of TTC Strategies: 0
+Number of Authentication Providers: 0
+[0m
+It will be compatible before version 2.0.0.
+2026-09-23 04:53:22 - INFO     - nat.cli.commands.start:192 - Starting NAT from config file: 'C:\Users\yusun\projects\cualign\configs\workflow.yml'
+2026-09-23 04:53:22 - INFO     - nat.cli.cli_utils.config_override:105 - Successfully set override for workflow.llm_name with value: nim_super with type <class 'str'>)
+2026-09-23 04:53:22 - INFO     - nat.cli.cli_utils.config_override:211 - 
+Configuration after overrides:
+function_groups:
+  cualign:
+    _type: cualign
+functions:
+  current_datetime:
+    _type: current_datetime
+general:
+  front_end:
+    _type: fastapi
+    cors:
+      allow_origins:
+      - '*'
+    runner_class: cualign.server.worker.CuAlignWorker
+llms:
+  nim_lightning:
+    _type: nim
+    chat_template_kwargs:
+      enable_thinking: false
+    max_tokens: 2048
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    temperature: 0.0
+  nim_super:
+    _type: nim
+    max_tokens: 2048
+    model_name: nvidia/nemotron-3-super-120b-a12b
+    temperature: 0.0
+workflow:
+  _type: react_agent
+  additional_instructions: "You are cuAlign, a clear-aligner treatment-PLANNING agent\
+    \ for dentists. You produce DRAFT staging plans only;\nthe dentist makes every\
+    \ clinical decision. Never diagnose, never prescribe, never call a plan final.\n\
+    Tool names must be used EXACTLY as listed (they carry the cualign__ prefix, e.g.\
+    \ cualign__validate).\n\nInterview first when a load-bearing constraint is missing:\
+    \ if the request does not say whether extraction is\nallowed, or gives no time\
+    \ limit, ask ONE short Korean question covering both (\uBC1C\uCE58 \uD5C8\uC6A9\
+    \ \uC5EC\uBD80 \xB7 \uAE30\uAC04) and stop.\nDo not ask if the request already\
+    \ answers them.\n\nLoop: cualign__clinical_limits (once) -> cualign__load_case\
+    \ (case the user named, else moderate) ->\npick a strategy. Allowed strategies:\
+    \ expansion, ipr, expansion_ipr, extraction. If the user refuses extraction\n\
+    (\"\uBC1C\uCE58 \uC5C6\uC774\", \"\uBC1C\uCE58\uB294 \uC808\uB300 \uC548 \uB3FC\
+    \"), never use extraction. Default order: expansion -> ipr -> expansion_ipr ->\
+    \ extraction.\ncualign__propose_target -> cualign__plan_stages (order: anterior_first\
+    \ if the user says \uC55E\uB2C8 \uBA3C\uC800, sequential if\nthey ask for anchorage-safe/slow\
+    \ staging, else simultaneous) -> cualign__validate (pass stage_cap = round(months*30.4/7)\n\
+    when a time limit is given). If validate reports violations, switch to the next\
+    \ allowed strategy and repeat.\nStop when passed is true, or when every allowed\
+    \ strategy failed: then report the plan with the fewest violations\nand state\
+    \ plainly which constraint would have to be relaxed (e.g. \"\uBC1C\uCE58 \uC5C6\
+    \uC774\uB294 \uACF5\uAC04\uC774 1.2mm \uBD80\uC871\uD569\uB2C8\uB2E4\").\nWhen\
+    \ the user asks to compare options (\uBE44\uAD50, \uB458 \uB2E4, \uC5EC\uB7EC\
+    \ \uC548), call cualign__compare_strategies once instead.\nWhen the user asks\
+    \ to modify a plan (13\uBC88\uC740 \uC6C0\uC9C1\uC774\uC9C0 \uB9C8, IPR \uC740\
+    \ \uC55E\uB2C8 \uBE7C\uACE0), re-run propose_target with lock /\nipr_exclude and\
+    \ validate again. When asked for files, call cualign__export_stl and give the\
+    \ download_url.\n\nThe final answer MUST be a non-empty Korean summary: \uC804\
+    \uB7B5 \xB7 \uCD1D \uC7A5\uC218 \xB7 \uC608\uC0C1 \uAE30\uAC04(\uAC1C\uC6D4) \xB7\
+    \ \uC704\uBC18(\uC885\uB958\uBCC4) \xB7\nplan_id \xB7 \uD638\uCD9C\uD55C \uB3C4\
+    \uAD6C \uC21C\uC11C. End with: \"\uC774 \uACC4\uD68D\uC740 \uCD08\uC548\uC785\uB2C8\
+    \uB2E4. \uCD5C\uC885 \uD310\uB2E8\uC740 \uC758\uC0AC\uAC00 \uD569\uB2C8\uB2E4\
+    .\"\n"
+  llm_name: nim_super
+  max_iterations: 24
+  parse_agent_response_max_retries: 3
+  tool_call_max_retries: 3
+  tool_names:
+  - cualign
+  - current_datetime
+  use_native_tool_calling: true
+  verbose: true
+2026-09-23 04:53:22 - INFO     - nat.runtime.session:332 - Shared workflow built (entry_function=None)
+2026-09-23 04:53:26 - INFO     - nat.plugins.langchain.agent.react_agent.agent:231 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어.
+[36mAgent's thoughts: 
+We need to compare extraction vs non-extraction for severe case, no time limit. The user wants both extraction and non-extraction plans. According to instructions: When user asks to compare options (비교, 둘 다, 여러 안), call cualign__compare_strategies once instead.
+We need to first load clinical limits (once) -> load case (severe) -> then compare strategies. Allowed strategies: expansion, ipr, expansion_ipr, extraction. But user wants extraction vs non-extraction. Non-extraction could be expansion_ipr? Probably they want to compare extraction vs non-extraction (maybe expansion_ipr). However the instruction says: When user asks to compare options, call compare_strategies once instead. So we should call compare_strategies with allowed strategies: maybe ["expansion_ipr", "extraction"]? Or we could include all four and let them compare. But user specifically said "발치안이랑 비발치안 둘 다 만들어서 비교해줘." So they want extraction vs non-extraction. Non-extraction could be expansion_ipr (since severe case likely needs both expansion and IPR). We'll follow default order: expansion -> ipr -> expansion_ipr -> extraction. For comparison, we can choose expansion_ipr and extraction.
+We need to call clinical_limits first, then load_case, then compare_strategies.
+Let's do that.
+First, call cualign__clinical_limits with unused empty string.
+[39m
+------------------------------
+2026-09-23 04:53:26 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__clinical_limits
+[33mTool's input: {'unused': ''}
+[36mTool's response: 
+[{'max_linear_mm_per_aligner': 0.25, 'ipr_mm_per_surface': 0.25, 'max_expansion_mm_per_side': 2.0, 'extraction_threshold_mm': 8.0, 'wear_days_per_aligner': 7, 'stage_cap_formula': 'round(months * 30.4 / 7)', 'strategies': ['expansion', 'ipr', 'expansion_ipr', 'extraction'], 'orders': ['simultaneous', 'anterior_first', 'sequential'], 'sources': 'MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016'}][39m
+------------------------------
+2026-09-23 04:53:27 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어.
+[36mAgent's thoughts: 
+We need to load the severe case. Use cualign__load_case with case_id "severe".
+[39m
+------------------------------
+2026-09-23 04:53:27 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__load_case
+[33mTool's input: {'case_id': 'severe'}
+[36mTool's response: 
+[{'case_id': 'severe', 'teeth': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 'n_teeth': 14, 'crowding_mm': 7.9, 'baseline_overlap_mm3': 191.0}][39m
+------------------------------
+2026-09-23 04:53:28 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어.
+[36mAgent's thoughts: 
+We have case loaded: severe, crowding_mm 7.9. Now we need to compare strategies: extraction vs non-extraction. We'll decide to compare expansion_ipr (non-extraction) and extraction. Use cualign__compare_strategies with allowed: ["expansion_ipr", "extraction"], stage_cap: None (no time limit), order: default simultaneous (since user didn't specify anterior_first or sequential). Let's call.
+[39m
+------------------------------
+2026-09-23 04:53:28 - INFO     - nat.plugins.langchain.agent.base:303 - 
+------------------------------
+[AGENT]
+[37mCalling tools: cualign__compare_strategies
+[33mTool's input: {'order': 'simultaneous', 'stage_cap': None, 'allowed': ['expansion_ipr', 'extraction']}
+[36mTool's response: 
+[{'case_id': 'severe', 'stage_cap': None, 'order': 'simultaneous', 'plans': [{'plan_id': 'p1', 'strategy': 'expansion_ipr', 'n_stages': 11, 'months': 2.5, 'passed': False, 'violations': 1, 'by_type': {'space_deficit': 1}, 'space_deficit_mm': 1.19, 'removed': []}, {'plan_id': 'p2', 'strategy': 'extraction', 'n_stages': 20, 'months': 4.6, 'passed': True, 'violations': 0, 'by_type': {}, 'space_deficit_mm': 0.0, 'removed': [5, 12]}]}][39m
+------------------------------
+2026-09-23 04:53:34 - INFO     - nat.plugins.langchain.agent.react_agent.agent:256 - 
+------------------------------
+[AGENT]
+[33mAgent input: severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어.
+[36mAgent's thoughts: 
+Thought: I now know the final answer
+Final Answer: 
+[비발치안] 전략: expansion_ipr, 총 장수: 11, 예상 기간: 2.5개월, 위반: space_deficit 1.19mm, plan_id: p1
+[발치안] 전략: extraction, 총 장수: 20, 예상 기간: 4.6개월, 위반: 없음, plan_id: p2
+호출한 도구 순서: cualign__clinical_limits → cualign__load_case → cualign__compare_strategies
+이 계획은 초안입니다. 최종 판단은 의사가 합니다.[39m
+------------------------------
+2026-09-23 04:53:34 - INFO     - nat.front_ends.console.console_front_end_plugin:183 - --------------------------------------------------
+[32mWorkflow Result:
+[비발치안] 전략: expansion_ipr, 총 장수: 11, 예상 기간: 2.5개월, 위반: space_deficit 1.19mm, plan_id: p1
+[발치안] 전략: extraction, 총 장수: 20, 예상 기간: 4.6개월, 위반: 없음, plan_id: p2
+호출한 도구 순서: cualign__clinical_limits → cualign__load_case → cualign__compare_strategies
+이 계획은 초안입니다. 최종 판단은 의사가 합니다.[39m
+--------------------------------------------------
+[0m
