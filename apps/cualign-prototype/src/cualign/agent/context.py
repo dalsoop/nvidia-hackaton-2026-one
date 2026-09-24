@@ -17,6 +17,7 @@ class PlanRun:
     review_started: float | None = None
     review_busy: bool = False
     closed: bool = False
+    rails: str | None = None  # passed | blocked | error | off, set by the rails middleware
 
 
 CURRENT_RUN: ContextVar[PlanRun | None] = ContextVar("cualign_plan_run", default=None)

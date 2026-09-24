@@ -84,7 +84,8 @@ class PlanEventsASGI:
                         "review": plan["review"]})
                 elif run.plan_ids:
                     extra = event("plan_error", {**common, "message": "계획은 생성됐으나 최종 선택을 받지 못했습니다."})
-                extra += event("plan_context", {**common, "constraints": run.constraints.model_dump(mode="json")})
+                extra += event("plan_context", {**common, "constraints": run.constraints.model_dump(mode="json"),
+                                                 "rails": run.rails})
                 message = {**message, "body": message.get("body", b"") + extra}
             await send(message)
 

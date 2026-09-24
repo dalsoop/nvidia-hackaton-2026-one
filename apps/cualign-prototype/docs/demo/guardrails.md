@@ -17,13 +17,15 @@ models: ['nvidia/nemotron-3.5-lightning-30b-a3b', 'nvidia/nemotron-3.5-content-s
 
 `src/cualign/server/rails.py` — NAT FastAPI 앱을 감싸는 순수 ASGI 미들웨어. `nat serve` 한 프로세스 안에서 `/chat*`, `/generate*` 요청을 가로챈다.
 
+> 이후 변경: 레일은 NAT 워크플로 미들웨어(`src/cualign/server/rails_middleware.py`)로 옮겨 `nat serve` 13개 경로·`nat run`·평가 실행기가 모두 지난다. 판정은 단계 패널 대신 로그와 `plan_context` 이벤트의 `rails` 값으로 남는다. 아래 표의 레일·모델·결정은 같다.
+
 | 레일 | 모델 | 시점 | 결정 |
 |---|---|---|---|
 | 범위 레일 (`self check input`) | nemotron-3-super-120b | 에이전트 실행 **전** | BLOCKED → 에이전트를 부르지 않고 거절문 스트림 |
 | content safety (input) | nemotron-3.5-content-safety | 에이전트 실행 전 (범위 레일과 병렬) | 기본 **advisory** — 판정을 단계 패널에 표시하고 진행. `CUALIGN_CONTENT_SAFETY_INPUT=block` 으로 차단 모드 |
 | 출력 레일 (content safety + `self check output`) | 위 둘 | 스트림 종료 **후** 완성 답 | 판정을 단계로 표시, BLOCKED 면 경고 청크 추가 |
 
-레일 호출은 `CUALIGN_RAILS_TIMEOUT`(기본 25s) 를 넘기면 ERROR 로 표시하고 열어 준다(fail-open, 보이게).
+레일 호출은 `CUALIGN_RAILS_TIMEOUT`(기본 25s) 를 넘기면 ERROR 로 표시하고 열어 준다(fail-open, 보이게). 지금은 ERROR 로그와 `rails: "error"` 로 보인다. `CUALIGN_RAILS_FAIL_CLOSED=1` 이면 거절한다.
 
 ## 왜 content safety 를 입력에서 advisory 로 두나 — 측정
 

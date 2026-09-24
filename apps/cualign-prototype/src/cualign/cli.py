@@ -71,6 +71,7 @@ def cmd_bench(args):
 def cmd_serve(args):
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
+    os.environ.setdefault("NAT_TELEMETRY_ENABLED", "0")  # no NAT CLI usage telemetry, and no consent prompt
     if not os.environ.get("NVIDIA_API_KEY", "").startswith("nvapi-"):
         print("[warn] NVIDIA_API_KEY not set — the agent will fail; /ui and the rule-based fallback still work")
     cmd = [sys.executable, "-m", "nat.cli.main", "serve", "--config_file", str(ROOT / "configs" / "workflow.yml"),
