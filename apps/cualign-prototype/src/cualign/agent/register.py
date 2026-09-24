@@ -104,12 +104,17 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return constraints_for(cid).model_dump(mode="json")
 
     async def _set_constraints(inp: ConstraintPatch) -> dict:
-        """사용자가 명시적으로 변경한 조건만 전달한다. 생략은 유지, []는 치아 목록 해제, stage_cap:null은 기간 상한 해제. IPR 한도는 면당 mm."""
+        """사용자가 명시적으로 변경한 조건만 전달한다. null과 생략은 모두 유지를 뜻한다. []는 치아 목록 해제, clear_stage_cap:true는 기간 상한 해제. IPR 한도는 면당 mm."""
         cid, case = current_case()
         run = CURRENT_RUN.get()
+        current = constraints_for(cid)
+        c = current.patched(inp.changes())
+        # Re-stating the same conditions mid-loop is harmless; only a real change after targets
+        # exist would make the computed plans disagree with the stored constraints.
+        if c == current:
+            return c.model_dump(mode="json")
         if run and run.target_ids:
-            raise ValueError("set constraints before generating targets; start another request to change them")
-        c = constraints_for(cid).patched(inp.changes())
+            raise ValueError("conditions are already fixed for this request; keep planning with them")
         c.check_case(case.ids)
         STORE.case_constraints[cid] = c
         if run:

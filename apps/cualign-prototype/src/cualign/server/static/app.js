@@ -218,7 +218,7 @@ function readConstraints() {
   if (!Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("IPR은 면당 0~0.25mm입니다.");
   if (cap !== null && (!Number.isInteger(cap) || cap < 1)) throw new Error("단계 상한은 양의 정수입니다.");
   return { allow_extraction: $("cExtraction").checked, lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
-    ipr_limit_mm: ipr, stage_cap: cap, order: $("cOrder").value };
+    ipr_limit_mm: ipr, stage_cap: cap, clear_stage_cap: cap === null, order: $("cOrder").value };
 }
 function fillConstraints(c) {
   $("cExtraction").checked = c.allow_extraction;
@@ -232,6 +232,7 @@ function constraintsDirty() {
   if (!state.plan) return false;
   try {
     const c = readConstraints();
+    delete c.clear_stage_cap;
     return Object.keys(c).some(k => JSON.stringify(c[k]) !== JSON.stringify(state.plan.constraints[k]));
   } catch { return true; }
 }

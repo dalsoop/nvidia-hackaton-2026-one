@@ -30,17 +30,27 @@ class Constraints(BaseModel):
 
 
 class ConstraintPatch(BaseModel):
+    """null means keep. A model filling every schema field with null must not change anything.
+
+    Clearing is always explicit: [] empties a tooth list, clear_stage_cap drops the stage cap.
+    Do not rely on exclude_unset here — a tool call arrives with every field present.
+    """
     model_config = ConfigDict(extra="forbid")
     allow_extraction: bool | None = None
     lock: list[Tooth] | None = None
     ipr_exclude: list[Tooth] | None = None
     ipr_limit_mm: float | None = Field(default=None, ge=0, le=IPR_PER_SURFACE, allow_inf_nan=False)
     stage_cap: int | None = Field(default=None, gt=0)
+    clear_stage_cap: bool = False
     order: Order | None = None
 
     def changes(self):
-        # Only stage_cap can explicitly be cleared with null; [] clears tooth lists.
-        result = self.model_dump(exclude_unset=True)
-        if any(v is None and k != "stage_cap" for k, v in result.items()):
-            raise ValueError("null only clears stage_cap; use [] for tooth lists")
+        result = {k: v for k, v in self.model_dump().items()
+                  if v is not None and k not in ("clear_stage_cap", "stage_cap")}
+        if self.clear_stage_cap:
+            if self.stage_cap is not None:
+                raise ValueError("clear_stage_cap and stage_cap cannot be set together")
+            result["stage_cap"] = None
+        elif self.stage_cap is not None:
+            result["stage_cap"] = self.stage_cap
         return result

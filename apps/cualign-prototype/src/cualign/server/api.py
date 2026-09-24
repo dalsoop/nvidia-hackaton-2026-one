@@ -148,8 +148,8 @@ def add_api_routes(app: FastAPI):
     @app.post("/api/plan")
     async def rule_plan(req: RulePlanRequest):
         try:
-            changes = req.model_dump(exclude_unset=True, exclude={"case_id", "parent_plan_id"})
-            changes = ConstraintPatch.model_validate(changes).changes()
+            patch = req.model_dump(exclude={"case_id", "parent_plan_id"})
+            changes = ConstraintPatch.model_validate(patch).changes()
             return rule_based_plan(req.case_id, changes=changes, parent_plan_id=req.parent_plan_id)
         except (KeyError, FileNotFoundError, ValueError) as e:
             raise HTTPException(400, str(e))

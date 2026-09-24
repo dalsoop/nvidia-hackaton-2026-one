@@ -71,10 +71,15 @@ def test_invalid_parent_and_constraints_rejected_before_writes(isolated):
     with pytest.raises(ValueError):
         Constraints(lock=(99,))
     with pytest.raises(ValueError):
-        ConstraintPatch(lock=None).changes()
+        ConstraintPatch(stage_cap=10, clear_stage_cap=True).changes()
     c = Constraints(lock=(13,), stage_cap=30)
+    # null means keep, so a patch full of nulls is a no-op. Clearing is always explicit.
     assert c.patched(ConstraintPatch().changes()) == c
-    assert c.patched(ConstraintPatch(lock=[], stage_cap=None).changes()).lock == ()
+    assert c.patched(ConstraintPatch(lock=None, ipr_exclude=None, stage_cap=None, order=None,
+                                     allow_extraction=None, ipr_limit_mm=None).changes()) == c
+    assert c.patched(ConstraintPatch(lock=[]).changes()).lock == ()
+    assert c.patched(ConstraintPatch(clear_stage_cap=True).changes()).stage_cap is None
+    assert c.patched(ConstraintPatch(stage_cap=None).changes()).stage_cap == 30
 
 
 def test_no_extraction_and_locked_extraction_rejected(isolated):
@@ -167,6 +172,10 @@ def test_nat_tools_keep_constraints_select_earlier_candidate_and_deny_export(iso
             selected = plans[0]["plan_id"]
             await tool("select_plan").ainvoke(register.PlanIdInput(plan_id=selected))
             assert CURRENT_RUN.get().selected_plan_id == selected != plans[-1]["plan_id"]
+            # Re-stating the same conditions after targets exist is a no-op, not a hard error:
+            # raising here made the ReAct agent retry until its iteration limit.
+            assert await tool("set_constraints").ainvoke(ConstraintPatch(lock=[13])) == c.model_dump(mode="json")
+            assert await tool("set_constraints").ainvoke(ConstraintPatch()) == c.model_dump(mode="json")
             with pytest.raises(ValueError):
                 await tool("set_constraints").ainvoke(ConstraintPatch(lock=[]))
             with pytest.raises(ValueError):
@@ -186,3 +195,27 @@ def test_cli_export_is_refused_without_a_traceback(isolated, capsys):
     assert "승인" in str(exit_info.value)
     assert capsys.readouterr().out == ""  # nothing is planned or printed before the refusal
     assert cli.main(["plan", "발치 없이", "--case", "moderate"]) == 0
+
+
+def test_set_constraints_tool_treats_null_as_keep(isolated):
+    """A model filling every schema field with null must not error or reset anything.
+
+    The agent emits null for fields it is not changing; making that fatal used to loop the
+    ReAct agent until its iteration limit. Passing a built ConstraintPatch hides this.
+    """
+    async def scenario():
+        async with register.cualign(register.CuAlignToolConfig(), None) as group:
+            tools = await group.get_all_functions()
+            fn = next(f for k, f in tools.items() if k.split("__")[-1] == "set_constraints")
+            token = CURRENT_RUN.set(PlanRun("r-null", "moderate", None, Constraints(lock=(13,), stage_cap=30)))
+            try:
+                all_null = dict.fromkeys(["allow_extraction", "lock", "ipr_exclude",
+                                          "ipr_limit_mm", "stage_cap", "order"])
+                assert await fn.ainvoke(all_null) == Constraints(lock=(13,), stage_cap=30).model_dump(mode="json")
+                partial = await fn.ainvoke({**all_null, "order": "anterior_first"})
+                assert partial["order"] == "anterior_first" and partial["lock"] == [13] and partial["stage_cap"] == 30
+                cleared = await fn.ainvoke({**all_null, "clear_stage_cap": True})
+                assert cleared["stage_cap"] is None and cleared["lock"] == [13]
+            finally:
+                CURRENT_RUN.reset(token)
+    asyncio.run(scenario())

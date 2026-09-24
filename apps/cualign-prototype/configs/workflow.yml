@@ -28,7 +28,7 @@ llms:
     model_name: nvidia/nemotron-3-super-120b-a12b
     temperature: 0.0
     max_tokens: 2048
-    num_retries: 1
+    num_retries: 5  # NAT default. The endpoint returns 503 often; fewer retries surface as empty ReAct output.
   nim_review:
     _type: nim
     model_name: nvidia/nemotron-3-super-120b-a12b
@@ -49,7 +49,7 @@ workflow:
   tool_names: [cualign, reviewer]
   llm_name: nim_super
   verbose: true
-  parse_agent_response_max_retries: 2
+  parse_agent_response_max_retries: 4  # the endpoint intermittently returns an empty completion
   tool_call_max_retries: 1
   max_iterations: 26
   use_native_tool_calling: true
@@ -58,11 +58,14 @@ workflow:
     Tool names carry the cualign__ prefix. The server context states the current case,
     base_plan_id and confirmed constraints. Never silently relax these constraints.
     Read get_constraints first. Use set_constraints ONLY for fields explicitly changed by the
-    current user request. Missing fields mean KEEP, not defaults. lock and ipr_exclude are full
-    lists: preserve existing teeth when adding a new tooth; [] is only for an explicit clear.
+    current user request. Omitted fields and null both mean KEEP, never a reset to defaults, so
+    sending null for everything you are not changing is correct. lock and ipr_exclude are full
+    lists: preserve existing teeth when adding a new tooth; [] is only for an explicit clear,
+    and clear_stage_cap: true is the only way to drop the stage cap.
     IPR limit is mm per surface (0..0.25). Convert months to stage_cap = round(months*30.4/7).
     For "앞니 먼저", order=anterior_first. No extraction means allow_extraction=false.
     Never enable extraction simply because a comparison is requested.
+    Re-stating conditions that are already set is a no-op, not an error; do not repeat the call.
     Ask one concise question if a requested condition is ambiguous or unsupported.
     Use load_case for the case selected on screen; do not switch cases in tools.
     Loop: clinical_limits -> propose_target -> plan_stages -> validate.

@@ -66,13 +66,18 @@ async def converse(client, url, text, ctx, log):
             frames = buf.split("\n\n")
             buf = frames.pop()
             for frame in frames:
-                name = "data"
+                # NAT uses the SSE field name itself (`intermediate_data:`), not `event:`.
+                name = None
                 payload = None
                 for line in frame.splitlines():
-                    if line.startswith("event: "):
-                        name = line[7:].strip()
-                    elif line.startswith("data: "):
-                        payload = line[6:]
+                    i = line.find(": ")
+                    if i < 0:
+                        continue
+                    field, raw = line[:i], line[i + 2:]
+                    if field == "event":
+                        name = raw.strip()
+                    else:
+                        name, payload = name or field, raw
                 if payload is None or payload.strip() == "[DONE]":
                     continue
                 try:
