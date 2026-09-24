@@ -157,6 +157,8 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
     cfg_path.write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
     counter = _LogCounter()
     nat_logger = logging.getLogger("nat")
+    old_level = nat_logger.level
+    nat_logger.setLevel(logging.INFO)   # retry messages are INFO; in-process the default level would drop them
     nat_logger.addHandler(counter)
     turns: list[Turn] = []
     history: list[dict] = []
@@ -186,6 +188,7 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
                 history.append({"role": "assistant", "content": answer or ""})
     finally:
         nat_logger.removeHandler(counter)
+        nat_logger.setLevel(old_level)
         store.__exit__(None, None, None)
     return Trace(spec_id=spec.id, agent=agent_label, turns=turns,
                  meta={"seconds": round(time.time() - t0, 1), "config_llm": config["workflow"]["llm_name"],

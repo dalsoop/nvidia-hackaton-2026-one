@@ -69,3 +69,11 @@ def test_reviewer_fault_injection_is_recorded(tmp_path):
     assert reviewer_requests, "the reviewer agent must have called the fake empty LLM"
     assert rv and not rv[-1].ok                           # empty / error output, not a memo
     assert t.parse_retries > 0 or t.errors                # NAT's retries are visible in the trace
+
+
+def test_planner_parse_failures_are_counted(tmp_path):
+    """Empty planner output: NAT retries the ReAct parse, then the turn fails; both must be in the trace."""
+    tr, _, _ = _run("A01", [{"content": ""}], tmp_path)
+    t = tr.turns[0]
+    assert t.answer == "" and t.errors                     # the crash is recorded, not raised
+    assert t.parse_retries >= 1                            # INFO-level retry records were captured
