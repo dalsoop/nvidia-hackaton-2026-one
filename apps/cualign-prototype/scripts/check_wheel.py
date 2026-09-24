@@ -6,7 +6,7 @@ from zipfile import ZipFile
 def check_wheel(path):
     required = {f"cualign/core/templates/{tooth}.stl" for tooth in range(2, 16)}
     required.add("cualign/core/templates/ATTRIBUTION.md")
-    required.update(f"cualign/server/static/{name}" for name in ("index.html", "app.js", "style.css"))
+    required.update(f"cualign/server/static/{name}" for name in ("index.html", "app.js", "style.css", "plan-stream.js"))
     with ZipFile(path) as archive:
         missing = required - set(archive.namelist())
         empty = {name for name in required - missing if archive.getinfo(name).file_size == 0}

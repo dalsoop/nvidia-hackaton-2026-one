@@ -14,6 +14,7 @@ import zipfile
 import numpy as np
 
 from .case import Case
+from .constraints import Constraints
 from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, PREMOLARS,
                      SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
 
@@ -46,13 +47,13 @@ def _expansion_for(arch, need_mm: float) -> tuple[float, float]:
     return best
 
 
-def _ipr_gain(ids, ipr_exclude) -> float:
+def _ipr_gain(ids, ipr_exclude, ipr_limit_mm=IPR_PER_SURFACE) -> float:
     surf = sum((2 if 0 < k < len(ids) - 1 else 1) for k, i in enumerate(ids) if i not in ipr_exclude)
-    return surf * IPR_PER_SURFACE * 0.5
+    return surf * ipr_limit_mm * 0.5
 
 
 def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[int] = frozenset(),
-                   lock: set[int] | frozenset[int] = frozenset()):
+                   lock: set[int] | frozenset[int] = frozenset(), constraints: Constraints | None = None):
     """Return ({tooth: displacement(3,) | None}, info). None = extracted.
 
     Crowns are placed in contact along the fitted arch (optionally offset outward for expansion),
@@ -60,6 +61,12 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
     """
     if strategy not in STRATEGIES:
         raise ValueError(f"unknown strategy {strategy!r}; use one of {STRATEGIES}")
+    if constraints is not None:
+        constraints.check_case(case.ids)
+        if strategy == "extraction" and not constraints.allow_extraction:
+            raise ValueError("extraction is forbidden by confirmed constraints")
+        ipr_exclude, lock = set(constraints.ipr_exclude), set(constraints.lock)
+    ipr_limit_mm = constraints.ipr_limit_mm if constraints else IPR_PER_SURFACE
     arch = case.arch
     ids = case.ids
     width = {i: case.mesiodistal_width(i) for i in ids}
@@ -71,7 +78,7 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
     offset = 0.0
     if strategy in ("expansion", "expansion_ipr"):
         # Expand only as much as needed (up to the 2 mm/side limit): arc length grows ~ pi * offset.
-        need = max(crowd, 0.0) if strategy == "expansion" else max(crowd - _ipr_gain(ids, ipr_exclude), 0.0)
+        need = max(crowd, 0.0) if strategy == "expansion" else max(crowd - _ipr_gain(ids, ipr_exclude, ipr_limit_mm), 0.0)
         offset, exp_gain = _expansion_for(arch, need)
         gain += exp_gain
         notes.append(f"악궁 편측 {offset:.1f}mm 확장")
@@ -81,12 +88,14 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
             if i in ipr_exclude:
                 continue
             n_surf = 2 if 0 < k < len(ids) - 1 else 1
-            width[i] -= IPR_PER_SURFACE * n_surf * 0.5   # each surface is shared by two teeth
+            width[i] -= ipr_limit_mm * n_surf * 0.5   # each surface is shared by two teeth
             surf += n_surf
-        gain += surf * IPR_PER_SURFACE * 0.5
-        notes.append(f"IPR 면당 {IPR_PER_SURFACE}mm x {surf}면" + (f" (제외 {sorted(ipr_exclude)})" if ipr_exclude else ""))
+        gain += surf * ipr_limit_mm * 0.5
+        notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {sorted(ipr_exclude)})" if ipr_exclude else ""))
     if strategy == "extraction":
         rm = [i for i in FIRST_PREMOLARS if i in ids] or sorted(PREMOLARS & set(ids))[:2]
+        if set(rm) & set(lock):
+            raise ValueError("locked teeth cannot be extracted")
         for i in rm:
             gain += width[i]
             active.remove(i)
@@ -123,7 +132,8 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
             "needed_mm": round(sum(width[i] for i in ids), 1),
             "mean_move_mm": round(float(np.mean(disp)), 2), "max_move_mm": round(float(np.max(disp)), 2),
             "notes": notes, "removed": [i for i in ids if target[i] is None], "locked": sorted(lock),
-            "ipr_mm_per_surface": IPR_PER_SURFACE if strategy in ("ipr", "expansion_ipr") else 0.0,
+            "ipr_mm_per_surface": ipr_limit_mm if strategy in ("ipr", "expansion_ipr") else 0.0,
+            "ipr_applied_teeth": [i for i in ids if i not in ipr_exclude] if strategy in ("ipr", "expansion_ipr") and ipr_limit_mm > 0 else [],
             "ipr_exclude": sorted(ipr_exclude), "expansion_mm_per_side": round(float(offset), 2)}
     return target, info
 
@@ -166,8 +176,26 @@ def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
 
 
 def validate(case: Case, stages: list[dict], stage_cap: int | None = None,
-             space_deficit_mm: float | None = None) -> list[dict]:
+             space_deficit_mm: float | None = None, constraints: Constraints | None = None,
+             target_info: dict | None = None) -> list[dict]:
     viol: list[dict] = []
+    if constraints:
+        constraints.check_case(case.ids)
+        stage_cap = constraints.stage_cap
+        info = target_info or {}
+        removed = set(case.ids) - set(stages[-1]) if stages else set(case.ids)
+        if removed and not constraints.allow_extraction:
+            viol.append({"stage": None, "type": "extraction_forbidden", "teeth": sorted(removed)})
+        for si, st in enumerate(stages, 1):
+            for tooth in constraints.lock:
+                if tooth not in st or np.linalg.norm(st[tooth]) > 1e-6:
+                    viol.append({"stage": si, "type": "locked_tooth", "teeth": [tooth]})
+        ipr = info.get("ipr_mm_per_surface", 0)
+        if ipr > constraints.ipr_limit_mm + 1e-9:
+            viol.append({"stage": None, "type": "ipr_limit", "mm": ipr, "limit": constraints.ipr_limit_mm})
+        excluded = set(info.get("ipr_applied_teeth", [])) & set(constraints.ipr_exclude)
+        if excluded:
+            viol.append({"stage": None, "type": "ipr_excluded", "teeth": sorted(excluded)})
     if space_deficit_mm is not None and space_deficit_mm > SPACE_DEFICIT_TOLERANCE_MM:
         viol.append({"stage": None, "type": "space_deficit", "mm": round(space_deficit_mm, 2),
                      "limit": SPACE_DEFICIT_TOLERANCE_MM})
@@ -221,12 +249,15 @@ def export_zip(case: Case, stages: list[dict], zip_path: str) -> str:
 
 
 def compare_strategies(case: Case, allowed=STRATEGIES, stage_cap: int | None = None,
-                       order: str = "simultaneous") -> list[dict]:
+                       order: str = "simultaneous", constraints: Constraints | None = None) -> list[dict]:
     rows = []
     for s in allowed:
-        target, info = propose_target(case, s)
-        stages, sinfo = plan_stages(case, target, order=order)
-        viol = validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"])
+        if constraints and s == "extraction" and not constraints.allow_extraction:
+            continue
+        target, info = propose_target(case, s, constraints=constraints)
+        stages, sinfo = plan_stages(case, target, order=constraints.order if constraints else order)
+        viol = validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"],
+                        constraints=constraints, target_info=info)
         rows.append({"strategy": s, "n_stages": sinfo["n_stages"], "months": sinfo["months"],
                      "violations": len(viol), "by_type": summarize(viol), "passed": not viol,
                      "removed": info["removed"], "space_gain_mm": info["space_gain_mm"],
