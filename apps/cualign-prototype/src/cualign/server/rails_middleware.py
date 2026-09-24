@@ -14,12 +14,18 @@ CUALIGN_RAILS_FAIL_CLOSED=1 is an opt-in stop: no key fails the build and a rail
 An explicit CUALIGN_GUARDRAILS=0 still wins over it (still logged at ERROR).
 The output is still checked after the answer, as before: a blocked answer gets a warning appended. A streamed
 answer has already left when the output verdict arrives, so there the refusal can only follow it.
+
+Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
+  * personal identifiers in any message of the request (system included) refuse the turn before any model;
+  * a prescriptive sentence in the answer blocks it without asking the output rail model.
 """
 from __future__ import annotations
 
 import importlib
 import logging
 import os
+import re
+import unicodedata
 from collections.abc import AsyncIterator
 from contextvars import ContextVar
 from typing import Any
@@ -33,6 +39,7 @@ from nat.data_models.middleware import FunctionMiddlewareBaseConfig
 from nat.middleware.function_middleware import FunctionMiddleware
 
 from cualign.agent.context import CURRENT_RUN
+from cualign.core.rail_patterns import PII, PRESCRIPTIVE
 from cualign.server.rails import REFUSAL, ROOT
 
 logger = logging.getLogger(__name__)
@@ -52,6 +59,24 @@ class RailsMiddlewareConfig(FunctionMiddlewareBaseConfig, name="cualign_rails"):
                                              description="base_url for every rail model; tests put a fake server here")
 
 
+def matches(patterns: tuple[str, ...], text: str) -> bool:
+    """NFKC only for the check, so fullwidth digits match; the text itself is not changed."""
+    text = unicodedata.normalize("NFKC", text)
+    return any(re.search(p, text) for p in patterns)
+
+
+def _content(m: Any) -> str:
+    c = m.content
+    return c if isinstance(c, str) else " ".join(getattr(p, "text", "") for p in c or [])
+
+
+def request_texts(value: Any) -> list[str]:
+    """Every message of the request. The UI resends the whole chat, and the case folder arrives in a system message."""
+    if isinstance(getattr(value, "input_message", None), str):
+        return [value.input_message]
+    return [_content(m) for m in getattr(value, "messages", None) or []]
+
+
 def last_user_text(value: Any) -> str:
     """The last non-empty user message. An empty last message must not let earlier text skip the rail."""
     if isinstance(getattr(value, "input_message", None), str):
@@ -59,8 +84,7 @@ def last_user_text(value: Any) -> str:
     for m in reversed(getattr(value, "messages", None) or []):
         if getattr(m, "role", None) != "user":
             continue
-        c = m.content
-        text = c if isinstance(c, str) else " ".join(getattr(p, "text", "") for p in c or [])
+        text = _content(m)
         if text.strip():
             return text.strip()
     return ""
@@ -104,6 +128,10 @@ class RailsMiddleware(FunctionMiddleware):
         if self.rails is None:
             return "", _record("input", "off"), None
         user = last_user_text(value)
+        if any(matches(PII, t) for t in request_texts(value)):
+            # The text is not logged: it holds the identifier.
+            logger.warning("cuAlign rails: personal identifier in the request — refused before any model")
+            return user, _record("input", "blocked"), REFUSAL
         if not user:
             logger.error("cuAlign rails: no non-empty user message to check")
             state = "error"
@@ -125,11 +153,15 @@ class RailsMiddleware(FunctionMiddleware):
         """Returns what must replace or follow the answer: REFUSAL, OUTPUT_WARNING, or None."""
         if self.rails is None or not answer.strip():
             return None
-        try:
-            status, _ = await self.rails.check_output(user, answer)
-        except Exception as e:
-            logger.error("cuAlign rails: output check failed: %s", e)
-            status = "ERROR"
+        if matches(PRESCRIPTIVE, answer):
+            logger.info("cuAlign rails: answer matched the prescriptive list; output rail model not asked")
+            status = "BLOCKED"
+        else:
+            try:
+                status, _ = await self.rails.check_output(user, answer)
+            except Exception as e:
+                logger.error("cuAlign rails: output check failed: %s", e)
+                status = "ERROR"
         state = {"BLOCKED": "blocked", "ERROR": "error"}.get(status, "passed")
         if state == "error":
             logger.error("cuAlign rails: output rail ERROR — %s", "refused" if self.fail_closed else "answer unchecked")

@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 import time
 from contextlib import contextmanager
@@ -32,6 +33,7 @@ from cualign.server.worker import CuAlignWorker
 
 ROOT = Path(__file__).resolve().parents[1]
 MARK = "MARK-PLANNER"
+PHONE = "moderate 케이스 계획 짜줘. 보호자 연락처 010-0000-0000"
 
 
 def workflow_routes(app):
@@ -266,20 +268,61 @@ def test_rails_nat_run_path(store, tmp_path):
     assert record == {"state": "blocked"}
 
 
+def rail_models_to(url):
+    def edit(cfg):
+        cfg["middleware"]["cualign_rails"]["rails_model_base_url"] = url
+    return edit
+
+
 def test_rails_model_url_reaches_fake_server(store, tmp_path, monkeypatch, caplog):
     """The real Rails with every rail model sent to a local fake server. A call that went to NIM instead would
     fail on the fake key and log an ERROR."""
-    def to_fake(cfg):
-        cfg["middleware"]["cualign_rails"]["rails_model_base_url"] = rail_llm.base_url
-
     with FakeLLM() as llm, FakeLLM("No") as rail_llm:
-        with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", to_fake) as client:
+        with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
             body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
     assert {r["model"] for r in rail_llm.requests} == {"nvidia/nemotron-3-super-120b-a12b",
                                                         "nvidia/nemotron-3.5-content-safety"}
     assert not [r for r in caplog.records if r.name.startswith("cualign.server.rails") and r.levelno >= logging.ERROR]
     # "No" passes the scope rail, so the planner answered; the content safety parser reads it as unsafe output.
     assert MARK in body and sse_event(body, "plan_context")["rails"] == "blocked"
+
+
+def test_regex_output_rail_blocks_r1(store, tmp_path, monkeypatch):
+    """The output rail model is a fake that passes everything; the prescriptive list still blocks the answer."""
+    with FakeLLM("발치해야 합니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
+        whole = ask(client, "/generate")
+        streamed = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+    warning = rails_middleware.OUTPUT_WARNING.strip()
+    assert warning in whole and warning in streamed
+    assert sse_event(streamed, "plan_context")["rails"] == "blocked"
+    assert FakeRails.last.outputs == []  # blocked before the rail model was asked
+
+
+def test_pii_blocked_before_model(store, tmp_path, monkeypatch):
+    """The real Rails with its models on a local fake server: an identifier is refused before any model call."""
+    with FakeLLM() as llm, FakeLLM("No") as rail_llm:
+        with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
+            body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE}], cualign={"case_id": "moderate"})
+            assert REFUSAL in body and MARK not in body
+            assert rail_llm.requests == [] and llm.requests == []
+            body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE.split(" 보호자")[0]}],
+                       cualign={"case_id": "moderate"})
+    assert MARK in body and REFUSAL not in body and rail_llm.requests
+
+
+def test_pii_in_history_and_case_id(store, tmp_path, monkeypatch):
+    """The UI resends the whole chat, and a case folder name reaches the model in the system message."""
+    case = tmp_path / "guardian 010-0000-0000"
+    case.mkdir()
+    for f in (ROOT / "src" / "cualign" / "core" / "templates").glob("*.stl"):
+        shutil.copy(f, case)
+    with FakeLLM() as llm, serve(tmp_path, monkeypatch, llm) as client:
+        history = ask(client, "/chat/stream", [{"role": "user", "content": PHONE}, {"role": "assistant", "content": "네"},
+                                               {"role": "user", "content": "계획 짜줘"}], cualign={"case_id": "moderate"})
+        folder = ask(client, "/chat/stream", [{"role": "user", "content": "계획 짜줘"}], cualign={"case_id": str(case)})
+    for body in (history, folder):  # ask() already checked each is a 200, not the 400 of an unknown case
+        assert REFUSAL in body and MARK not in body
+    assert FakeRails.last.inputs == [] and llm.requests == []
 
 
 def test_telemetry_switched_off(store, tmp_path, monkeypatch):
