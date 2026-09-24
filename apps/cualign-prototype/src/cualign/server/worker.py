@@ -21,6 +21,8 @@ class CuAlignWorker(FastApiFrontEndPluginWorker):
     def build_app(self) -> FastAPI:
         # Middleware must be attached before the app starts (add_routes runs inside the lifespan).
         app = super().build_app()
+        from .plan_events import PlanEventsASGI
+        app.add_middleware(PlanEventsASGI)
         enabled = os.environ.get("CUALIGN_GUARDRAILS", "1") != "0" and os.environ.get("NVIDIA_API_KEY", "").startswith("nvapi-")
         if enabled:
             from .rails import GuardrailsASGI

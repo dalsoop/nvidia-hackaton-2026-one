@@ -36,6 +36,14 @@ uv run python scripts/check_wheel.py dist/cualign-0.1.0-py3-none-any.whl
 - 형상 자산의 `ATTRIBUTION.md`와 라이선스를 유지한다.
 - 다른 작업자의 변경을 보존하고 합의한 작업 범위 밖 변경은 섞지 않는다.
 
+## 화면·이벤트 회귀 검사
+
+`node --test tests/plan-stream.test.mjs`로 스트림 조립·요청 식별을 검사한다.
+`uv run --frozen --with playwright python tests/browser_flow.py`는 설치된 Chrome으로 합성 계획·가짜 검토 응답을 사용한다.
+다른 환경에서는 PLAYWRIGHT_CHROMIUM_EXECUTABLE로 Chromium 실행 경로를 지정한다.
+UI의 three.js CDN 접근이 필요하며 NVIDIA 모델 호출은 하지 않는다. 결과는 out/browser-acceptance/에 기록한다.
+Windows에서 CLI 출력 인코딩 문제가 나면 PYTHONUTF8=1 환경에서 실행한다.
+
 ## PR에 남길 정보
 
 변경 이유·범위, 실행한 검증과 결과, 실행하지 못한 검증, 알려진 한계를 적는다.

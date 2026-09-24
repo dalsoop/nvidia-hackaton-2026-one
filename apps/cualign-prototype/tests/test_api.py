@@ -22,6 +22,8 @@ def test_artifact_flow(tmp_path, monkeypatch):
         pid = plan["plan_id"]
         detail = client.get(f"/api/plans/{pid}")
         assert detail.status_code == 200
+        assert client.get(f"/api/plans/{pid}/stl.zip").status_code == 409
+        assert client.post(f"/api/plans/{pid}/approval", json={"confirmed": True}).status_code == 200
         output = client.get(f"/api/plans/{pid}/stl.zip")
         assert output.status_code == 200
         with ZipFile(BytesIO(output.content)) as archive:

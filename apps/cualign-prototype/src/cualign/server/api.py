@@ -1,58 +1,64 @@
-"""Artifact API + static UI. Reads the same in-process STORE the agent tools write to."""
+"""Artifact API. Approval is checked on every export, including cached files."""
 from __future__ import annotations
-
 import uuid
 from pathlib import Path
-
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from cualign.core import Case, limits as L, planner
+from cualign.core import Case, planner
+from cualign.core.constraints import ConstraintPatch
+from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
-class RulePlanRequest(BaseModel):
+class RulePlanRequest(ConstraintPatch):
     case_id: str | None = None
-    allow_extraction: bool = True
-    stage_cap: int | None = None
-    order: str = "simultaneous"
+    parent_plan_id: str | None = None
 
 
-def _summary(pid: str) -> dict:
-    p = STORE.plans[pid]
-    return {"plan_id": pid, "case_id": p["case_id"], "strategy": p["strategy"], "n_stages": p["info"]["n_stages"],
-            "months": p["info"]["months"], "passed": not p["violations"], "violations": len(p["violations"]),
-            "by_type": planner.summarize(p["violations"])}
+class ApprovalRequest(BaseModel):
+    confirmed: bool = False
 
 
-def rule_based_plan(case_id: str | None, allow_extraction: bool, stage_cap: int | None, order: str) -> dict:
-    """The agent's loop without the LLM: walk the strategy ladder until validate passes. Used as a demo fallback."""
+def _summary(pid):
+    p = STORE.plan_json(pid)
+    return {"plan_id": pid, "case_id": p["case_id"], "parent_plan_id": p["parent_plan_id"],
+            "strategy": p["strategy"], "n_stages": p["info"]["n_stages"], "months": p["info"]["months"],
+            "passed": p["passed"], "violations": len(p["violations"]), "by_type": planner.summarize(p["violations"]),
+            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"]}
+
+
+def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
+                    changes=None, parent_plan_id=None):
     cid, case = STORE.load_case(case_id)
-    allowed = [s for s in L.STRATEGIES if allow_extraction or s != "extraction"]
-    tried, chosen = [], None
-    for s in allowed:
-        target, info = planner.propose_target(case, s)
-        stages, sinfo = planner.plan_stages(case, target, order=order)
-        viol = planner.validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"])
-        tid = STORE.put_target(cid, target, info)
-        pid = STORE.put_plan(cid, tid, stages, {**sinfo, "space_deficit_mm": info["space_deficit_mm"]}, viol, stage_cap, s)
-        tried.append(_summary(pid))
-        if not viol:
-            chosen = tried[-1]
-            break
-    if chosen is None and tried:
-        best = min(tried, key=lambda r: (r["violations"], STORE.plans[r["plan_id"]]["info"].get("space_deficit_mm", 0)))
-        best = {**best, "note": "모든 허용 전략이 실패 — 위반이 가장 적은 안"}
-        return {"case_id": cid, "chosen": None, "best_failed": best, "tried": tried}
-    return {"case_id": cid, "chosen": chosen, "tried": tried}
+    c = STORE.constraints_for(cid, parent_plan_id)
+    if changes is None:
+        changes = {"stage_cap": stage_cap}
+        if allow_extraction is not None:
+            changes["allow_extraction"] = allow_extraction
+        if order is not None:
+            changes["order"] = order
+    c = c.patched(changes)
+    c.check_case(case.ids)
+    service = PlanningService(STORE)
+    ids = service.compare(cid, c, parent_plan_id=parent_plan_id)
+    STORE.case_constraints[cid] = c
+    for pid in ids:
+        STORE.set_review(pid, {"status": "skipped", "attempts": 0,
+                              "message": "규칙 폴백 — 검토 에이전트 미실행", "error": None})
+    tried = [_summary(pid) for pid in ids]
+    chosen = next((p for p in tried if p["passed"]), None)
+    result = {"case_id": cid, "chosen": chosen, "tried": tried}
+    if chosen is None:
+        result["best_failed"] = min(tried, key=lambda p: (p["violations"], STORE.plans[p["plan_id"]]["info"]["space_deficit_mm"]))
+    return result
 
 
-def add_api_routes(app: FastAPI) -> None:
-
+def add_api_routes(app: FastAPI):
     @app.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/ui/")
@@ -63,12 +69,12 @@ def add_api_routes(app: FastAPI) -> None:
 
     @app.post("/api/cases/{case_id}/activate")
     async def activate_case(case_id: str):
-        """The dentist picked a case in the UI: make it the case the agent tools use by default."""
         try:
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
-        return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case)}
+        return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
+                "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str):
@@ -97,30 +103,54 @@ def add_api_routes(app: FastAPI) -> None:
         return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case)}
 
     @app.get("/api/plans")
-    async def list_plans():
-        return {"plans": [_summary(pid) for pid in reversed(list(STORE.plans))]}
+    async def list_plans(case_id: str | None = None):
+        return {"plans": [_summary(pid) for pid in reversed(list(STORE.plans))
+                          if case_id is None or STORE.plans[pid]["case_id"] == case_id]}
+
+    def require_plan(pid):
+        if pid not in STORE.plans:
+            raise HTTPException(404, f"unknown plan {pid}")
+        return STORE.plans[pid]
 
     @app.get("/api/plans/{plan_id}")
     async def get_plan(plan_id: str):
-        if plan_id not in STORE.plans:
-            raise HTTPException(404, f"unknown plan {plan_id}")
+        require_plan(plan_id)
         return STORE.plan_json(plan_id)
+
+    @app.post("/api/plans/{plan_id}/approval")
+    async def approve_plan(plan_id: str, req: ApprovalRequest):
+        require_plan(plan_id)
+        if not req.confirmed:
+            raise HTTPException(400, "의사의 명시적 확인이 필요합니다.")
+        try:
+            return STORE.approve(plan_id)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
+    @app.delete("/api/plans/{plan_id}/approval")
+    async def revoke_approval(plan_id: str):
+        require_plan(plan_id)
+        return STORE.revoke(plan_id)
 
     @app.get("/api/plans/{plan_id}/stl.zip")
     async def plan_stl(plan_id: str):
-        p = STORE.plans.get(plan_id)
-        if p is None:
-            raise HTTPException(404, f"unknown plan {plan_id}")
+        p = require_plan(plan_id)
+        try:
+            STORE.require_approved(plan_id)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
         _, case = STORE.load_case(p["case_id"])
         path = OUT_DIR / "stl" / f"{plan_id}.zip"
-        if not path.exists():
-            planner.export_zip(case, p["stages"], str(path))
+        # Regenerate from the approved snapshot; a stale file cannot bypass approval.
+        planner.export_zip(case, p["stages"], str(path))
         return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip")
 
     @app.post("/api/plan")
     async def rule_plan(req: RulePlanRequest):
         try:
-            return rule_based_plan(req.case_id, req.allow_extraction, req.stage_cap, req.order)
+            changes = req.model_dump(exclude_unset=True, exclude={"case_id", "parent_plan_id"})
+            changes = ConstraintPatch.model_validate(changes).changes()
+            return rule_based_plan(req.case_id, changes=changes, parent_plan_id=req.parent_plan_id)
         except (KeyError, FileNotFoundError, ValueError) as e:
             raise HTTPException(400, str(e))
 

@@ -20,7 +20,9 @@
 | `src/cualign/core/arch.py` | 치열궁 곡선과 위치·길이 계산 |
 | `src/cualign/core/limits.py` | 계산 한계값, 전략·치아 집합, 장수·기간 환산 |
 | `src/cualign/core/synth.py` | 환자 데이터 없이 재현하는 합성 케이스 생성 |
-| `src/cualign/core/store.py` | 케이스·목표·계획 공유 및 계획 JSON 저장 |
+| `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
+| `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증 |
+| `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
 | `src/cualign/core/gum.py` | 3D 표시용 잇몸 생성. 검증·출력 대상은 아님 |
 | `src/cualign/core/templates/2.stl`~`15.stl` | 합성 치아와 뷰어에 쓰는 크라운 형상 14개 |
 | `src/cualign/core/templates/ATTRIBUTION.md` | 위 형상 자산의 출처·라이선스 표기. 자산과 함께 보존 |
@@ -30,10 +32,14 @@
 
 | 파일 | 목적·내용 |
 |---|---|
-| `src/cualign/agent/register.py` | 계산 함수를 NAT 도구로 등록하고 입력·출력 정의 |
+| `src/cualign/agent/register.py` | 조건 수정·계산·최종 계획 선택·승인된 출력 도구 |
+| `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·검토 예산 컨텍스트 |
+| `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장 |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
 | `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구, 지시문 연결 |
-| `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·Guardrails 연결 |
+| `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트·Guardrails 연결 |
+| `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트 |
+| `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 케이스 업로드·계획 조회·규칙 폴백·파일 다운로드 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 사후 검사·경고 |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
@@ -59,9 +65,11 @@
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
 | `tests/test_segmentation.py` | 라벨→메시 분리 검사. 모델 추론 시험은 아님 |
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
-| `tests/test_api.py` | UI 경로·계획→ZIP 출력·잘못된 계획 ID 처리 검사 |
+| `tests/test_api.py` | UI 경로·승인→ZIP·잘못된 계획 ID 검사 |
+| `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
+| `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/승인·지연 응답 검사 |
 | `docs/VERIFICATION.md` | 새 환경 재현 결과와 미검증 범위 |
-| `docs/DEVELOPMENT.md` | 팀원 진입 순서, 작업 후보·수정 위치·완료 기준 |
+| `docs/DEVELOPMENT.md`, `docs/ROADMAP.md` | 개발 진입점과 네 기능 작업·검증 범위 |
 | `docs/KNOWN_ISSUES.md` | reviewer 오류의 관측·재현 조건·영향과 인수 시 주의점 |
 | `docs/DESIGN_REFERENCES.md` | 기존 UI·형상 조사에서 계승한 설계 관찰과 출처 |
 | `bench/bench.py` | 합성 케이스의 규칙 기반 비교 실행 |

@@ -44,8 +44,9 @@ def cmd_cases(args):
 
 
 def cmd_plan(args):
-    from cualign.core.store import STORE
     from cualign.server.api import rule_based_plan
+    if args.export:
+        raise SystemExit("[거부] CLI 초안은 미승인입니다. UI에서 계획 생성·의사 승인 후 다운로드하세요.")
     t0 = time.time()
     c = parse_constraints(args.request)
     print(f"[요청] {args.request}\n[제약] {json.dumps(c, ensure_ascii=False)}")
@@ -58,12 +59,6 @@ def cmd_plan(args):
     else:
         b = res["best_failed"]
         print(f"[결과] 허용 전략 전부 실패 — 최선 {b['strategy']} ({b['by_type']}). 조건 완화가 필요합니다.")
-    if args.export:
-        from cualign.core import planner
-        pid = (res["chosen"] or res["best_failed"])["plan_id"]
-        _, case = STORE.load_case(STORE.plans[pid]["case_id"])
-        n = planner.export_stl(case, STORE.plans[pid]["stages"], args.export)
-        print(f"[STL] {n}단계 -> {args.export}/")
     print(f"[완료] {time.time() - t0:.1f}s · 이 계획은 초안입니다. 최종 판단은 의사가 합니다.")
 
 

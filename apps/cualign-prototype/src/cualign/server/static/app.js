@@ -1,5 +1,6 @@
 // cuAlign web UI — case gate → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
 import * as THREE from "three";
+import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
@@ -21,7 +22,9 @@ const state = {
   plan: null,            // GET /api/plans/{id} payload
   stage: 0,
   playing: null,         // interval handle
-  lastPlanId: null,
+  loading: false,
+  selectionVersion: 0,
+  requestId: null,
   lastAssistantText: "",
   trace: null,           // inline tool-call trace for the turn in progress
   labels: [],            // CSS2DObject IPR labels
@@ -148,7 +151,7 @@ function violationsAt(k) {
 function applyStage(k) {
   state.stage = k;
   const plan = state.plan;
-  const st = plan?.stages?.[k] ?? {};
+  const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
@@ -170,7 +173,7 @@ function applyStage(k) {
     else m.material.color.copy(IVORY).lerp(HEAT, hasPlan ? Math.min(1, moved / maxMove) * 0.75 : 0);
   }
   placeLabels();
-  const n = hasPlan ? plan.stages.length - 1 : 0;
+  const n = hasPlan ? plan.stages.length : 0;
   const months = plan?.info?.months ?? "—";
   $("stageLabel").textContent = !hasPlan ? "계획 없음" : k === 0 ? `치료 전 · 총 ${n}단계 · 예상 ${months}개월` : `단계 ${k} / ${n} · 예상 ${months}개월`;
   $("stageSlider").value = k;
@@ -199,8 +202,66 @@ function onPointerMove(e) {
 // ------------------------------------------------------------------ API helpers
 async function api(path, opts) {
   const r = await fetch(path, opts);
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.detail || ("HTTP " + r.status)); }
   return r.json();
+}
+
+
+function readConstraints() {
+  const teeth = (id) => {
+    const raw = $(id).value.trim();
+    const values = raw ? raw.split(/[ ,]+/).map(Number) : [];
+    if (values.some(v => !Number.isInteger(v) || v < 2 || v > 15)) throw new Error("치아 번호는 2~15 정수로 입력하세요.");
+    return [...new Set(values)].sort((a,b) => a-b);
+  };
+  const ipr = Number($("cIpr").value), cap = $("cCap").value === "" ? null : Number($("cCap").value);
+  if (!Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("IPR은 면당 0~0.25mm입니다.");
+  if (cap !== null && (!Number.isInteger(cap) || cap < 1)) throw new Error("단계 상한은 양의 정수입니다.");
+  return { allow_extraction: $("cExtraction").checked, lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
+    ipr_limit_mm: ipr, stage_cap: cap, order: $("cOrder").value };
+}
+function fillConstraints(c) {
+  $("cExtraction").checked = c.allow_extraction;
+  $("cLock").value = (c.lock || []).join(", ");
+  $("cExclude").value = (c.ipr_exclude || []).join(", ");
+  $("cIpr").value = c.ipr_limit_mm;
+  $("cCap").value = c.stage_cap ?? "";
+  $("cOrder").value = c.order;
+}
+function constraintsDirty() {
+  if (!state.plan) return false;
+  try {
+    const c = readConstraints();
+    return Object.keys(c).some(k => JSON.stringify(c[k]) !== JSON.stringify(state.plan.constraints[k]));
+  } catch { return true; }
+}
+function updateActions() {
+  const p = state.plan, busy = state.streaming || state.loading;
+  const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
+  for (const id of ["sendBtn", "fallbackBtn", "caseBtn", "planSelect"]) $(id).disabled = !!busy;
+  $("constraints").disabled = !!busy;
+  $("approveBtn").disabled = !allowed || !p.passed || !["passed", "skipped"].includes(p.review.status);
+  $("approveBtn").textContent = p?.approval ? "승인 취소" : "의사 승인";
+  const link = $("stlLink"), downloadable = allowed && p.approval;
+  link.classList.toggle("disabled", !downloadable);
+  link.setAttribute("aria-disabled", String(!downloadable));
+  if (downloadable) link.href = "/api/plans/" + encodeURIComponent(p.plan_id) + "/stl.zip";
+  else link.removeAttribute("href");
+  if (p && dirty) $("planNotice").textContent = "조건 변경됨 — 새 계획을 생성한 뒤 승인하세요. 현재 3D는 이전 계획입니다.";
+}
+async function approveCurrent() {
+  const p = state.plan;
+  if (!p || state.streaming || state.loading || constraintsDirty()) return;
+  const revoke = !!p.approval;
+  if (!revoke && !confirm("계획 " + p.plan_id + "의 조건·3D·검토 결과를 확인하고 승인하시겠습니까? 출력물은 단계별 치아 STL 초안입니다.")) return;
+  state.loading = true; updateActions();
+  try {
+    const result = await api("/api/plans/" + encodeURIComponent(p.plan_id) + "/approval",
+      { method: revoke ? "DELETE" : "POST", headers: { "Content-Type": "application/json" },
+        ...(revoke ? {} : { body: JSON.stringify({ confirmed: true }) }) });
+    if (state.plan?.plan_id === p.plan_id) { state.plan = result; renderResult(result); }
+  } catch (e) { addMsg("error", e.message); }
+  finally { state.loading = false; updateActions(); }
 }
 
 // ------------------------------------------------------------------ case gate (start point)
@@ -225,8 +286,27 @@ async function loadCases() {
 }
 
 async function activateCase(caseId, { greet = true } = {}) {
+  if (state.streaming || state.loading) return;
+  ++state.selectionVersion;
+  state.requestId = null;
+  state.messages = [];
+  stopPlay();
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
   await loadMesh(caseId);
+  state.plan = null;
+  clearLabels(); applyStage(0);
+  fillConstraints(info.constraints);
+  $("planSelect").innerHTML = '<option value="">계획 선택…</option>';
+  for (const id of ["rPlan", "rParent", "rReview", "rApproval", "rStrategy", "rStages", "rMonths", "rViol"]) $(id).textContent = "—";
+  $("viewCanvas").dataset.planId = "";
+  $("resultCard").dataset.planId = "";
+  $("reviewMemo").textContent = "";
+  $("planNotice").textContent = "계획 없음";
+  $("stageSlider").disabled = true;
+  $("violTable").querySelector("tbody").innerHTML = "";
+  setBadge("계획 없음", "neutral");
+  updateActions();
+  await refreshPlans();
   $("caseName").textContent = `${caseId} · 총생 ${info.crowding_mm} mm`;
   $("caseGate").hidden = true;
   $("gateClose").hidden = false;
@@ -249,39 +329,51 @@ async function loadMesh(caseId) {
   applyStage(0);
 }
 
+
 async function refreshPlans(selectId) {
-  const { plans } = await api("/api/plans");
+  const caseId = state.meshCase, generation = state.selectionVersion;
+  const { plans } = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
+  if (caseId !== state.meshCase || generation !== state.selectionVersion) return;
   const sel = $("planSelect");
   sel.innerHTML = '<option value="">계획 선택…</option>';
   for (const p of plans) {
     const o = document.createElement("option");
     o.value = p.plan_id;
-    o.textContent = `${p.plan_id} · ${p.strategy} · ${p.n_stages}장 · ${p.passed ? "통과" : `위반 ${p.violations}`}`;
+    o.textContent = p.plan_id.slice(0,9) + " · " + p.strategy + " · " + p.n_stages + "장 · " + (p.passed ? "통과" : "위반");
     sel.appendChild(o);
   }
-  const id = selectId ?? plans[0]?.plan_id;
+  const id = selectId ?? state.plan?.plan_id;
   if (id) { sel.value = id; await loadPlan(id); }
 }
 
 async function loadPlan(planId) {
-  if (!planId) return;
-  const plan = await api(`/api/plans/${encodeURIComponent(planId)}`);
-  if (plan.case_id && plan.case_id !== state.meshCase) {
-    state.meshCase = null;
-    await loadMesh(plan.case_id);
-    $("caseName").textContent = plan.case_id;
+  if (!planId) { $("planSelect").value = state.plan?.plan_id ?? ""; return; }
+  const version = ++state.selectionVersion, caseId = state.meshCase;
+  state.loading = true; updateActions();
+  $("planNotice").textContent = "계획 불러오는 중 — 다운로드 잠김";
+  try {
+    const plan = await api("/api/plans/" + encodeURIComponent(planId));
+    if (version !== state.selectionVersion || caseId !== state.meshCase) return;
+    if (plan.case_id !== caseId) throw new Error("선택 케이스와 계획이 다릅니다.");
+    stopPlay();
+    state.plan = plan;
+    fillConstraints(plan.constraints);
+    const slider = $("stageSlider");
+    slider.max = plan.stages.length;
+    slider.disabled = false;
+    buildIprLabels(); applyStage(0); renderResult(plan);
+    $("planSelect").value = planId;
+    $("viewCanvas").dataset.planId = planId;
+    $("resultCard").dataset.planId = planId;
+    $("planNotice").textContent = "표시 중인 계획: " + planId;
+  } catch (e) {
+    if (version === state.selectionVersion) {
+      $("planNotice").textContent = "계획 로드 실패 — 이전 결과를 유지합니다.";
+      throw e;
+    }
+  } finally {
+    if (version === state.selectionVersion) { state.loading = false; updateActions(); }
   }
-  state.plan = plan;
-  stopPlay();
-  const slider = $("stageSlider");
-  slider.max = Math.max(plan.stages.length - 1, 0);
-  slider.disabled = false;
-  buildIprLabels();
-  applyStage(0);
-  renderResult(plan);
-  const link = $("stlLink");
-  link.href = `/api/plans/${encodeURIComponent(planId)}/stl.zip`;
-  link.classList.remove("disabled");
 }
 
 // ------------------------------------------------------------------ result panel
@@ -296,6 +388,11 @@ function renderResult(plan) {
   $("rMonths").textContent = plan.info?.months != null ? `${plan.info.months}개월` : "—";
   $("rViol").textContent = viol.length ? Object.entries(byType).map(([k, n]) => `${k} ${n}`).join(" · ") : "0건";
   $("rPlan").textContent = plan.plan_id ?? "—";
+  $("rParent").textContent = plan.parent_plan_id ?? "최초 계획";
+  const review = plan.review;
+  $("rReview").textContent = ({not_requested:"미실행",running:"검토 중",passed:"메모 생성 완료",failed:"검토 실패",skipped:"미실행 (규칙 폴백)"})[review.status] || review.status;
+  $("reviewMemo").textContent = review.message + (review.error ? " (" + review.error + ")" : "");
+  $("rApproval").textContent = plan.approval ? "의사 승인됨 · " + plan.approval.approved_at : "미승인";
 
   if (plan.passed || viol.length === 0) setBadge("규칙 통과 (의사 검토 전 초안)", "pass");
   else if (byType.space_deficit) setBadge("제약 모순 — 조건 완화 필요", "fail");
@@ -385,107 +482,93 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
   $("transcript").scrollTop = $("transcript").scrollHeight;
 }
 
-const PLAN_RE = /["']?plan_id["']?\s*[:=]\s*["']?(p\d+)/g;
-function scanPlanId(text) {
-  let m, last = null;
-  while ((m = PLAN_RE.exec(text ?? "")) !== null) last = m[1];
-  if (last) state.lastPlanId = last;
-}
 
 async function send(text) {
   text = (text ?? "").trim();
-  if (!text || state.streaming) return;
+  if (!text || state.streaming || state.loading) return;
   if (!state.meshCase) { $("caseGate").hidden = false; return; }
-  state.streaming = true;
-  $("sendBtn").disabled = true;
+  let constraints;
+  try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
+  const requestId = crypto.randomUUID(), caseId = state.meshCase;
+  state.requestId = requestId;
+  state.streaming = true; updateActions();
+  $("planNotice").textContent = state.plan ? "재계획 중 — 현재 3D는 이전 계획입니다." : "계획 생성 중";
   $("chatInput").value = "";
   state.messages.push({ role: "user", content: text });
   addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
-  const cursor = document.createElement("span"); cursor.className = "cursor"; bubble.appendChild(cursor);
-  let answer = "";
-  state.lastPlanId = null;
-
-  try {
-    const r = await fetch("/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ messages: state.messages }),
-    });
-    if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
-    const reader = r.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const events = buf.split(/\r?\n\r?\n/);
-      buf = events.pop();
-      for (const ev of events) {
-        for (const line of ev.split(/\r?\n/)) {
-          const i = line.indexOf(": ");
-          if (i < 0) continue;
-          const kind = line.slice(0, i), raw = line.slice(i + 2);
-          let obj; try { obj = JSON.parse(raw); } catch { continue; }
-          if (kind === "intermediate_data") {
-            const payload = obj.payload ?? "";
-            addStep(obj.name ?? "step", payload, "", state.trace, obj.id ?? null);
-            scanPlanId(typeof payload === "string" ? payload : JSON.stringify(payload));
-          } else if (kind === "data") {
-            const ch = obj.choices?.[0];
-            const delta = ch?.delta?.content ?? ch?.message?.content ?? obj.value ?? "";
-            if (delta) { answer += delta; bubble.textContent = answer; bubble.appendChild(cursor); scanPlanId(answer); }
-            $("transcript").scrollTop = $("transcript").scrollHeight;
-          } else if (kind === "error") {
-            addStep("error", obj, "fallback");
-          }
-        }
-      }
+  let answer = "", selected = null, streamError = false;
+  const handle = ({type, data: obj}) => {
+    if (type === "plan_selected") {
+      if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
+    } else if (type === "plan_context") {
+      if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
+    } else if (type === "plan_error" || type === "error" || obj.code) {
+      streamError = true; addStep("error", obj, "fallback");
+    } else if (type === "intermediate_data") {
+      addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
+    } else if (type === "data") {
+      const ch = obj.choices?.[0], delta = ch?.delta?.content ?? ch?.message?.content ?? obj.value ?? "";
+      if (typeof delta === "string") { answer += delta; bubble.textContent = answer; }
     }
-    cursor.remove();
-    if (!answer && !state.lastPlanId) {
-      bubble.textContent = "모델 응답 없음 — 서버 로그(NVIDIA_API_KEY)를 확인하거나 규칙 기반 폴백을 눌러 확인할 수 있습니다";
-      bubble.classList.add("error");
-    } else if (!answer) bubble.textContent = "(빈 응답)";
-    state.messages.push({ role: "assistant", content: answer });
+  };
+  try {
+    const r = await fetch("/chat/stream", { method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ messages: state.messages, cualign: { request_id: requestId,
+        case_id: caseId, base_plan_id: state.plan?.plan_id ?? null, constraints } }) });
+    if (!r.ok || !r.body) throw new Error("HTTP " + r.status);
+    const reader = r.body.getReader(), parser = new PlanStream();
+    for (;;) {
+      const {value, done} = await reader.read();
+      for (const event of parser.push(value, done)) handle(event);
+      if (done) break;
+    }
+    if (state.requestId !== requestId || state.meshCase !== caseId) return;
+    if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
-    if (state.lastPlanId) await refreshPlans(state.lastPlanId);
-    else if (/\?|？/.test(answer)) setBadge("의사 판단 필요", "ask");
+    if (selected && !streamError) {
+      await refreshPlans(selected.plan_id);
+      if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
+      if (selected.review.status === "failed") addMsg("error", selected.review.message + " (" + selected.review.error + ")");
+    } else if (streamError || !answer) {
+      throw new Error("모델 실행 또는 최종 계획 선택 실패");
+    } else {
+      $("planNotice").textContent = "새 계획 선택 없음 — 대화 내용을 확인하세요.";
+    }
   } catch (e) {
-    cursor.remove();
-    if (!answer) bubble.remove();
-    addMsg("error", "모델 호출 실패 — 규칙 기반 폴백을 눌러 확인할 수 있습니다");
-    addStep("error", String(e), "fallback");
-    state.messages.pop();   // keep transcript consistent with what the model saw
+    bubble.textContent = answer || "계획 요청 실패";
+    bubble.classList.add("error");
+    $("planNotice").textContent = "재계획 실패 — 현재 3D는 이전 계획입니다.";
+    addMsg("error", e.message);
   } finally {
-    state.streaming = false;
-    $("sendBtn").disabled = false;
+    if (state.requestId === requestId) { state.streaming = false; updateActions(); }
   }
 }
 
 // ------------------------------------------------------------------ fallback / upload
+
 async function runFallback() {
   const caseId = state.meshCase;
-  if (!caseId) { $("caseGate").hidden = false; return; }
-  const last = [...state.messages].reverse().find((m) => m.role === "user")?.content ?? "";
-  const allow = !/발치[^.。\n]{0,8}(없이|안\s*돼|안돼|하지\s*마|절대|금지|빼고|싫|피)/.test(last);
-  const mm = last.match(/(\d+)\s*개월/);
-  const stage_cap = mm ? Math.round((+mm[1] * 30.4) / 7) : null;
-  addMsg("system", `규칙 기반 폴백 실행 · 케이스 ${caseId} · 발치 ${allow ? "허용" : "금지"} · 상한 ${stage_cap ?? "없음"}장`);
+  if (!caseId || state.streaming || state.loading) return;
+  let constraints;
+  try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
+  state.streaming = true; updateActions();
+  addMsg("system", "규칙 기반 폴백 — 화면의 조건으로 계산합니다. 검토 에이전트는 실행하지 않습니다.");
+  $("planNotice").textContent = "조건을 반영해 새 계획 계산 중";
   state.trace = newTrace();
   try {
-    const res = await api("/api/plan", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ case_id: caseId, allow_extraction: allow, stage_cap, order: "simultaneous" }),
-    });
-    for (const t of res.tried ?? []) addStep(`fallback: ${t.strategy}`, `${t.n_stages}장 · ${t.months}개월 · ${t.passed ? "통과" : `위반 ${t.violations}`} · ${t.plan_id}`, "fallback");
-    if (res.chosen) await refreshPlans(res.chosen.plan_id);
-    else { await refreshPlans(res.tried?.[0]?.plan_id); addMsg("system", "허용된 전략으로는 규칙을 통과하는 계획이 없습니다 — 조건 완화가 필요합니다"); }
+    const res = await api("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: caseId, parent_plan_id: state.plan?.plan_id ?? null, ...constraints }) });
+    for (const t of res.tried ?? []) addStep("fallback: " + t.strategy, t, "fallback");
+    const selected = res.chosen || res.best_failed;
+    if (selected) await refreshPlans(selected.plan_id);
+    if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
   } catch (e) {
-    addMsg("error", `폴백 실패: ${e.message}`);
-  }
+    addMsg("error", "폴백 실패: " + e.message);
+    $("planNotice").textContent = "재계획 실패 — 이전 결과를 유지합니다.";
+  } finally { state.streaming = false; updateActions(); }
 }
 
 async function upload(files) {
@@ -508,7 +591,7 @@ function togglePlay() {
   if (state.playing) return stopPlay();
   $("playBtn").textContent = "⏸";
   state.playing = setInterval(() => {
-    const n = state.plan.stages.length - 1;
+    const n = state.plan.stages.length;
     applyStage(state.stage >= n ? 0 : state.stage + 1);
   }, 350);
 }
@@ -527,6 +610,9 @@ $("planSelect").addEventListener("change", (e) => loadPlan(e.target.value).catch
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
 $("playBtn").addEventListener("click", togglePlay);
 $("fallbackBtn").addEventListener("click", runFallback);
+$("approveBtn").addEventListener("click", approveCurrent);
+$("constraints").addEventListener("input", updateActions);
+$("stlLink").addEventListener("click", e => { if (e.currentTarget.classList.contains("disabled")) e.preventDefault(); });
 $("uploadInput").addEventListener("change", (e) => { upload(e.target.files); e.target.value = ""; });
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
@@ -537,11 +623,14 @@ for (const b of document.querySelectorAll(".view-btns button")) b.addEventListen
   let active = null;
   try { active = await loadCases(); } catch (e) { addMsg("error", `케이스 목록 로드 실패: ${e.message}`); }
   const params = new URLSearchParams(location.search);
+  try {
   if (params.get("plan")) {
-    await activateCase(active ?? "moderate", { greet: false }).catch(() => {});
-    await refreshPlans(params.get("plan")).catch(() => {});
+    const linkedPlan = await api("/api/plans/" + encodeURIComponent(params.get("plan")));
+    await activateCase(linkedPlan.case_id, { greet: false });
+    await refreshPlans(params.get("plan"));
     return;
   }
+  } catch (e) { addMsg("error", "계획 링크를 불러오지 못했습니다: " + e.message); }
   // The dentist picks a case every time the page opens (clinical SW: patient first). A case the server
   // already has active is marked on its card but not auto-selected.
   if (active) document.querySelector(`.case-card[data-id="${CSS.escape(active)}"]`)?.classList.add("current");

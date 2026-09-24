@@ -53,6 +53,32 @@ NIM 검사는 승인된 기존 키를 일시적으로 프로세스에 주입했�
 계획상 기간은 PoC의 단계 수·착용일 가정으로 계산한 값이며 실제 치료 기간의 검증이 아니다.
 최종 자연어 검토 메모의 임상적 정확성도 보장하지 않는다.
 
+## 2026-09-25 예선 데모 개선 검증
+
+> Windows 11 (10.0.26200) AMD64 · Python 3.12.10 · Node v24.14.0 · 앱 폴더 `apps/cualign-prototype/`.
+> 개인 `.env` 없이 실행했다. 대상은 [작업 기록](ROADMAP.md)의 네 기능이다.
+
+| 검사 | 명령·방법 | 결과 |
+|---|---|---|
+| 자동 검사 | `uv run --frozen pytest -q -p no:warnings` | 39개 통과 (72초). 기존 22개 + 조건·이력·승인 9개 + 검토 5개 + 이벤트 3개 |
+| 스트림 파서 | `node --test tests/plan-stream.test.mjs` | 2개 통과. 분할 UTF-8·CRLF·다중 행 SSE·레거시 NAT 형식 |
+| NAT 구성 | `uv run nat validate --config_file configs/workflow.yml` | 통과. `cualign_reviewer` 등록·모델 구성 확인. 원격 호출 검증은 아님 |
+| 규칙 CLI | `cualign plan "발치 없이 12개월 안에, 앞니 먼저" --case moderate` | 확장 23장·IPR 9장 실패 후 병행안 14단계 통과. 2026-09-24 결과와 동일 |
+| CLI 미승인 출력 | 같은 명령에 `--export out/stl` | 거부 메시지 출력 후 종료. 트레이스백 없음. 회귀 검사 포함 |
+| 브라우저 인수 | `uv run --frozen --with playwright python tests/browser_flow.py` | 통과. 계획 식별·3D/카드/파일 일치·조건 유지·검토 실패 표시·승인·지연 응답 무시·케이스 전환 초기화 |
+| 벤치마크 | `python bench/bench.py` | 5개 프리셋의 총생·전략·위반 수가 기존 `bench/results.md`와 동일. 시간 값만 환경 차이라 기록은 갱신하지 않았다 |
+| wheel 빌드·자산 | `uv build --wheel` 후 `scripts/check_wheel.py` | 성공. 비어 있지 않은 자산 19개(신규 `plan-stream.js` 포함) |
+
+브라우저 검사는 합성 계획과 가짜 검토 응답을 쓰며 NIM을 호출하지 않는다. 결과는 추적 제외된 `out/browser-acceptance/`에 둔다.
+
+### 이번에 실행하지 않은 검사
+
+- NVIDIA NIM 실호출: 변경한 reviewer·워크플로 지시문으로 실제 대화를 재실행하지 않았다.
+  [알려진 문제](KNOWN_ISSUES.md)의 빈 응답·503 관측이 해소됐는지는 확인되지 않았다.
+- Docker 빌드·실행, Linux/macOS 재현, 실제 Guardrails 원격 판정 경로.
+- UI 대화 기반 5개 시나리오 통합 실행과 `scripts/run_scenarios.py` 갱신.
+- 재시작 복원·사용자 인증·다중 사용자 격리는 이번 구현 범위가 아니다.
+
 ## 재현 범위
 
 현재 지원 경로는 **저장소 체크아웃에서 설치·실행**이다. 서버와 벤치마크는 패키지 밖 `configs/`, `guardrails/`, `bench/`도 사용한다.

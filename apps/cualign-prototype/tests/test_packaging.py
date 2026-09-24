@@ -26,7 +26,7 @@ def test_packaged_assets_are_required_and_nonempty(tmp_path):
             for path in directory.iterdir():
                 if path.is_file():
                     archive.write(path, str(path.relative_to(root)))
-    assert module.check_wheel(wheel) == 18
+    assert module.check_wheel(wheel) == 19
     with ZipFile(wheel, "a") as archive:
         archive.writestr("cualign/server/static/style.css", "")
     with pytest.raises(ValueError, match="empty assets"):
