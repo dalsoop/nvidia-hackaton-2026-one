@@ -10,6 +10,7 @@ The LLM drives the loop with these tools (names carry the `cualign__` prefix at 
   validate(plan_id, stage_cap)               -> passed, violations, by_type, sample
   compare_strategies(allowed, stage_cap, order)  side-by-side table, one plan_id per strategy
   export_stl(plan_id)                        zip of per-stage STL files (download path)
+  load_skill(name)                           instructions of a bundled Agent Skill (skills/<name>/SKILL.md)
 
 NAT rule: each tool is an async fn with exactly one type-annotated argument (a pydantic model
 defined at module level) and a return annotation.
@@ -28,6 +29,7 @@ from nat.data_models.function import FunctionGroupBaseConfig
 from cualign.agent import react_patch
 from cualign.core import limits as L
 from cualign.core import planner
+from cualign.core import skills as S
 from cualign.core.store import OUT_DIR, STORE
 
 react_patch.apply()   # NAT react_agent: JSON-wrapped ReAct block must not leak as the final answer
@@ -72,9 +74,14 @@ class PlanIdInput(BaseModel):
     plan_id: str = Field(description="plan id such as p3")
 
 
+class SkillInput(BaseModel):
+    name: str = Field(description="skill name, e.g. cualign-clinical-rules")
+
+
 class CuAlignToolConfig(FunctionGroupBaseConfig, name="cualign"):
     include: list[str] = Field(default_factory=lambda: ["clinical_limits", "list_cases", "load_case", "propose_target",
-                                                        "plan_stages", "validate", "compare_strategies", "export_stl", "get_plan"])
+                                                        "plan_stages", "validate", "compare_strategies", "export_stl", "get_plan",
+                                                        "load_skill"])
 
 
 @register_function_group(config_type=CuAlignToolConfig)
@@ -178,9 +185,14 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
                 "notes": tinfo.get("notes", []), "removed_teeth": tinfo.get("removed", []), "locked_teeth": tinfo.get("locked", []),
                 "top_moves_mm": moves[:5], "violations": p["violations"][:20], "by_type": planner.summarize(p["violations"])}
 
+    async def _load_skill(inp: SkillInput) -> dict:
+        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
+        return S.read_skill(inp.name)
+
     fns = {"clinical_limits": _clinical_limits, "list_cases": _list_cases, "load_case": _load_case,
            "propose_target": _propose_target, "plan_stages": _plan_stages, "validate": _validate,
-           "compare_strategies": _compare_strategies, "export_stl": _export_stl, "get_plan": _get_plan}
+           "compare_strategies": _compare_strategies, "export_stl": _export_stl, "get_plan": _get_plan,
+           "load_skill": _load_skill}
     for name in config.include:
         group.add_function(name=name, fn=fns[name], description=fns[name].__doc__)
     yield group

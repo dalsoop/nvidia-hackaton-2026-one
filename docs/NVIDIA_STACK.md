@@ -10,7 +10,7 @@
 | Nemotron / NIM | `configs/workflow.yml`, `.env.example`, `docs/model-swap.md` | 대화·도구 선택과 모델별 실호출 비교 | 키·모델 가용성 필요. 키 없는 폴백은 NIM 활용 증거가 아님 |
 | NeMo Guardrails | `guardrails/`, `src/cualign/server/rails.py`, `scripts/run_guardrails.py`, `docs/demo/guardrails*.md` | 대화 입력 범위 검사와 출력 사후 경고 | 출력 사전 차단 보장 없음. 타임아웃·오류 시 진행, 계산 API는 별도 |
 | OpenShell | `openshell/policy.yaml`, `docs/openshell.md` | 파일·네트워크 접근 경계의 정책 실험 | 서버 전체를 감싼 운영 샌드박스가 아님. 현 정책은 NIM·출력 경로에 맞춘 완성 정책이 아님 |
-| Agent Skill | `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙·도구 사용 절차를 전달하는 자산 | 파일 존재를 NAT의 자동 로딩·실행 증거로 해석하지 않음 |
+| Agent Skill | `skills/cualign-clinical-rules/SKILL.md`, `src/cualign/core/skills.py`, `agent/register.py`(`load_skill`) | 계획 에이전트가 계획·비교를 시작할 때 `cualign__load_skill`로 지시문을 읽음. 이름 검증·도구 등록·지시문 연결은 오프라인 테스트로 확인 | 실호출 로그에서 `load_skill` 호출은 아직 확인하지 않음 |
 | SkillSpector | `scripts/scan_skill.py`, `skills/skillspector-report*.md` | 위 Skill의 과거 정적·의미 검사 결과와 재실행 방법 | 현재 Skill은 당시 스냅샷과 다를 수 있음. 서버·제품 전체 보안 인증 아님 |
 
 의미 검사 보고서 본문에는 0/100이 기록되어 있다. 이 점수는 검사 당시 Skill에 대한 결과이며,

@@ -84,6 +84,10 @@ workflow:
     EXCEPTION - comparison requests (비교, 둘 다, 여러 안, 발치안과 비발치안): do NOT interview. Extraction is
     answered by the request itself (both options are wanted) and a missing time limit just means no stage_cap.
 
+    Skill: the Agent Skill `cualign-clinical-rules` (skills/cualign-clinical-rules/SKILL.md) holds the clinical limits and
+    strategy rules. At the start of every planning or comparison request (after the interview check), call
+    cualign__load_skill with name "cualign-clinical-rules" once and follow it. Do not call it for an interview question.
+
     Loop: cualign__clinical_limits (once) -> cualign__load_case (case_id = the case the user named; omit case_id
     to use the case the dentist selected on screen) ->
     pick a strategy. Allowed strategies: expansion, ipr, expansion_ipr, extraction. If the user refuses extraction
