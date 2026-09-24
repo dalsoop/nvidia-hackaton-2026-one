@@ -181,3 +181,27 @@ def test_revision_must_use_new_target():
 ])
 def test_compares_with_previous_needs_content(answer, ok):
     assert CHECKS["compares_with_previous"](_revision(answer))[0] is ok
+
+
+# ---- judge false positives found in the first live baseline (2026-09-24) ----
+
+def test_ipr_values_ignore_other_clauses_on_the_same_line():
+    calls = [ToolCall("propose_target", {"strategy": "expansion_ipr"},
+                      {"target_id": "t1", "ipr_mm_per_surface": 0.25, "space_gain_mm": 6.86, "expansion_mm_per_side": 0.7})]
+    ans = "전략: expansion_ipr (악궁 편측 0.7mm 확장 + IPR 면당 0.25mm × 26면)"
+    assert CHECKS["numbers_near_keyword_grounded"](trace(ans, calls), keys=["ipr_mm_per_surface", "space_gain_mm"])[0] is True
+
+
+def _two_turns(answer1, t1_calls):
+    t0 = [_validate("p4", False), ToolCall("reviewer", {"plan_id": "p4"}, MEMO_GT)]
+    return Trace("X", "fixture", [Turn("u0", t0, f"plan_id: p4\n검토 메모:\n{MEMO_GT}"), Turn("u1", t1_calls, answer1)])
+
+
+def test_multi_turn_memo_and_review_order():
+    # turn 2 re-shows the real memo from turn 1 and reviews p4, validated in turn 1
+    t1 = [ToolCall("reviewer", {"plan_id": "p4"}, "다른 메모")]
+    tr = _two_turns(f"plan_id: p4\n검토 메모:\n{MEMO_GT}", t1)
+    assert CHECKS["memo_grounded"](tr)[0] is True
+    assert CHECKS["reviewer_after_validate"](tr)[0] is True
+    # but a memo nobody wrote is still caught
+    assert CHECKS["memo_grounded"](_two_turns("plan_id: p4\n검토 메모:\n문제 없음.", t1))[0] is False

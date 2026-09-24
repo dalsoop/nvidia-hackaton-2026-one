@@ -335,7 +335,8 @@ def never_strategy(trace: Trace, turn="all", strategy="extraction", **_) -> Resu
 @check
 def reviewer_after_validate(trace: Trace, turn="all", **_) -> Result:
     for i, t in turns_of(trace, turn):
-        seen: set[str] = set()
+        # plans validated in earlier turns may be reviewed again without re-validating
+        seen: set[str] = {pid for pid, r in plan_registry(trace, i - 1).items() if r.get("validated")} if i > 0 else set()
         for c in planner_calls(t):
             if c.name == "validate":
                 seen.add(str(c.args.get("plan_id")))
@@ -491,7 +492,8 @@ def memo_grounded(trace: Trace, turn="all", **_) -> Result:
         memo = memo_section(t.answer)
         if memo is None:
             continue
-        got = [c.result for c in planner_calls(t, "reviewer") if c.ok]
+        # any real reviewer output so far: re-showing an earlier turn's memo verbatim is still grounded
+        got = [c.result for tt in trace.turns[: i + 1] for c in planner_calls(tt, "reviewer") if c.ok]
         if not got:
             return False, f"turn {i}: memo shown but no successful reviewer output"
         m = _memo_norm(memo)
@@ -676,11 +678,13 @@ def numbers_near_keyword_grounded(trace: Trace, turn="last", keyword="IPR", keys
     for i, t in turns_of(trace, turn):
         allowed = {v for k, v in _numbers_in([c.result for c in all_calls(trace, i)]) if k in keys}
         for sent in _sentences(strip_memo(t.answer)):
-            if keyword.lower() not in sent.lower():
-                continue
-            for v, unit in NUM_UNIT_RE.findall(sent):
-                if unit in ("mm", "㎜") and not any(abs(float(v) - w) < 1e-6 or round(w, 2) == float(v) for w in allowed):
-                    return False, f"turn {i}: {keyword} {v}mm is not one of {sorted(keys)}"
+            # clause level: "악궁 편측 0.7mm 확장 + IPR 면당 0.25mm" attributes 0.7mm to expansion, not IPR
+            for clause in re.split(r"[+,;·()（）]|→|그리고|및", sent):
+                if keyword.lower() not in clause.lower():
+                    continue
+                for v, unit in NUM_UNIT_RE.findall(clause):
+                    if unit in ("mm", "㎜") and not any(abs(float(v) - w) < 1e-6 or round(w, 2) == float(v) for w in allowed):
+                        return False, f"turn {i}: {keyword} {v}mm is not one of {sorted(keys)}"
     return True, "ok"
 
 
