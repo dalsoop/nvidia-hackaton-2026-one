@@ -103,6 +103,8 @@ MEMO_GT = "1) 공간 부족 1.19mm > 허용 0.5mm\n검토 메모도 초안입니
     ("plan_id: p1\n검토 메모:\n1) 공간 부족 1.19mm < 허용 0.5mm\n이 계획은 초안입니다.", False),   # symbol flipped
     ("plan_id: p1\n아래는 검토 메모: 문제 없음.", False),                                            # heading mid-line
     ("plan_id: p1\n검토 메모:\n1) 공간 부족 1.19mm > 허용 0.5mm\n**검토 메모도 초안입니다. 최종 판단은 의사가 합니다.**", True),
+    # found in the first live run: planner drops the reviewer's closing line and ends with its own disclaimer
+    ("plan_id: p1\n검토 메모:\n1) 공간 부족 1.19mm > 허용 0.5mm\n\n이 계획은 초안입니다. 최종 판단은 의사가 합니다.", True),
 ])
 def test_memo_grounded_second_review(answer, ok):
     assert CHECKS["memo_grounded"](trace(answer, _rv(result=MEMO_GT)))[0] is ok

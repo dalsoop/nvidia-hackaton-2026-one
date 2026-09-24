@@ -476,7 +476,9 @@ _MEMO_TAIL = "검토메모도초안입니다.최종판단은의사가합니다."
 def _memo_norm(text: str) -> str:
     """Normalise first (so bold/markdown around the fixed closing line does not matter), then drop that line."""
     n = _norm(text)
-    return n[: -len(_MEMO_TAIL)] if n.endswith(_MEMO_TAIL) else n.rstrip(".")
+    if n.endswith(_MEMO_TAIL):   # the planner may keep or drop the reviewer's closing line; both are verbatim
+        n = n[: -len(_MEMO_TAIL)]
+    return n.rstrip(".")
 
 
 @check
