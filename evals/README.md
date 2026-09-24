@@ -10,16 +10,22 @@ evals/golden_a/
   judge.py             채점·보고서 CLI, 모든 명세에 붙는 전역 검사(G-*)
   trace.py             판정기가 읽는 표준 실행 기록
   nat_log.py           docs/demo 의 nat run 로그 → 실행 기록
+  runner.py            명세를 실제 NAT 워크플로로 실행해 실행 기록(JSON)을 쓴다 (대화형·고장 주입 포함)
+  fake_llm.py          로컬 가짜 OpenAI 호환 서버: reviewer 빈 응답 주입, 실행기의 오프라인 테스트
   reference_agent.py   명세대로 움직이는 규칙 기반 기준 에이전트 (판정기 검증용)
   mutations.py         알려진 오작동 41종을 실행 기록에 주입하는 변이 연산자
   baselines.py         일부러 틀리게 답하는 에이전트 3종
 tests/test_golden_a.py        판정기 자체의 검증 (기준 에이전트·변이·엉터리 에이전트·로그)
 tests/test_golden_a_checks.py 텍스트 검사의 독립 예문 (기준 에이전트와 무관한 손 작성 반례)
+tests/test_golden_a_runner.py 실행기 오프라인 테스트 (실제 NAT·도구, LLM 만 가짜 서버)
 ```
 
 ## 실행
 
 ```sh
+uv run python -m evals.golden_a.runner --plan                  # 실행 규모만 출력 (모델 호출 없음)
+uv run python -m evals.golden_a.runner --specs A01,A04 --k 3   # 실제 실행: NVIDIA_API_KEY 필요, NIM 사용량 발생
+uv run python -m evals.golden_a.judge --traces out/golden_a/<run>   # 실행 결과 채점
 uv run python -m evals.golden_a.judge --nat-logs docs/demo    # 캐시된 NIM 로그 채점 (모델 호출 없음)
 uv run python -m evals.golden_a.judge --reference             # 기준 에이전트 채점
 uv run python -m evals.golden_a.judge --traces <dir>          # Trace JSON 채점
@@ -79,7 +85,8 @@ uv run pytest -q tests/test_golden_a.py tests/test_golden_a_checks.py   # 판정
 - 텍스트 검사는 키워드·정규식이다. 되묻기, 미지원 고지, 실패 사유는 표현이 달라지면 놓치거나 오탐할 수 있다.
   기준 에이전트는 같은 판정 규칙을 알고 쓴 코드라, 기준 통과가 곧 표현 다양성에 대한 견고함을 뜻하지는 않는다.
 - 기준 에이전트의 도구 출력은 `src/cualign/agent/register.py` 를 필드 단위로 흉내 낸다. register.py 가 바뀌면 함께 고쳐야 한다.
-- 실제 에이전트를 대화형(A02·A09·A10)이나 고장 주입(A15)으로 돌리는 실행기는 아직 없다.
-  현재 실측은 docs/demo 로그 8개(시나리오 1·2·3·4·5 = A04·A05·A06·A01·A08)뿐이다.
-  로그마다 생성 시점의 workflow.yml 이 다르며, lightning 로그는 이전 설정이다.
+- 실행기(`runner.py`)는 `nat run` 과 같은 경로로 워크플로를 프로세스 안에서 돌린다. HTTP 계층의 Guardrails 는 거치지
+  않는다. 대화형 명세는 이전 턴을 ChatRequest 메시지로 넘기며, NAT ReAct 에이전트는 이를 프롬프트의 "Previous conversation
+  history" 로 접어 넣는다. STORE 가 프로세스 전역이라 실행은 순차적이다.
+- 실측 기준 점수는 아직 없다(실행기는 오프라인 테스트만 통과). 캐시 로그 8개는 생성 시점의 workflow.yml 이 서로 다르다.
 - 수치 근거 검사는 "도구 결과 어딘가에 같은 수가 있는가"만 본다. 다른 계획의 수를 잘못 가져다 쓴 경우는 놓칠 수 있다.
