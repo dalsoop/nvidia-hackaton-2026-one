@@ -480,9 +480,11 @@ def _memo_norm(text: str) -> str:
     text = re.sub(r"(\d+\.\d*?)0+(?!\d)", r"\1", text)
     text = re.sub(r"(\d+)\.(?!\d)", r"\1", text)
     n = _norm(text)
-    if n.endswith(_MEMO_TAIL):   # the planner may keep or drop the reviewer's closing line; both are verbatim
-        n = n[: -len(_MEMO_TAIL)]
-    return n.rstrip(".")
+    tail = _MEMO_TAIL.replace(".", "")
+    n = re.sub(r"(?<!\d)\.|\.(?!\d)", "", n)   # sentence periods are formatting; decimal points are values
+    if n.endswith(tail):   # the planner may keep or drop the reviewer's closing line; both are verbatim
+        n = n[: -len(tail)]
+    return n
 
 
 @check
