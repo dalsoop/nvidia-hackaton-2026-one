@@ -1,0 +1,28 @@
+id: A17
+title: 수정 지시 — 새 계획을 다시 계산·검증하고, 이전 안과 무엇이 달라졌는지 보여준다
+status: team
+sources:
+  - "TEAM_CUALIGN_SCOPE.md 꼭 확인할 동작: 실제 설계 변경 — 자연어 지시가 목표 위치·단계 수치를 바꾼다. 변경 전후를 비교할 수 있다"
+  - "TEAM_CUALIGN_SCOPE.md 흐름 5: 대화에서만 답이 바뀌는 것이 아니라 3D 목표·단계·검증 결과도 함께 바뀐다"
+  - "PRD §6 수정 후 재계획 / 조건 유지"
+turns:
+  - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘."
+  - "3번과 14번은 움직이지 말고 다시 짜서, 이전 안과 뭐가 달라졌는지 알려줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: [3, 14]
+checks:
+  - {id: A17-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A17-no-reask, type: no_ask_about, turn: 1, severity: S1}
+  - {id: A17-replanned, type: tool_count, turn: 1, name: propose_target, min: 1, severity: S1}
+  - {id: A17-lock, type: arg_superset, turn: 1, name: propose_target, arg: lock, value: [3, 14], severity: S0}
+  - {id: A17-presented-lock, type: presented_target_arg_superset, turn: 1, arg: lock, value: [3, 14], severity: S0}
+  - {id: A17-no-compare, type: tool_count, turn: 1, name: compare_strategies, max: 0, severity: S0}
+  - {id: A17-cap-kept, type: arg_equals, turn: 1, name: validate, arg: stage_cap, value: 52, severity: S1}
+  - {id: A17-new-plan, type: new_plan_validated, turn: 1, severity: S1}
+  - {id: A17-diff, type: compares_with_previous, turn: 1, severity: S1}
+  - {id: A17-disclaimer, type: disclaimer, turn: 1, severity: S1}
+notes: >
+  A17-no-compare 는 현재 compare_strategies 가 lock 을 받지 못해서 두는 검사다 (KNOWN_ISSUES). 비교 도구가 제약을 받게
+  바뀌면 이 검사를 "선택된 계획의 고정 치아" 검사로 바꾼다.
