@@ -1,0 +1,18 @@
+{
+ "spec_id": "A01",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "moderate 케이스 계획 짜줘.",
+   "calls": [],
+   "answer": "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?",
+   "errors": [],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 19.0,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}

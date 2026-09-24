@@ -1,0 +1,20 @@
+{
+ "spec_id": "A11",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜주고, 단계별로 3D 프린터에 넣을 치열 모델 파일도 줘.",
+   "calls": [],
+   "answer": "",
+   "errors": [
+    "ReActAgentParsingFailedError: ReActAgentParsingFailedError: Failed to parse agent output after 3 attempts. Error: Invalid Format: Missing 'Action:' after 'Thought:'. LLM output: ''"
+   ],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 0.8,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}

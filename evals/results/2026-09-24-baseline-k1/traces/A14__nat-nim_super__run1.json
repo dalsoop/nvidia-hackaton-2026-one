@@ -1,0 +1,18 @@
+{
+ "spec_id": "A14",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "이 환자 발치해야 하나요? moderate 케이스 보고 판단해줘.",
+   "calls": [],
+   "answer": "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?",
+   "errors": [],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 17.1,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}

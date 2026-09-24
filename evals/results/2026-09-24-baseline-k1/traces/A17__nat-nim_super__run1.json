@@ -1,0 +1,1019 @@
+{
+ "spec_id": "A17",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘.",
+   "calls": [
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "moderate"
+     },
+     "result": {
+      "case_id": "moderate",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 4.3,
+      "baseline_overlap_mm3": 18.99
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t1",
+      "case_id": "moderate",
+      "strategy": "expansion",
+      "space_gain_mm": 3.47,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.83,
+      "needed_mm": 102.7,
+      "mean_move_mm": 2.24,
+      "max_move_mm": 2.78,
+      "notes": [
+       "악궁 편측 2.0mm 확장"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.0,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t1",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p1",
+      "target_id": "t1",
+      "strategy": "expansion",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.78,
+      "per_stage_mm": 0.232,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p1",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p1",
+      "strategy": "expansion",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 0.83,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 12,
+      "months": 2.8,
+      "viewer_url": "/ui/?plan=p1"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t2",
+      "case_id": "moderate",
+      "strategy": "ipr",
+      "space_gain_mm": 3.25,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 1.05,
+      "needed_mm": 99.5,
+      "mean_move_mm": 0.59,
+      "max_move_mm": 1.08,
+      "notes": [
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t2",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p2",
+      "target_id": "t2",
+      "strategy": "ipr",
+      "n_stages": 5,
+      "order": "simultaneous",
+      "stages_per_group": [
+       5
+      ],
+      "max_move_mm": 1.08,
+      "per_stage_mm": 0.215,
+      "months": 1.2
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t2",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p3",
+      "target_id": "t2",
+      "strategy": "ipr",
+      "n_stages": 5,
+      "order": "simultaneous",
+      "stages_per_group": [
+       5
+      ],
+      "max_move_mm": 1.08,
+      "per_stage_mm": 0.215,
+      "months": 1.2
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t2",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p4",
+      "target_id": "t2",
+      "strategy": "ipr",
+      "n_stages": 5,
+      "order": "simultaneous",
+      "stages_per_group": [
+       5
+      ],
+      "max_move_mm": 1.08,
+      "per_stage_mm": 0.215,
+      "months": 1.2
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p4",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p4",
+      "strategy": "ipr",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.05,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 5,
+      "months": 1.2,
+      "viewer_url": "/ui/?plan=p4"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p4",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p4",
+      "strategy": "ipr",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.05,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 5,
+      "months": 1.2,
+      "viewer_url": "/ui/?plan=p4"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion_ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t3",
+      "case_id": "moderate",
+      "strategy": "expansion_ipr",
+      "space_gain_mm": 4.46,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.0,
+      "needed_mm": 99.5,
+      "mean_move_mm": 1.1,
+      "max_move_mm": 1.63,
+      "notes": [
+       "악궁 편측 0.7mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.7
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t3",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p5",
+      "target_id": "t3",
+      "strategy": "expansion_ipr",
+      "n_stages": 7,
+      "order": "simultaneous",
+      "stages_per_group": [
+       7
+      ],
+      "max_move_mm": 1.63,
+      "per_stage_mm": 0.232,
+      "months": 1.6
+     },
+     "error": null,
+     "agent": "planner"
+    }
+   ],
+   "answer": "",
+   "errors": [
+    "ReActAgentParsingFailedError: ReActAgentParsingFailedError: Failed to parse agent output after 3 attempts. Error: Invalid Format: Missing 'Action:' after 'Thought:'. LLM output: ''"
+   ],
+   "parse_retries": 0
+  },
+  {
+   "user": "3번과 14번은 움직이지 말고 다시 짜서, 이전 안과 뭐가 달라졌는지 알려줘.",
+   "calls": [
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "moderate"
+     },
+     "result": {
+      "case_id": "moderate",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 4.3,
+      "baseline_overlap_mm3": 18.99
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t4",
+      "case_id": "moderate",
+      "strategy": "expansion",
+      "space_gain_mm": 3.47,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.83,
+      "needed_mm": 102.7,
+      "mean_move_mm": 2.24,
+      "max_move_mm": 2.78,
+      "notes": [
+       "악궁 편측 2.0mm 확장"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.0,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t4",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p6",
+      "target_id": "t4",
+      "strategy": "expansion",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.78,
+      "per_stage_mm": 0.232,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p6",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p6",
+      "strategy": "expansion",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 0.83,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 12,
+      "months": 2.8,
+      "viewer_url": "/ui/?plan=p6"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t5",
+      "case_id": "moderate",
+      "strategy": "ipr",
+      "space_gain_mm": 3.25,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 1.05,
+      "needed_mm": 99.5,
+      "mean_move_mm": 0.59,
+      "max_move_mm": 1.08,
+      "notes": [
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t5",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p7",
+      "target_id": "t5",
+      "strategy": "ipr",
+      "n_stages": 5,
+      "order": "simultaneous",
+      "stages_per_group": [
+       5
+      ],
+      "max_move_mm": 1.08,
+      "per_stage_mm": 0.215,
+      "months": 1.2
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p7",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p7",
+      "strategy": "ipr",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.05,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 5,
+      "months": 1.2,
+      "viewer_url": "/ui/?plan=p7"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion_ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t6",
+      "case_id": "moderate",
+      "strategy": "expansion_ipr",
+      "space_gain_mm": 4.46,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.0,
+      "needed_mm": 99.5,
+      "mean_move_mm": 1.1,
+      "max_move_mm": 1.63,
+      "notes": [
+       "악궁 편측 0.7mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.7
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t6",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p8",
+      "target_id": "t6",
+      "strategy": "expansion_ipr",
+      "n_stages": 7,
+      "order": "simultaneous",
+      "stages_per_group": [
+       7
+      ],
+      "max_move_mm": 1.63,
+      "per_stage_mm": 0.232,
+      "months": 1.6
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p8",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p8",
+      "strategy": "expansion_ipr",
+      "passed": true,
+      "violations": 0,
+      "by_type": {},
+      "sample": [],
+      "n_stages": 7,
+      "months": 1.6,
+      "viewer_url": "/ui/?plan=p8"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion",
+      "ipr_exclude": [],
+      "lock": [
+       3,
+       14
+      ]
+     },
+     "result": {
+      "target_id": "t7",
+      "case_id": "moderate",
+      "strategy": "expansion",
+      "space_gain_mm": 3.47,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.83,
+      "needed_mm": 102.7,
+      "mean_move_mm": 2.0,
+      "max_move_mm": 2.87,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "고정 [3, 14] 중 3 을 기준으로 정렬"
+      ],
+      "removed": [],
+      "locked": [
+       3,
+       14
+      ],
+      "ipr_mm_per_surface": 0.0,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion",
+      "ipr_exclude": [],
+      "lock": [
+       3,
+       14
+      ]
+     },
+     "result": {
+      "target_id": "t8",
+      "case_id": "moderate",
+      "strategy": "expansion",
+      "space_gain_mm": 3.47,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.83,
+      "needed_mm": 102.7,
+      "mean_move_mm": 2.0,
+      "max_move_mm": 2.87,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "고정 [3, 14] 중 3 을 기준으로 정렬"
+      ],
+      "removed": [],
+      "locked": [
+       3,
+       14
+      ],
+      "ipr_mm_per_surface": 0.0,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t8",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p9",
+      "target_id": "t8",
+      "strategy": "expansion",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.87,
+      "per_stage_mm": 0.239,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t8",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p10",
+      "target_id": "t8",
+      "strategy": "expansion",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.87,
+      "per_stage_mm": 0.239,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p10",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p10",
+      "strategy": "expansion",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 0.83,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 12,
+      "months": 2.8,
+      "viewer_url": "/ui/?plan=p10"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "ipr",
+      "ipr_exclude": [],
+      "lock": [
+       3,
+       14
+      ]
+     },
+     "result": {
+      "target_id": "t9",
+      "case_id": "moderate",
+      "strategy": "ipr",
+      "space_gain_mm": 3.25,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 1.05,
+      "needed_mm": 99.5,
+      "mean_move_mm": 0.56,
+      "max_move_mm": 1.15,
+      "notes": [
+       "IPR 면당 0.25mm x 26면",
+       "고정 [3, 14] 중 3 을 기준으로 정렬"
+      ],
+      "removed": [],
+      "locked": [
+       3,
+       14
+      ],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t9",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p11",
+      "target_id": "t9",
+      "strategy": "ipr",
+      "n_stages": 5,
+      "order": "simultaneous",
+      "stages_per_group": [
+       5
+      ],
+      "max_move_mm": 1.15,
+      "per_stage_mm": 0.23,
+      "months": 1.2
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t9",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p12",
+      "target_id": "t9",
+      "strategy": "ipr",
+      "n_stages": 5,
+      "order": "simultaneous",
+      "stages_per_group": [
+       5
+      ],
+      "max_move_mm": 1.15,
+      "per_stage_mm": 0.23,
+      "months": 1.2
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p12",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p12",
+      "strategy": "ipr",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.05,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 5,
+      "months": 1.2,
+      "viewer_url": "/ui/?plan=p12"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion_ipr",
+      "ipr_exclude": [],
+      "lock": [
+       3,
+       14
+      ]
+     },
+     "result": {
+      "target_id": "t10",
+      "case_id": "moderate",
+      "strategy": "expansion_ipr",
+      "space_gain_mm": 4.46,
+      "crowding_mm": 4.3,
+      "space_deficit_mm": 0.0,
+      "needed_mm": 99.5,
+      "mean_move_mm": 1.06,
+      "max_move_mm": 2.0,
+      "notes": [
+       "악궁 편측 0.7mm 확장",
+       "IPR 면당 0.25mm x 26면",
+       "고정 [3, 14] 중 3 을 기준으로 정렬"
+      ],
+      "removed": [],
+      "locked": [
+       3,
+       14
+      ],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.7
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t10",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p13",
+      "target_id": "t10",
+      "strategy": "expansion_ipr",
+      "n_stages": 9,
+      "order": "simultaneous",
+      "stages_per_group": [
+       9
+      ],
+      "max_move_mm": 2.0,
+      "per_stage_mm": 0.223,
+      "months": 2.1
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t10",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p14",
+      "target_id": "t10",
+      "strategy": "expansion_ipr",
+      "n_stages": 9,
+      "order": "simultaneous",
+      "stages_per_group": [
+       9
+      ],
+      "max_move_mm": 2.0,
+      "per_stage_mm": 0.223,
+      "months": 2.1
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p14",
+      "stage_cap": 52
+     },
+     "result": {
+      "plan_id": "p14",
+      "strategy": "expansion_ipr",
+      "passed": true,
+      "violations": 0,
+      "by_type": {},
+      "sample": [],
+      "n_stages": 9,
+      "months": 2.1,
+      "viewer_url": "/ui/?plan=p14"
+     },
+     "error": null,
+     "agent": "planner"
+    }
+   ],
+   "answer": "",
+   "errors": [
+    "Exception: [429] Too Many Requests\n{'status': 429, 'title': 'Too Many Requests'}"
+   ],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 109.7,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}

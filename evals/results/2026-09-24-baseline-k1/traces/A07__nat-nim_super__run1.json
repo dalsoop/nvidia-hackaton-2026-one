@@ -1,0 +1,195 @@
+{
+ "spec_id": "A07",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "moderate 케이스로. 발치는 빼고 가능한 안들을 비교해줘. 기간 제한은 없어.",
+   "calls": [
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "moderate"
+     },
+     "result": {
+      "case_id": "moderate",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 4.3,
+      "baseline_overlap_mm3": 18.99
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "compare_strategies",
+     "args": {
+      "allowed": [
+       "expansion",
+       "ipr",
+       "expansion_ipr"
+      ],
+      "stage_cap": null,
+      "order": "simultaneous"
+     },
+     "result": {
+      "case_id": "moderate",
+      "stage_cap": null,
+      "order": "simultaneous",
+      "plans": [
+       {
+        "plan_id": "p1",
+        "strategy": "expansion",
+        "n_stages": 12,
+        "months": 2.8,
+        "passed": false,
+        "violations": 1,
+        "by_type": {
+         "space_deficit": 1
+        },
+        "space_deficit_mm": 0.83,
+        "removed": []
+       },
+       {
+        "plan_id": "p2",
+        "strategy": "ipr",
+        "n_stages": 5,
+        "months": 1.2,
+        "passed": false,
+        "violations": 1,
+        "by_type": {
+         "space_deficit": 1
+        },
+        "space_deficit_mm": 1.05,
+        "removed": []
+       },
+       {
+        "plan_id": "p3",
+        "strategy": "expansion_ipr",
+        "n_stages": 7,
+        "months": 1.6,
+        "passed": true,
+        "violations": 0,
+        "by_type": {},
+        "space_deficit_mm": 0.0,
+        "removed": []
+       }
+      ]
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "reviewer",
+     "args": {
+      "plan_id": "p3"
+     },
+     "result": "1) 한 줄 요약 – 전략: expansion_ipr, 장수: 7단계, 기간: 1.6개월, 통과: 위반 없음.  \n2) 확인할 지점 – 가장 많이 움직이는 치아: 6번(1.63 mm), 4번(1.58 mm), 11번(1.45 mm), 12번(1.43 mm), 10번(1.41 mm). IPR 제외/고정 치아: 없음(locked_teeth 비어 있음, IPR은 적용 중). 발치 치아: 없음. 순서 패턴: simultaneous.  \n3) 위반이 있으면 어떤 조건을 완화해야 하는지 – 위반이 없으므로 완화 조건 없음.  \n4) 의사에게 물을 질문 – ① 측방 확장 0.7 mm가 환자의 골격적 한계 내에서 가능한지 확인해 주실 수 있나요? ② IPR 0.25 mm × 26면이 치아 두께와 법랑질 보존에 적절한지 검토해 주실 수 있나요?  \n\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.",
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "get_plan",
+     "args": {
+      "plan_id": "p3"
+     },
+     "result": {
+      "plan_id": "p3",
+      "case_id": "moderate",
+      "strategy": "expansion_ipr",
+      "passed": true,
+      "n_stages": 7,
+      "months": 1.6,
+      "order": "simultaneous",
+      "stage_cap": null,
+      "space_deficit_mm": 0.0,
+      "crowding_mm": 4.3,
+      "space_gain_mm": 4.46,
+      "notes": [
+       "악궁 편측 0.7mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed_teeth": [],
+      "locked_teeth": [],
+      "top_moves_mm": [
+       [
+        6,
+        1.63
+       ],
+       [
+        4,
+        1.58
+       ],
+       [
+        11,
+        1.45
+       ],
+       [
+        12,
+        1.43
+       ],
+       [
+        10,
+        1.41
+       ]
+      ],
+      "violations": [],
+      "by_type": {}
+     },
+     "error": null,
+     "agent": "reviewer"
+    }
+   ],
+   "answer": "전략: expansion_ipr, 총 장수: 7단계, 예상 기간: 1.6개월, 위반: 없음, plan_id: p3\n호출한 도구 순서: cualign__clinical_limits → cualign__load_case → cualign__compare_strategies → reviewer\n검토 메모:\n1) 한 줄 요약 – 전략: expansion_ipr, 장수: 7단계, 기간: 1.6개월, 통과: 위반 없음.\n2) 확인할 지점 – 가장 많이 움직이는 치아: 6번(1.63 mm), 4번(1.58 mm), 11번(1.45 mm), 12번(1.43 mm), 10번(1.41 mm). IPR 제외/고정 치아: 없음(locked_teeth 비어 있음, IPR은 적용 중). 발치 치아: 없음. 순서 패턴: simultaneous.\n3) 위반이 있으면 어떤 조건을 완화해야 하는지 – 위반이 없으므로 완화 조건 없음.\n4) 의사에게 물을 질문 – ① 측방 확장 0.7 mm가 환자의 골격적 한계 내에서 가능한지 확인해 주실 수 있나요? ② IPR 0.25 mm × 26면이 치아 두께와 법랑질 보존에 적절한지 검토해 주실 수 있나요?\n\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.\n이 계획은 초안입니다. 최종 판단은 의사가 합니다.",
+   "errors": [],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 32.9,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}

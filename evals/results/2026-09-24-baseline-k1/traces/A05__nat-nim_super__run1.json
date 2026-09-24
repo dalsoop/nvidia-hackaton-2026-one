@@ -1,0 +1,109 @@
+{
+ "spec_id": "A05",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.",
+   "calls": [
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "severe"
+     },
+     "result": {
+      "case_id": "severe",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 7.9,
+      "baseline_overlap_mm3": 52.95
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "severe"
+     },
+     "result": {
+      "case_id": "severe",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 7.9,
+      "baseline_overlap_mm3": 52.95
+     },
+     "error": null,
+     "agent": "planner"
+    }
+   ],
+   "answer": "",
+   "errors": [
+    "ReActAgentParsingFailedError: ReActAgentParsingFailedError: Failed to parse agent output after 3 attempts. Error: Invalid Format: Missing 'Action:' after 'Thought:'. LLM output: ''"
+   ],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 6.9,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}

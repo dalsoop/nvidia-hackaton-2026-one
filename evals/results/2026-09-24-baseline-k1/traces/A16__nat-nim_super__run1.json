@@ -1,0 +1,809 @@
+{
+ "spec_id": "A16",
+ "agent": "nat:nim_super",
+ "turns": [
+  {
+   "user": "severe 케이스로. 발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.",
+   "calls": [
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "severe"
+     },
+     "result": {
+      "case_id": "severe",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 7.9,
+      "baseline_overlap_mm3": 52.95
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "load_case",
+     "args": {
+      "case_id": "severe"
+     },
+     "result": {
+      "case_id": "severe",
+      "teeth": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "n_teeth": 14,
+      "crowding_mm": 7.9,
+      "baseline_overlap_mm3": 52.95
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t1",
+      "case_id": "severe",
+      "strategy": "expansion",
+      "space_gain_mm": 3.61,
+      "crowding_mm": 7.9,
+      "space_deficit_mm": 4.29,
+      "needed_mm": 102.7,
+      "mean_move_mm": 2.26,
+      "max_move_mm": 3.08,
+      "notes": [
+       "악궁 편측 2.0mm 확장"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.0,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t1",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p1",
+      "target_id": "t1",
+      "strategy": "expansion",
+      "n_stages": 13,
+      "order": "simultaneous",
+      "stages_per_group": [
+       13
+      ],
+      "max_move_mm": 3.08,
+      "per_stage_mm": 0.237,
+      "months": 3.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p1",
+      "stage_cap": 35
+     },
+     "result": {
+      "plan_id": "p1",
+      "strategy": "expansion",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 4.29,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 13,
+      "months": 3.0,
+      "viewer_url": "/ui/?plan=p1"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t2",
+      "case_id": "severe",
+      "strategy": "ipr",
+      "space_gain_mm": 3.25,
+      "crowding_mm": 7.9,
+      "space_deficit_mm": 4.65,
+      "needed_mm": 99.5,
+      "mean_move_mm": 0.94,
+      "max_move_mm": 2.87,
+      "notes": [
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 0.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t2",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p2",
+      "target_id": "t2",
+      "strategy": "ipr",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.87,
+      "per_stage_mm": 0.239,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t2",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p3",
+      "target_id": "t2",
+      "strategy": "ipr",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.87,
+      "per_stage_mm": 0.239,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p2",
+      "stage_cap": 35
+     },
+     "result": {
+      "plan_id": "p2",
+      "strategy": "ipr",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 4.65,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 12,
+      "months": 2.8,
+      "viewer_url": "/ui/?plan=p2"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion_ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t3",
+      "case_id": "severe",
+      "strategy": "expansion_ipr",
+      "space_gain_mm": 6.86,
+      "crowding_mm": 7.9,
+      "space_deficit_mm": 1.04,
+      "needed_mm": 99.5,
+      "mean_move_mm": 2.33,
+      "max_move_mm": 2.98,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "propose_target",
+     "args": {
+      "strategy": "expansion_ipr",
+      "ipr_exclude": [],
+      "lock": []
+     },
+     "result": {
+      "target_id": "t4",
+      "case_id": "severe",
+      "strategy": "expansion_ipr",
+      "space_gain_mm": 6.86,
+      "crowding_mm": 7.9,
+      "space_deficit_mm": 1.04,
+      "needed_mm": 99.5,
+      "mean_move_mm": 2.33,
+      "max_move_mm": 2.98,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed": [],
+      "locked": [],
+      "ipr_mm_per_surface": 0.25,
+      "ipr_exclude": [],
+      "expansion_mm_per_side": 2.0
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "plan_stages",
+     "args": {
+      "target_id": "t4",
+      "order": "simultaneous"
+     },
+     "result": {
+      "plan_id": "p4",
+      "target_id": "t4",
+      "strategy": "expansion_ipr",
+      "n_stages": 12,
+      "order": "simultaneous",
+      "stages_per_group": [
+       12
+      ],
+      "max_move_mm": 2.98,
+      "per_stage_mm": 0.248,
+      "months": 2.8
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "validate",
+     "args": {
+      "plan_id": "p4",
+      "stage_cap": 35
+     },
+     "result": {
+      "plan_id": "p4",
+      "strategy": "expansion_ipr",
+      "passed": false,
+      "violations": 1,
+      "by_type": {
+       "space_deficit": 1
+      },
+      "sample": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.04,
+        "limit": 0.5
+       }
+      ],
+      "n_stages": 12,
+      "months": 2.8,
+      "viewer_url": "/ui/?plan=p4"
+     },
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "reviewer",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": "1) 한 줄 요약: 전략 expansion_ipr, 장수 12 stages, 기간 2.8개월, 위반(space_deficit 1.04mm > limit 0.5mm)로 통과 못함.  \n2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.98mm), 6번(2.90mm), 10번(2.74mm), 11번(2.68mm), 12번(2.62mm). IPR 제외/고정 치아는 없으며(locked_teeth 빈 목록), 발치 치아도 없음. 순서는 simultaneous.  \n3) 위반이 있으면 어떤 조건을 완화해야 하는지: 공간 부족 1.04mm를 해결하려면 IPR 적용 면 수를 늘리거나(현재 면당 0.25mm 한계 내), 측방 확장은 이미 한계(2.0mm)이므로 발치 옵션을 검토해야 함.  \n4) 의사에게 물을 질문:  \n   - 현재 IPR은 전치부 26면에 적용 중인데, 추가로 어떤 치아면에 IPR을 확대할 계획이신가요?  \n   - 발치를 고려한다면 어떤 치아를 우선적으로 고려하고 계신가요?  \n\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.",
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "get_plan",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": {
+      "plan_id": "p4",
+      "case_id": "severe",
+      "strategy": "expansion_ipr",
+      "passed": false,
+      "n_stages": 12,
+      "months": 2.8,
+      "order": "simultaneous",
+      "stage_cap": 35,
+      "space_deficit_mm": 1.04,
+      "crowding_mm": 7.9,
+      "space_gain_mm": 6.86,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed_teeth": [],
+      "locked_teeth": [],
+      "top_moves_mm": [
+       [
+        4,
+        2.98
+       ],
+       [
+        6,
+        2.9
+       ],
+       [
+        10,
+        2.74
+       ],
+       [
+        11,
+        2.68
+       ],
+       [
+        12,
+        2.62
+       ]
+      ],
+      "violations": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.04,
+        "limit": 0.5
+       }
+      ],
+      "by_type": {
+       "space_deficit": 1
+      }
+     },
+     "error": null,
+     "agent": "reviewer"
+    },
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "reviewer"
+    },
+    {
+     "name": "reviewer",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": null,
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "reviewer",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": "1) 한 줄 요약: 전략 expansion_ipr, 장수 12단계, 기간 2.8개월, 공간 부족 위반(1.04mm > 0.5mm limit)로 불통과.  \n2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.98mm), 6번(2.9mm), 10번(2.74mm), 11번(2.68mm), 12번(2.62mm); IPR 제외/고정 치아 및 발치 치아 없음; 순서 패턴은 simultaneous(동시 이동).  \n3) 위반 완화를 위한 한 줄: 공간 부족 1.04mm을 해결하려면 현재 공간 확보량(6.86mm)에 최소 1.04mm 이상을 추가해야 하며, 이를 위해 확장량 또는 IPR량을 늘리는 방안을 검토할 필요가 있음.  \n4) 의사에게 질문:  \n- 현재 계획의 악궁 편측 2.0mm 확장이 충분한지, 추가 확장이 가능한 범위는 어느 정도인가?  \n- IPR 면당 0.25mm을 26면 적용 시 치아 간 간섭이나 민감도 부작용 우려는 없는지?  \n\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.",
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "get_plan",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": {
+      "plan_id": "p4",
+      "case_id": "severe",
+      "strategy": "expansion_ipr",
+      "passed": false,
+      "n_stages": 12,
+      "months": 2.8,
+      "order": "simultaneous",
+      "stage_cap": 35,
+      "space_deficit_mm": 1.04,
+      "crowding_mm": 7.9,
+      "space_gain_mm": 6.86,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed_teeth": [],
+      "locked_teeth": [],
+      "top_moves_mm": [
+       [
+        4,
+        2.98
+       ],
+       [
+        6,
+        2.9
+       ],
+       [
+        10,
+        2.74
+       ],
+       [
+        11,
+        2.68
+       ],
+       [
+        12,
+        2.62
+       ]
+      ],
+      "violations": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.04,
+        "limit": 0.5
+       }
+      ],
+      "by_type": {
+       "space_deficit": 1
+      }
+     },
+     "error": null,
+     "agent": "reviewer"
+    }
+   ],
+   "answer": "전략: expansion_ipr, 총 장수: 12 stages, 예상 기간: 2.8개월, 위반: space_deficit 1.04mm (1건), plan_id: p4, 호출한 도구 순서: cualign__clinical_limits, cualign__load_case, cualign__propose_target (expansion), cualign__plan_stages, cualign__validate, cualign__propose_target (ipr), cualign__plan_stages, cualign__validate, cualign__propose_target (expansion_ipr), cualign__plan_stages, cualign__validate, reviewer, 검토 메모: 1) 한 줄 요약: 전략 expansion_ipr, 장수 12단계, 기간 2.8개월, 공간 부족 위반(1.04mm > 0.5mm limit)로 불통과.  \n2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.98mm), 6번(2.9mm), 10번(2.74mm), 11번(2.68mm), 12번(2.62mm); IPR 제외/고정 치아 및 발치 치아 없음; 순서 패턴은 simultaneous(동시 이동).  \n3) 위반 완화를 위한 한 줄: 공간 부족 1.04mm을 해결하려면 현재 공간 확보량(6.86mm)에 최소 1.04mm 이상을 추가해야 하며, 이를 위해 확장량 또는 IPR량을 늘리는 방안을 검토할 필요가 있음.  \n4) 의사에게 질문:  \n- 현재 계획의 악궁 편측 2.0mm 확장이 충분한지, 추가 확장이 가능한 범위는 어느 정도인가?  \n- IPR 면당 0.25mm을 26면 적용 시 치아 간 간섭이나 민감도 부작용 우려는 없는지?  \n\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.  \n이 계획은 초안입니다. 최종 판단은 의사가 합니다.",
+   "errors": [
+    "retry [AGENT] Tool call attempt 1/3 failed for tool reviewer: ReActAgentParsingFailedError: Failed to parse agent output after 1 attempts. Error: Invalid Format: Missing 'Action:' after 'Thought:'. LLM output: ''"
+   ],
+   "parse_retries": 0
+  },
+  {
+   "user": "알아서 적당히 맞춰줘.",
+   "calls": [
+    {
+     "name": "reviewer",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": null,
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "get_plan",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": {
+      "plan_id": "p4",
+      "case_id": "severe",
+      "strategy": "expansion_ipr",
+      "passed": false,
+      "n_stages": 12,
+      "months": 2.8,
+      "order": "simultaneous",
+      "stage_cap": 35,
+      "space_deficit_mm": 1.04,
+      "crowding_mm": 7.9,
+      "space_gain_mm": 6.86,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed_teeth": [],
+      "locked_teeth": [],
+      "top_moves_mm": [
+       [
+        4,
+        2.98
+       ],
+       [
+        6,
+        2.9
+       ],
+       [
+        10,
+        2.74
+       ],
+       [
+        11,
+        2.68
+       ],
+       [
+        12,
+        2.62
+       ]
+      ],
+      "violations": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.04,
+        "limit": 0.5
+       }
+      ],
+      "by_type": {
+       "space_deficit": 1
+      }
+     },
+     "error": null,
+     "agent": "reviewer"
+    },
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "reviewer"
+    },
+    {
+     "name": "reviewer",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": "1) 한 줄 요약: 전략 expansion_ipr, 장수 12 stages, 기간 2.8개월, 위반(space_deficit 1.04mm > limit 0.5mm)으로 통과하지 못함.  \n2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.98mm), 6번(2.90mm), 10번(2.74mm), 11번(2.68mm), 12번(2.62mm). IPR 제외/고정 치아는 없으며(locked_teeth 빈 목록), 발치 치아도 없음. 순서 패턴은 simultaneous(동시 이동).  \n3) 위반이 있으면 어떤 조건을 완화해야 하는지: 공간 부족 1.04mm을 해결하려면 IPR 또는 확장 한도를 초과하거나 발치(군집 7.9mm, 발치 임계 8.0mm)를 고려해야 한다.  \n4) 의사에게 물을 질문: 현재 IPR 및 확장량이 임상 한계에 근접하는데, 추가 안전 한도 내에서 조정이 가능한가요? 발치 여부를 환자와 상의하여 공간 확보 방안을 재검토할 필요가 있나요?  \n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.",
+     "error": null,
+     "agent": "planner"
+    },
+    {
+     "name": "get_plan",
+     "args": {
+      "plan_id": "p4"
+     },
+     "result": {
+      "plan_id": "p4",
+      "case_id": "severe",
+      "strategy": "expansion_ipr",
+      "passed": false,
+      "n_stages": 12,
+      "months": 2.8,
+      "order": "simultaneous",
+      "stage_cap": 35,
+      "space_deficit_mm": 1.04,
+      "crowding_mm": 7.9,
+      "space_gain_mm": 6.86,
+      "notes": [
+       "악궁 편측 2.0mm 확장",
+       "IPR 면당 0.25mm x 26면"
+      ],
+      "removed_teeth": [],
+      "locked_teeth": [],
+      "top_moves_mm": [
+       [
+        4,
+        2.98
+       ],
+       [
+        6,
+        2.9
+       ],
+       [
+        10,
+        2.74
+       ],
+       [
+        11,
+        2.68
+       ],
+       [
+        12,
+        2.62
+       ]
+      ],
+      "violations": [
+       {
+        "stage": null,
+        "type": "space_deficit",
+        "mm": 1.04,
+        "limit": 0.5
+       }
+      ],
+      "by_type": {
+       "space_deficit": 1
+      }
+     },
+     "error": null,
+     "agent": "reviewer"
+    },
+    {
+     "name": "clinical_limits",
+     "args": {
+      "unused": ""
+     },
+     "result": {
+      "max_linear_mm_per_aligner": 0.25,
+      "ipr_mm_per_surface": 0.25,
+      "max_expansion_mm_per_side": 2.0,
+      "extraction_threshold_mm": 8.0,
+      "wear_days_per_aligner": 7,
+      "stage_cap_formula": "round(months * 30.4 / 7)",
+      "strategies": [
+       "expansion",
+       "ipr",
+       "expansion_ipr",
+       "extraction"
+      ],
+      "orders": [
+       "simultaneous",
+       "anterior_first",
+       "sequential"
+      ],
+      "sources": "MDPI Appl.Sci. 2024 staging review; Nature IJOS 2025 consensus; Align Technology 2016"
+     },
+     "error": null,
+     "agent": "reviewer"
+    }
+   ],
+   "answer": "전략: expansion_ipr  \n총 장수: 12 stages  \n예상 기간: 2.8개월  \n위반: space_deficit 1.04mm (1건)  \nplan_id: p4  \n호출한 도구 순서: cualign__clinical_limits, cualign__load_case, cualign__propose_target (expansion), cualign__plan_stages, cualign__validate, cualign__propose_target (ipr), cualign__plan_stages, cualign__validate, cualign__propose_target (expansion_ipr), cualign__plan_stages, cualign__validate, reviewer  \n\n검토 메모:  \n1) 한 줄 요약: 전략 expansion_ipr, 장수 12단계, 기간 2.8개월, 공간 부족 위반(1.04mm > 0.5mm limit)로 불통과.  \n2) 확인할 지점: 가장 많이 움직이는 치아는 4번(2.98mm), 6번(2.90mm), 10번(2.74mm), 11번(2.68mm), 12번(2.62mm); IPR 제외/고정 치아 및 발치 치아 없음; 순서 패턴은 simultaneous(동시 이동).  \n3) 위반 완화를 위한 한 줄: 공간 부족 1.04mm을 해결하려면 현재 공간 확보량(6.86mm)에 최소 1.04mm 이상을 추가해야 하며, 이를 위해 확장량 또는 IPR량을 늘리는 방안을 검토할 필요가 있음.  \n4) 의사에게 질문:  \n- 현재 계획의 악궁 편측 2.0mm 확장이 충분한지, 추가 확장이 가능한 범위는 어느 정도인가?  \n- IPR 면당 0.25mm을 26면 적용 시 치아 간 간섭이나 민감도 부작용 우려는 없는지?  \n\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다.  \n이 계획은 초안입니다. 최종 판단은 의사가 합니다.",
+   "errors": [
+    "retry [AGENT] Tool call attempt 1/3 failed for tool reviewer: ReActAgentParsingFailedError: Failed to parse agent output after 1 attempts. Error: Invalid Format: Missing 'Action:' after 'Thought:'. LLM output: ''"
+   ],
+   "parse_retries": 0
+  }
+ ],
+ "meta": {
+  "seconds": 216.3,
+  "config_llm": "nim_super",
+  "fault_injection": {}
+ }
+}
