@@ -1,0 +1,30 @@
+# 초안 — OpenShell 샌드박스용 이미지:
+#   openshell sandbox create --from Dockerfile.openshell ...
+# 기존 Dockerfile(docker run 용)과의 차이:
+# - iproute2·nftables: OpenShell supervisor 가 샌드박스 네트워크를 만들 때 이미지 안의 도구를 쓴다
+#   (NVIDIA/OpenShell examples/bring-your-own-container).
+# - non-root 사용자 sandbox(uid 10001). OpenShell 은 root 로 실행하지 않는다.
+# - 코드·가상환경은 root 소유(읽기 전용), 계획 출력은 작업 공간 /sandbox/out.
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends iproute2 nftables \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 sandbox \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /bin/bash sandbox
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY src ./src
+COPY configs ./configs
+COPY guardrails ./guardrails
+COPY skills ./skills
+COPY bench ./bench
+RUN uv sync --frozen --no-dev
+
+ENV PATH="/app/.venv/bin:$PATH" CUALIGN_OUT=/sandbox/out
+WORKDIR /sandbox
+USER sandbox
+EXPOSE 8000
+CMD ["nat", "serve", "--config_file", "/app/configs/workflow.yml", "--host", "0.0.0.0", "--port", "8000"]
