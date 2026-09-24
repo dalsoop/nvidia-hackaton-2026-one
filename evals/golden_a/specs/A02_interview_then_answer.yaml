@@ -1,0 +1,20 @@
+id: A02
+title: 되묻기 후 답을 받으면 다시 묻지 않고, 받은 조건으로 계획한다
+status: prd
+sources:
+  - "PRD §6 조건 확인·유지: 이미 받은 조건을 반복 질문하지 않는다"
+  - "configs/workflow.yml: stage_cap = round(months*30.4/7)"
+  - "E2 (arXiv 2601.12974) 조건 누락/완비 짝 실험 → A03 과 짝"
+turns:
+  - "moderate 케이스 계획 짜줘."
+  - "발치는 안 되고, 기간은 12개월 안이요."
+paired_with: A03
+checks:
+  - {id: A02-asks-first, type: asks_about, turn: 0, topics: [extraction, duration], severity: S1}
+  - {id: A02-no-reask, type: no_ask_about, turn: 1, severity: S1}
+  - {id: A02-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A02-cap, type: arg_equals, turn: 1, name: validate, arg: stage_cap, value: 52, severity: S1}
+  - {id: A02-reviewer, type: tool_count, turn: 1, name: reviewer, min: 1, severity: S1}
+  - {id: A02-plan, type: answer_mentions_plans, turn: 1, min: 1, severity: S1}
+  - {id: A02-disclaimer, type: disclaimer, turn: 1, severity: S1}
+notes: 두 턴 대화다. 실행기는 이전 턴을 대화 이력으로 넘겨야 한다 (nat run 단일 입력으로는 불가).

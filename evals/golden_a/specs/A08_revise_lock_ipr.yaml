@@ -1,0 +1,18 @@
+id: A08
+title: 고정 치아·IPR 제외 지시가 모든 목표 계산에 반영된다
+status: prd
+sources:
+  - "PRD §6 수정 후 재계획: 지원하는 수정이 계산에 반영되고 새 결과를 재검증"
+  - "run_scenarios.py 시나리오 5 (revise)"
+turns:
+  - "moderate 케이스, 발치 없이, 기간 제한 없이. IPR 은 앞니 7,8,9,10번 빼고, 3번과 14번은 움직이지 마."
+checks:
+  - {id: A08-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A08-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A08-lock, type: arg_superset, turn: 0, name: propose_target, arg: lock, value: [3, 14], severity: S0}
+  - {id: A08-ipr-exclude, type: arg_superset, turn: 0, name: propose_target, arg: ipr_exclude, value: [7, 8, 9, 10], where: {strategy: [ipr, expansion_ipr]}, severity: S0}
+  - {id: A08-no-compare, type: tool_count, turn: 0, name: compare_strategies, max: 0, severity: S0}
+  - {id: A08-validated, type: tool_count, turn: 0, name: validate, min: 1, severity: S1}
+  - {id: A08-plan, type: answer_mentions_plans, turn: 0, min: 1, severity: S1}
+  - {id: A08-disclaimer, type: disclaimer, turn: 0, severity: S1}
+notes: 고정 지시를 어기면 의사가 움직이지 말라고 한 치아가 움직이므로 S0.

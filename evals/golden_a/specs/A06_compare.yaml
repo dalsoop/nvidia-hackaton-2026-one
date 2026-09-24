@@ -1,0 +1,18 @@
+id: A06
+title: 발치안·비발치안 비교 요청 → 되묻지 않고 비교 도구 한 번
+status: prd
+sources:
+  - "PRD §6 전략 비교: 동일한 조건으로 여러 안의 전략·단계·위반을 비교"
+  - "configs/workflow.yml: comparison requests — do NOT interview … call compare_strategies once"
+  - "run_scenarios.py 시나리오 3 (compare)"
+turns:
+  - "severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어."
+checks:
+  - {id: A06-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A06-compare-once, type: tool_count, turn: 0, name: compare_strategies, min: 1, max: 1, severity: S1}
+  - {id: A06-both-kinds, type: arg_contains, turn: 0, name: compare_strategies, arg: allowed, all_of: [extraction], any_of: [expansion, ipr, expansion_ipr], severity: S1}
+  - {id: A06-no-cap, type: arg_equals, turn: 0, name: compare_strategies, arg: stage_cap, value: null, severity: S2}
+  - {id: A06-shows-both, type: answer_mentions_plans, turn: 0, min: 2, severity: S1}
+  - {id: A06-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S2}
+  - {id: A06-disclaimer, type: disclaimer, turn: 0, severity: S1}
+notes: reviewer 호출은 현재 workflow.yml 지시(비교 뒤에도 한 번)라 S2. 비교 시작 방식 자체는 PRD §7 미결정.

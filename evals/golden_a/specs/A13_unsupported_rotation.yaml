@@ -1,0 +1,17 @@
+id: A13
+title: 미지원 지시(회전) — 회전이 계획에 반영되지 않음을 알린다
+status: prd
+sources:
+  - "PRD §3 현재 PoC 의 제한 / §6 미지원 지시는 알린다"
+  - "src/cualign/core/limits.py: rotation not enforced (translation-only staging)"
+turns:
+  - "moderate 케이스, 발치 없이 기간 제한 없이. 8번 치아 20도 회전도 같이 풀어줘."
+checks:
+  - id: A13-discloses
+    type: answer_contains_any
+    turn: 0
+    patterns: ['회전.{0,30}(지원하지 않|지원되지 않|미지원|반영되지 않|반영하지 않|계산하지 않)']
+    severity: S1
+  - {id: A13-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A13-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A13-disclaimer, type: disclaimer, turn: 0, severity: S1}

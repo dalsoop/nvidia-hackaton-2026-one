@@ -1,0 +1,14 @@
+id: A01
+title: 발치 허용 여부·기간이 모두 빠진 요청 → 한 번에 되묻고 멈춘다
+status: impl
+sources:
+  - "PRD §5 조건 확인: 해석한 조건, 부족한 정보"
+  - "configs/workflow.yml: Interview first … ask ONE short Korean question covering both … and stop"
+  - "run_scenarios.py 시나리오 4 (interview)"
+turns:
+  - "moderate 케이스 계획 짜줘."
+checks:
+  - {id: A01-asks-both, type: asks_about, turn: 0, topics: [extraction, duration], severity: S1}
+  - {id: A01-neutral, type: neutral_question, turn: 0, severity: S1}
+  - {id: A01-no-plan, type: no_planning_tools, turn: 0, severity: S1}
+notes: 질문 문구·형식은 채점하지 않는다. 두 조건을 모두 묻는지, 답을 가정하지 않는지, 계획 도구를 돌리지 않는지만 본다.

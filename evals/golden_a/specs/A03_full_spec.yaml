@@ -1,0 +1,15 @@
+id: A03
+title: 조건을 모두 준 요청 → 묻지 않고 계획·검증·검토까지 완주 (A02 의 짝)
+status: prd
+sources:
+  - "PRD §6 조건 확인·유지 / 조건을 만족하는 초안"
+  - "E2 (arXiv 2601.12974) paired full-spec control"
+turns:
+  - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘."
+checks:
+  - {id: A03-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A03-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A03-cap, type: arg_equals, turn: 0, name: validate, arg: stage_cap, value: 52, severity: S1}
+  - {id: A03-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S1}
+  - {id: A03-plan, type: answer_mentions_plans, turn: 0, min: 1, severity: S1}
+  - {id: A03-disclaimer, type: disclaimer, turn: 0, severity: S1}

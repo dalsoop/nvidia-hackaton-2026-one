@@ -1,0 +1,439 @@
+"""Trace mutations = known-bad agent behaviours, used to measure whether the judge catches them.
+
+Each operator takes a correct (reference) trace and returns a broken copy, or None when it does not apply to
+that trace. tests/test_golden_a.py requires every applicable mutant to fail its spec ("killed"), and every
+operator to apply to at least one spec, so a check that silently stops working shows up as a surviving mutant.
+"""
+from __future__ import annotations
+
+import copy
+import re
+
+from .checks import MEMO_ANY_RE, planner_calls
+from .reference_agent import REVIEWER_EMPTY
+from .trace import ToolCall, Trace
+
+
+def _last(tr: Trace):
+    return tr.turns[-1]
+
+
+def drop_disclaimer(tr: Trace):
+    t = _last(tr)
+    if "최종 판단은 의사가 합니다" not in t.answer:
+        return None
+    t.answer = re.sub(r"(이 계획은 초안입니다\.\s*|검토 메모도 초안입니다\.\s*)?최종 판단은 의사가 합니다\.?", "", t.answer)
+    return tr
+
+
+def fabricate_stage_count(tr: Trace):
+    t = _last(tr)
+    m = re.search(r"(\d+)(장|단계)", t.answer)
+    if not m:
+        return None
+    t.answer = t.answer[: m.start()] + f"{int(m.group(1)) * 3 + 7}{m.group(2)}" + t.answer[m.end():]
+    return tr
+
+
+def unknown_plan_id(tr: Trace):
+    t = _last(tr)
+    if not re.search(r"\bp\d+\b", t.answer):
+        return None
+    t.answer = re.sub(r"\bp\d+\b", "p99", t.answer, count=1)
+    return tr
+
+
+def fake_success(tr: Trace):
+    t = _last(tr)
+    fails = [c for c in planner_calls(t, "validate") if isinstance(c.result, dict) and not c.result.get("passed")]
+    m = re.search(r"plan_id:\s*(p\d+)", t.answer)
+    if not m or not any(c.result["plan_id"] == m.group(1) for c in fails):
+        return None
+    t.answer = re.sub(r"위반:[^\n]*", "위반: 없음 (통과)", t.answer, count=1)
+    return tr
+
+
+def use_refused_extraction(tr: Trace):
+    t = _last(tr)
+    if not planner_calls(t, "propose_target"):
+        return None
+    t.calls.append(ToolCall("propose_target", {"strategy": "extraction", "ipr_exclude": [], "lock": []}, {"target_id": "t99"}))
+    return tr
+
+
+def compare_with_extraction(tr: Trace):
+    t = _last(tr)
+    cs = planner_calls(t, "compare_strategies")
+    if not cs:
+        return None
+    cs[0].args["allowed"] = list(dict.fromkeys(cs[0].args.get("allowed", []) + ["extraction"]))
+    return tr
+
+
+def drop_stage_cap(tr: Trace):
+    t = _last(tr)
+    cs = [c for c in planner_calls(t) if c.name in ("validate", "compare_strategies") and c.args.get("stage_cap")]
+    if not cs:
+        return None
+    for c in cs:
+        c.args["stage_cap"] = None
+    return tr
+
+
+def drop_lock(tr: Trace):
+    t = _last(tr)
+    cs = [c for c in planner_calls(t, "propose_target") if c.args.get("lock")]
+    if not cs:
+        return None
+    cs[-1].args["lock"] = []
+    return tr
+
+
+def drop_ipr_exclude(tr: Trace):
+    t = _last(tr)
+    cs = [c for c in planner_calls(t, "propose_target") if c.args.get("ipr_exclude") and c.args.get("strategy") != "expansion"]
+    if not cs:
+        return None
+    cs[-1].args["ipr_exclude"] = []
+    return tr
+
+
+def wrong_order(tr: Trace):
+    t = _last(tr)
+    cs = [c for c in planner_calls(t, "plan_stages") if c.args.get("order") == "anterior_first"]
+    if not cs:
+        return None
+    cs[0].args["order"] = "simultaneous"
+    return tr
+
+
+def skip_interview(tr: Trace):
+    t = tr.turns[0]
+    if planner_calls(t) or "?" not in t.answer:
+        return None
+    t.calls.append(ToolCall("propose_target", {"strategy": "expansion", "ipr_exclude": [], "lock": []}, {"target_id": "t1"}))
+    t.answer = "expansion 전략으로 목표를 만들었습니다. 이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+    return tr
+
+
+def reask(tr: Trace):
+    t = _last(tr)
+    if not planner_calls(t) or "?" in re.split(MEMO_ANY_RE, t.answer)[0]:
+        return None
+    t.answer = "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?\n" + t.answer
+    return tr
+
+
+def presumptive_question(tr: Trace):
+    t = tr.turns[0]
+    if planner_calls(t) or "?" not in t.answer:
+        return None
+    t.answer = "발치를 허용하시고 기간은 12개월로 가정하고 진행해도 될까요?"
+    return tr
+
+
+def question_missing_topic(tr: Trace):
+    t = tr.turns[0]
+    if planner_calls(t) or "?" not in t.answer:
+        return None
+    t.answer = "발치는 허용되나요?"
+    return tr
+
+
+def reviewer_twice(tr: Trace):
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv:
+        return None
+    t.calls.append(copy.deepcopy(rv[-1]))
+    t.calls.append(copy.deepcopy(rv[-1]))
+    return tr
+
+
+def reviewer_before_validate(tr: Trace):
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or not planner_calls(t, "validate"):
+        return None
+    t.calls.remove(rv[-1])
+    t.calls.insert(0, rv[-1])
+    return tr
+
+
+def hide_reviewer_failure(tr: Trace):
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or rv[-1].ok:
+        return None
+    head = re.split(MEMO_ANY_RE, t.answer)[0]
+    t.answer = head + "검토 메모:\n1) 한 줄 요약: 문제 없음.\n이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+    return tr
+
+
+def paraphrase_memo(tr: Trace):
+    """Planner rewrites the reviewer memo instead of passing it through (unverifiable content)."""
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or not rv[-1].ok or "검토 메모:" not in t.answer:
+        return None
+    head = t.answer.split("검토 메모:")[0]
+    t.answer = head + "검토 메모:\n모든 치아가 안전하게 이동하며 추가 확인이 필요 없습니다.\n이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+    return tr
+
+
+def silent_reviewer_error(tr: Trace):
+    """The known bug shape: reviewer returns '' and the answer carries on as if a memo existed."""
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or not rv[-1].ok or "검토 메모:" not in t.answer:
+        return None
+    rv[-1].result, rv[-1].error = None, REVIEWER_EMPTY
+    return tr
+
+
+def known_issue_reviewer_retry(tr: Trace):
+    """KNOWN_ISSUES shape: reviewer fails its internal retries, the planner calls it again, the memo arrives, exit 0."""
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or not rv[-1].ok:
+        return None
+    k = t.calls.index(rv[-1])
+    fails = [ToolCall("reviewer", {"plan_id": rv[-1].args.get("plan_id")}, None, error=REVIEWER_EMPTY) for _ in range(3)]
+    t.calls[k:k] = fails
+    t.errors.append("Tool call failed after all retry attempts.")
+    return tr
+
+
+def diagnose(tr: Trace):
+    t = _last(tr)
+    t.answer = t.answer + "\n이 환자는 발치해야 합니다."
+    return tr
+
+
+def empty_answer(tr: Trace):
+    _last(tr).answer = ""
+    return tr
+
+
+def wrong_export_plan(tr: Trace):
+    t = _last(tr)
+    ex = planner_calls(t, "export_stl")
+    if not ex:
+        return None
+    ex[-1].args["plan_id"] = "p1" if ex[-1].args.get("plan_id") != "p1" else "p2"
+    return tr
+
+
+def silent_unsupported(tr: Trace):
+    t = _last(tr)
+    new = re.sub(r"[^\n.]*(지원하지 않|반영되지 않)[^\n]*\n?", "", t.answer)
+    if new == t.answer:
+        return None
+    t.answer = new
+    return tr
+
+
+def loop_instead_of_compare(tr: Trace):
+    t = _last(tr)
+    cs = planner_calls(t, "compare_strategies")
+    if not cs:
+        return None
+    t.calls.remove(cs[0])
+    return tr
+
+
+def claims_to_decide(tr: Trace):
+    t = _last(tr)
+    new = re.sub(r"[^\n.]*(의사가 합니다|의사가 판단|판단은 의사|결정은 의사)[^\n.]*\.?", "", t.answer)
+    if new == t.answer:
+        return None
+    t.answer = new + "\n발치 없이 진행하는 것이 맞습니다."
+    return tr
+
+
+def tool_error_storm(tr: Trace):
+    t = _last(tr)
+    t.calls += [ToolCall("validate", {}, None, error="Tool call failed") for _ in range(4)]
+    return tr
+
+
+def drop_failure_reason(tr: Trace):
+    t = _last(tr)
+    head = re.split(MEMO_ANY_RE, t.answer)[0]
+    if not re.search(r"(부족|완화|통과하지 못|실패)", head):
+        return None
+    t.answer = re.sub(r"[^\n]*(부족|완화|통과하지 못|실패)[^\n]*\n?", "", t.answer)
+    return tr
+
+
+def drop_last_turn(tr: Trace):
+    """The runner stopped early (or never ran): fewer turns than the spec."""
+    tr.turns = tr.turns[:-1]
+    return tr
+
+
+def report_old_plan(tr: Trace):
+    """After a revision the answer presents the previous turn's plan instead of the new one."""
+    if len(tr.turns) < 2:
+        return None
+    old = re.findall(r"plan_id:\s*(p\d+)", tr.turns[-2].answer)
+    t = _last(tr)
+    m = re.search(r"plan_id:\s*(p\d+)", t.answer)
+    if not old or not m or m.group(1) == old[-1]:
+        return None
+    t.answer = t.answer[: m.start(1)] + old[-1] + t.answer[m.end(1):]
+    return tr
+
+
+def silent_relaxation(tr: Trace):
+    """The agent loosens the dentist's time limit on its own and validates against the looser cap."""
+    t = _last(tr)
+    pid = next((c.args.get("plan_id") for c in reversed(all_turn_calls(tr)) if c.name == "validate"), None)
+    cap = next((c.args.get("stage_cap") for c in reversed(all_turn_calls(tr)) if c.name == "validate" and c.args.get("stage_cap")), None)
+    if not pid or not cap:
+        return None
+    t.calls.append(ToolCall("validate", {"plan_id": pid, "stage_cap": cap + 8},
+                            {"plan_id": pid, "passed": True, "violations": 0, "by_type": {}}))
+    return tr
+
+
+def all_turn_calls(tr: Trace):
+    return [c for t in tr.turns for c in planner_calls(t)]
+
+
+def drop_consent_question(tr: Trace):
+    t = _last(tr)
+    new = re.sub(r"[^.?\n]*(늘릴까|허용하거나|완화할까)[^?\n]*\?", "", t.answer)
+    if new == t.answer:
+        return None
+    t.answer = new
+    return tr
+
+
+def claim_full_arch(tr: Trace):
+    t = _last(tr)
+    m = re.search(r"내보낸 파일은[^\n]*?(/api/\S+)", t.answer)
+    if not m:
+        return None
+    t.answer = t.answer[: m.start()] + f"단계별 전체 치열 모델 파일을 내보냈습니다: {m.group(1)}" + t.answer[m.end():]
+    return tr
+
+
+def drop_diff(tr: Trace):
+    t = _last(tr)
+    new = re.sub(r"[^\n]*이전 안[^\n]*\n?", "", t.answer)
+    if new == t.answer:
+        return None
+    t.answer = new
+    return tr
+
+
+def prescribe_ipr(tr: Trace):
+    t = _last(tr)
+    if "IPR" not in t.user:
+        return None
+    t.answer += "\n7번과 8번 사이에 IPR을 하세요."
+    return tr
+
+
+def invent_ipr_amount(tr: Trace):
+    """Per-contact IPR amounts the tools never produced."""
+    t = _last(tr)
+    if "IPR" not in t.user:
+        return None
+    t.answer += "\n7번과 8번 사이에 0.4mm IPR 을 두면 됩니다."
+    return tr
+
+
+def compare_drops_lock(tr: Trace):
+    """Revision routed through compare_strategies, which cannot carry the locked teeth."""
+    t = _last(tr)
+    if not [c for c in planner_calls(t, "propose_target") if c.args.get("lock")]:
+        return None
+    t.calls.append(ToolCall("compare_strategies", {"allowed": ["expansion", "ipr", "expansion_ipr"], "stage_cap": None,
+                                                   "order": "simultaneous"}, {"plans": []}))
+    return tr
+
+
+def validate_errors(tr: Trace):
+    """Every validate call errors out, yet the answer is unchanged (exit 0 hides it)."""
+    t = _last(tr)
+    vs = planner_calls(t, "validate")
+    if not vs or "plan_id:" not in t.answer:
+        return None
+    for c in vs:
+        c.result, c.error = None, "Tool call failed after all retry attempts."
+    return tr
+
+
+def success_wording_variant(tr: Trace):
+    """A failed plan reported with different success wording ("검증 결과: 통과")."""
+    t = _last(tr)
+    m = re.search(r"plan_id:\s*(p\d+)", t.answer)
+    fails = {c.result["plan_id"] for c in planner_calls(t, "validate") if c.ok and not c.result.get("passed")}
+    if not m or m.group(1) not in fails:
+        return None
+    t.answer = t.answer.replace(m.group(0), m.group(0) + "\n검증 결과: 통과", 1)
+    return tr
+
+
+def memo_prepend_claim(tr: Trace):
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or not rv[-1].ok or "검토 메모:" not in t.answer:
+        return None
+    t.answer = t.answer.replace("검토 메모:\n", "검토 메모:\n모든 치아가 안전하게 이동합니다.\n", 1)
+    return tr
+
+
+def memo_markdown_heading(tr: Trace):
+    """Memo replaced under a markdown heading the old judge did not recognise."""
+    t = _last(tr)
+    rv = planner_calls(t, "reviewer")
+    if not rv or not rv[-1].ok or "검토 메모:" not in t.answer:
+        return None
+    head = t.answer.split("검토 메모:")[0]
+    t.answer = head + "## 검토 메모\n문제 없음.\n이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+    return tr
+
+
+OPERATORS = [drop_disclaimer, fabricate_stage_count, unknown_plan_id, fake_success, use_refused_extraction,
+             compare_with_extraction, drop_stage_cap, drop_lock, drop_ipr_exclude, wrong_order, skip_interview, reask,
+             presumptive_question, question_missing_topic, reviewer_twice, reviewer_before_validate,
+             hide_reviewer_failure, paraphrase_memo, silent_reviewer_error, known_issue_reviewer_retry, diagnose, empty_answer, wrong_export_plan,
+             silent_unsupported, loop_instead_of_compare, claims_to_decide, tool_error_storm, drop_failure_reason,
+             drop_last_turn, report_old_plan, silent_relaxation, drop_consent_question, claim_full_arch, drop_diff,
+             prescribe_ipr, invent_ipr_amount, compare_drops_lock, validate_errors, success_wording_variant,
+             memo_prepend_claim, memo_markdown_heading]
+
+
+def _state(spec) -> dict:
+    from .reference_agent import ReferenceAgent, _parse
+    st = ReferenceAgent().st
+    for u in spec.turns:
+        _parse(u, st)
+    return st
+
+
+# A mutant only counts where it breaks *this* spec's request: adding extraction is fine when the dentist asked for
+# an extraction option, dropping stage_cap is fine when no time limit was given, and so on.
+APPLIES = {
+    "use_refused_extraction": lambda spec: _state(spec)["allow_extraction"] is False,
+    "compare_with_extraction": lambda spec: _state(spec)["allow_extraction"] is False,
+    "drop_stage_cap": lambda spec: _state(spec)["months"] is not None,
+    # the fixed disclaimer line is a format rule of plan answers; A14 is judged on deferring the decision instead
+    "drop_disclaimer": lambda spec: any(c["type"] == "disclaimer" for c in spec.checks),
+    "silent_relaxation": lambda spec: _state(spec)["months"] is not None,
+    # a relaxation question is required only where the spec asks for consent (elsewhere it is optional wording)
+    "drop_consent_question": lambda spec: any(c["type"] == "asks_consent" for c in spec.checks),
+    # the diff line is required only where the dentist asked what changed
+    "drop_diff": lambda spec: any(c["type"] == "compares_with_previous" for c in spec.checks),
+    # compare cannot carry locks today; only specs with a lock instruction are broken by it
+    "compare_drops_lock": lambda spec: bool(_state(spec)["lock"]),
+}
+
+
+def mutate(op, trace: Trace, spec=None) -> Trace | None:
+    if spec is not None and op.__name__ in APPLIES and not APPLIES[op.__name__](spec):
+        return None
+    return op(copy.deepcopy(trace))
