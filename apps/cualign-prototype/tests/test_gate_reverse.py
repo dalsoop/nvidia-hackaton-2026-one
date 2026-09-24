@@ -79,12 +79,15 @@ def test_stl_zip_not_stale(isolated, tmp_path):
         assert len([n for n in z.namelist() if n.endswith(".stl")]) == plan["n_stages"] * 14
 
 
-def test_no_approval_tool(isolated):
+def test_no_approval_tool_names(isolated):
     async def names():
         async with register.cualign(register.CuAlignToolConfig(), None) as group:
             return [k.split("__")[-1] for k in await group.get_all_functions()]
 
     assert not [n for n in asyncio.run(names()) if re.search("approv|revoke", n)]
+
+
+def test_agent_code_never_approves():
     agent_dir = Path(register.__file__).parent
     hits = [f"{p.name}: {m}" for p in agent_dir.rglob("*.py")
             for m in re.findall(r'\.approve\(|\.revoke\(|\["approval"\]\s*=', p.read_text(encoding="utf-8"))]
