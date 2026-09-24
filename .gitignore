@@ -1,3 +1,5 @@
+# 모든 앱에 공통인 규칙만 둔다. 언어별 규칙은 각 앱 폴더의 .gitignore에 둔다.
+
 # OS·편집기
 .DS_Store
 *.swp
@@ -8,18 +10,6 @@
 .env
 .env.*
 !.env.example
-
-# Node
-node_modules/
-dist/
-out/
-
-# Python
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-.ruff_cache/
 
 # 로그
 *.log

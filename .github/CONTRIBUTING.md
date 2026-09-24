@@ -8,8 +8,8 @@
 
 ```sh
 git fetch origin
-git worktree add ../nvidia-hackaton-2026-one-wt-<작업> -b <type>/<작업> origin/main
-cd ../nvidia-hackaton-2026-one-wt-<작업>
+git worktree add ../<작업 폴더> -b <type>/<작업> origin/main
+cd ../<작업 폴더>
 ```
 
 브랜치 이름은 `feat/…`, `fix/…`, `docs/…`, `chore/…` 형식으로 짓는다.
@@ -17,7 +17,7 @@ cd ../nvidia-hackaton-2026-one-wt-<작업>
 PR이 병합되면 worktree와 브랜치를 정리한다.
 
 ```sh
-git worktree remove ../nvidia-hackaton-2026-one-wt-<작업>
+git worktree remove ../<작업 폴더>
 git branch -d <type>/<작업>
 ```
 
