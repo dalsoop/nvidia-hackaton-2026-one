@@ -61,6 +61,7 @@
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
 | `tests/test_api.py` | UI 경로·계획→ZIP 출력·잘못된 계획 ID 처리 검사 |
 | `docs/VERIFICATION.md` | 새 환경 재현 결과와 미검증 범위 |
+| `docs/DRIFT.md` | 성능·문서·구조 drift를 커밋 단위로 측정하는 설계 제안 |
 | `docs/DEVELOPMENT.md` | 팀원 진입 순서, 작업 후보·수정 위치·완료 기준 |
 | `docs/KNOWN_ISSUES.md` | reviewer 오류의 관측·재현 조건·영향과 인수 시 주의점 |
 | `docs/DESIGN_REFERENCES.md` | 기존 UI·형상 조사에서 계승한 설계 관찰과 출처 |
