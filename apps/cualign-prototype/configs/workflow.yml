@@ -71,7 +71,7 @@ workflow:
     For comparisons call compare_strategies; it preserves all constraints.
     For revisions read the base plan, apply only the requested condition changes, and create a new plan.
     Once settled, call select_plan with the passing plan or, if all fail, the best failed plan.
-    Then call reviewer ONCE with {"plan_id": "..."} for the selected plan.
+    Then call reviewer ONCE with the selected plan_id as the plan_id argument.
     On review failure, report 검토 실패 clearly; do not call it again or invent a memo.
     If no new plan is needed, do not select an unrelated plan.
     No tool can approve a plan. For export requests explain that the dentist must approve in the UI;

@@ -68,15 +68,51 @@ NIM 검사는 승인된 기존 키를 일시적으로 프로세스에 주입했�
 | 브라우저 인수 | `uv run --frozen --with playwright python tests/browser_flow.py` | 통과. 계획 식별·3D/카드/파일 일치·조건 유지·검토 실패 표시·승인·지연 응답 무시·케이스 전환 초기화 |
 | 벤치마크 | `python bench/bench.py` | 5개 프리셋의 총생·전략·위반 수가 기존 `bench/results.md`와 동일. 시간 값만 환경 차이라 기록은 갱신하지 않았다 |
 | wheel 빌드·자산 | `uv build --wheel` 후 `scripts/check_wheel.py` | 성공. 비어 있지 않은 자산 19개(신규 `plan-stream.js` 포함) |
+| 자동 검사(실호출 후) | 같은 명령 재실행 | ReAct 프롬프트 검사 추가 후 **40개 통과** |
 
 브라우저 검사는 합성 계획과 가짜 검토 응답을 쓰며 NIM을 호출하지 않는다. 결과는 추적 제외된 `out/browser-acceptance/`에 둔다.
 
+### NVIDIA NIM 실호출 (2026-09-25)
+
+실제 `nat serve`(CuAlignWorker → PlanEventsASGI + Guardrails + NIM)를 띄우고 UI와 같은 방식으로
+`/chat/stream`을 두 번 호출했다. 모델은 `configs/workflow.yml` 기준 `nvidia/nemotron-3-super-120b-a12b`,
+Guardrails는 키가 있어 자동 활성화됐다. 키는 `.env`에서만 읽었고 로그·이미지에 넣지 않았다.
+이벤트 전문과 서버 로그는 추적 제외된 `out/nim-live/`에 있다.
+
+**먼저 발견한 결함.** 첫 실행이 4.5초 만에 빈 응답으로 끝났다. `additional_instructions`의 리터럴
+`{"plan_id": "..."}`를 LangChain `ChatPromptTemplate`이 템플릿 변수로 해석해
+`Input to ChatPromptTemplate is missing variables {'"plan_id"'}`로 에이전트 노드가 죽었다.
+`nat validate`는 프롬프트를 만들지 않아 이 결함을 잡지 못한다. 중괄호를 없애고,
+실제 프롬프트를 만들어 변수 집합을 확인하는 오프라인 회귀 검사를 추가했다.
+
+| 확인 항목 | 1턴 `발치 없이 12개월 안에, 앞니 총생부터` | 2턴 `13번 치아는 움직이지 말고 다시 짜줘` |
+|---|---|---|
+| 소요 | 86.2초 | 59.6초 |
+| `plan_selected` 이벤트 | 수신. `request_id`·`case_id` 일치 | 수신 |
+| 부모 이력 | `parent_plan_id` 없음(최초) | 1턴 계획을 부모로 기록 |
+| 규칙 결과 | 통과. expansion_ipr 14단계 | 통과 |
+| 조건 유지 | 비발치·`stage_cap` 52·`anterior_first` 유지, 발치 치아 0개 | `lock:[13]` 적용, 비발치·상한·순서 그대로 유지 |
+| 고정 치아 | — | 전 단계에서 13번 변위 0 확인 |
+| 검토 | **2회 시도 후 성공**. 한국어 검토 메모 생성 | **2회 시도 후 실패**, `upstream_503` 저장 |
+| 승인 | 승인 전 다운로드 409 → 승인 200 → 다운로드 200 (17.7MB) | 새 계획이라 승인 초기화(`approval: null`) |
+
+두 턴 모두 검토를 **2회 안에** 끝냈다. 2턴의 `upstream_503`은 NVIDIA 엔드포인트에서 실제로 발생했고,
+상한에서 멈춰 실패 상태를 저장했으며 에이전트는 최종 답변에 `검토 실패 — ... (시도 2회, 오류: upstream_503)`를
+그대로 적었다. 메모를 지어내거나 재호출 루프에 빠지지 않았다.
+이관 기록에서 관측된 무한에 가까운 reviewer 재시도는 재현되지 않았다.
+
+Guardrails 입력 레일은 두 턴 모두 통과했고(`triggered_input_rail: None`) 원격 판정 경로가 실제로 실행됐다.
+1턴에서 NAT의 ReAct 출력 파싱 재시도가 1회 있었으나 같은 턴에서 복구했다.
+
+**관측:** 실제 스트림에는 `intermediate_data` 이벤트가 오지 않아 UI의 인라인 도구 추적이 비어 있다.
+이번 변경으로 생긴 것이 아니라 NAT 스트림 구성의 문제이며 계획·검토·승인 경로에는 영향이 없다.
+
 ### 이번에 실행하지 않은 검사
 
-- NVIDIA NIM 실호출: 변경한 reviewer·워크플로 지시문으로 실제 대화를 재실행하지 않았다.
-  [알려진 문제](KNOWN_ISSUES.md)의 빈 응답·503 관측이 해소됐는지는 확인되지 않았다.
-- Docker 빌드·실행, Linux/macOS 재현, 실제 Guardrails 원격 판정 경로.
-- UI 대화 기반 5개 시나리오 통합 실행과 `scripts/run_scenarios.py` 갱신.
+- Docker 빌드·실행, Linux/macOS에서의 실호출 재현.
+- 브라우저 화면에서의 NIM 대화: 실호출은 UI와 같은 HTTP 경로로 확인했고 화면 조작으로는 확인하지 않았다.
+- 나머지 3개 시나리오(비교·되묻기·규칙 실패)의 실호출과 `scripts/run_scenarios.py` 갱신.
+- 503은 원격 상태에 따라 달라지므로 위 결과가 매 실행의 성공률을 뜻하지 않는다.
 - 재시작 복원·사용자 인증·다중 사용자 격리는 이번 구현 범위가 아니다.
 
 ## 재현 범위

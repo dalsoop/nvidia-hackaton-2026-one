@@ -26,7 +26,7 @@
 - 브라우저는 `uv run --frozen --with playwright python tests/browser_flow.py`.
   설치된 Chrome 또는 `PLAYWRIGHT_CHROMIUM_EXECUTABLE`을 사용한다. three.js CDN 접근이 필요하다.
   모델은 가짜 응답을 사용하고 결과는 추적 제외된 `out/browser-acceptance/`에 둔다.
-- NVIDIA 실제 UI 대화와 원격 503의 재현은 아직 별도 검증이 필요하다.
+- NVIDIA 실호출은 2026-09-25에 `/chat/stream` 2턴으로 확인했다. 결과와 남은 항목은 VERIFICATION에 있다.
 - 재시작 복원·사용자 인증·다중 사용자 격리는 이번 구현 범위가 아니다.
 
 [PR #8](https://github.com/dalsoop/nvidia-hackaton-2026-one/pull/8)의 문서 위치·검증 보고 기준과

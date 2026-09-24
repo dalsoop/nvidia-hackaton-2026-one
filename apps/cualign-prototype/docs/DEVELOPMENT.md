@@ -6,7 +6,7 @@
 ## 처음 받았을 때
 
 1. [아이디어 소개](OVERVIEW.md)와 [PRD](PRD.md)로 문제와 예선 목표를 파악한다.
-2. [README 실행 안내](../README.md)의 키 없는 명령을 실행한다. 기대 결과는 테스트 39개 통과와 moderate 병행안 14단계다.
+2. [README 실행 안내](../README.md)의 키 없는 명령을 실행한다. 기대 결과는 테스트 40개 통과와 moderate 병행안 14단계다.
 3. `uv run cualign serve --host 127.0.0.1`로 UI를 열고 moderate 샘플을 선택한다. 키가 없어도 규칙 기반 버튼으로 3D 단계·다운로드를 살펴볼 수 있다. 대화는 NIM 키가 필요하고 three.js 로딩에는 네트워크가 필요하다.
 4. [TRD](TRD.md)로 계산·상태의 한계를 읽고, [코드 안내](CODE_MAP.md)에서 작업할 모듈을 찾는다.
 5. [알려진 문제](KNOWN_ISSUES.md)와 [검증 기록](VERIFICATION.md)을 보고 아래 작업 후보를 팀 계획으로 구체화한다.

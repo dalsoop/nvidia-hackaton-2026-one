@@ -44,6 +44,11 @@ uv run python scripts/check_wheel.py dist/cualign-0.1.0-py3-none-any.whl
 UI의 three.js CDN 접근이 필요하며 NVIDIA 모델 호출은 하지 않는다. 결과는 out/browser-acceptance/에 기록한다.
 Windows에서 CLI 출력 인코딩 문제가 나면 PYTHONUTF8=1 환경에서 실행한다.
 
+`tests/nim_live_check.py`는 실제 `nat serve`와 NIM으로 `/chat/stream` 2턴을 돌려
+계획 선택 이벤트·조건 유지·검토 결과·승인 게이트를 확인한다. `.env`의 키와 원격 사용량이 필요하고
+Guardrails 원격 판정도 함께 실행된다. 결과는 out/nim-live/에 남으며 키는 출력하지 않는다.
+오프라인 검사에 섞지 말고 실행 결과를 VERIFICATION에 날짜와 함께 남긴다.
+
 ## PR에 남길 정보
 
 변경 이유·범위, 실행한 검증과 결과, 실행하지 못한 검증, 알려진 한계를 적는다.
