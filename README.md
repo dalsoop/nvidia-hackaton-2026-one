@@ -13,7 +13,6 @@
 | 문서 | 무엇을 알 수 있나요? |
 |---|---|
 | [아이디어 소개](docs/OVERVIEW.md) | 스테이징이 무엇인지, 왜 이 문제를 에이전트로 푸는지 |
-| [실제 진료 흐름](docs/CLINICAL_WORKFLOW.md) | 진단·셋업·스테이징·제작의 순서와 cuAlign의 위치 |
 | [PRD](docs/PRD.md) | 사용자·문제·제품 목표·예선 범위·수용 기준 |
 | [TRD](docs/TRD.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
 | [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
@@ -22,7 +21,6 @@
 | [개발 시작 안내](docs/DEVELOPMENT.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
 | [알려진 문제](docs/KNOWN_ISSUES.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |
 | [UI·형상 참고](docs/DESIGN_REFERENCES.md) | 화면·형상 선택에 사용한 관찰과 공개 출처 |
-| [공개 데이터 후보](docs/DATA_CANDIDATES.md) | 팀이 제안한 자료의 용도·라이선스·현재 범위와의 차이 |
 
 ## 예선에서 보여줄 것
 
