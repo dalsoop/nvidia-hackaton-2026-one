@@ -64,7 +64,7 @@ uv run cualign serve --host 127.0.0.1
 Docker 엔진이 실행 중인 환경에서 이 앱 폴더의 추적 파일만 빌드에 전달합니다.
 
 ```sh
-git archive HEAD:apps/cualign-agent | docker build -t cualign:local -
+git archive HEAD:apps/cualign-prototype | docker build -t cualign:local -
 docker run --rm -p 127.0.0.1:8000:8000 --env-file .env cualign:local
 ```
 

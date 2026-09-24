@@ -2,7 +2,7 @@
 
 ## 시작과 검증
 
-Python 3.12·uv를 사용하고 앱 폴더(`apps/cualign-agent/`)에서 실행한다.
+Python 3.12·uv를 사용하고 앱 폴더(`apps/cualign-prototype/`)에서 실행한다.
 
 ```sh
 uv sync --frozen --extra dev
