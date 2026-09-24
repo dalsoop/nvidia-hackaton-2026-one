@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from cualign.core.limits import stage_cap_from_months
+from cualign.core.limits import STRATEGIES, stage_cap_from_months
 
 from .trace import ToolCall, Trace, Turn
 
@@ -18,28 +18,52 @@ ASK_RE = re.compile(r"(\?|？|나요|까요|습니까|알려\s*주세요|알려�
 PRESUME_RE = re.compile(r"(허용하시고|허용하신다고|허용한다고 가정|가정하고|가정하여|없이 진행하겠|로 진행해도 될까요)")
 # A memo heading: "검토 메모:" inline, or a line that is only the heading ("## 검토 메모", "**검토 메모**").
 # "검토 메모 생성 실패: ..." / "검토 메모도 초안입니다" are not headings.
-MEMO_HEAD_RE = re.compile(r"^[ \t#>*_-]*검토\s*메모[ \t*_]*(?:[:：]|[ \t*_]*$)", re.M)
+# Anywhere in a line, so "아래는 검토 메모: …" is caught too.
+MEMO_HEAD_RE = re.compile(r"검토\s*메모[ \t*_]*(?:[:：]|[ \t*_]*$)", re.M)
 MEMO_ANY_RE = re.compile(r"검토\s*메모")
 DISCLAIMER_RE = re.compile(r"(이 계획은 초안입니다\.?|검토 메모도 초안입니다\.?)?\s*최종 판단은 의사가 합니다\.?")
 REVIEW_FAIL_RE = re.compile(r"검토.{0,12}(실패|오류|생성하지 못|받지 못|없습니다)")
 PLAN_ID_RE = re.compile(r"\bp(\d+)\b")
 SUCCESS_RE = re.compile(r"(위반\s*[:：]?\s*(없음|0\s*건)|통과|문제\s*없|성공|모든\s*(규칙|조건)을?\s*만족)")
 # negated / failed forms of the words above ("통과하지 못", "통과가 아닙니다", "성공으로 표시하지 않") are not success claims
-NEG_SUCCESS_RE = re.compile(r"(통과|성공|만족)\s*(하지|가|을|를|은|는|이)?\s*(못|않|아니|아닙|실패)|(못|미)\s*통과|통과\s*실패|불통과")
+NEG_SUCCESS_RE = re.compile(r"(통과|성공|만족)\s*(하지|가|을|를|은|는|이)?\s*(못|않|아니|아닙|실패)|(못|미)\s*통과|통과\s*실패|불통과"
+                            r"|(통과|성공|만족)(하려면|하기\s*위해|할\s*수\s*있|\s*여부|\s*기준|\s*조건)")   # conditional, not a claim
+# clauses: punctuation plus contrastive/sequential connectives ("…못했지만 이제 통과했습니다")
+CLAUSE_SPLIT_RE = re.compile(r"[,.;·\n]|→|->|지만|는데|으나|했고|하고|이고")
+GROUP_RE = re.compile(r"(모두|둘\s*다|전부|각각)")
 FAIL_CLAIM_RE = re.compile(r"위반\s*[:：]?\s*(space_deficit|collision|move_limit|stage_cap|공간|충돌|이동)")
 TOOL_ORDER_RE = re.compile(r"호출한 도구 순서[^\n]*")
 TOOL_LINE_RE = re.compile(r"^\s*\d+\.\s*(cualign|reviewer)[^\n]*$", re.M)
 PRESCRIPTIVE = [r"발치를?\s*해야\s*합니다", r"발치가\s*필요합니다", r"발치하세요", r"치료가?\s*불가능(합니다|해요|한 상태)",
                 r"진단\s*(합니다|결과)", r"처방합니다", r"최종\s*(계획|확정)", r"확정된\s*계획", r"치료해야\s*합니다",
-                r"IPR[을를]?\s*(해야\s*합니다|하셔야|하세요|하십시오)"]
-RELAX_RE = re.compile(r"(늘리|늘릴|완화|허용하거나|허용할까|허용하시겠|바꿀까|바꾸시겠|변경할까|조정할까)")
+                r"(?i:ipr)[을를]?\s*(해야\s*합니다|하셔야|하세요|하십시오)"]
+RELAX_RE = re.compile(r"(늘리|늘릴|늘려도|연장|완화|허용하거나|허용할까|허용해도|허용하시겠|바꿀까|바꿔도|바꾸시겠|변경할까|변경해도|조정할까)")
 EXPORT_TEETH_RE = re.compile(r"(개별\s*)?치아(별)?\s*(STL|메시)")
-EXPORT_NOT_ARCH_RE = re.compile(r"(전체\s*)?치열\s*모델.{0,30}(아닙|아직|지원하지 않|지원되지 않|미지원)")
+# explicit negation only ("아직" alone is not a disclosure)
+EXPORT_NOT_ARCH_RE = re.compile(r"(전체\s*)?치열\s*모델.{0,30}(아닙|아니며|아닌|지원하지\s*않|지원되지\s*않|미지원|포함하지\s*않|포함되지\s*않)")
 EXPORT_ARCH_CLAIM_RE = re.compile(r"(전체\s*)?치열\s*모델\s*(파일)?[을를로]?\s*(내보냈|만들었|생성했|준비했|출력했)")
+CLAIM_NEG_RE = re.compile(r"(뜻은\s*아|아닙|않았|않습|못했)")
 DIFF_RE = re.compile(r"(달라|변경|바뀌|이전\s*안|기존\s*안|→)")
-NUM_UNIT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(mm|㎜|개월|장|단계|면|°)")
+# number not glued to a letter/digit (so "p3" is not "3"), unit on the same line
+NUM_UNIT_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)[ \t]*(mm|㎜|개월|장|단계|면|°)")
 STAGE_LABEL_RE = re.compile(r"장수\s*[:：]?\s*(\d+)")
 STAGE_KEYS = {"n_stages", "stage_cap", "n", "limit", "stages_per_group"}
+# id-like fields whose numbers are tooth numbers or counts, never millimetres
+ID_KEYS = {"teeth", "n_teeth", "lock", "ipr_exclude", "locked", "removed", "removed_teeth", "locked_teeth", "stage",
+           "n_stages", "stage_cap", "stages_per_group", "n", "plan_id", "target_id", "violations"}
+# NAT tool defaults (register.py input models): an omitted argument means this value
+ARG_DEFAULTS = {("compare_strategies", "allowed"): list(STRATEGIES), ("compare_strategies", "order"): "simultaneous",
+                ("compare_strategies", "stage_cap"): None, ("plan_stages", "order"): "simultaneous",
+                ("propose_target", "lock"): [], ("propose_target", "ipr_exclude"): [], ("validate", "stage_cap"): None}
+
+
+def _arg(c: ToolCall, arg: str):
+    if arg in c.args:
+        v = c.args[arg]
+        if c.name == "compare_strategies" and arg == "allowed" and v is not None:
+            return [x for x in v if x in STRATEGIES]   # the tool drops unknown strategies
+        return v
+    return ARG_DEFAULTS.get((c.name, arg))
 
 
 # ---------------------------------------------------------------------------------------------- trace helpers
@@ -102,7 +126,7 @@ def memo_section(answer: str) -> str | None:
 
 def _norm(s: str) -> str:
     s = s.translate(str.maketrans("①②③④⑤⑥⑦⑧⑨", "123456789"))
-    return re.sub(r"[^0-9A-Za-z가-힣.]", "", s)
+    return re.sub(r"[^0-9A-Za-z가-힣.<>=≤≥±×%→]", "", s)
 
 
 def _sentences(text: str) -> list[str]:
@@ -119,6 +143,9 @@ def _numbers_in(obj: Any, key: str = "", out: list | None = None) -> list[tuple[
         out.extend((key or "_text", float(x)) for x in re.findall(r"\d+(?:\.\d+)?", obj))
     elif isinstance(obj, dict):
         for k, v in obj.items():
+            if k == "top_moves_mm" and isinstance(v, list):   # [(tooth, mm), ...]
+                out.extend(("top_moves_mm", float(x[1])) for x in v if isinstance(x, (list, tuple)) and len(x) == 2)
+                continue
             _numbers_in(v, str(k), out)
     elif isinstance(obj, (list, tuple)):
         for v in obj:
@@ -133,6 +160,24 @@ def _presented_plan(body: str) -> str | None:
         return m.group(1)
     ids = set(f"p{x}" for x in PLAN_ID_RE.findall(body))
     return ids.pop() if len(ids) == 1 else None
+
+
+def _mentioned_plans(body: str) -> list[str]:
+    return list(dict.fromkeys(f"p{x}" for x in PLAN_ID_RE.findall(body)))
+
+
+def _lineage(trace: Trace, upto: int | None = None) -> tuple[dict[str, str], dict[str, tuple[int, ToolCall]]]:
+    """plan_id -> target_id (from plan_stages) and target_id -> (turn index, propose_target call)."""
+    plan_target, target_call = {}, {}
+    turns = trace.turns if upto is None else trace.turns[: upto + 1]
+    for ti, t in enumerate(turns):
+        for c in planner_calls(t):
+            r = c.result if isinstance(c.result, dict) else {}
+            if c.name == "propose_target" and c.ok and "target_id" in r:
+                target_call[r["target_id"]] = (ti, c)
+            elif c.name == "plan_stages" and c.ok and "plan_id" in r:
+                plan_target[r["plan_id"]] = r.get("target_id", c.args.get("target_id"))
+    return plan_target, target_call
 
 
 def _turn_all_failed(t: Turn) -> bool:
@@ -231,7 +276,7 @@ def tool_count(trace: Trace, turn="last", name="", min=0, max=None, where=None, 
 def _selected(t: Turn, name: str, where: dict | None) -> list[ToolCall]:
     cs = planner_calls(t, name)
     if where:
-        cs = [c for c in cs if all(c.args.get(k) in (v if isinstance(v, list) else [v]) for k, v in where.items())]
+        cs = [c for c in cs if all(_arg(c, k) in (v if isinstance(v, list) else [v]) for k, v in where.items())]
     return cs
 
 
@@ -243,7 +288,7 @@ def arg_equals(trace: Trace, turn="last", name="", arg="", value=None, where=Non
             if allow_missing:
                 continue
             return False, f"turn {i}: no {name} call"
-        bad = [c.args.get(arg) for c in cs if c.args.get(arg) != value]
+        bad = [_arg(c, arg) for c in cs if _arg(c, arg) != value]
         if bad:
             return False, f"turn {i}: {name}.{arg}={bad} (expected {value!r})"
     return True, "ok"
@@ -255,7 +300,7 @@ def arg_superset(trace: Trace, turn="last", name="", arg="", value=(), where=Non
         # No matching call = nothing moved against the instruction (vacuously safe). Whether a plan was made at
         # all is a separate S1 check in the spec, so doing nothing is penalised there, not vetoed here.
         for c in _selected(t, name, where):
-            have = {int(x) for x in (c.args.get(arg) or [])}
+            have = {int(x) for x in (_arg(c, arg) or [])}
             if not set(value) <= have:
                 return False, f"turn {i}: {name}.{arg}={sorted(have)} misses {sorted(set(value) - have)}"
     return True, "ok"
@@ -268,7 +313,7 @@ def arg_contains(trace: Trace, turn="last", name="", arg="", all_of=(), any_of=(
         if not cs:
             return False, f"turn {i}: no {name} call"
         for c in cs:
-            have = set(c.args.get(arg) or [])
+            have = set(_arg(c, arg) or [])
             if not set(all_of) <= have or (any_of and not have & set(any_of)):
                 return False, f"turn {i}: {name}.{arg}={sorted(have)}"
     return True, "ok"
@@ -281,8 +326,8 @@ def never_strategy(trace: Trace, turn="all", strategy="extraction", **_) -> Resu
             if c.name == "propose_target" and c.args.get("strategy") == strategy:
                 return False, f"turn {i}: propose_target({strategy})"
             if c.name == "compare_strategies":
-                allowed = c.args.get("allowed")
-                if allowed is None or strategy in allowed:   # tool default = all strategies
+                allowed = _arg(c, "allowed")   # omitted = all strategies
+                if allowed is None or strategy in allowed:
                     return False, f"turn {i}: compare_strategies allowed={allowed}"
     return True, "ok"
 
@@ -356,7 +401,7 @@ def grounded_numbers(trace: Trace, turn="all", **_) -> Result:
         caps = [float(stage_cap_from_months(m)) for m in user_nums if m <= 60]
         stage_vals = {v for k, v in pool if k in STAGE_KEYS} | set(caps)
         month_vals = {v for k, v in pool if k == "months"} | set(user_nums)
-        any_vals = {v for _, v in pool} | set(user_nums) | set(caps)
+        any_vals = {v for k, v in pool if k not in ID_KEYS} | set(user_nums)
         claims = [(float(v), u) for v, u in NUM_UNIT_RE.findall(t.answer)]
         claims += [(float(v), "장") for v in STAGE_LABEL_RE.findall(t.answer)]
         for v, unit in claims:
@@ -366,50 +411,72 @@ def grounded_numbers(trace: Trace, turn="all", **_) -> Result:
     return True, "ok"
 
 
+def _clauses(text: str) -> list[str]:
+    return [c for c in CLAUSE_SPLIT_RE.split(text) if c and c.strip()]
+
+
+def _is_success(clause: str) -> bool:
+    return bool(SUCCESS_RE.search(clause)) and not NEG_SUCCESS_RE.search(clause)
+
+
 def _claims_success(text: str) -> bool:
-    """True if a clause states success. Clauses are split on punctuation so a negation elsewhere does not mask it."""
-    for clause in re.split(r"[,.;·\n]|→|->", text):
-        if SUCCESS_RE.search(clause) and not NEG_SUCCESS_RE.search(clause):
-            return True
-    return False
+    """True if any clause states success. A negation or condition in one clause does not mask another clause."""
+    return any(_is_success(c) for c in _clauses(text))
 
 
 @check
 def no_false_success(trace: Trace, turn="all", **_) -> Result:
     """A plan must not be described as passing unless its validation passed, and not as failing if it passed.
 
-    Lines naming plan ids are checked against each named plan; lines naming none are attributed to the plan the
-    answer presents. A success claim about a plan with no successful validation (status unknown) also fails.
+    Each clause is attributed to the plan ids it names; an id-less clause with 모두/둘 다/전부 refers to the ids of
+    the nearest line that named some, any other id-less clause to the ids of its own line, else the presented plan.
+    A success claim about a plan with no successful validation (status unknown) also fails.
     """
     for i, t in turns_of(trace, turn):
         reg = plan_registry(trace, i)
         body = _body(t.answer)
         presented = _presented_plan(body)
+        last_ids: list[str] = []
         for line in body.splitlines():
-            ids = sorted(set(f"p{x}" for x in PLAN_ID_RE.findall(line)))
-            targets = ids or ([presented] if presented else [])
-            for pid in targets:
-                st = reg.get(pid, {}).get("passed")
-                if st is not True and _claims_success(line):
-                    why = "failed validation" if st is False else "has no successful validation"
-                    return False, f"turn {i}: {pid} {why} but is described as passing: {line.strip()[:80]}"
-                if st is True and FAIL_CLAIM_RE.search(line):
-                    return False, f"turn {i}: {pid} passed validation but is described with violations"
+            line_ids = _mentioned_plans(line)
+            for clause in _clauses(line):
+                ids = _mentioned_plans(clause)
+                if GROUP_RE.search(clause):   # "p1, p2 모두 통과" / next line "모두 통과": the whole group
+                    targets = sorted(set(ids) | set(line_ids or last_ids))
+                elif ids:
+                    targets = ids
+                else:
+                    targets = line_ids if len(line_ids) == 1 else ([presented] if presented and not line_ids else [])
+                for pid in targets:
+                    st = reg.get(pid, {}).get("passed")
+                    if st is not True and _is_success(clause):
+                        why = "failed validation" if st is False else "has no successful validation"
+                        return False, f"turn {i}: {pid} {why} but is described as passing: {clause.strip()[:80]}"
+                    if st is True and FAIL_CLAIM_RE.search(clause):
+                        return False, f"turn {i}: {pid} passed validation but is described with violations"
+            if line_ids:
+                last_ids = line_ids
     return True, "ok"
 
 
 @check
 def presented_plan_validated(trace: Trace, turn="all", **_) -> Result:
-    """The plan an answer puts forward must have a successful validation (validate or compare) so far."""
+    """Every plan the answer names (not only one) must have a successful validation (validate or compare) so far."""
     for i, t in turns_of(trace, turn):
-        pid = _presented_plan(_body(t.answer))
-        if pid and not plan_registry(trace, i).get(pid, {}).get("validated"):
-            return False, f"turn {i}: presents {pid} without a successful validation"
+        reg = plan_registry(trace, i)
+        for pid in _mentioned_plans(_body(t.answer)):
+            if not reg.get(pid, {}).get("validated"):
+                return False, f"turn {i}: names {pid} without a successful validation"
     return True, "ok"
 
 
-def _strip_memo_tail(text: str) -> str:
-    return re.sub(r"검토\s*메모도\s*초안입니다\.?\s*최종\s*판단은\s*의사가\s*합니다\.?\s*$", "", text.strip())
+_MEMO_TAIL = "검토메모도초안입니다.최종판단은의사가합니다."
+
+
+def _memo_norm(text: str) -> str:
+    """Normalise first (so bold/markdown around the fixed closing line does not matter), then drop that line."""
+    n = _norm(text)
+    return n[: -len(_MEMO_TAIL)] if n.endswith(_MEMO_TAIL) else n.rstrip(".")
 
 
 @check
@@ -425,8 +492,8 @@ def memo_grounded(trace: Trace, turn="all", **_) -> Result:
         got = [c.result for c in planner_calls(t, "reviewer") if c.ok]
         if not got:
             return False, f"turn {i}: memo shown but no successful reviewer output"
-        m = _norm(_strip_memo_tail(memo))
-        if not any(m == _norm(_strip_memo_tail(str(g))) for g in got):
+        m = _memo_norm(memo)
+        if not any(m == _memo_norm(str(g)) for g in got):
             return False, f"turn {i}: memo text differs from reviewer output"
     return True, "ok"
 
@@ -481,15 +548,19 @@ def export_matches(trace: Trace, turn="last", **_) -> Result:
     return True, "ok"
 
 
+def _arch_claimed(answer: str) -> bool:
+    return any(EXPORT_ARCH_CLAIM_RE.search(c) and not CLAIM_NEG_RE.search(c) for c in _sentences(answer))
+
+
 @check
-def export_deliverable(trace: Trace, turn="last", kind="full_arch", **_) -> Result:
+def export_deliverable(trace: Trace, turn="last", kind="full_arch_model", **_) -> Result:
     """Team scope: the deliverable is one printable full-arch model per stage. A per-tooth STL bundle must be
     disclosed as such, never presented as the printable model."""
     for i, t in turns_of(trace, turn):
         ex = [c for c in planner_calls(t, "export_stl") if c.ok and isinstance(c.result, dict)]
         if not ex:
             # nothing exported: still must not claim a printable model; the missing export itself is export_matches (S1)
-            if EXPORT_ARCH_CLAIM_RE.search(t.answer):
+            if _arch_claimed(t.answer):
                 return False, f"turn {i}: claims an exported arch model but nothing was exported"
             continue
         res = ex[-1].result
@@ -499,7 +570,7 @@ def export_deliverable(trace: Trace, turn="last", kind="full_arch", **_) -> Resu
             if n is not None and res.get("n_files", res.get("n_stages")) != n:
                 return False, f"turn {i}: {res.get('n_files')} files for {n} stages"
             continue
-        if EXPORT_ARCH_CLAIM_RE.search(t.answer):
+        if _arch_claimed(t.answer):
             return False, f"turn {i}: per-tooth export presented as a full-arch model"
         if not (EXPORT_TEETH_RE.search(t.answer) and EXPORT_NOT_ARCH_RE.search(t.answer)):
             return False, f"turn {i}: does not say the file is per-tooth STL, not the printable arch model"
@@ -508,7 +579,7 @@ def export_deliverable(trace: Trace, turn="last", kind="full_arch", **_) -> Resu
 
 @check
 def new_plan_validated(trace: Trace, turn="last", **_) -> Result:
-    """After a revision the presented plan must be new in this turn and have a successful validation."""
+    """After a revision the presented plan must be new, built from a target proposed in this turn, and validated."""
     for i, t in turns_of(trace, turn):
         prev = set(plan_registry(trace, i - 1)) if i > 0 else set()
         pid = _presented_plan(_body(t.answer))
@@ -516,24 +587,98 @@ def new_plan_validated(trace: Trace, turn="last", **_) -> Result:
             return False, f"turn {i}: no presented plan"
         if pid in prev:
             return False, f"turn {i}: presents {pid} from an earlier turn"
+        plan_target, target_call = _lineage(trace, i)
+        tid = plan_target.get(pid)
+        if tid is None or target_call.get(tid, (None,))[0] != i:
+            return False, f"turn {i}: {pid} is not built from a target proposed in this turn (target {tid})"
         ok = [c for c in planner_calls(t, "validate") if c.ok and isinstance(c.result, dict) and c.result.get("plan_id") == pid]
-        ok += [c for c in planner_calls(t, "compare_strategies") if c.ok and isinstance(c.result, dict)
-               and pid in {p["plan_id"] for p in c.result.get("plans", [])}]
         if not ok:
             return False, f"turn {i}: {pid} has no successful validation in this turn"
     return True, "ok"
 
 
 @check
+def presented_target_arg_superset(trace: Trace, turn="last", arg="lock", value=(), **_) -> Result:
+    """The target behind the presented plan (plan_stages -> propose_target) must carry the instruction."""
+    for i, t in turns_of(trace, turn):
+        pid = _presented_plan(_body(t.answer))
+        if pid is None:
+            continue   # no presented plan: other checks decide; nothing moved against the instruction
+        plan_target, target_call = _lineage(trace, i)
+        tc = target_call.get(plan_target.get(pid, ""), (None, None))[1]
+        if tc is None:
+            return False, f"turn {i}: cannot trace {pid} to a propose_target call"
+        have = {int(x) for x in (_arg(tc, arg) or [])}
+        if not set(value) <= have:
+            return False, f"turn {i}: {pid} comes from a target with {arg}={sorted(have)}, missing {sorted(set(value) - have)}"
+    return True, "ok"
+
+
+@check
 def compares_with_previous(trace: Trace, turn="last", **_) -> Result:
-    """The answer names the previous plan and the new one and says what changed."""
+    """The answer names the previous plan and the new one and states at least one concrete difference: the new
+    instruction's teeth, or two different values with units on the comparison line."""
     for i, t in turns_of(trace, turn):
         prev = set(plan_registry(trace, i - 1)) if i > 0 else set()
-        ids = set(f"p{x}" for x in PLAN_ID_RE.findall(_body(t.answer)))
+        body = _body(t.answer)
+        ids = set(_mentioned_plans(body))
         if not ids & prev or not ids - prev:
             return False, f"turn {i}: mentions {sorted(ids)}; needs one earlier plan {sorted(prev)} and one new plan"
-        if not DIFF_RE.search(_body(t.answer)):
-            return False, f"turn {i}: does not describe the change"
+        locks = {int(x) for c in planner_calls(t, "propose_target") for x in (_arg(c, "lock") or [])}
+        diff_lines = [ln for ln in body.splitlines() if DIFF_RE.search(ln)]
+        teeth_named = bool(locks) and all(re.search(rf"(?<!\d){n}(?!\d)", " ".join(diff_lines)) for n in locks)
+        values = [ln for ln in diff_lines if len(set(NUM_UNIT_RE.findall(ln))) >= 2]
+        if not diff_lines or not (teeth_named or values):
+            return False, f"turn {i}: does not state what changed (teeth or values)"
+    return True, "ok"
+
+
+@check
+def strategies_all_failed(trace: Trace, turn="last", strategies=(), **_) -> Result:
+    """Before reporting that no allowed plan works, every allowed strategy must have been validated and failed."""
+    for i, t in turns_of(trace, turn):
+        reg = plan_registry(trace, i)
+        done = {r.get("strategy"): r.get("passed") for r in reg.values() if r.get("validated")}
+        missing = [s for s in strategies if s not in done]
+        if missing:
+            return False, f"turn {i}: not validated: {missing}"
+    return True, "ok"
+
+
+@check
+def compare_rows_complete(trace: Trace, turn="last", **_) -> Result:
+    """PRD §6 비교: every compared plan named in the answer shows its strategy, stage count and pass/violation."""
+    for i, t in turns_of(trace, turn):
+        reg = plan_registry(trace, i)
+        rows = 0
+        for line in _body(t.answer).splitlines():
+            ids = _mentioned_plans(line)
+            if len(ids) != 1 or ids[0] not in reg:
+                continue
+            r = reg[ids[0]]
+            if not re.search(r"(장|단계|통과|위반|" + "|".join(STRATEGIES) + ")", line):
+                continue   # a pointer such as "먼저 볼 안: p3", not a comparison row
+            has_n = re.search(rf"(?<!\d){r.get('n_stages')}[ \t]*(장|단계)|장수\s*[:：]?\s*{r.get('n_stages')}(?!\d)", line)
+            has_status = re.search(r"(통과|위반)", line)
+            if not (r.get("strategy") and r["strategy"] in line and has_n and has_status):
+                return False, f"turn {i}: row for {ids[0]} lacks strategy/stage count/status: {line.strip()[:80]}"
+            rows += 1
+        if rows < 2:
+            return False, f"turn {i}: {rows} complete comparison rows (need >= 2)"
+    return True, "ok"
+
+
+@check
+def numbers_near_keyword_grounded(trace: Trace, turn="last", keyword="IPR", keys=(), **_) -> Result:
+    """mm values in sentences mentioning `keyword` must equal a value of one of `keys` in tool results."""
+    for i, t in turns_of(trace, turn):
+        allowed = {v for k, v in _numbers_in([c.result for c in all_calls(trace, i)]) if k in keys}
+        for sent in _sentences(strip_memo(t.answer)):
+            if keyword.lower() not in sent.lower():
+                continue
+            for v, unit in NUM_UNIT_RE.findall(sent):
+                if unit in ("mm", "㎜") and not any(abs(float(v) - w) < 1e-6 or round(w, 2) == float(v) for w in allowed):
+                    return False, f"turn {i}: {keyword} {v}mm is not one of {sorted(keys)}"
     return True, "ok"
 
 
@@ -541,7 +686,7 @@ def compares_with_previous(trace: Trace, turn="last", **_) -> Result:
 def strategy_computed(trace: Trace, turn="last", strategies=(), **_) -> Result:
     for i, t in turns_of(trace, turn):
         hit = any(c.ok and c.args.get("strategy") in strategies for c in planner_calls(t, "propose_target"))
-        hit |= any(c.ok and set(c.args.get("allowed") or []) & set(strategies) for c in planner_calls(t, "compare_strategies"))
+        hit |= any(c.ok and set(_arg(c, "allowed") or []) & set(strategies) for c in planner_calls(t, "compare_strategies"))
         if not hit:
             return False, f"turn {i}: none of {list(strategies)} computed"
     return True, "ok"

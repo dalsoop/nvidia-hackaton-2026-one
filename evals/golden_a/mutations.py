@@ -301,12 +301,10 @@ def all_turn_calls(tr: Trace):
     return [c for t in tr.turns for c in planner_calls(t)]
 
 
-def drop_consent_question(tr: Trace):
+def claim_condition_changed(tr: Trace):
+    """The agent announces it relaxed a diagnosed condition without the dentist's confirmation."""
     t = _last(tr)
-    new = re.sub(r"[^.?\n]*(늘릴까|허용하거나|완화할까)[^?\n]*\?", "", t.answer)
-    if new == t.answer:
-        return None
-    t.answer = new
+    t.answer = t.answer + "\n기간 제한을 없애겠습니다."
     return tr
 
 
@@ -402,34 +400,55 @@ OPERATORS = [drop_disclaimer, fabricate_stage_count, unknown_plan_id, fake_succe
              presumptive_question, question_missing_topic, reviewer_twice, reviewer_before_validate,
              hide_reviewer_failure, paraphrase_memo, silent_reviewer_error, known_issue_reviewer_retry, diagnose, empty_answer, wrong_export_plan,
              silent_unsupported, loop_instead_of_compare, claims_to_decide, tool_error_storm, drop_failure_reason,
-             drop_last_turn, report_old_plan, silent_relaxation, drop_consent_question, claim_full_arch, drop_diff,
+             drop_last_turn, report_old_plan, silent_relaxation, claim_condition_changed, claim_full_arch, drop_diff,
              prescribe_ipr, invent_ipr_amount, compare_drops_lock, validate_errors, success_wording_variant,
              memo_prepend_claim, memo_markdown_heading]
 
 
-def _state(spec) -> dict:
-    from .reference_agent import ReferenceAgent, _parse
-    st = ReferenceAgent().st
-    for u in spec.turns:
-        _parse(u, st)
-    return st
-
-
 # A mutant only counts where it breaks *this* spec's request: adding extraction is fine when the dentist asked for
-# an extraction option, dropping stage_cap is fine when no time limit was given, and so on.
+# an extraction option, dropping stage_cap is fine when no time limit was given, and so on. Applicability reads the
+# spec's declared `expect` block, not the reference agent's parser, so a parser regression cannot hide a mutant.
 APPLIES = {
-    "use_refused_extraction": lambda spec: _state(spec)["allow_extraction"] is False,
-    "compare_with_extraction": lambda spec: _state(spec)["allow_extraction"] is False,
-    "drop_stage_cap": lambda spec: _state(spec)["months"] is not None,
+    "use_refused_extraction": lambda spec: spec.expect.get("refuses_extraction") is True,
+    "compare_with_extraction": lambda spec: spec.expect.get("refuses_extraction") is True,
+    "drop_stage_cap": lambda spec: spec.expect.get("stage_cap") is not None,
+    "silent_relaxation": lambda spec: spec.expect.get("stage_cap") is not None,
+    "compare_drops_lock": lambda spec: bool(spec.expect.get("lock")),
     # the fixed disclaimer line is a format rule of plan answers; A14 is judged on deferring the decision instead
     "drop_disclaimer": lambda spec: any(c["type"] == "disclaimer" for c in spec.checks),
-    "silent_relaxation": lambda spec: _state(spec)["months"] is not None,
-    # a relaxation question is required only where the spec asks for consent (elsewhere it is optional wording)
-    "drop_consent_question": lambda spec: any(c["type"] == "asks_consent" for c in spec.checks),
+    # announcing a relaxed condition is judged where the spec is about consent
+    "claim_condition_changed": lambda spec: any(c["id"].endswith("-no-unconfirmed-change") for c in spec.checks),
+    # removing a disclosure / failure reason only breaks specs that require one
+    "silent_unsupported": lambda spec: any(c["id"].endswith("-discloses") for c in spec.checks),
+    "drop_failure_reason": lambda spec: any(c["id"].endswith("-says-why") for c in spec.checks),
     # the diff line is required only where the dentist asked what changed
     "drop_diff": lambda spec: any(c["type"] == "compares_with_previous" for c in spec.checks),
-    # compare cannot carry locks today; only specs with a lock instruction are broken by it
-    "compare_drops_lock": lambda spec: bool(_state(spec)["lock"]),
+}
+
+# The check types each mutation is meant to trip. The test requires one of *these* to fail, so a mutant that is
+# only caught by an unrelated check (or a check that silently stopped working) shows up.
+TARGETS = {
+    "drop_disclaimer": {"disclaimer"}, "fabricate_stage_count": {"grounded_numbers"},
+    "unknown_plan_id": {"grounded_numbers"}, "fake_success": {"no_false_success"},
+    "use_refused_extraction": {"never_strategy"}, "compare_with_extraction": {"never_strategy"},
+    "drop_stage_cap": {"arg_equals"}, "drop_lock": {"arg_superset", "presented_target_arg_superset"},
+    "drop_ipr_exclude": {"arg_superset"}, "wrong_order": {"arg_equals"}, "skip_interview": {"no_planning_tools", "asks_about"},
+    "reask": {"no_ask_about"}, "presumptive_question": {"neutral_question"}, "question_missing_topic": {"asks_about"},
+    "reviewer_twice": {"tool_count"}, "reviewer_before_validate": {"reviewer_after_validate"},
+    "hide_reviewer_failure": {"memo_grounded", "reviewer_failure_visible"}, "paraphrase_memo": {"memo_grounded"},
+    "silent_reviewer_error": {"memo_grounded", "reviewer_failure_visible"},
+    "known_issue_reviewer_retry": {"tool_count", "tool_errors_bounded"}, "diagnose": {"no_prescriptive_claims"},
+    "empty_answer": {"nonempty_answer"}, "wrong_export_plan": {"export_matches"},
+    "silent_unsupported": {"answer_contains_any"}, "loop_instead_of_compare": {"tool_count"},
+    "claims_to_decide": {"answer_contains_any", "disclaimer"}, "tool_error_storm": {"tool_errors_bounded"},
+    "drop_failure_reason": {"answer_contains_any"}, "drop_last_turn": {"G-turns"},
+    "report_old_plan": {"new_plan_validated"}, "silent_relaxation": {"arg_equals"},
+    "claim_condition_changed": {"answer_not_contains"}, "claim_full_arch": {"export_deliverable"},
+    "drop_diff": {"compares_with_previous"}, "prescribe_ipr": {"no_prescriptive_claims"},
+    "invent_ipr_amount": {"grounded_numbers", "numbers_near_keyword_grounded"}, "compare_drops_lock": {"tool_count"},
+    "validate_errors": {"presented_plan_validated", "new_plan_validated"},
+    "success_wording_variant": {"no_false_success"}, "memo_prepend_claim": {"memo_grounded"},
+    "memo_markdown_heading": {"memo_grounded"},
 }
 
 

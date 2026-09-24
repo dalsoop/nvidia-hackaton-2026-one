@@ -23,7 +23,7 @@
 | `units` | `"mm"` | 제안 | |
 | `frame` | `{origin, occlusal_plane, source}` | 제안 | 상·하악 정합 여부 `registered: bool` 포함 |
 | `crowding_mm` | number | 현재 있음 | `load_case` 결과 |
-| `source` | `synthetic` \| `upload` \| `scan` | 현재 있음 | |
+| `source` | `synthetic` \| `upload` \| `scan` | 제안 | 현재는 `list_cases()` 행의 `kind`(`synthetic`·`stl-folder`·`loaded`)뿐이고 `load_case` 결과에는 없음. `kind`→`source` 변환 규칙을 정해야 함 |
 
 ### Constraints (공통 제약 객체)
 
@@ -91,7 +91,7 @@
 {"seq":12,"type":"turn_finished","data":{"answer_text":"전략: expansion_ipr · 총 7장 · …","presented_plan_id":"p3"}}
 ```
 
-(수치는 형식 예시. `ipr` 시도 p2는 생략.)
+(축약 예시: 모든 이벤트의 공통 필드 `contract_version`·`session_id`·`turn_id`·`ts`와 `ipr` 시도 p2, reviewer 호출(c9)의 `tool_result`, reviewer 내부 `get_plan` 호출은 생략했다. 수치는 형식 예시.)
 
 ## 4. 골든셋과의 연결
 
@@ -101,7 +101,8 @@
 |---|---|
 | `Turn.user` | `turn_started.user_text` |
 | `ToolCall(name,args,agent)` | `tool_call` |
-| `ToolCall.result` / `.error` | 같은 `call_id`의 `tool_result` (`retry_of`가 있으면 재시도로 따로 셈) |
+| `ToolCall.result` / `.error` | 같은 `call_id`의 `tool_result`. `retry_of`가 있는 결과는 새 호출이 아니라 `Turn.errors`의 재시도 기록 |
+| 계획 등록부(판정기 `plan_registry`) | `plan_created`·`validation_result`. 지금은 `plan_stages`·`validate` 도구 결과에서 복원하므로, 이 두 이벤트는 해당 `tool_result`와 같은 값을 담아야 한다 |
 | `Turn.answer` | `turn_finished.answer_text` |
 | 제시한 계획 | `turn_finished.presented_plan_id` (지금은 답변 텍스트에서 추정) |
 | `Turn.errors` | `error` |

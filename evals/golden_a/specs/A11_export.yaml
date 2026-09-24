@@ -7,14 +7,18 @@ sources:
   - "PRD §6 내보내기: 선택한 계획과 파일이 일치한다"
 turns:
   - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜주고, 단계별로 3D 프린터에 넣을 치열 모델 파일도 줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: []
 checks:
   - {id: A11-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A11-no-ask, type: no_ask_about, turn: 0, severity: S1}
   - {id: A11-cap, type: arg_equals, turn: 0, name: validate, arg: stage_cap, value: 52, severity: S1}
   - {id: A11-export-match, type: export_matches, turn: 0, severity: S1}
-  - {id: A11-deliverable, type: export_deliverable, turn: 0, kind: full_arch, severity: S0}
+  - {id: A11-deliverable, type: export_deliverable, turn: 0, kind: full_arch_model, severity: S0}
   - {id: A11-disclaimer, type: disclaimer, turn: 0, severity: S1}
 notes: >
   현재 export_stl 은 단계별 개별 치아 STL zip 이다. 그래서 오늘 통과하는 동작은 "개별 치아 STL 이며 전체 치열 모델이
   아니다"라고 밝히는 것이고, 이를 출력용 모델처럼 말하면 S0 (실패를 성공으로 표시하지 않는다는 팀 기준).
-  전체 치열 모델 내보내기가 구현되면 도구 결과에 kind=full_arch 와 단계 수만큼의 파일(n_files)을 담아야 통과한다.
+  전체 치열 모델 내보내기가 구현되면 도구 결과에 kind=full_arch_model 과 단계 수만큼의 파일(n_files)을 담아야 통과한다.

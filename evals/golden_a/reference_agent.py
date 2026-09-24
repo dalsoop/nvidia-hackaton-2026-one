@@ -75,6 +75,7 @@ class Tools:
 
     def compare_strategies(self, allowed, stage_cap, order):
         cid, case = self.store.load_case(None)
+        allowed = [s for s in allowed if s in L.STRATEGIES]   # register.py drops unknown strategies
         rows = planner.compare_strategies(case, allowed=allowed, stage_cap=stage_cap, order=order)
         out = []
         for r in rows:

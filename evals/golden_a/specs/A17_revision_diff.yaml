@@ -8,11 +8,16 @@ sources:
 turns:
   - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘."
   - "3번과 14번은 움직이지 말고 다시 짜서, 이전 안과 뭐가 달라졌는지 알려줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: [3, 14]
 checks:
   - {id: A17-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A17-no-reask, type: no_ask_about, turn: 1, severity: S1}
   - {id: A17-replanned, type: tool_count, turn: 1, name: propose_target, min: 1, severity: S1}
   - {id: A17-lock, type: arg_superset, turn: 1, name: propose_target, arg: lock, value: [3, 14], severity: S0}
+  - {id: A17-presented-lock, type: presented_target_arg_superset, turn: 1, arg: lock, value: [3, 14], severity: S0}
   - {id: A17-no-compare, type: tool_count, turn: 1, name: compare_strategies, max: 0, severity: S0}
   - {id: A17-cap-kept, type: arg_equals, turn: 1, name: validate, arg: stage_cap, value: 52, severity: S1}
   - {id: A17-new-plan, type: new_plan_validated, turn: 1, severity: S1}

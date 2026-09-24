@@ -67,6 +67,7 @@ class Spec:
     fault_injection: dict = field(default_factory=dict)
     reviewed_by: list[str] = field(default_factory=list)
     overrides: dict = field(default_factory=dict)   # {global check id: {param: value}}
+    expect: dict = field(default_factory=dict)      # declared reading of the request (refuses_extraction, stage_cap, lock)
     notes: str = ""
 
     @property
@@ -94,6 +95,8 @@ def lint(specs: dict[str, Spec]) -> list[str]:
             errs.append(f"{s.id}: no sources")
         if not s.turns:
             errs.append(f"{s.id}: no turns")
+        if set(s.expect) != {"refuses_extraction", "stage_cap", "lock"}:
+            errs.append(f"{s.id}: expect must declare refuses_extraction, stage_cap, lock")
         for gid in s.overrides:
             if gid not in {g["id"] for g in GLOBAL_CHECKS}:
                 errs.append(f"{s.id}: override for unknown global check {gid}")

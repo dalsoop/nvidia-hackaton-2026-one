@@ -6,6 +6,10 @@ sources:
   - "src/cualign/core/limits.py: rotation not enforced (translation-only staging)"
 turns:
   - "moderate 케이스, 발치 없이 기간 제한 없이. 8번 치아 20도 회전도 같이 풀어줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: null
+  lock: []
 checks:
   - id: A13-discloses
     type: answer_contains_any

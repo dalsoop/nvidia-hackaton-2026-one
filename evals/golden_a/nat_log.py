@@ -67,8 +67,8 @@ def parse_nat_log(path: str | Path, spec_id: str | None = None) -> Trace:
             continue
         m = re.search(r"Tool call attempt \d+/\d+ failed for tool (\S+?):?\s+(.*)", ln)
         if m:
-            name, _ = normalize_tool_name(m.group(1))
-            turn.calls.append(ToolCall(name=name, args={}, error=m.group(2)[:300]))
+            # an internal NAT retry of one logical call: record it as an error event, not as another planner call
+            turn.errors.append(f"retry {m.group(1)}: {m.group(2)[:280]}")
         elif "Tool call failed after all retry attempts" in ln:
             turn.errors.append(ln.strip()[:300])
         elif "Retrying ReAct Agent" in ln:
@@ -81,7 +81,8 @@ def parse_nat_log(path: str | Path, spec_id: str | None = None) -> Trace:
             turn.answer = "\n".join(body).strip()
             continue
         k += 1
-    kept = len([ln for ln in lines if ln.strip()])
-    meta = {"source": str(path), "title": header.get("title", ""), "truncated": kept >= 400}
+    # run_scenarios.py writes 2 header lines + a blank line + the last 400 non-empty log lines
+    saved = len(raw.splitlines()) - 3
+    meta = {"source": str(path), "title": header.get("title", ""), "truncated": saved >= 400}
     agent = "-".join(Path(path).stem.split("-")[-2:])   # scenario-2-honest-fail-nim_super-native -> nim_super-native
     return Trace(spec_id=spec_id, agent=f"nat:{agent}", turns=[turn], meta=meta)

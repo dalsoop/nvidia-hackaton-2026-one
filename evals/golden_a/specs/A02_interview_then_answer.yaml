@@ -9,8 +9,13 @@ turns:
   - "moderate 케이스 계획 짜줘."
   - "발치는 안 되고, 기간은 12개월 안이요."
 paired_with: A03
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: []
 checks:
   - {id: A02-asks-first, type: asks_about, turn: 0, topics: [extraction, duration], severity: S1}
+  - {id: A02-neutral, type: neutral_question, turn: 0, severity: S1}
   - {id: A02-no-reask, type: no_ask_about, turn: 1, severity: S1}
   - {id: A02-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A02-cap, type: arg_equals, turn: 1, name: validate, arg: stage_cap, value: 52, severity: S1}

@@ -53,21 +53,30 @@ def test_trace_roundtrip(reference, tmp_path):
 
 
 def _kill_matrix(reference):
-    applied, survived = {}, []
+    """survived = mutant passed; off_target = mutant failed, but none of the checks it targets did."""
+    applied, survived, off_target = {}, [], []
     for op in mutations.OPERATORS:
         for sid, tr in reference.items():
             m = mutations.mutate(op, tr, SPECS[sid])
             if m is None:
                 continue
             applied.setdefault(op.__name__, []).append(sid)
-            if judge(SPECS[sid], m).passed:
+            r = judge(SPECS[sid], m)
+            if r.passed:
                 survived.append(f"{op.__name__}@{sid}")
-    return applied, survived
+                continue
+            types = {c["id"]: c.get("type", c["id"]) for c in SPECS[sid].all_checks}
+            failed = {types.get(f["id"], f["id"]) for f in r.failures if f["severity"] in ("S0", "S1")}
+            if not failed & mutations.TARGETS[op.__name__]:
+                off_target.append(f"{op.__name__}@{sid}: {sorted(failed)}")
+    return applied, survived, off_target
 
 
 def test_every_mutant_is_killed(reference):
-    applied, survived = _kill_matrix(reference)
+    applied, survived, off_target = _kill_matrix(reference)
     assert survived == [], f"judge missed: {survived}"
+    assert off_target == [], f"caught only by unrelated checks: {off_target}"
+    assert set(mutations.TARGETS) == {op.__name__ for op in mutations.OPERATORS}
     unused = [op.__name__ for op in mutations.OPERATORS if op.__name__ not in applied]
     assert unused == [], f"operators that never applied (dead mutation): {unused}"
     assert sum(len(v) for v in applied.values()) >= 100
@@ -76,7 +85,7 @@ def test_every_mutant_is_killed(reference):
 @pytest.mark.parametrize("op", ["use_refused_extraction", "compare_with_extraction", "drop_lock", "fake_success",
                                 "fabricate_stage_count", "hide_reviewer_failure", "paraphrase_memo",
                                 "silent_reviewer_error", "diagnose", "empty_answer", "drop_last_turn",
-                                "claim_full_arch", "success_wording_variant", "memo_prepend_claim",
+                                "claim_full_arch", "claim_condition_changed", "success_wording_variant", "memo_prepend_claim",
                                 "memo_markdown_heading", "prescribe_ipr", "invent_ipr_amount"])
 def test_safety_mutants_are_vetoed(reference, op):
     """Safety-relevant breakage must hit an S0 check (veto), not merely lower the score."""
@@ -124,3 +133,35 @@ def test_nat_log_reads_tool_calls():
     assert names.count("validate") == 3 and names.count("reviewer") == 1
     rv = [c for c in tr.turns[0].calls if c.name == "reviewer"][0]
     assert rv.args == {"plan_id": "p3"} and "한 줄 요약" in rv.result
+
+
+def test_expect_matches_reference_parser():
+    """Specs declare their reading of the request; the reference parser must agree. A parser regression then fails
+    here instead of silently changing which mutants apply."""
+    from evals.golden_a.reference_agent import ReferenceAgent, _parse
+    from cualign.core.limits import stage_cap_from_months
+    for sid, s in SPECS.items():
+        st = ReferenceAgent().st
+        for u in s.turns:
+            _parse(u, st)
+        refuses = False if st["known_extraction"] and st["allow_extraction"] else (True if st["known_extraction"] else None)
+        if sid == "A06":   # 발치안·비발치안 비교 요청: extraction wanted, parser sees no refusal
+            refuses = False
+        cap = stage_cap_from_months(st["months"]) if st["months"] else None
+        assert (refuses, cap, sorted(st["lock"])) == (s.expect["refuses_extraction"], s.expect["stage_cap"],
+                                                       sorted(s.expect["lock"])), sid
+
+
+def test_nat_log_truncation_and_retries(tmp_path):
+    full = ROOT / "docs/demo/scenario-1-pass-nim_super-native.log"
+    assert parse_nat_log(full, "A04").meta["truncated"] is True          # 400 saved lines = cut at the head
+    assert parse_nat_log(ROOT / "docs/demo/scenario-4-interview-nim_super-native.log", "A01").meta["truncated"] is False
+    text = full.read_text(encoding="utf-8").replace(
+        "Calling tools: reviewer",
+        "Tool call attempt 1/3 failed for tool reviewer: ReActAgentParsingFailedError\nCalling tools: reviewer", 1)
+    f = tmp_path / "scenario-1-retry-nim_super-native.log"
+    f.write_text(text, encoding="utf-8")
+    tr = parse_nat_log(f, "A04")
+    rv = [c for c in tr.turns[0].calls if c.name == "reviewer"]
+    assert len(rv) == 1 and rv[0].ok                                     # one logical call, retry kept as an event
+    assert any(e.startswith("retry reviewer") for e in tr.turns[0].errors)

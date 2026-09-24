@@ -43,9 +43,9 @@ cualign/
 | `src/cualign/server/static/` | 유지 후 `apps/desktop/src/renderer/`로 이전 | 이전 전까지 `/ui` 폴백 |
 | `configs/` `guardrails/` `openshell/` `skills/` | `services/agent/` 아래 동일 이름 | `workflow.yml` 상대경로 확인 |
 | `bench/` `scripts/` | `services/agent/` 아래 | `scripts/run_scenarios.py`의 `ROOT` 수정 |
-| `tests/` | `services/agent/tests/` | `test_golden_a.py`는 `evals/tests/`로 |
+| `tests/` | `services/agent/tests/` | `test_golden_a.py`·`test_golden_a_checks.py`는 `evals/tests/`로. 두 파일의 `ROOT = parents[1]`과 `sys.path`·`docs/demo` 경로, `PYTHONPATH`(`src` 위치) 수정 |
 | `evals/` | `evals/` (최상위 유지) | 여러 패키지를 판정하므로 |
-| `pyproject.toml` `uv.lock` `Dockerfile` | `services/agent/` | Docker `COPY` 경로 수정 |
+| `pyproject.toml` `uv.lock` `Dockerfile` | `services/agent/` | Docker `COPY` 경로 수정. `readme = "README.md"`가 이동 위치 기준이 되므로 `services/agent/README.md`를 두거나 경로 수정. 패키지 데이터(`templates/*.stl`, `static/*`)와 `scripts/check_wheel.py` 확인 |
 | `docs/` | `docs/` | |
 | `README.md` `CONTRIBUTING.md` `AGENTS.md` `CLAUDE.md` `SECURITY.md` `LICENSE` | 최상위 유지 | 명령 예시만 갱신 |
 | `.env.example` `.gitignore` | 최상위 유지 | `.gitignore`에 `node_modules/` `apps/desktop/out/` 추가 |

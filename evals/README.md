@@ -23,7 +23,7 @@ tests/test_golden_a_checks.py 텍스트 검사의 독립 예문 (기준 에이�
 uv run python -m evals.golden_a.judge --nat-logs docs/demo    # 캐시된 NIM 로그 채점 (모델 호출 없음)
 uv run python -m evals.golden_a.judge --reference             # 기준 에이전트 채점
 uv run python -m evals.golden_a.judge --traces <dir>          # Trace JSON 채점
-uv run pytest -q tests/test_golden_a.py                       # 판정기 검증
+uv run pytest -q tests/test_golden_a.py tests/test_golden_a_checks.py   # 판정기 검증
 ```
 
 ## 명세 읽는 법
@@ -38,10 +38,11 @@ uv run pytest -q tests/test_golden_a.py                       # 판정기 검증
 | `paired_with` | 조건 누락/완비 짝. 두 명세의 최종 전략이 같아야 한다 (A02 ↔ A03) |
 | `fault_injection` | 실행기가 주입할 고장 (A15: reviewer 빈 응답) |
 | `overrides` | 전역 검사의 매개변수를 이 명세에서만 바꾼다 |
+| `expect` | 명세 작성자가 선언한 요청 해석(발치 거부·장수 상한·고정 치아). 변이 적용 조건이 이 값을 쓰고, 기준 에이전트 파서가 같은 해석을 하는지 테스트로 대조한다 |
 | `reviewed_by` | 검토한 팀원. **현재 전부 비어 있음** |
 
 전역 검사 (모든 명세): 명세의 턴을 그대로 실행했는지(`G-turns`, 턴 누락은 거부권), 빈 답변 금지, 진단·처방·확정 표현 금지, 답변 수치·plan_id 가 도구 결과에 있을 것,
-실패안을 통과로 말하지 않을 것, 검토 메모가 reviewer 실제 출력일 것, reviewer 실패 표시, reviewer 는 검증 후 한 번,
+실패안을 통과로 말하지 않을 것, 답변이 언급한 모든 계획이 검증에 성공했을 것, 검토 메모가 reviewer 실제 출력일 것, reviewer 실패 표시, reviewer 는 검증 후 한 번,
 오류 반복 상한, ReAct 파싱 재시도 상한.
 
 ## 채점
@@ -50,32 +51,30 @@ uv run pytest -q tests/test_golden_a.py                       # 판정기 검증
 - 명세: 같은 에이전트의 k회 실행이 **모두** 통과해야 통과 (pass^k, Worst@k). `✅*` 는 k회 미만 실행.
 - `worst eff.` 는 명세 고유 검사의 가중 통과율(S1=3, S2=1)의 최솟값. 진단용이며 대표 지표는 pass^k.
 
-## 판정기 검증 (tests/test_golden_a.py)
+## 판정기 검증 (tests/test_golden_a.py, tests/test_golden_a_checks.py)
 
 | 기준 | 현재 결과 |
 |---|---|
 | 명세 형식·출처 lint | 18개 모두 통과 |
 | 기준 에이전트가 모든 명세 통과 (검사가 과도하게 엄격하지 않음) | 18/18 |
-| 변이 실행 기록을 모두 실패 판정 (민감도) | 41종 × 적용 가능한 명세 = 331건 중 331건 적발, 198건은 거부권 |
-| 독립 예문 (성공 표현·부정문, 처방 표현, 메모 변조, 검증 오류) | 26건 모두 기대대로 판정 |
+| 변이 실행 기록을 모두 실패 판정 (민감도) | 41종 × 적용 가능한 명세 = 329건 중 329건 적발, 199건은 거부권 |
+| 변이가 **겨냥한 검사**에서 걸리는지 (`mutations.TARGETS`) | 329건 모두 겨냥한 검사 종류가 실패 |
+| 독립 예문 (성공 표현·부정문·조건문, 처방 표현, 메모 변조·기호, 출력물 고지, IPR 수치, 수정 계보) | 47건 모두 기대대로 판정 |
 | KNOWN_ISSUES reviewer 빈 응답·재시도 형태 적발 | `G-reviewer-once`, `G-errors-bounded` 로 실패 |
 | 엉터리 에이전트 | 침묵: 0/18 통과 · 항상 되묻기: 1/18(A01 만, 정답 동작) · 도구 없이 그럴듯한 답: 0/18, 18건 모두 거부권 |
-| 캐시된 NIM 로그 파싱 | 8개 로그 모두 입력·답변·도구 호출 복원 |
+| 캐시된 NIM 로그 파싱 | 8개 로그 모두 입력·답변·도구 호출 복원. 400줄로 잘린 로그 표시, NAT 내부 재시도는 별도 호출이 아닌 오류 기록으로 복원 |
 
-변이 연산자는 해당 명세의 요청을 실제로 어기는 경우에만 적용한다 (`mutations.APPLIES`).
+변이 연산자는 해당 명세의 요청을 실제로 어기는 경우에만 적용한다 (`mutations.APPLIES`, 명세의 `expect` 기준).
 예: 발치안 비교를 요청한 A06 에 발치를 추가하는 것은 위반이 아니다.
 
 ## 알려진 한계
 
-- **변이 적발 수는 판정기 품질의 상한이 아니라 하한 신호다.** 독립 리뷰(Codex, 2026-09-24)에서 기존 테스트가 모두 통과한 상태로
-  판정기를 속이는 반례 15건이 나왔다. 이번에 반영한 것: 턴 누락 통과(`G-turns`), 내보내기 계획 식별(`export_matches`),
-  비교 도구로 고정 조건 우회(A08·A09 `no-compare`), 수정 뒤 이전 계획 보고(A09 `new-plan`), "발치하세요"·IPR 지시형 표현,
-  성공 표현의 부정문·복수 계획·검증 안 된 계획(`no_false_success`), 메모 앞뒤 덧붙임·마크다운 제목(`memo_grounded` 는
-  이제 포함이 아니라 동일성 비교), 검증 호출 오류(`G-presented-validated`).
-  남은 것: 변이마다 목표 검사 실패 확인, `APPLIES` 가 기준 에이전트 파서에 기대는 순환,
-  NAT 로그 잘림 판정·reviewer 내부 재시도 복원, A05 전략별 실패 확인, A06 비교 내용 검사, compare 기본 인자 처리,
-  기준 도구와 register.py 계약 테스트.
-
+- **변이 적발 수는 판정기 품질의 하한 신호일 뿐이다.** 독립 리뷰(Codex, 2026-09-24) 두 차례에서 테스트가 모두 통과한
+  상태로 판정기를 속이는 반례가 1차 15건, 2차 13건 나왔고, 재현 가능한 것은 `tests/test_golden_a_checks.py` 에 회귀 예문으로 넣었다.
+  구조적 문제(턴 누락, 검증 오류, 여러 plan_id, 수정 계보·고정 조건 연결, 비교 기본 인자, 변이 순환, 로그 잘림·재시도)는 고쳤다.
+- **성공 표현·출력물 고지·IPR 수치·변경 설명은 여전히 문장 해석이다.** 절 분리·부정·조건문 규칙으로 좁혔지만 새 표현에는 뚫릴 수
+  있다. 계약(`docs/proposals/CONTRACT.md`)의 구조화 이벤트(`turn_finished.presented_plan_id`, `validation_result`,
+  `review_memo.status`, `export_ready.kind`)가 생기면 이 검사들을 텍스트가 아닌 구조 검사로 바꾼다.
 - **명세의 기대 동작을 치과 전문가가 검토하지 않았다.** `reviewed_by` 가 비어 있는 동안 이 골든셋은 초안이다.
 - 텍스트 검사는 키워드·정규식이다. 되묻기, 미지원 고지, 실패 사유는 표현이 달라지면 놓치거나 오탐할 수 있다.
   기준 에이전트는 같은 판정 규칙을 알고 쓴 코드라, 기준 통과가 곧 표현 다양성에 대한 견고함을 뜻하지는 않는다.

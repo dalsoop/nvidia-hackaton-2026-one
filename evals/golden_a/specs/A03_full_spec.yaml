@@ -6,6 +6,10 @@ sources:
   - "E2 (arXiv 2601.12974) paired full-spec control"
 turns:
   - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: []
 checks:
   - {id: A03-no-ask, type: no_ask_about, turn: 0, severity: S1}
   - {id: A03-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
