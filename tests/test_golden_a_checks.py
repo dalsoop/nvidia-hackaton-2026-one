@@ -205,3 +205,10 @@ def test_multi_turn_memo_and_review_order():
     assert CHECKS["reviewer_after_validate"](tr)[0] is True
     # but a memo nobody wrote is still caught
     assert CHECKS["memo_grounded"](_two_turns("plan_id: p4\n검토 메모:\n문제 없음.", t1))[0] is False
+
+
+def test_memo_number_formatting_is_not_tampering():
+    memo = "1) 이동량 6번(2.9mm), 4번(1.58mm)"
+    rv = [_validate("p1", True), ToolCall("reviewer", {"plan_id": "p1"}, memo)]
+    assert CHECKS["memo_grounded"](trace("plan_id: p1\n검토 메모:\n1) 이동량 6번(2.90mm), 4번(1.58mm)", rv))[0] is True
+    assert CHECKS["memo_grounded"](trace("plan_id: p1\n검토 메모:\n1) 이동량 6번(2.8mm), 4번(1.58mm)", rv))[0] is False
