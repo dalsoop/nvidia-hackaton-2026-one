@@ -12,6 +12,8 @@ import os
 from fastapi import FastAPI
 
 from nat.builder.workflow_builder import WorkflowBuilder
+
+from cualign.keys import nvidia_key_available
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 
 logger = logging.getLogger(__name__)
@@ -21,7 +23,7 @@ class CuAlignWorker(FastApiFrontEndPluginWorker):
     def build_app(self) -> FastAPI:
         # Middleware must be attached before the app starts (add_routes runs inside the lifespan).
         app = super().build_app()
-        enabled = os.environ.get("CUALIGN_GUARDRAILS", "1") != "0" and os.environ.get("NVIDIA_API_KEY", "").startswith("nvapi-")
+        enabled = os.environ.get("CUALIGN_GUARDRAILS", "1") != "0" and nvidia_key_available()
         if enabled:
             from .rails import GuardrailsASGI
             app.add_middleware(GuardrailsASGI)

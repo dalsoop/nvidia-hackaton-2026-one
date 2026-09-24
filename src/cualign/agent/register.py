@@ -25,12 +25,14 @@ from nat.builder.function import FunctionGroup
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.function import FunctionGroupBaseConfig
 
+from cualign import sandbox_compat
 from cualign.agent import react_patch
 from cualign.core import limits as L
 from cualign.core import planner
 from cualign.core.store import OUT_DIR, STORE
 
 react_patch.apply()   # NAT react_agent: JSON-wrapped ReAct block must not leak as the final answer
+sandbox_compat.apply()  # OpenShell: route aiohttp (NIM async client) through the sandbox proxy
 
 
 class NoInput(BaseModel):
