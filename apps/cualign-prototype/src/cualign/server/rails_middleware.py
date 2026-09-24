@@ -7,8 +7,9 @@ websocket included), `nat run` and the eval runner pass the same rails. It is de
 Policy is unchanged from the old ASGI layer (fail open), but nothing passes silently:
   * rails off (CUALIGN_GUARDRAILS=0 or no key) is logged at ERROR when the workflow is built;
   * a rail error is logged at ERROR and the turn proceeds;
-  * each turn's rail state (passed / blocked / error / off) goes to PlanRun.rails on the UI chat route, which
-    the plan_context event carries, and to a dict the caller put in RAIL_RECORD (nat run, the eval runner).
+  * each turn's rail state (passed / flagged / blocked / error / off) goes to PlanRun.rails on the UI chat
+    route, which the plan_context event carries, and to a dict the caller put in RAIL_RECORD (nat run, the eval
+    runner). "flagged" is the advisory content-safety verdict: the classifier said unsafe and the turn proceeds.
 CUALIGN_RAILS_FAIL_CLOSED=1 is an opt-in stop: no key fails the build and a rail error refuses the turn.
 An explicit CUALIGN_GUARDRAILS=0 still wins over it (still logged at ERROR).
 The output is still checked after the answer, as before: a blocked answer gets a warning appended. A streamed
@@ -37,7 +38,7 @@ from cualign.server.rails import REFUSAL, ROOT
 logger = logging.getLogger(__name__)
 OUTPUT_WARNING = "\n\n⚠ 출력 레일: 이 답변에 확정 진단·처방 성격의 문장이 있어 차단 대상으로 표시됐습니다. 초안으로만 읽어 주세요."
 # Worst state wins within a turn: a blocked check is not hidden by a later error, nor an error by a pass.
-_RANK = {"passed": 0, "off": 1, "error": 2, "blocked": 3}
+_RANK = {"passed": 0, "flagged": 1, "off": 1, "error": 2, "blocked": 3}
 # A caller without a PlanRun sets a dict here before the turn; the middleware writes "state" into it.
 RAIL_RECORD: ContextVar[dict | None] = ContextVar("cualign_rail_record", default=None)
 
@@ -110,7 +111,8 @@ class RailsMiddleware(FunctionMiddleware):
             try:
                 v = await self.rails.check_input(user)
                 state = ("blocked" if v["blocked"] else
-                         "error" if "ERROR" in (v["scope"], v["content_safety"]) else "passed")
+                         "error" if "ERROR" in (v["scope"], v["content_safety"]) else
+                         "flagged" if v["content_safety"] == "BLOCKED" else "passed")
             except Exception as e:
                 logger.error("cuAlign rails: input check failed: %s", e)
                 state = "error"

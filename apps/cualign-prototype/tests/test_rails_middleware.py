@@ -3,9 +3,11 @@
 Nothing reaches NVIDIA: rails come from rails_fakes (named in the config, as NAT only builds middleware from YAML)
 and the planner model is a local fake server. The key is a fake `nvapi-` string that only switches rails on.
 """
+import argparse
 import asyncio
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -16,10 +18,12 @@ import httpx
 import pytest
 import uvicorn
 import yaml
+from fastapi.routing import APIWebSocketRoute
 from fastapi.testclient import TestClient
 from nat.runtime.loader import load_config, load_workflow
 
 from rails_fakes import A14, FakeLLM, FakeRails
+from cualign import cli
 from cualign.agent import register
 from cualign.core import store as store_module
 from cualign.server import api, plan_events, rails_middleware
@@ -28,8 +32,15 @@ from cualign.server.worker import CuAlignWorker
 
 ROOT = Path(__file__).resolve().parents[1]
 MARK = "MARK-PLANNER"
-HTTP_ROUTES = ["/generate", "/generate/stream", "/generate/full", "/v1/workflow", "/v1/workflow/stream",
-               "/v1/workflow/full", "/chat", "/chat/stream", "/v1/chat", "/v1/chat/stream", "/v1/chat/completions"]
+
+
+def workflow_routes(app):
+    """Every route that runs the workflow (13 today): NAT's post_* handlers and the websocket. Read from the app,
+    so closing or adding a route changes the list without editing this test."""
+    ws = [r.path for r in app.routes if isinstance(r, APIWebSocketRoute)]
+    http = [r.path for r in app.routes
+            if getattr(getattr(r, "endpoint", None), "__qualname__", "").startswith("post_")]
+    return http, ws
 
 
 @pytest.fixture
@@ -75,8 +86,8 @@ def ask(client, route, messages=None, **extra):
     return plain(res.text)
 
 
-def ask_ws(client):
-    with client.websocket_connect("/websocket") as ws:
+def ask_ws(client, route="/websocket"):
+    with client.websocket_connect(route) as ws:
         ws.send_json({"type": "user_message", "schema_type": "chat_stream", "id": "m1", "conversation_id": "c1",
                       "content": {"messages": [{"role": "user", "content": [{"type": "text", "text": A14}]}]}})
         got = []
@@ -87,9 +98,9 @@ def ask_ws(client):
                 return plain("\n".join(got))
 
 
-def ask_atif_live(path):
+def ask_live(path, route):
     """/v1/workflow/atif never closes its stream in NAT 1.9.0, with or without rails, and TestClient waits for the
-    end. So this one route is read from a real server until the answer arrives."""
+    end. So that route is read from a real server until the answer arrives."""
     server = uvicorn.Server(uvicorn.Config(CuAlignWorker(load_config(path)).build_app(), host="127.0.0.1", port=0,
                                            log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
@@ -99,7 +110,7 @@ def ask_atif_live(path):
     port = server.servers[0].sockets[0].getsockname()[1]
     got = ""
     try:
-        with httpx.stream("POST", f"http://127.0.0.1:{port}/v1/workflow/atif", timeout=20,
+        with httpx.stream("POST", f"http://127.0.0.1:{port}{route}", timeout=20,
                           json={"messages": [{"role": "user", "content": A14}]}) as res:
             for line in res.iter_lines():
                 got += plain(line) + "\n"
@@ -118,12 +129,16 @@ def sse_event(text, name):
 def test_rails_all_routes_blocked(store, tmp_path, monkeypatch):
     with FakeLLM() as llm:
         with serve(tmp_path, monkeypatch, llm, "rails_fakes:blocking") as client:
-            bodies = {route: ask(client, route) for route in HTTP_ROUTES}
-            bodies["/websocket"] = ask_ws(client)
-            assert FakeRails.last.inputs == [A14] * 12
-        bodies["/v1/workflow/atif"] = ask_atif_live(tmp_path / "workflow.yml")
-        assert FakeRails.last.inputs == [A14]
-    assert len(bodies) == 13
+            http, ws = workflow_routes(client.app)
+            live = [r for r in http if r.endswith("/atif")]
+            bodies = {r: ask(client, r) for r in http if r not in live}
+            bodies.update({r: ask_ws(client, r) for r in ws})
+            assert FakeRails.last.inputs == [A14] * len(bodies)
+        for r in live:
+            bodies[r] = ask_live(tmp_path / "workflow.yml", r)
+            assert FakeRails.last.inputs == [A14]
+    assert {"/chat/stream", "/generate", "/v1/chat/completions", "/websocket"} <= set(bodies)
+    assert len(bodies) == len(http) + len(ws)
     for route, body in bodies.items():
         assert REFUSAL in body and MARK not in body, (route, body[:300])
     assert llm.requests == []  # the planner never ran, so no plan tool was called either
@@ -166,6 +181,14 @@ def test_rails_error_turn_is_logged(store, tmp_path, monkeypatch, caplog, factor
     assert errors and all(r.levelno == logging.ERROR for r in errors)
     assert MARK in body and REFUSAL not in body  # default policy: the turn proceeds
     assert sse_event(body, "plan_context")["rails"] == "error"
+
+
+def test_rails_advisory_flag_is_recorded(store, tmp_path, monkeypatch):
+    """The advisory content-safety verdict was shown only as a stream step of the old ASGI layer."""
+    with FakeLLM() as llm, serve(tmp_path, monkeypatch, llm, "rails_fakes:flagging") as client:
+        body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+    assert MARK in body and REFUSAL not in body
+    assert sse_event(body, "plan_context")["rails"] == "flagged"
 
 
 def test_rails_fail_closed_switch(store, tmp_path, monkeypatch):
@@ -257,3 +280,15 @@ def test_rails_model_url_reaches_fake_server(store, tmp_path, monkeypatch, caplo
     assert not [r for r in caplog.records if r.name.startswith("cualign.server.rails") and r.levelno >= logging.ERROR]
     # "No" passes the scope rail, so the planner answered; the content safety parser reads it as unsafe output.
     assert MARK in body and sse_event(body, "plan_context")["rails"] == "blocked"
+
+
+def test_telemetry_switched_off(store, tmp_path, monkeypatch):
+    """Guardrails skips usage stats under pytest by itself, so this checks what our start paths set."""
+    monkeypatch.delenv("NEMO_GUARDRAILS_NO_USAGE_STATS", raising=False)
+    with FakeLLM() as llm, serve(tmp_path, monkeypatch, llm):
+        assert os.environ["NEMO_GUARDRAILS_NO_USAGE_STATS"] == "1"
+    monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setattr(cli.os, "execv", lambda *a: None)
+    cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=8000))
+    assert os.environ["NAT_TELEMETRY_ENABLED"] == "0"

@@ -25,6 +25,8 @@ class FakeRails:
 
     async def check_input(self, text):
         self.inputs.append(text)
+        if self.inp == "flag":  # advisory content safety said unsafe; the scope rail passed
+            return {"scope": "PASSED", "content_safety": "BLOCKED", "blocked": False, "cs_mode": "advisory"}
         s = STATUS[self.inp]
         return {"scope": s, "content_safety": "PASSED", "blocked": s == "BLOCKED", "cs_mode": "advisory"}
 
@@ -48,6 +50,10 @@ def erroring(_config_dir, _model_base_url=None):
 
 def output_erroring(_config_dir, _model_base_url=None):
     return FakeRails("pass", "error")
+
+
+def flagging(_config_dir, _model_base_url=None):
+    return FakeRails("flag")
 
 
 class FakeLLM:

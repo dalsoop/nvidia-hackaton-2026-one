@@ -121,7 +121,7 @@ ZIP API·export_stl 도구는 요청마다 승인과 해시를 검사하며 미�
 현재 입력 범위 레일은 차단 판정 시 에이전트를 실행하지 않는다. content safety 입력은 기본 경고 모드다.
 스트리밍 출력은 이미 전달한 답을 사후 검사·경고하며, 검사 오류·타임아웃은 ERROR 로그를 남기고 진행한다.
 미들웨어는 키 설정과 활성화 옵션에 따라 꺼질 수 있고(시작 때 ERROR 로그), 에이전트 호출을 대상으로 한다.
-턴마다 레일 상태(passed·blocked·error·off)를 UI 대화의 `plan_context` 이벤트에 싣는다.
+턴마다 레일 상태(passed·flagged·blocked·error·off · flagged 는 참고 모드 콘텐츠 안전 판정)를 UI 대화의 `plan_context` 이벤트에 싣는다.
 `CUALIGN_RAILS_FAIL_CLOSED=1`이면 키가 없을 때 시작하지 않고, 검사 오류 턴을 거절한다(기본은 꺼짐).
 따라서 계산 API·파일 출력까지 동일한 보호가 적용된다고 주장하지 않는다.
 
