@@ -212,3 +212,10 @@ def test_memo_number_formatting_is_not_tampering():
     rv = [_validate("p1", True), ToolCall("reviewer", {"plan_id": "p1"}, memo)]
     assert CHECKS["memo_grounded"](trace("plan_id: p1\n검토 메모:\n1) 이동량 6번(2.90mm), 4번(1.58mm)", rv))[0] is True
     assert CHECKS["memo_grounded"](trace("plan_id: p1\n검토 메모:\n1) 이동량 6번(2.8mm), 4번(1.58mm)", rv))[0] is False
+
+
+def test_memo_sentence_period_is_formatting():
+    memo = "1) 통과 (위반 없음).\n2) 이동량 11번(2mm)"
+    rv = [_validate("p1", True), ToolCall("reviewer", {"plan_id": "p1"}, memo)]
+    assert CHECKS["memo_grounded"](trace("plan_id: p1\n검토 메모:\n1) 통과 (위반 없음)\n2) 이동량 11번(2mm)", rv))[0] is True
+    assert CHECKS["memo_grounded"](trace("plan_id: p1\n검토 메모:\n1) 통과 (위반 없음)\n2) 이동량 11번(20mm)", rv))[0] is False
