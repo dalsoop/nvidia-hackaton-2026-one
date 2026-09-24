@@ -66,6 +66,9 @@ workflow:
     For "앞니 먼저", order=anterior_first. No extraction means allow_extraction=false.
     Never enable extraction simply because a comparison is requested.
     Re-stating conditions that are already set is a no-op, not an error; do not repeat the call.
+    Once targets exist the conditions are fixed: set_constraints then returns the unchanged
+    conditions with a rejected field. That is final, not a call to retry. Finish the plan with
+    the returned conditions and state in the final answer which change was not applied.
     Ask one concise question if a requested condition is ambiguous or unsupported.
     Use load_case for the case selected on screen; do not switch cases in tools.
     Loop: clinical_limits -> propose_target -> plan_stages -> validate.

@@ -176,8 +176,12 @@ def test_nat_tools_keep_constraints_select_earlier_candidate_and_deny_export(iso
             # raising here made the ReAct agent retry until its iteration limit.
             assert await tool("set_constraints").ainvoke(ConstraintPatch(lock=[13])) == c.model_dump(mode="json")
             assert await tool("set_constraints").ainvoke(ConstraintPatch()) == c.model_dump(mode="json")
-            with pytest.raises(ValueError):
-                await tool("set_constraints").ainvoke(ConstraintPatch(lock=[]))
+            # A real change after targets exist is refused as a normal result, never an exception:
+            # a tool error makes the ReAct agent retry with new arguments until it runs out.
+            refused = await tool("set_constraints").ainvoke(ConstraintPatch(lock=[]))
+            assert refused["rejected"] == {"lock": []} and refused["note"]
+            assert refused["lock"] == [13] and CURRENT_RUN.get().constraints == c
+            assert "moderate" not in isolated.case_constraints  # nothing was written
             with pytest.raises(ValueError):
                 await tool("export_stl").ainvoke(register.PlanIdInput(plan_id=selected))
             await tool("validate").ainvoke(register.PlanIdInput(plan_id=selected))

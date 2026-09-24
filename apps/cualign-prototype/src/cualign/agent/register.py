@@ -114,7 +114,13 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         if c == current:
             return c.model_dump(mode="json")
         if run and run.target_ids:
-            raise ValueError("conditions are already fixed for this request; keep planning with them")
+            # Refuse the change, but as a normal result: raising here reads as "you called me
+            # wrong", so the agent retries with new arguments until it runs out of iterations.
+            # The conditions are unchanged either way — this only stops the retry loop and lets
+            # the agent tell the dentist which change it could not apply.
+            return {**current.model_dump(mode="json"), "rejected": inp.changes(),
+                    "note": "이번 요청의 조건은 이미 확정됐습니다. 현재 조건으로 계획을 마치고, "
+                            "반영하지 못한 변경은 최종 답변에서 의사에게 알리세요."}
         c.check_case(case.ids)
         STORE.case_constraints[cid] = c
         if run:
