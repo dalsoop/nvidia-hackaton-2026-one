@@ -77,7 +77,9 @@ class PlanEventsASGI:
             if is_stream and message["type"] == "http.response.body" and not message.get("more_body", False):
                 extra = b""
                 common = {"request_id": run.request_id, "case_id": run.case_id}
-                if run.selected_plan_id:
+                if run.refused:
+                    pass  # the rails replaced the answer, so its plan is not offered (it stays stored)
+                elif run.selected_plan_id:
                     plan = STORE.plan_json(run.selected_plan_id)
                     extra = event("plan_selected", {**common, "schema_version": 1,
                         "plan_id": plan["plan_id"], "parent_plan_id": plan["parent_plan_id"],

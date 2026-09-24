@@ -19,7 +19,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
-REFUSAL = "요청이 cuAlign 의 범위를 벗어납니다. 이 도구는 얼라이너 단계 계획 초안만 만들며 진단·처방·임상 판단은 하지 않습니다. 최종 판단은 의사가 합니다."
 SCOPE_FLOW = "self check input"
 CS_INPUT_FLOW = "content safety check input $model=content_safety"
 

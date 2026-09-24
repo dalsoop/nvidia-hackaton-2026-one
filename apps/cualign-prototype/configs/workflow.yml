@@ -3,6 +3,11 @@ general:
   front_end:
     _type: fastapi
     runner_class: cualign.server.worker.CuAlignWorker
+    # Progress events leave while the answer is held for the output rail, so they carry only tool names and the
+    # arguments the model chose: no model text, tool results or request messages (LLM_*, *_END, FUNCTION_START).
+    step_adaptor:
+      mode: custom
+      custom_event_types: [TOOL_START]
     cors:
       allow_origins: ["*"]
 
