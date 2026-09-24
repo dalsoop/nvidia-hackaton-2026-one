@@ -35,7 +35,7 @@
 |---|---|
 | `src/cualign/agent/register.py` | 조건 수정·계산·최종 계획 선택·승인된 출력 도구 |
 | `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·검토 예산 컨텍스트 |
-| `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장 |
+| `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 처방 문구 메모는 저장 전 차단, 실패 상태 저장 |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
 | `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구, 지시문 연결 |
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결 |
@@ -70,7 +70,7 @@
 | `tests/test_segmentation.py` | 라벨→메시 분리 검사. 모델 추론 시험은 아님 |
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
 | `tests/test_api.py` | UI 경로·승인→ZIP·잘못된 계획 ID 검사 |
-| `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
+| `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·검토 메모 경계·ASGI 요청 컨텍스트 회귀 |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/승인·지연 응답 검사 |
 | `docs/VERIFICATION.md` | 새 환경 재현 결과와 미검증 범위 |
 | `docs/DEVELOPMENT.md`, `docs/ROADMAP.md` | 개발 진입점과 네 기능 작업·검증 범위 |

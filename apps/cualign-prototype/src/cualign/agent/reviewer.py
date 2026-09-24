@@ -11,7 +11,9 @@ from nat.data_models.function import FunctionBaseConfig
 from nat.data_models.component_ref import LLMRef
 from pydantic import BaseModel
 
+from cualign.core.rail_patterns import PRESCRIPTIVE
 from cualign.core.store import STORE
+from cualign.server.rails_middleware import matches
 from .context import CURRENT_RUN
 
 
@@ -35,7 +37,14 @@ def response_text(response):
     return ""
 
 
-async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seconds=20, total_seconds=40):
+def crosses_boundary(memo):
+    """The prescriptive list the output rail and the golden-set checker read. A memo that matches is never stored:
+    once stored it leaves through the plan files, /api/plans, get_plan and plan_selected."""
+    return matches(PRESCRIPTIVE, memo)
+
+
+async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seconds=20, total_seconds=40,
+                      boundary=crosses_boundary):
     p = store.plans[plan_id]
     run = CURRENT_RUN.get()
     if run and (run.closed or run.case_id != p["case_id"] or run.selected_plan_id != plan_id):
@@ -77,6 +86,11 @@ async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seco
                     continue
                 if getattr(response, "tool_calls", None) or text.startswith(("Thought:", "Action:")):
                     error = "invalid_response"
+                    continue
+                if boundary(text):
+                    # A failed attempt like a malformed reply, not an exception: `except Exception` below would
+                    # record it as model_error. Two in a row store `failed` without the memo.
+                    error = "boundary"
                     continue
                 return store.set_review(plan_id, {"status": "passed", "attempts": attempts, "message": text, "error": None})
             except asyncio.TimeoutError:

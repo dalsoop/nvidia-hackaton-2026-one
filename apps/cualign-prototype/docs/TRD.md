@@ -99,6 +99,7 @@ reviewer는 ReAct 도구 루프 대신 저장 계획의 요약을 NIM에 전달�
 NAT NIM의 num_retries=1(최초 시도 포함)로 중첩 재시도를 막는다.
 CLI는 HTTP 요청 컨텍스트가 없으므로 계획별 저장 결과로 중복 검토를 막는다.
 검토 실패는 계획 결과와 함께 화면에 표시하며 승인할 수 없다.
+처방·확정 문구 목록(`core/rail_patterns.py`)에 걸린 메모는 저장하지 않고 실패한 시도(`error=boundary`)로 센다. 두 번 걸리면 메모 없이 `failed` 를 저장한다.
 
 의사 확인 후 POST /api/plans/{id}/approval (confirmed=true)로 승인하고 DELETE로 취소한다.
 규칙 통과 및 review passed 또는 명시적 규칙 폴백 skipped만 승인 가능하다.
