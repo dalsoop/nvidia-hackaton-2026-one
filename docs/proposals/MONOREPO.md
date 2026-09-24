@@ -2,19 +2,10 @@
 
 > 상태: **제안. 팀 결정 필요.** 2026-09-24 작성.
 > 전제(팀장 공지): TS + Electron 데스크톱 앱, lint, 모노레포, git worktree로 AI 에이전트 병렬 작업.
+> 설계 전제: NAT·NeMo Guardrails·계산 코어는 Python에 두고, Electron main 프로세스가 Python 서버(사이드카)를 localhost에서 띄워 HTTP/SSE로 통신한다.
 > 이 문서는 구조를 제안할 뿐 파일을 옮기지 않는다. 화면↔에이전트 데이터 형식은 [CONTRACT.md](CONTRACT.md)를 본다.
 
-## 1. 확인이 필요한 전제
-
-| 전제 | 근거 | 확인할 사람 |
-|---|---|---|
-| NAT·NeMo Guardrails·계산 코어는 **Python에 남는다** | NAT·Guardrails는 Python 패키지. 코어가 numpy/scipy/trimesh/manifold3d에 의존 | 팀장 |
-| Electron main 프로세스가 **Python 사이드카**(`nat serve`, 현재 `CuAlignWorker`)를 localhost에서 띄우고 HTTP/SSE로 통신 | 현재 대화·API·UI가 한 FastAPI 프로세스(`server/worker.py`) | 팀장 |
-| 예선 시연 환경은 로컬 데스크톱 1대, 단일 사용자 | SECURITY: 인증·격리 없는 PoC | 팀장·기획 |
-
-위 전제가 틀리면(예: 전부 TS로 재작성) 아래 구조는 다시 잡는다.
-
-## 2. 제안 구조
+## 1. 제안 구조
 
 ```
 cualign/
@@ -49,9 +40,9 @@ cualign/
 | `docs/` | `docs/` | |
 | `README.md` `CONTRIBUTING.md` `AGENTS.md` `CLAUDE.md` `SECURITY.md` `LICENSE` | 최상위 유지 | 명령 예시만 갱신 |
 | `.env.example` `.gitignore` | 최상위 유지 | `.gitignore`에 `node_modules/` `apps/desktop/out/` 추가 |
-| `.github/workflows/ci.yml` | 최상위, 패키지별 job으로 분할 | §3 |
+| `.github/workflows/ci.yml` | 최상위, 패키지별 job으로 분할 | §2 |
 
-## 3. 도구·lint·CI
+## 2. 도구·lint·CI
 
 | 영역 | 도구 | 명령 |
 |---|---|---|
@@ -70,7 +61,7 @@ CI job (PR마다):
 | `contract` | 스키마로 다시 생성한 타입이 커밋본과 같은지(diff 0), 예제 JSON이 스키마를 통과하는지 |
 | `golden` | 골든셋 A 오프라인(판정기 검증 + 캐시 로그 채점). NIM 실호출은 수동 워크플로로만 |
 
-## 4. worktree 작업 방식 (사람·AI 공통)
+## 3. worktree 작업 방식 (사람·AI 공통)
 
 규칙: **이슈 1개 = 브랜치 1개 = worktree 1개 = PR 1개.**
 
@@ -109,7 +100,7 @@ git branch -d feat/desktop-shell
 
 사람이 보는 것("눈"): 코드 한 줄씩보다 **PR이 어떤 명세를 만족·변경하는지**. 동작을 바꾸는 PR은 골든셋 명세를 같이 추가·수정한다.
 
-## 5. 이전 단계 (PR 단위, 매 단계 실행 가능 유지)
+## 4. 이전 단계 (PR 단위, 매 단계 실행 가능 유지)
 
 | # | PR | 끝난 뒤 확인 |
 |---|---|---|
@@ -127,13 +118,3 @@ git branch -d feat/desktop-shell
 - 동작 중인 `/ui`를 대체 화면이 준비되기 전에 삭제
 - 계약 스키마 없이 화면·에이전트를 각자 구현
 - lint 일괄 자동 수정을 기능 PR에 포함 (형식 변경 PR은 따로)
-
-## 6. 팀장에게 물을 것
-
-1. Python 사이드카 전제가 맞는가? 아니면 에이전트까지 TS로 가는가?
-2. pnpm과 npm 중 무엇을 쓰는가?
-3. 예선 제출물은 Electron 앱인가, 기존 웹 UI로도 되는가? (앱 패키징·서명 필요 여부)
-4. 이전(§5-3)은 예선 전인가 후인가?
-5. 패키지별 주 담당은 누구인가?
-6. AI 에이전트 종류(Claude Code·Codex 등)와 worktree 동시 개수 상한, 비용 한도는?
-7. `main` 보호 규칙(리뷰 1명 이상, CI 필수)을 켤 것인가?
