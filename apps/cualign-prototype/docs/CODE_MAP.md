@@ -48,8 +48,9 @@
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
-| `guardrails/config.yml` | 검사 모델(과부하 재요청 횟수 포함)과 적용할 레일의 설정 |
+| `guardrails/config.yml` | 검사 모델(과부하 재요청 횟수 포함)과 적용할 레일의 설정, content-safety 모델에 보내는 맞춤 정책 본문 |
 | `guardrails/prompts.yml` | 범위·출력 검사에 쓰는 판정 프롬프트 |
+| `guardrails/policy/` | NVIDIA 카탈로그 스킬 `nemotron-policy-generator` 로 만든 정책 원문·분류 json·프롬프트와 출처(README) |
 | `src/cualign/cli.py` | 계산·벤치마크·서버 실행 명령 |
 | 패키지별 `__init__.py` | 패키지 로딩·공개 함수 연결. 코드 보존 시 함께 유지 |
 

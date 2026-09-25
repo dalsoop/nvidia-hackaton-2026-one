@@ -43,3 +43,20 @@ def test_react_prompt_has_no_stray_template_variables():
     prompt = create_react_agent_prompt(ReActAgentWorkflowConfig(**cfg))
     assert set(prompt.input_variables) <= {"question", "chat_history", "agent_scratchpad", "tools", "tool_names"}, \
         f"unescaped braces in additional_instructions: {sorted(set(prompt.input_variables))}"
+
+
+def test_content_safety_custom_policy_matches_policy_file():
+    """The custom policy sent to the content-safety model (config.yml) must carry the categories of the policy the
+    NVIDIA skill generated (guardrails/policy, #37), so the two cannot drift apart silently."""
+    import json
+    from nemoguardrails import RailsConfig
+
+    policy_dir = ROOT / "guardrails" / "policy"
+    md = (policy_dir / "cualign_clinical_scope_v1.0.0.md").read_text(encoding="utf-8")
+    assert "nemotron-policy-generator" in md and "github.com/NVIDIA/skills" in md, "attribution missing"
+    policy = json.loads((policy_dir / "cualign_clinical_scope_v1.0.0.json").read_text(encoding="utf-8"))
+    cs = next(m for m in RailsConfig.from_path(str(ROOT / "guardrails")).models if m.type == "content_safety")
+    text = cs.parameters["chat_template_kwargs"]["custom_policy"]
+    assert policy["version"] in text
+    deployed = [c["display_name"] for c in policy["categories"] if c["severity"] != "S1"]  # S1 stays with the scope rail
+    assert deployed and all(name in text for name in deployed), [n for n in deployed if n not in text]

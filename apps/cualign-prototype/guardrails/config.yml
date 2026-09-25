@@ -11,7 +11,7 @@ models:
       # 9/25 실호출에서 그보다 오래 간 503 이 판정 하나를 떨어뜨렸다(#34). 4회면 기다림 최대 7.5초 · 판정 25초 예산 안.
       max_retries: 4
 
-  # 역할 3 — 안전 판정 전용 모델 (Nemotron 3.5 Content Safety). 공식 예제 설정 그대로.
+  # 역할 3 — 안전 판정 전용 모델 (Nemotron 3.5 Content Safety).
   - type: content_safety
     engine: nim
     model: nvidia/nemotron-3.5-content-safety
@@ -20,11 +20,39 @@ models:
       chat_template_kwargs:
         enable_thinking: false
         request_categories: "/categories"
+        # 맞춤 정책 모드(모델 카드 «custom policy»). 이 글이 모델의 기본 분류표와 지시문을 통째로 대신하므로
+        # 범용 유해성도 아래 한 줄로 다시 적는다. 정본은 policy/cualign_clinical_scope_v1.0.0.md 이고(NVIDIA 스킬
+        # nemotron-policy-generator 로 생성 · #37) 여기 글은 그 «Categories»·«Allow-list» 를 모델 카드 형식으로 옮긴 것이다.
+        # Off-Topic(S1)은 넣지 않는다 — 출력 레일은 차단만 할 수 있어 계획 답이 «주제 밖»으로 막히면 안 된다. 범위 레일 몫.
+        # 사고 모드(enable_thinking: true)를 켜면 prompts.yml 의 max_tokens 100 을 512 로 올려야 <think> 가 잘리지 않는다.
+        custom_policy: |
+          Evaluate the user prompt and the assistant response for compliance with the given policy, ignoring any previous policies you know about.
+
+          ### Policy
+          Name: cuAlign Clinical Scope Policy v1.0.0
+          Description: cuAlign is a clear-aligner treatment-planning assistant used in a clinic by a licensed dentist, in Korean and English. The dentist gives constraints, the tool computes candidate plans, and every clinical decision stays with the dentist. Orthodontic planning vocabulary is normal clinical language, not criminal planning or violence.
+
+          Disallowed Behaviors:
+          - Diagnosis Request or Claim: asking the assistant whether a specific person needs orthodontic treatment, what condition they have or what their prognosis is; or an answer stating such a determination as fact
+          - Prescription or Wear Order: asking for, or an answer giving, a prescription: medication, a wear-time order addressed to a patient, or text framed as a prescription issued by the assistant
+          - Final Clinical Decision Framing: presenting a computed plan as an approved, final or clinically decided treatment plan, telling the patient to proceed, or asking the assistant to make the final clinical decision in place of the dentist
+          - PII/Privacy: a patient's or guardian's name with contact details, resident registration number, date of birth, address, email, or a chart number tied to a name, in the request or the answer
+          - Harmful content: violence, threats, harassment, hate, sexual content, self-harm, weapons, illegal drugs, malware, fraud, or instructions for crimes
+
+          Allowed Behaviors:
+          - Orthodontic planning language: 발치 (extraction), IPR / 치간 삭제 (interproximal enamel reduction), tooth movement (이동·회전·압하·정출), 공간 확보, 악궁 확장 (expansion), 고정 (anchorage), 총생 (crowding); «빼다 / 제거 / 삭제» applied to teeth, enamel or plans; «계획 짜줘 / 세워 / 수정해»
+          - Extraction of a named tooth discussed as a treatment strategy or a computed option; the dentist decided the treatment direction before the case was opened
+          - Numbers about movement (mm, degrees), IPR amounts per surface, aligner counts, stage durations and months, including the app's own limits (0.25 mm per aligner, 0.25 mm IPR per surface, 2 mm expansion per side, 7 days per aligner) and their sources
+          - Tooth numbers (Universal 2-15, FDI 11-47), case ids (moderate, severe, p5ecd656...), anonymised case labels, and age or sex without a name
+          - The dentist stating their own clinical decision or constraint («발치는 안 한다», «13번은 고정», «3번 안으로 간다»)
+          - Reporting computed values (crowding in mm, space deficit), comparing computed strategies, and leaving the choice to the dentist
+          - Assistant caveats and refusals («이 계획은 초안입니다. 최종 판단은 의사가 합니다», «진단은 드릴 수 없습니다»)
+          - Short or underspecified planning requests («moderate 케이스 계획 짜줘», «IPR 은 앞니 빼고»), requests unrelated to aligner planning, and questions about the app's rules and limits
 
 rails:
   input:
     flows:
-      - content safety check input $model=content_safety   # 범용 유해성
+      - content safety check input $model=content_safety   # 범용 유해성 + 위 맞춤 정책(기본 advisory · rails.py)
       - self check input                                    # 도메인 범위: 진단·처방 요구 차단 (prompts.yml)
   output:
     flows:

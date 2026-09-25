@@ -11,6 +11,7 @@
 | NeMo Guardrails | `guardrails/`, `src/cualign/server/rails.py`, `src/cualign/server/rails_middleware.py`, `scripts/run_guardrails.py`, `docs/demo/guardrails*.md` | NAT 워크플로 미들웨어로 에이전트 호출마다 입력 범위 검사와, 답을 판정까지 쥐는 출력 검사. 그 앞에서 같은 미들웨어가 표준 라이브러리 정규식으로 식별정보·처방 문구를 봄(NeMo Guardrails 기능은 아님) | 진행 표시·`/full`·`/atif` 원 단계는 쥐지 않음. 타임아웃·오류 시 ERROR 로그 후 진행(`CUALIGN_RAILS_FAIL_CLOSED=1`이면 거절), 계산 API는 별도 |
 | OpenShell | `openshell/policy.yaml`, `docs/openshell.md` | 파일·네트워크 접근 경계의 정책 실험 | 서버 전체를 감싼 운영 샌드박스가 아님. 현 정책은 NIM·출력 경로에 맞춘 완성 정책이 아님 |
 | Agent Skill | `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙·도구 사용 절차를 전달하는 자산 | 파일 존재를 NAT의 자동 로딩·실행 증거로 해석하지 않음 |
+| NVIDIA 스킬 카탈로그 (`nemotron-policy-generator` v0.1.0) | `guardrails/policy/`, `guardrails/config.yml` | build.nvidia.com/skills 의 스킬로 cuAlign 안전 정책(md·json·프롬프트)을 오프라인 생성하고, 그 Categories·Allow-list 를 content-safety 모델의 `custom_policy` 로 보냄(#37) | 스킬은 코딩 에이전트가 읽는 절차서라 실행 자체는 모델 호출이 아님. 호스팅 3.5 모델이 `custom_policy` 를 받는지는 실호출로 확인 |
 | SkillSpector | `scripts/scan_skill.py`, `skills/skillspector-report*.md` | 위 Skill의 과거 정적·의미 검사 결과와 재실행 방법 | 현재 Skill은 당시 스냅샷과 다를 수 있음. 서버·제품 전체 보안 인증 아님 |
 
 의미 검사 보고서 본문에는 0/100이 기록되어 있다. 이 점수는 검사 당시 Skill에 대한 결과이며,
@@ -33,7 +34,7 @@ NIM 추론 API와 같은 개념이 아니다. 현재 레포는 자체 Skill과 �
 | 항목 | 현재 판단 | 후속 확인 |
 |---|---|---|
 | 에이전트 데모 | 기존 실행 흐름과 다섯 시나리오가 출발점 | 최신 코드로 팀 재현 |
-| Build NVIDIA Skill API 활용 | 자체 Skill·검사 자산 존재, NIM과 구별 | 공고 문언의 구체적 인정 범위는 미확정 |
+| Build NVIDIA Skill API 활용 | 자체 Skill·검사 자산에 더해 카탈로그 스킬 `nemotron-policy-generator` 로 만든 정책이 가드레일에 들어감(#37). NIM과 구별 | 공고 문언의 구체적 인정 범위는 미확정 |
 | 필수 레포 구조·파일 | 확인한 공개 안내에서 지정 근거 미발견 | 기존 구조는 개발·재현을 위한 구성 |
 
 ## 3. 검증 자료 읽기
