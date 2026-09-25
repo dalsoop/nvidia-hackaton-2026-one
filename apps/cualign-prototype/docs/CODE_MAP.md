@@ -37,6 +37,7 @@
 | `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·검토 예산 컨텍스트 |
 | `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`) |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
+| `src/cualign/agent/react_history_patch.py` | NAT ReAct 네이티브 도구 호출 모드가 다음 프롬프트에서 빠뜨리는 «실제로 부른 도구·인자»를 기록에 붙이는 호환 가드(같은 도구 반복 방지) |
 | `src/cualign/agent/nim_stream_patch.py` | NIM 스트림 첫 줄의 오류(과부하 503 등)를 빈 답 대신 재요청·예외로 바꾸고, 스트림이 아닌 호출(검토)의 429·5xx 를 짧게 재요청하는 호환 가드 |
 | `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구, 지시문 연결 |
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
@@ -69,6 +70,7 @@
 | `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·예외 문구·검토 건너뛴 턴·메모 레일 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
+| `tests/test_react_history.py` | 앞선 호출을 기억해야 넘어가는 가짜 모델로 NAT 실제 그래프를 돌려 같은 도구 반복이 없는지 검사 |
 | `tests/test_nim_stream_patch.py` | 과부하 줄(스트림)과 HTTP 503(비스트림)을 보내는 가짜 NIM 서버로 재요청·재시도 소진·재시도 불가 오류·연결 정리 검사 |
 | `tests/test_segmentation.py` | 라벨→메시 분리 검사. 모델 추론 시험은 아님 |
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
