@@ -68,7 +68,7 @@
 | `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
-| `tests/test_nim_stream_patch.py` | 과부하 줄을 보내는 가짜 NIM 서버로 재요청·재시도 소진·재시도 불가 오류 검사 |
+| `tests/test_nim_stream_patch.py` | 과부하 줄을 보내는 가짜 NIM 서버로 재요청·재시도 소진·재시도 불가 오류·연결 정리 검사 |
 | `tests/test_segmentation.py` | 라벨→메시 분리 검사. 모델 추론 시험은 아님 |
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
 | `tests/test_api.py` | UI 경로·승인→ZIP·잘못된 계획 ID 검사 |

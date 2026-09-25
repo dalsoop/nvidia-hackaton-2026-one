@@ -1,6 +1,7 @@
 """An overloaded NVIDIA API stream (HTTP 200, one error line) is asked again instead of reaching the planner as an
 empty answer. The client is the real ChatNVIDIA, the server a local fake (rails_fakes.FakeLLM)."""
 import asyncio
+import gc
 
 import pytest
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -18,7 +19,10 @@ def no_wait(monkeypatch):
 def answer(fake):
     async def collect():
         llm = ChatNVIDIA(base_url=fake.base_url, model="fake/planner", api_key="fake")
-        return "".join([chunk.content async for chunk in llm.astream("hi")])
+        text = "".join([chunk.content async for chunk in llm.astream("hi")])
+        del llm
+        gc.collect()  # while the loop runs, so a connection dropped unreleased logs "Unclosed connection"
+        return text
     return asyncio.run(collect())
 
 
@@ -27,6 +31,15 @@ def test_overloaded_stream_is_asked_again():
         fake.busy = 2
         assert answer(fake) == "MARK-OK"
     assert len(fake.requests) == 3
+
+
+def test_overload_answer_is_read_to_its_end(caplog):
+    """The live server logged "Unclosed connection" after re-requests: the overload answer was closed before its
+    stream ended. Here the fake keeps it open a moment after the error line."""
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy, fake.busy_hold = 2, 0.3
+        assert answer(fake) == "MARK-OK"
+    assert "Unclosed connection" not in caplog.text
 
 
 def test_overload_that_outlasts_the_retries_raises(caplog):

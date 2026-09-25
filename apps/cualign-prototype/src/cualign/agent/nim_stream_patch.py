@@ -50,6 +50,8 @@ def apply() -> None:
                     async for msg in stream:
                         yield msg
                     return
+                async for _ in stream:  # read to the end as before; closing early leaves aiohttp an unreleased connection
+                    pass
             finally:
                 await stream.aclose()
             if delay is None or error.get("code") not in RETRY_CODES:
