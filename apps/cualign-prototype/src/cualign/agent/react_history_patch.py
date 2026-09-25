@@ -6,6 +6,12 @@ that log can say only "first I need to call X". Even the empty-reasoning fallbac
 omits the arguments. Append the actual action to newly created log entries so
 the next model call sees what produced each observation.
 
+The model may copy that format into its own text (seen live, 2026-09-25), and a
+text-parsed action's log already holds its Action lines. So the record is added
+only when the log does not already name the same tool with an equal input
+(compared as JSON, so spacing and quoting do not matter). When the text names a
+different input than the call NAT executed, the executed one is appended last.
+
 This retains NAT's existing AI/Human text history, parsing and retry behavior;
 it does not suppress repeated calls or claim that a requested tool succeeded.
 Only the action NAT chose to execute is recorded, not other proposed calls.
@@ -13,9 +19,30 @@ Only the action NAT chose to execute is recorded, not other proposed calls.
 from __future__ import annotations
 
 import json
+import re
 from functools import wraps
 
 from nat.plugins.langchain.agent.react_agent.agent import ReActAgentGraph
+
+_ACTION = re.compile(r"^\s*Action\s*:\s*(?P<tool>.+?)\s*$\s*^\s*Action\s*Input\s*:\s*(?P<input>.*?)\s*$",
+                     re.IGNORECASE | re.MULTILINE)
+
+
+def _as_value(text):
+    """The input as a comparable value: parsed JSON when it is JSON, else the stripped text."""
+    if not isinstance(text, str):
+        return text
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text.strip()
+
+
+def already_recorded(log: str, tool: str, tool_input) -> bool:
+    """True when the log already has an Action/Action Input pair for this tool and an equal input."""
+    wanted = _as_value(tool_input)
+    return any(m.group("tool").strip() == tool and _as_value(m.group("input")) == wanted
+               for m in _ACTION.finditer(log or ""))
 
 
 def apply() -> None:
@@ -29,12 +56,12 @@ def apply() -> None:
         result = await original(self, state, config=config)
         if self.use_native_tool_calling and result is not None:
             for action in result.agent_scratchpad[previous:]:
+                if already_recorded(action.log, action.tool, action.tool_input):
+                    continue
                 arguments = action.tool_input
                 if isinstance(arguments, dict):
                     arguments = json.dumps(arguments)
-                record = f"Action: {action.tool}\nAction Input: {arguments}"
-                if not action.log.rstrip().endswith(record):
-                    action.log = f"{action.log.rstrip()}\n{record}"
+                action.log = f"{action.log.rstrip()}\nAction: {action.tool}\nAction Input: {arguments}"
         return result
 
     agent_node._cualign_history_patched = True
