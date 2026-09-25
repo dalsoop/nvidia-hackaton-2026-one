@@ -99,6 +99,8 @@ reviewer는 ReAct 도구 루프 대신 저장 계획의 요약을 NIM에 전달�
 NAT NIM의 num_retries=1(최초 시도 포함)로 중첩 재시도를 막는다.
 CLI는 HTTP 요청 컨텍스트가 없으므로 계획별 저장 결과로 중복 검토를 막는다.
 검토 실패는 계획 결과와 함께 화면에 표시하며 승인할 수 없다.
+에이전트가 검토를 건너뛰었거나(not_requested) 검토가 실패한(failed) 계획은 의사가 POST /api/plans/{id}/review로 다시 요청한다.
+요청 컨텍스트 없이 워크플로의 reviewer 설정·모델로 같은 상한 안에서 돌고, passed/skipped면 409, 검토 모델이 없으면 503이다.
 
 의사 확인 후 POST /api/plans/{id}/approval (confirmed=true)로 승인하고 DELETE로 취소한다.
 규칙 통과 및 review passed 또는 명시적 규칙 폴백 skipped만 승인 가능하다.

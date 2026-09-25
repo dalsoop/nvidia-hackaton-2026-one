@@ -50,4 +50,17 @@ class CuAlignWorker(FastApiFrontEndPluginWorker):
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder):
         await super().add_routes(app, builder)
         from .api import add_api_routes
-        add_api_routes(app)
+        add_api_routes(app, review=await manual_review(builder))
+
+
+async def manual_review(builder: WorkflowBuilder, name: str = "reviewer"):
+    """The dentist's «검토 다시 요청» runs the workflow's own reviewer settings and model, outside any chat request."""
+    from nat.builder.framework_enum import LLMFrameworkEnum
+    from cualign.agent.reviewer import review_plan
+    config = builder.get_function_config(name)
+    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+
+    async def review(plan_id: str) -> dict:
+        return await review_plan(plan_id, llm, max_attempts=config.max_attempts, timeout_seconds=config.timeout_seconds,
+                                 total_seconds=config.total_seconds, manual=True)
+    return review

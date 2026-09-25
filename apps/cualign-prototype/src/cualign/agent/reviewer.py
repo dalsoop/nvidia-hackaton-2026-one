@@ -35,12 +35,19 @@ def response_text(response):
     return ""
 
 
-async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seconds=20, total_seconds=40):
+# A dentist may ask again for a plan the agent never reviewed or whose review failed; finished ones stay as stored.
+MANUAL_RETRY = ("not_requested", "failed")
+
+
+async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seconds=20, total_seconds=40,
+                      manual=False):
+    """`manual` is the dentist's explicit request from the UI (no request context): it reviews a `failed` plan again
+    with a fresh budget. The agent path keeps returning the stored failure so it cannot loop on the model."""
     p = store.plans[plan_id]
-    run = CURRENT_RUN.get()
+    run = None if manual else CURRENT_RUN.get()
     if run and (run.closed or run.case_id != p["case_id"] or run.selected_plan_id != plan_id):
         raise ValueError("review only the selected plan in this request")
-    if p["review"]["status"] in ("passed", "failed", "skipped"):
+    if p["review"]["status"] in (("passed", "skipped") if manual else ("passed", "failed", "skipped")):
         return dict(p["review"])
     if p["review"]["status"] == "running" or (run and run.review_busy):
         return {"status": "running", "attempts": p["review"]["attempts"], "message": "검토 진행 중", "error": None}

@@ -28,7 +28,16 @@ OUT = ROOT / "out" / "browser-acceptance"
 OUT.mkdir(parents=True, exist_ok=True)
 store_module.OUT_DIR = api.OUT_DIR = OUT
 app = FastAPI()
-api.add_api_routes(app)
+
+
+async def fake_manual_review(plan_id):
+    class Memo:
+        async def ainvoke(self, messages):
+            return "검토 메모 초안 (가짜 검토)"
+    return await review_plan(plan_id, Memo(), manual=True)
+
+
+api.add_api_routes(app, review=fake_manual_review)
 app.add_middleware(plan_events.PlanEventsASGI)
 
 
@@ -121,6 +130,14 @@ async def main():
             assert await page.locator("#approveBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
             await page.screenshot(path=str(OUT / "review-failure.png"))
+            # The dentist asks for the failed review again on the same plan.
+            assert await page.locator("#reviewBtn").is_visible()
+            await page.locator("#reviewBtn").click()
+            await page.wait_for_function("document.querySelector('#rReview').textContent === '메모 생성 완료' && !document.querySelector('#sendBtn').disabled")
+            assert await page.locator("#rPlan").inner_text() == selected
+            assert await page.locator("#reviewBtn").is_hidden()
+            if store_module.STORE.plan_json(selected)["passed"]:
+                assert await page.locator("#approveBtn").is_enabled()
             # A stale HTTP response must not overwrite a later manual selection.
             pending = asyncio.Event()
             release = asyncio.Event()
@@ -145,7 +162,7 @@ async def main():
             await page.wait_for_function("document.querySelector('#rPlan').textContent === '—'")
             assert await page.locator("#stlLink").get_attribute("href") is None
             assert not errors, errors
-            print("PASS: browser revision, 3D/card/file identity, constraints, reviewer failure, approval, stale response, case reset")
+            print("PASS: browser revision, 3D/card/file identity, constraints, reviewer failure, manual re-review, approval, stale response, case reset")
             await browser.close()
             browser = None
     finally:

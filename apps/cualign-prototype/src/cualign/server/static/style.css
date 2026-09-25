@@ -55,6 +55,8 @@ textarea { resize: vertical; }
 .btn.ghost { background: transparent; }
 .btn.small { padding: 4px 9px; font-size: 13px; }
 .btn.disabled { opacity: 0.4; pointer-events: none; }
+.btn[hidden] { display: none; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---------- layout ---------- */
 .layout {
