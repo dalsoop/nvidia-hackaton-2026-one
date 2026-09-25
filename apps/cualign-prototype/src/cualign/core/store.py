@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import patients
 from .case import Case
 from .constraints import Constraints
 from .synth import PRESETS
@@ -35,7 +36,8 @@ class Store:
         if env and Path(env).exists():
             rows.append({"case_id": "scan", "kind": "stl-folder", "path": env})
         for k in self.cases:
-            if k not in {r["case_id"] for r in rows}:
+            # patient scans are listed under their patient (/api/patients), never among samples or to the model
+            if k not in {r["case_id"] for r in rows} and patients.case_folder(k) is None:
                 rows.append({"case_id": k, "kind": "loaded"})
         return rows
 
@@ -47,6 +49,8 @@ class Store:
                 self.cases[case_id] = Case.synthetic(case_id)
             elif case_id == "scan":
                 self.cases[case_id] = Case.from_dir(os.environ["CUALIGN_CASE_DIR"])
+            elif (folder := patients.case_folder(case_id)) is not None:
+                self.cases[case_id] = Case.from_dir(folder)
             elif Path(case_id).is_dir():
                 self.cases[case_id] = Case.from_dir(case_id)
             else:

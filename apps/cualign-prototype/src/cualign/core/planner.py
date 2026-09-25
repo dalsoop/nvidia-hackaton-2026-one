@@ -205,6 +205,23 @@ def unsupported_reasons(case: Case) -> list[str]:
     return out
 
 
+def intake_report(case: Case) -> dict:
+    """What was read from a scan, for the dentist to confirm before planning: tooth numbers, missing teeth, widths,
+    crowding, the rotations and height differences the planner would correct, and whether the case is in scope."""
+    from .limits import UPPER
+    rot, lift = _corrections(case, list(case.ids), set())
+    why = unsupported_reasons(case)
+    return {"teeth": case.ids, "n_teeth": len(case.ids),
+            "missing": [i for i in UPPER if i not in case.ids and case.ids[0] < i < case.ids[-1]],
+            "outside": [i for i in UPPER if i not in case.ids and not case.ids[0] < i < case.ids[-1]],
+            "widths_mm": {i: round(case.mesiodistal_width(i), 1) for i in case.ids},
+            "crowding_mm": crowding_mm(case),
+            "rotation_deg": {i: round(-v, 1) for i, v in sorted(rot.items())},
+            "vertical_mm": {i: round(-v, 1) for i, v in sorted(lift.items())},
+            "scanned_gingiva": getattr(case, "_gum", None) is not None,
+            "unsupported": why, "ready": not why}
+
+
 def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
     """Split current -> target into aligners. order: 'simultaneous' | 'anterior_first' | 'sequential'."""
     moves = {i: t for i, t in target.items() if t is not None}

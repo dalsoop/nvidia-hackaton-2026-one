@@ -1,5 +1,5 @@
 """One constraint-preserving calculation path for API and agent tools."""
-from . import planner
+from . import patients, planner
 from .constraints import Constraints
 from .limits import STRATEGIES
 from .planner import FIRST_PREMOLARS
@@ -10,6 +10,9 @@ class PlanningService:
         self.store = store
 
     def target(self, case_id, strategy, constraints: Constraints):
+        if patients.is_confirmed(case_id) is False:
+            # every planning path (agent tools, comparison, rule fallback) creates targets here
+            raise ValueError("입력 확인 전 스캔입니다. 입력 확인 화면에서 치아 번호와 방향을 확인한 뒤 계획하세요.")
         _, case = self.store.load_case(case_id)
         target, info = planner.propose_target(case, strategy, constraints=constraints)
         return self.store.put_target(case_id, target, info, constraints)

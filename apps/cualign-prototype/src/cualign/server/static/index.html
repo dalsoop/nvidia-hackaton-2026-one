@@ -21,24 +21,73 @@
       <span class="tagline">투명교정 스테이징 에이전트 <em>(초안 전용 · 최종 판단은 의사)</em></span>
     </div>
     <div class="controls">
-      <button id="caseBtn" class="btn ghost case-pill" title="케이스 바꾸기">
-        <span class="k">케이스</span> <span id="caseName">—</span>
+      <button id="caseBtn" class="btn ghost case-pill" title="환자·스캔 바꾸기">
+        <span class="k">환자</span> <span id="caseName">—</span>
       </button>
       <button id="fallbackBtn" class="btn ghost" title="LLM 없이 규칙 기반 루프만 돌립니다">규칙 기반 폴백</button>
     </div>
   </header>
 
-  <!-- 시작점: 환자 케이스 선택 (임상 SW 관례 — 환자 목록 → 스캔 → 계획) -->
+  <!-- 시작점: 환자 → 스캔 업로드 → 입력 확인 → 계획 (임상 SW 관례) -->
   <div id="caseGate" class="gate" hidden>
-    <div class="gate-panel">
-      <h1>환자 케이스 선택</h1>
-      <p class="muted">스캔된 상악 케이스를 고르면 3D 뷰어에 로드되고, 에이전트가 제약 조건을 묻습니다. 환자 데이터가 아닌 합성 케이스입니다.</p>
-      <div id="caseCards" class="cards"></div>
+    <!-- 1. 환자 목록 -->
+    <div id="screenPatients" class="gate-panel screen">
+      <h1>환자 선택</h1>
+      <p class="muted">환자를 고르거나 새로 등록한 뒤 그 환자의 스캔을 올립니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
+      <div id="patientCards" class="cards"></div>
+      <form id="patientForm" class="new-patient">
+        <h2>새 환자</h2>
+        <label>별칭 <input id="pAlias" maxlength="40" placeholder="예: 3월 상담 A" required></label>
+        <label>메모 <input id="pMemo" maxlength="200" placeholder="선택"></label>
+        <button class="btn primary small" type="submit">등록</button>
+        <p class="hint">실명·주민번호·연락처는 입력하지 마세요. 가명만 사용합니다.</p>
+      </form>
       <div class="gate-foot">
-        <label class="btn ghost" for="uploadInput">치아별 STL 업로드 (Universal 번호.stl)</label>
-        <input id="uploadInput" type="file" accept=".stl" multiple hidden />
-        <button id="gateClose" class="btn ghost small" hidden>닫기</button>
+        <button id="toSamples" class="btn ghost small" type="button">샘플 케이스로 체험</button>
+        <button id="gateClose" class="btn ghost small" type="button" hidden>닫기</button>
       </div>
+    </div>
+
+    <!-- 2. 환자 화면: 스캔 목록 + 업로드 -->
+    <div id="screenPatient" class="gate-panel screen" hidden>
+      <button class="btn ghost small back" data-go="patients" type="button">← 환자 목록</button>
+      <h1 id="patientTitle">환자</h1>
+      <p id="patientMeta" class="muted"></p>
+      <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
+      <h2>스캔</h2>
+      <div id="scanList" class="scan-list"></div>
+      <label id="dropZone" class="drop" for="scanInput">
+        <b>상악 스캔 올리기</b>
+        <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
+        <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
+      </label>
+      <input id="scanInput" type="file" accept=".stl" multiple hidden />
+      <p id="uploadStatus" class="muted" aria-live="polite"></p>
+    </div>
+
+    <!-- 3. 입력 확인: 3D는 오른쪽 뷰어에 표시 -->
+    <div id="screenCheck" class="gate-panel screen side" hidden>
+      <button class="btn ghost small back" data-go="patient" type="button">← 환자 화면</button>
+      <h1>입력 확인</h1>
+      <p id="checkMeta" class="muted"></p>
+      <div id="checkBadge" class="badge neutral"></div>
+      <dl id="checkList" class="check"></dl>
+      <div id="sideWarn" class="warn-box" hidden>
+        <b>치아 번호가 좌우 반대로 보입니다.</b> 2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다. 파일 번호를 확인하세요.
+        <button id="mirrorBtn" class="btn ghost small" type="button">좌우 번호 뒤집기 (u → 17−u)</button>
+      </div>
+      <p class="hint">오른쪽 3D에서 치아 번호(마우스를 올리면 표시)와 위치가 맞는지 확인하세요. 주황: 회전 보정 대상 · 파랑: 높이 보정 대상.</p>
+      <div class="gate-foot">
+        <button id="startPlan" class="btn primary" type="button">번호 확인 — 계획 시작</button>
+      </div>
+    </div>
+
+    <!-- 샘플 (환자 흐름 밖) -->
+    <div id="screenSamples" class="gate-panel screen" hidden>
+      <button class="btn ghost small back" data-go="patients" type="button">← 환자 목록</button>
+      <h1>샘플 케이스</h1>
+      <p class="muted">환자 데이터가 아닌 합성·공개 케이스입니다. 흐름을 체험하거나 시연할 때만 씁니다.</p>
+      <div id="caseCards" class="cards"></div>
     </div>
   </div>
 

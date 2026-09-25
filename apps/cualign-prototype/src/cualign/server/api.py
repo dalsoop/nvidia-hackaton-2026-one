@@ -1,5 +1,6 @@
 """Artifact API. Approval is checked on every export, including cached files."""
 from __future__ import annotations
+import re
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -7,7 +8,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from cualign.core import Case, planner
+from cualign.core import Case, patients, planner
 from cualign.core.constraints import ConstraintPatch
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -22,6 +23,29 @@ class RulePlanRequest(ConstraintPatch):
 
 class ApprovalRequest(BaseModel):
     confirmed: bool = False
+
+
+class PatientRequest(BaseModel):
+    alias: str = Field(max_length=patients.ALIAS_MAX)
+    memo: str = Field(default="", max_length=patients.MEMO_MAX)
+
+
+def _scan_file_name(name: str) -> str | None:
+    """Keep <tooth>.stl and gingiva.stl only (Universal numbering, upper arch); anything else is ignored."""
+    name = Path(name or "").name
+    if name.lower() == "gingiva.stl":
+        return "gingiva.stl"
+    # a tooth number is 1..32 without padding: "000018.stl" is a scan id, not tooth 18
+    if name.lower().endswith(".stl") and re.fullmatch(r"[1-9]|[12]\d|3[0-2]", Path(name).stem):
+        return f"{int(Path(name).stem)}.stl"
+    return None
+
+
+def _patient_json(pid: str) -> dict:
+    p = patients.get_patient(pid)
+    for s in p["scans"]:
+        s["plans"] = sum(1 for q in STORE.plans.values() if q["case_id"] == s["case_id"])
+    return p
 
 
 def _summary(pid):
@@ -104,6 +128,108 @@ def add_api_routes(app: FastAPI):
         cid = f"upload-{folder.name}"
         STORE.add_case(cid, case)
         return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case)}
+
+    @app.get("/api/patients")
+    async def list_patients():
+        return {"patients": [{**p, "n_scans": len(p["scans"])} for p in patients.list_patients()]}
+
+    @app.post("/api/patients")
+    async def create_patient(req: PatientRequest):
+        try:
+            return patients.create_patient(req.alias, req.memo)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/patients/{pid}")
+    async def get_patient(pid: str):
+        try:
+            return _patient_json(pid)
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/patients/{pid}/scans")
+    async def upload_patient_scan(pid: str, files: list[UploadFile]):
+        data, other = {}, []
+        for f in files:
+            name = _scan_file_name(f.filename)
+            if name:
+                data[name] = await f.read()
+            elif (f.filename or "").lower().endswith((".stl", ".ply", ".obj")):
+                other.append(Path(f.filename).name)
+        if other and not any(Path(n).stem.isdigit() for n in data):
+            raise HTTPException(400, f"{', '.join(other[:3])}: 한 덩어리 악궁 스캔으로 보입니다. 지금은 치아별로 나뉜 파일"
+                                     "(2.stl … 15.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.")
+        try:
+            scan = patients.add_scan(pid, data)
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        try:
+            STORE.cases.pop(scan["case_id"], None)
+            _, case = STORE.load_case(scan["case_id"])
+        except Exception as e:  # unreadable STL: do not keep a scan the planner cannot open
+            patients.remove_scan(pid, scan["scan_id"])
+            raise HTTPException(400, f"스캔을 읽지 못했습니다: {type(e).__name__}")
+        return {**scan, "check": _check(scan["case_id"], case)}
+
+    def _check(case_id, case):
+        out = {"case_id": case_id, **planner.intake_report(case)}
+        m = patients._CASE_RE.match(case_id)
+        if m and patients.case_folder(case_id) is not None:
+            sc = patients._scan(patients.get_patient(m.group(1)), m.group(2))
+            out["orientation"] = sc.get("orientation")
+            out["confirmed_at"] = sc.get("confirmed_at")
+        return out
+
+    def _patient_scan(pid, sid):
+        try:
+            patients._scan(patients.get_patient(pid), sid)
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+
+    @app.get("/api/cases/{case_id}/check")
+    async def case_check(case_id: str):
+        try:
+            _, case = STORE.load_case(case_id)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        return _check(case_id, case)
+
+    @app.post("/api/patients/{pid}/scans/{sid}/confirm")
+    async def confirm_scan(pid: str, sid: str):
+        _patient_scan(pid, sid)
+        _, case = STORE.load_case(f"{pid}-{sid}")
+        if planner.unsupported_reasons(case):
+            raise HTTPException(409, "지원하지 않는 스캔은 계획용으로 확인할 수 없습니다.")
+        return patients.confirm_scan(pid, sid)
+
+    @app.post("/api/patients/{pid}/scans/{sid}/mirror")
+    async def mirror_scan(pid: str, sid: str):
+        _patient_scan(pid, sid)
+        patients.mirror_scan_numbers(pid, sid)
+        case_id = f"{pid}-{sid}"
+        STORE.cases.pop(case_id, None)       # the numbers changed: reload from disk
+        _, case = STORE.load_case(case_id)
+        return _check(case_id, case)
+
+    @app.delete("/api/patients/{pid}/scans/{sid}")
+    async def delete_scan(pid: str, sid: str):
+        _patient_scan(pid, sid)
+        patients.remove_scan(pid, sid)
+        STORE.cases.pop(f"{pid}-{sid}", None)
+        return _patient_json(pid)
+
+    @app.delete("/api/patients/{pid}")
+    async def delete_patient(pid: str):
+        try:
+            p = patients.get_patient(pid)
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+        for sc in p["scans"]:
+            STORE.cases.pop(sc["case_id"], None)
+        patients.delete_patient(pid)
+        return {"deleted": pid}
 
     @app.get("/api/plans")
     async def list_plans(case_id: str | None = None):
