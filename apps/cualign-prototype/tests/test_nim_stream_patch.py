@@ -1,5 +1,6 @@
 """An overloaded NVIDIA API stream (HTTP 200, one error line) is asked again instead of reaching the planner as an
-empty answer. The client is the real ChatNVIDIA, the server a local fake (rails_fakes.FakeLLM)."""
+empty answer, and an overloaded call that is not streamed (a real HTTP 503: the review) is asked again instead of
+failing at once. The client is the real ChatNVIDIA, the server a local fake (rails_fakes.FakeLLM)."""
 import asyncio
 import gc
 
@@ -14,6 +15,7 @@ from rails_fakes import FakeLLM
 @pytest.fixture(autouse=True)
 def no_wait(monkeypatch):
     monkeypatch.setattr(nim_stream_patch, "DELAYS", (0,) * len(nim_stream_patch.DELAYS))
+    monkeypatch.setattr(nim_stream_patch, "REQUEST_DELAYS", (0,) * len(nim_stream_patch.REQUEST_DELAYS))
 
 
 def answer(fake):
@@ -60,3 +62,35 @@ def test_error_that_is_not_retryable_raises_at_once(caplog):
             answer(fake)
     assert len(fake.requests) == 1
     assert "MARK-BAD" in caplog.text
+
+
+def whole_answer(fake):
+    """The call as reviewer.py makes it: not streamed."""
+    async def call():
+        llm = ChatNVIDIA(base_url=fake.base_url, model="fake/review", api_key="fake")
+        return (await llm.ainvoke("hi")).content
+    return asyncio.run(call())
+
+
+def test_overloaded_request_is_asked_again():
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy = 2
+        assert whole_answer(fake) == "MARK-OK"
+    assert len(fake.requests) == 3
+
+
+def test_overloaded_request_that_outlasts_the_retries_raises_the_api_error():
+    """The original exception is kept: reviewer.py labels the failure by the "503" in it."""
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy = 99
+        with pytest.raises(Exception, match=r"^\[503\]"):
+            whole_answer(fake)
+    assert len(fake.requests) == len(nim_stream_patch.REQUEST_DELAYS) + 1
+
+
+def test_request_error_that_is_not_retryable_raises_at_once():
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy, fake.busy_error = 99, {"message": "MARK-BAD request", "code": 400}
+        with pytest.raises(Exception, match=r"^\[400\]"):
+            whole_answer(fake)
+    assert len(fake.requests) == 1

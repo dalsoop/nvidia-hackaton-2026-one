@@ -14,18 +14,28 @@ This wraps the async stream: if its first message is a retryable error, the requ
 Its message carries no status code or API text: NAT's retry matches codes and the text "429", and would run the
 whole call again. A stream that started normally is passed through unchanged. Applied once at plugin import
 (register.py).
+
+A call that is not streamed (`aget_req`: the review's `ainvoke`) gets the same overload as a real HTTP status,
+which `_try_raise_async` raises as `Exception("[503] ...")`. Nothing above it asks again: NAT's retry reads a
+status only from an exception attribute or an int first argument, and nim_review has `num_retries: 1` anyway
+(#34). Such a call is sent again after 1, 2, 4 seconds — 7 s of waiting, inside the review's 20 s per call — and
+then the original exception is re-raised, as reviewer.py reads its "503". The rail verdicts do not pass through
+here: Guardrails talks to NIM with its own client, whose re-asks are set in guardrails/config.yml.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from langchain_nvidia_ai_endpoints import _common
 
 logger = logging.getLogger(__name__)
 
 DELAYS = (1, 2, 4, 8, 16, 32)  # seconds before each re-request (#6)
+REQUEST_DELAYS = (1, 2, 4)  # the same for calls that are not streamed (#34)
 RETRY_CODES = {429, 500, 502, 503, 504}  # NAT's own retry_on_status_codes
+_STATUS = re.compile(r"^\[(\d{3})\]")  # _format_error starts every message with "[<status>]"
 
 
 class NIMStreamError(RuntimeError):
@@ -61,5 +71,20 @@ def apply() -> None:
                            error, delay, attempt, len(DELAYS))
             await asyncio.sleep(delay)
 
+    original_req = client_cls.aget_req
+
+    async def aget_req(self, *args, **kwargs):
+        for attempt, delay in enumerate((*REQUEST_DELAYS, None), 1):
+            try:
+                return await original_req(self, *args, **kwargs)
+            except Exception as e:
+                status = _STATUS.match(str(e))
+                if delay is None or not status or int(status.group(1)) not in RETRY_CODES:
+                    raise
+                logger.warning("cuAlign: NIM request answered %s; asking again in %ss (%d/%d)",
+                               status.group(0), delay, attempt, len(REQUEST_DELAYS))
+            await asyncio.sleep(delay)
+
     client_cls.aget_req_stream = aget_req_stream
+    client_cls.aget_req = aget_req
     client_cls._cualign_patched = True

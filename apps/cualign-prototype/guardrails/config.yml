@@ -6,12 +6,17 @@ models:
   - type: main
     engine: nim
     model: nvidia/nemotron-3-super-120b-a12b
+    parameters:
+      # Guardrails 자체 클라이언트가 429·5xx 를 0~0.5·2ⁿ초(최대 8초) 무작위 대기 뒤 다시 묻는다. 기본 2회로는
+      # 9/25 실호출에서 그보다 오래 간 503 이 판정 하나를 떨어뜨렸다(#34). 4회면 기다림 최대 7.5초 · 판정 25초 예산 안.
+      max_retries: 4
 
   # 역할 3 — 안전 판정 전용 모델 (Nemotron 3.5 Content Safety). 공식 예제 설정 그대로.
   - type: content_safety
     engine: nim
     model: nvidia/nemotron-3.5-content-safety
     parameters:
+      max_retries: 4  # 위와 같다(#34)
       chat_template_kwargs:
         enable_thinking: false
         request_categories: "/categories"
