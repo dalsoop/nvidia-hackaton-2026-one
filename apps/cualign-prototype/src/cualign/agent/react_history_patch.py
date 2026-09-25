@@ -9,7 +9,7 @@ the next model call sees what produced each observation.
 The model may copy that format into its own text (seen live, 2026-09-25), and a
 text-parsed action's log already holds its Action lines. So the record is added
 only when the log does not already name the same tool with an equal input
-(compared as JSON, so spacing and quoting do not matter). When the text names a
+(compared as JSON, so spacing, line breaks and trailing text do not matter). When the text names a
 different input than the call NAT executed, the executed one is appended last.
 
 This retains NAT's existing AI/Human text history, parsing and retry behavior;
@@ -24,18 +24,22 @@ from functools import wraps
 
 from nat.plugins.langchain.agent.react_agent.agent import ReActAgentGraph
 
-_ACTION = re.compile(r"^\s*Action\s*:\s*(?P<tool>.+?)\s*$\s*^\s*Action\s*Input\s*:\s*(?P<input>.*?)\s*$",
-                     re.IGNORECASE | re.MULTILINE)
+_ACTION = re.compile(r"^[ \t]*Action[ \t]*:[ \t]*(?P<tool>[^\n]+?)[ \t]*\n[ \t]*Action[ \t]*Input[ \t]*:(?P<input>.*?)"
+                     r"(?=^[ \t]*(?:Thought|Action|Observation|Final[ \t]*Answer)[ \t]*:|\Z)",
+                     re.IGNORECASE | re.MULTILINE | re.DOTALL)
+_DECODER = json.JSONDecoder()
 
 
 def _as_value(text):
-    """The input as a comparable value: parsed JSON when it is JSON, else the stripped text."""
+    """The input as a comparable value. JSON is parsed from its start, so an object over several lines or followed
+    by other text still compares by value; anything else compares as its first line, stripped."""
     if not isinstance(text, str):
         return text
+    body = text.strip()
     try:
-        return json.loads(text)
+        return _DECODER.raw_decode(body)[0]
     except ValueError:
-        return text.strip()
+        return body.splitlines()[0].strip() if body else ""
 
 
 def already_recorded(log: str, tool: str, tool_input) -> bool:

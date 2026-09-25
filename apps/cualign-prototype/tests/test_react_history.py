@@ -79,6 +79,14 @@ def test_native_call_history_advances_instead_of_repeating(name, args, reasoning
     ('Action: t\nAction Input: {"lock": [3]}', "t", '{"lock": [13]}', False),  # a different input
     ('Action: other\nAction Input: {"lock": [13]}', "t", '{"lock": [13]}', False),
     ("Calling t", "t", '{"lock": [13]}', False),  # NAT's fallback log names no input
+    ('Action: t\nAction Input: {\n  "lock": [13],\n  "stage_cap": null\n}', "t",
+     '{"lock": [13], "stage_cap": null}', True),  # an object over several lines
+    ('Action: t\nAction Input: {"lock": [13]} 13번은 고정합니다.\n그 뒤 계획을 짭니다.', "t", '{"lock": [13]}', True),
+    ('Action: t\nAction Input: {"lock": [3]}\nThought: 다시\nAction: t\nAction Input: {"lock": [13]}', "t",
+     '{"lock": [13]}', True),  # the second of two pairs
+    ('Action: t\nAction Input: {"lock": [13]}\nThought: 다시\nAction: t\nAction Input: {"lock": [3]}', "t",
+     '{"lock": [3]}', True),
+    ('Action: t\nAction Input: {\n  "lock": [3]\n}\nThought: 끝', "t", '{"lock": [13]}', False),
 ])
 def test_already_recorded_compares_inputs_as_json(log, tool, tool_input, expected):
     assert already_recorded(log, tool, tool_input) is expected
