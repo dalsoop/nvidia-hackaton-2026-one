@@ -55,9 +55,9 @@ def served(tmp_path, monkeypatch):
 
 async def call(app, fn, token=TOKEN):
     headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://cualign.test",
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost",
                                  headers=headers, timeout=60) as http:
-        async with streamable_http_client("https://cualign.test/mcp", http_client=http) as (read, write, *_):
+        async with streamable_http_client("http://localhost/mcp", http_client=http) as (read, write, *_):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 return await fn(session)
@@ -123,7 +123,7 @@ def test_token_is_required(served, monkeypatch):
     init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
 
     async def status(**headers):
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://cualign.test") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as c:
             res = await c.post("/mcp", json=init, headers={"Accept": "application/json, text/event-stream", **headers})
             return res.status_code
     assert asyncio.run(status()) == 401
@@ -134,6 +134,21 @@ def test_token_is_required(served, monkeypatch):
     monkeypatch.setenv(mcp_server.TOKEN_HASH_ENV, hashlib.sha256(TOKEN.encode()).hexdigest().upper())
     assert asyncio.run(status(Authorization="Bearer wrong")) == 401
     assert asyncio.run(status(Authorization=f"Bearer {TOKEN}")) == 200
+
+
+def test_host_must_be_allowed(served, monkeypatch):
+    """Behind the proxy the Host is the address NemoClaw dials (colima's host-gateway), not localhost."""
+    app, _, _ = served
+    init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+
+    async def status():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://192.168.5.2:8443") as c:
+            res = await c.post("/mcp", json=init, headers={"Accept": "application/json, text/event-stream",
+                                                          "Authorization": f"Bearer {TOKEN}"})
+            return res.status_code
+    assert asyncio.run(status()) == 421
+    monkeypatch.setenv(mcp_server.ALLOWED_HOSTS_ENV, "192.168.5.2, 192.168.5.2:8443")
+    assert asyncio.run(status()) == 200
 
 
 def test_sse_parser_matches_the_ui_parser():
@@ -153,4 +168,4 @@ def test_openclaw_skill_and_proxy_name_the_served_tools():
     doc = (root / "docs" / "nemoclaw.md").read_text(encoding="utf-8")
     assert set(re.findall(r"--deny-tool (cualign_[a-z_]+)", doc)) == {"cualign_approve_plan", "cualign_export_stl"}
     caddy = (root / "nemoclaw" / "Caddyfile").read_text(encoding="utf-8")
-    assert "path /mcp" in caddy and "tls internal" in caddy and "{$CUALIGN_MCP_TOKEN}" in caddy
+    assert "path /mcp" in caddy and "{$CUALIGN_MCP_CERT}" in caddy and "{$CUALIGN_MCP_TOKEN}" in caddy

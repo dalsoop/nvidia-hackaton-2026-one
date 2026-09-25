@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 TOKEN_ENV = "CUALIGN_MCP_TOKEN"
 TOKEN_HASH_ENV = "CUALIGN_MCP_TOKEN_SHA256"
+ALLOWED_HOSTS_ENV = "CUALIGN_MCP_ALLOWED_HOSTS"   # e.g. "192.168.5.2,192.168.5.2:8443", the host NemoClaw dials
+LOCAL_HOSTS = ["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*"]
 PUBLIC_URL_ENV = "CUALIGN_PUBLIC_URL"   # the address the dentist opens the UI at, for links in tool results
 SELF_URL = "http://cualign.internal"    # requests to this app itself never leave the process (ASGITransport)
 PLAN_TIMEOUT_S = 600.0                  # about 14 LLM calls with NIM retries
@@ -190,10 +192,11 @@ class McpEndpoint:
         if scheme.lower() != "bearer" or not given.strip() or not hmac.compare_digest(digest, expected):
             return await JSONResponse({"detail": "invalid or missing bearer token"}, status_code=401,
                                       headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
-        # The bearer token is the gate; the Host is whatever name the HTTPS proxy serves (docs/nemoclaw.md).
+        # The MCP SDK checks the Host header against a list (DNS rebinding); the proxy keeps the host NemoClaw dials.
+        extra = [h.strip() for h in os.environ.get(ALLOWED_HOSTS_ENV, "").split(",") if h.strip()]
         manager = StreamableHTTPSessionManager(app=self.mcp._mcp_server, stateless=True, json_response=True,
                                                security_settings=TransportSecuritySettings(
-                                                   enable_dns_rebinding_protection=False))
+                                                   allowed_hosts=LOCAL_HOSTS + extra))
         async with manager.run():
             await manager.handle_request(scope, receive, send)
 
