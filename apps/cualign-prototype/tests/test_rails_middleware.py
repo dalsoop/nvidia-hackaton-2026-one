@@ -290,6 +290,22 @@ def test_rails_model_url_reaches_fake_server(store, tmp_path, monkeypatch, caplo
     assert MARK in body and sse_event(body, "plan_context")["rails"] == "passed"
 
 
+def test_rails_outlast_three_overloaded_calls(monkeypatch):
+    """Guardrails' own client re-asks a rail model call on 429/5xx, but only twice by default, and a 503 that lasted
+    longer failed a verdict in the 9/25 live run (#34). guardrails/config.yml raises it: three 503 in a row on the
+    first model call still end in a verdict. The output check runs its model calls one after another, so the first
+    of them takes every busy answer."""
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-" + "t" * 40)
+    monkeypatch.setattr("nemoguardrails.llm.clients.base.INITIAL_RETRY_DELAY", 0)
+    with RailLLM() as rail_llm:
+        rail_llm.busy = 3
+        rails = Rails(model_base_url=rail_llm.base_url).load()  # the real guardrails/ config, models on the fake
+        status, _ = asyncio.run(rails.check_output(A14, "초안입니다."))
+    models = [r["model"] for r in rail_llm.requests]
+    assert status == "PASSED", models
+    assert models[:4] == [models[0]] * 4, models  # asked four times: three 503 and the answer
+
+
 def test_regex_output_rail_blocks_r1(store, tmp_path, monkeypatch):
     """The output rail model is a fake that passes everything; the prescriptive list still blocks the answer."""
     with FakeLLM("발치해야 합니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
