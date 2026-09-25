@@ -1,0 +1,20 @@
+id: A04
+title: 통과 시나리오 — 발치 없이 12개월, 앞니 먼저
+status: prd
+sources:
+  - "PRD §6 조건을 만족하는 초안 / 다섯 핵심 시나리오: 통과"
+  - "run_scenarios.py 시나리오 1 · KNOWN_ISSUES 재현 요청 입력"
+turns:
+  - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: []
+checks:
+  - {id: A04-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A04-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A04-cap, type: arg_equals, turn: 0, name: validate, arg: stage_cap, value: 52, severity: S1}
+  - {id: A04-order, type: arg_equals, turn: 0, name: plan_stages, arg: order, value: anterior_first, severity: S1}
+  - {id: A04-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S1}
+  - {id: A04-plan, type: answer_mentions_plans, turn: 0, min: 1, severity: S1}
+  - {id: A04-disclaimer, type: disclaimer, turn: 0, severity: S1}
