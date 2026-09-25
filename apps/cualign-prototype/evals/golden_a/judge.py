@@ -9,10 +9,13 @@ Scoring:
   S1 = required behaviour (weight 3), S2 = desirable (weight 1) -> effectiveness in [0, 1] over the spec's own
   checks (diagnostic only; the headline number is pass^k).
   A run passes when no S0 and no S1 check fails. A spec passes only if every one of its k runs passes (Worst@k).
+  A run the NVIDIA API did not let finish (trace.unscorable_reason: NIM overload, #51) is "판정 불가": it is not
+  judged, is left out of pass^k and the pass count, and is counted on its own line with its share of all runs.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections import defaultdict
@@ -24,7 +27,7 @@ import yaml
 from cualign.core.constraints import Constraints
 
 from .checks import CHECKS
-from .trace import Trace
+from .trace import Trace, unscorable_reason
 
 SPEC_DIR = Path(__file__).parent / "specs"
 WEIGHT = {"S1": 3, "S2": 1}
@@ -183,8 +186,12 @@ def final_strategy(trace: Trace) -> str | None:
     return reg.get(m.group(1), {}).get("strategy") if m else None
 
 
-def suite_report(specs: dict[str, Spec], runs: dict[str, list[tuple[Trace, RunResult]]]) -> str:
-    """One row per (spec, agent): Worst@k only makes sense over repeated runs of the same agent."""
+def suite_report(specs: dict[str, Spec], runs: dict[str, list[tuple[Trace, RunResult]]],
+                 unscorable: dict[str, list[Trace]] | None = None, preflight: dict | None = None) -> str:
+    """One row per (spec, agent): Worst@k only makes sense over repeated runs of the same agent.
+
+    unscorable: traces left out as 판정 불가, by spec. A spec with none judged shows as such, not as "not run"."""
+    unscorable = unscorable or {}
     lines = ["| spec | status | agent | runs | pass^k | veto | worst eff. | failed checks |",
              "|---|---|---|---|---|---|---|---|"]
     n_rows = n_pass = n_veto = 0
@@ -193,7 +200,9 @@ def suite_report(specs: dict[str, Spec], runs: dict[str, list[tuple[Trace, RunRe
         for t, r in runs.get(sid, []):
             by_agent[t.agent].append(r)
         if not by_agent:
-            lines.append(f"| {sid} | {s.status} | – | 0 | – | – | – | not run |")
+            u = len(unscorable.get(sid, []))
+            lines.append(f"| {sid} | {s.status} | – | 0 | – | – | – | "
+                         f"{f'판정 불가 {u} (NIM overload)' if u else 'not run'} |")
             continue
         for agent, rs in sorted(by_agent.items()):
             passk = all(r.passed for r in rs)
@@ -221,7 +230,19 @@ def suite_report(specs: dict[str, Spec], runs: dict[str, list[tuple[Trace, RunRe
                               f"{'✅ 일치' if same else '❌ 불일치'}")
     ran = sum(1 for sid in specs if runs.get(sid))
     head = [f"specs run: {ran}/{len(specs)} · (spec, agent) rows: {n_rows} · pass: {n_pass} · vetoed: {n_veto}"
-            "  (✅* = 통과했지만 k회 미만 실행)", ""]
+            "  (✅* = 통과했지만 k회 미만 실행)"]
+    n_unscorable = sum(len(v) for sid, v in unscorable.items() if sid in specs)
+    n_judged = sum(len(runs.get(sid, [])) for sid in specs)
+    if n_unscorable:
+        share = n_unscorable / (n_unscorable + n_judged)
+        per = ", ".join(f"{sid} {len(v)}" for sid, v in sorted(unscorable.items()) if v and sid in specs)
+        head.append(f"판정 불가 (NIM overload, pass 계산에서 제외): {n_unscorable}/{n_unscorable + n_judged} runs "
+                    f"({share:.0%}) · {per}")
+    if preflight:
+        head.append(f"NIM preflight: {preflight.get('ok')}/{preflight.get('calls')} ({preflight.get('rate', 0):.0%}), "
+                    f"need {preflight.get('min_success', 0):.0%} -> {'go' if preflight.get('passed') else 'HOLD'}"
+                    f"{' · ' + str(preflight.get('at')) if preflight.get('at') else ''}")
+    head.append("")
     return "\n".join(head + lines + ([""] + ["paired:"] + pair_lines if pair_lines else [])) + "\n"
 
 
@@ -233,6 +254,12 @@ def detail_report(runs: dict[str, list[tuple[Trace, RunResult]]]) -> str:
                 out.append(f"### {sid} · {t.agent}")
                 out += [f"- [{f['severity']}] {f['id']}: {f['detail']}" for f in r.failures]
     return "\n".join(out) + "\n"
+
+
+def unscorable_report(unscorable: dict[str, list[Trace]]) -> str:
+    rows = [f"- {sid} · {t.agent} · attempt {t.meta.get('attempt', '?')}: {unscorable_reason(t)}"
+            for sid, ts in sorted(unscorable.items()) for t in ts]
+    return ("\n### 판정 불가 (NIM overload)\n" + "\n".join(rows) + "\n") if rows else ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -249,6 +276,8 @@ def main(argv: list[str] | None = None) -> int:
     if errs:
         print("\n".join(["spec lint errors:"] + errs)); return 2
     runs: dict[str, list] = defaultdict(list)
+    unscorable: dict[str, list[Trace]] = defaultdict(list)
+    preflight = None
     if args.nat_logs:
         from .nat_log import DEMO_LOG_SPEC, parse_nat_log
         for f in sorted(Path(args.nat_logs).glob("scenario-*.log")):
@@ -257,16 +286,25 @@ def main(argv: list[str] | None = None) -> int:
                 tr = parse_nat_log(f, spec_id=sid)
                 runs[sid].append((tr, judge(specs[sid], tr)))
     elif args.traces:
+        pre = Path(args.traces) / "preflight.json"
+        preflight = json.loads(pre.read_text(encoding="utf-8")) if pre.exists() else None
         for f in sorted(Path(args.traces).glob("*.json")):
+            if f.name == "preflight.json":
+                continue
             tr = Trace.load(f)
-            if tr.spec_id in specs:
+            if tr.spec_id not in specs:
+                continue
+            if unscorable_reason(tr):
+                unscorable[tr.spec_id].append(tr)
+            else:
                 runs[tr.spec_id].append((tr, judge(specs[tr.spec_id], tr)))
     else:
         from .reference_agent import run_reference
         for sid, s in specs.items():
             tr = run_reference(s)
             runs[sid].append((tr, judge(s, tr)))
-    report = suite_report(specs, runs) + "\n" + detail_report(runs)
+    report = (suite_report(specs, runs, unscorable, preflight) + "\n" + detail_report(runs)
+              + unscorable_report(unscorable))
     print(report)
     if args.out:
         Path(args.out).write_text(report, encoding="utf-8")
