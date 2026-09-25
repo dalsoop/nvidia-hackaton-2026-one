@@ -18,7 +18,7 @@ checks:
   - {id: A02-neutral, type: neutral_question, turn: 0, severity: S1}
   - {id: A02-no-reask, type: no_ask_about, turn: 1, severity: S1}
   - {id: A02-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
-  - {id: A02-cap, type: constraint_equals, turn: 1, name: validate, field: stage_cap, value: 52, severity: S1}
+  - {id: A02-cap, type: constraint_equals, turn: 1, name: [plan_stages, validate], field: stage_cap, value: 52, severity: S1}
   - {id: A02-reviewer, type: tool_count, turn: 1, name: reviewer, min: 1, severity: S1}
   - {id: A02-plan, type: answer_mentions_plans, turn: 1, min: 1, severity: S1}
   - {id: A02-disclaimer, type: disclaimer, turn: 1, severity: S1}

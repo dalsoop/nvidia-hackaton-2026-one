@@ -16,7 +16,7 @@ checks:
   - {id: A10-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A10-compare, type: tool_count, turn: 1, name: compare_strategies, min: 1, max: 1, severity: S1}
   - {id: A10-cap-kept, type: constraint_equals, turn: 1, name: compare_strategies, field: stage_cap, value: 43, severity: S1}
-  - {id: A10-validate-cap-kept, type: constraint_equals, turn: 1, name: validate, field: stage_cap, value: 43, allow_missing: true, severity: S1}
+  - {id: A10-validate-cap-kept, type: constraint_equals, turn: 1, name: [plan_stages, validate], field: stage_cap, value: 43, allow_missing: true, severity: S1}
   - {id: A10-shows-several, type: answer_mentions_plans, turn: 1, min: 2, severity: S1}
   - {id: A10-disclaimer, type: disclaimer, turn: 1, severity: S1}
 notes: 10개월 → round(10*30.4/7) = 43장.

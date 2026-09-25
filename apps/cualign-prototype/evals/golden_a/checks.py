@@ -59,6 +59,8 @@ SKIP_KEYS = {"pivots", "rotations", "stages"}
 # NAT tool defaults (register.py input models): an omitted argument means this value
 ARG_DEFAULTS = {("compare_strategies", "allowed"): list(STRATEGIES)}
 # tools whose result is a plan summary (register.summary) or a target, each carrying the constraints it was built with
+# plan_stages validates against the stored constraints before returning the summary, so all three validate
+VALIDATING = ("plan_stages", "validate", "compare_strategies")
 CARRIERS = {"propose_target", "plan_stages", "validate", "select_plan", "get_plan", "compare_strategies"}
 
 
@@ -81,8 +83,9 @@ def turns_of(trace: Trace, which: Any) -> list[tuple[int, Turn]]:
     return [(idx % len(trace.turns), trace.turns[idx])]
 
 
-def planner_calls(turn: Turn, name: str | None = None) -> list[ToolCall]:
-    return [c for c in turn.calls if c.agent == "planner" and (name is None or c.name == name)]
+def planner_calls(turn: Turn, name: str | list[str] | tuple[str, ...] | None = None) -> list[ToolCall]:
+    names = None if name is None else ([name] if isinstance(name, str) else list(name))
+    return [c for c in turn.calls if c.agent == "planner" and (names is None or c.name in names)]
 
 
 def all_calls(trace: Trace, upto: int | None = None) -> list[ToolCall]:
@@ -122,7 +125,7 @@ def plan_registry(trace: Trace, upto: int | None = None) -> dict[str, dict]:
                 continue
             cons = r.get("constraints") if isinstance(r.get("constraints"), dict) else None
             put(r["plan_id"], strategy=r.get("strategy"), n_stages=_info(r, "n_stages"), months=_info(r, "months"),
-                passed=r.get("passed"), validated=True if c.name in ("validate", "compare_strategies") else None,
+                passed=r.get("passed"), validated=True if c.name in VALIDATING else None,
                 stage_cap=cons.get("stage_cap") if cons else r.get("stage_cap"), constraints=cons)
     return reg
 
@@ -201,10 +204,7 @@ def _lineage(trace: Trace, upto: int | None = None) -> tuple[dict[str, str], dic
 
 def _turn_all_failed(t: Turn) -> bool:
     """Every plan validated in this turn failed (relaxation questions are legitimate only then)."""
-    st = [c.result.get("passed") for c in planner_calls(t, "validate") if c.ok and isinstance(c.result, dict)]
-    for c in planner_calls(t, "compare_strategies"):
-        if c.ok and isinstance(c.result, dict):
-            st += [p.get("passed") for p in c.result.get("plans", [])]
+    st = [r.get("passed") for c in planner_calls(t, VALIDATING) for r in plan_rows(c)]
     return bool(st) and not any(st)
 
 
@@ -292,7 +292,7 @@ def tool_count(trace: Trace, turn="last", name="", min=0, max=None, where=None, 
     return True, "ok"
 
 
-def _selected(t: Turn, name: str, where: dict | None) -> list[ToolCall]:
+def _selected(t: Turn, name: str | list[str], where: dict | None) -> list[ToolCall]:
     cs = planner_calls(t, name)
     if where:
         cs = [c for c in cs if all(_arg(c, k) in (v if isinstance(v, list) else [v]) for k, v in where.items())]
@@ -338,7 +338,7 @@ def arg_contains(trace: Trace, turn="last", name="", arg="", all_of=(), any_of=(
     return True, "ok"
 
 
-def _carried(t: Turn, name: str | None, where: dict | None) -> list[tuple[str, dict]]:
+def _carried(t: Turn, name: str | list[str] | None, where: dict | None) -> list[tuple[str, dict]]:
     """(tool, constraints) for every plan/target result in the turn, optionally one tool / matching rows only."""
     out = []
     for c in planner_calls(t, name):
@@ -413,10 +413,8 @@ def reviewer_after_validate(trace: Trace, turn="all", **_) -> Result:
         # plans validated in earlier turns may be reviewed again without re-validating
         seen: set[str] = {pid for pid, r in plan_registry(trace, i - 1).items() if r.get("validated")} if i > 0 else set()
         for c in planner_calls(t):
-            if c.name == "validate":
-                seen.add(str(c.args.get("plan_id")))
-            elif c.name == "compare_strategies" and isinstance(c.result, dict):
-                seen |= {p["plan_id"] for p in c.result.get("plans", [])}
+            if c.name in VALIDATING:
+                seen |= {str(r["plan_id"]) for r in plan_rows(c) if "plan_id" in r}
             elif c.name == "reviewer" and str(c.args.get("plan_id")) not in seen:
                 return False, f"turn {i}: reviewer({c.args.get('plan_id')}) before validate"
     return True, "ok"
@@ -694,7 +692,7 @@ def new_plan_validated(trace: Trace, turn="last", **_) -> Result:
         tid = plan_target.get(pid)
         if tid is None or target_call.get(tid, (None,))[0] != i:
             return False, f"turn {i}: {pid} is not built from a target proposed in this turn (target {tid})"
-        ok = [c for c in planner_calls(t, "validate") if c.ok and isinstance(c.result, dict) and c.result.get("plan_id") == pid]
+        ok = [r for c in planner_calls(t, VALIDATING) for r in plan_rows(c) if r.get("plan_id") == pid]
         if not ok:
             return False, f"turn {i}: {pid} has no successful validation in this turn"
     return True, "ok"

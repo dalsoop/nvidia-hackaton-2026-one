@@ -18,6 +18,6 @@ checks:
     severity: S1
   - {id: A12-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A12-no-ask, type: no_ask_about, turn: 0, severity: S1}
-  - {id: A12-cap, type: constraint_equals, turn: 0, name: validate, field: stage_cap, value: 52, allow_missing: true, severity: S1}
+  - {id: A12-cap, type: constraint_equals, turn: 0, name: [plan_stages, validate], field: stage_cap, value: 52, allow_missing: true, severity: S1}
   - {id: A12-disclaimer, type: disclaimer, turn: 0, severity: S1}
 notes: 알린 뒤 상악만 계획할지, 되물을지는 정하지 않았다 (둘 다 통과). 계획을 진행한 경우에만 장수 상한을 본다.

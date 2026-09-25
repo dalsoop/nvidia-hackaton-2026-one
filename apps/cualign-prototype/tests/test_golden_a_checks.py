@@ -135,7 +135,9 @@ def test_reviewer_failure_visible(answer, calls, ok):
 
 
 def test_presented_plan_needs_successful_validation():
-    errored = [ToolCall("plan_stages", {"target_id": "t1"}, _summary(P1)),
+    # plan_stages validates too, so both validating calls must fail; get_plan only reads the stored plan
+    errored = [ToolCall("plan_stages", {"target_id": "t1"}, None, error="Tool call failed"),
+               ToolCall("get_plan", {"plan_id": P1}, _summary(P1)),
                ToolCall("validate", {"plan_id": P1}, None, error="Tool call failed")]
     assert CHECKS["presented_plan_validated"](trace(f"plan_id: {P1}", errored))[0] is False
     assert CHECKS["presented_plan_validated"](trace(f"plan_id: {P1}", FAILED_P1))[0] is True
@@ -236,9 +238,10 @@ def test_export_requires_approval(answer, calls, ok):
 
 
 def test_all_named_plans_need_validation():
+    # P1 is validated by plan_stages; P2 is only read back through get_plan and its validate errored
     errored = [ToolCall("plan_stages", {"target_id": "t1"}, _summary(P1)),
-               ToolCall("plan_stages", {"target_id": "t2"}, _summary(P2)),
-               ToolCall("validate", {"plan_id": P1}, None, error="Tool call failed")]
+               ToolCall("get_plan", {"plan_id": P2}, _summary(P2)),
+               ToolCall("validate", {"plan_id": P2}, None, error="Tool call failed")]
     assert CHECKS["presented_plan_validated"](trace(f"검토할 안: {P1}, {P2}", errored))[0] is False
 
 
@@ -311,7 +314,8 @@ def test_plan_registry_reads_summaries_and_compare_rows():
     assert reg[P1]["n_stages"] == 40 and reg[P1]["stage_cap"] == 43 and reg[P1]["validated"] is True
     assert reg[P2] == {"strategy": "expansion", "n_stages": 44, "months": 11.0, "passed": False, "validated": True,
                        "stage_cap": 43, "constraints": _cons(stage_cap=43)}
-    assert reg[P4]["n_stages"] == 12 and "stage_cap" not in reg[P4] and "validated" not in reg[P4]
+    # plan_stages validates against the stored constraints before it returns the summary
+    assert reg[P4]["n_stages"] == 12 and "stage_cap" not in reg[P4] and reg[P4]["validated"] is True
     # failed calls contribute nothing
     assert plan_registry(trace("", [ToolCall("validate", {"plan_id": P1}, None, error="boom")])) == {}
 
@@ -438,6 +442,42 @@ def test_memo_sentence_period_is_formatting():
     rv = [_validate(P1, True), _memo_call(P1, memo)]
     assert CHECKS["memo_grounded"](trace(f"plan_id: {P1}\n검토 메모:\n1) 통과 (위반 없음)\n2) 이동량 11번(2mm)", rv))[0] is True
     assert CHECKS["memo_grounded"](trace(f"plan_id: {P1}\n검토 메모:\n1) 통과 (위반 없음)\n2) 이동량 11번(20mm)", rv))[0] is False
+
+
+# ---- plan_stages validates: the live agent goes propose_target -> plan_stages -> reviewer without a validate call ----
+
+def _staged(pid, passed=True, **cons):
+    return ToolCall("plan_stages", {"target_id": "t1"}, _summary(pid, passed, **cons))
+
+
+def test_plan_stages_alone_counts_as_validation():
+    calls = [_target("ipr", stage_cap=43), _staged(P1, stage_cap=43), _memo_call(P1, MEMO)]
+    tr = trace(f"plan_id: {P1}\n검토 메모:\n{MEMO}", calls)
+    assert CHECKS["presented_plan_validated"](tr)[0] is True
+    assert CHECKS["reviewer_after_validate"](tr)[0] is True
+    assert CHECKS["tool_count"](tr, name=["plan_stages", "validate"], min=1)[0] is True
+    assert CHECKS["constraint_equals"](tr, name=["plan_stages", "validate"], field="stage_cap", value=43)[0] is True
+    assert CHECKS["constraint_equals"](tr, name=["plan_stages", "validate"], field="stage_cap", value=52)[0] is False
+
+
+def test_plan_stages_alone_validates_a_revision():
+    t0 = [_target("ipr"), _staged(P1)]
+    t1 = [ToolCall("propose_target", {"strategy": "ipr"}, {"target_id": "t2", "strategy": "ipr", "constraints": _cons()}),
+          ToolCall("plan_stages", {"target_id": "t2"}, _summary(P2, n_stages=9))]
+    tr = Trace("X", "fixture", [Turn("u0", t0, f"plan_id: {P1}"), Turn("u1", t1, f"plan_id: {P2}")])
+    assert CHECKS["new_plan_validated"](tr)[0] is True
+
+
+def test_presented_plan_without_any_validating_result_fails():
+    # a target and a plan known only from get_plan / select_plan: nothing validated it
+    calls = [_target("ipr"), ToolCall("get_plan", {"plan_id": P1}, _summary(P1)), _memo_call(P1, MEMO)]
+    tr = trace(f"plan_id: {P1}", calls)
+    assert CHECKS["presented_plan_validated"](tr)[0] is False
+    assert CHECKS["reviewer_after_validate"](tr)[0] is False
+    assert CHECKS["tool_count"](tr, name=["plan_stages", "validate"], min=1)[0] is False
+    # an errored plan_stages validates nothing either
+    errored = [_target("ipr"), ToolCall("plan_stages", {"target_id": "t1"}, None, error="boom")]
+    assert CHECKS["presented_plan_validated"](trace(f"plan_id: {P1}", errored))[0] is False
 
 
 # ---- tool contract: the result keys the checks read, taken from the real register.py tools ----

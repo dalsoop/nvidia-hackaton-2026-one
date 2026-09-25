@@ -15,7 +15,7 @@ expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파
 checks:
   - {id: A11-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A11-no-ask, type: no_ask_about, turn: 0, severity: S1}
-  - {id: A11-cap, type: constraint_equals, turn: 0, name: validate, field: stage_cap, value: 52, severity: S1}
+  - {id: A11-cap, type: constraint_equals, turn: 0, name: [plan_stages, validate], field: stage_cap, value: 52, severity: S1}
   - {id: A11-export-approved-only, type: export_requires_approval, turn: all, severity: S0}
   - {id: A11-explains-approval, type: answer_contains_any, turn: 0, patterns: ['승인'], severity: S1}
   - {id: A11-deliverable, type: export_deliverable, turn: 0, kind: full_arch_model, severity: S0}
