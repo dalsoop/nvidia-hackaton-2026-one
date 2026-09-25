@@ -120,7 +120,7 @@ ZIP API·export_stl 도구는 요청마다 승인과 해시를 검사하며 미�
 
 현재 입력 범위 레일은 차단 판정 시 에이전트를 실행하지 않는다. content safety 입력은 기본 경고 모드다.
 출력은 스트림이든 아니든 출력 판정이 날 때까지 쥐고, 막히면 답 전체를 거절문으로 바꾼다. 그 턴의 `plan_selected` 는 내보내지 않는다(계획은 저장된 채 남는다).
-검사 오류·타임아웃은 ERROR 로그를 남기고 진행한다. 진행 표시(`intermediate_data`)는 쥐지 않으므로 `general.front_end.step_adaptor` 를 함수 시작(`FUNCTION_START`)만 남기게 줄이고, 워크플로 자신의 시작 단계(요청 원문을 되돌려 보낸다)는 `worker.py` 가 뺀다. 남는 것은 도구 이름과 모델이 고른 인자다. 도구 결과·모델 글(`FUNCTION_END`)은 나가지 않는다. NAT 1.9.0 의 ReAct 에이전트는 `LLM_*`·`TOOL_*` 이벤트를 내지 않는다.
+검사 오류·타임아웃은 ERROR 로그를 남기고 진행한다. 진행 표시(`intermediate_data`)는 쥐지 않으므로 `general.front_end.step_adaptor` 를 함수 시작·끝(`FUNCTION_START`·`FUNCTION_END`)으로 줄이고, `worker.py` 가 워크플로 자신의 시작·끝 단계(시작은 요청 원문을 되돌려 보낸다)를 빼고 도구 끝 단계를 결과 없이 다시 만든다. 남는 것은 도구 이름·모델이 고른 인자·«완료» 표시다. 도구 결과·모델 글은 나가지 않는다. NAT 1.9.0 의 ReAct 에이전트는 `LLM_*`·`TOOL_*` 이벤트를 내지 않는다.
 미들웨어는 키 설정과 활성화 옵션에 따라 꺼질 수 있고(시작 때 ERROR 로그), 에이전트 호출을 대상으로 한다.
 턴마다 레일 상태(passed·flagged·blocked·error·off · flagged 는 참고 모드 콘텐츠 안전 판정)를 UI 대화의 `plan_context` 이벤트에 싣는다.
 `CUALIGN_RAILS_FAIL_CLOSED=1`이면 키가 없을 때 시작하지 않고, 검사 오류 턴을 거절한다(기본은 꺼짐).

@@ -129,6 +129,10 @@ def sse_event(text, name):
     return json.loads(text.split(f"event: {name}\ndata: ")[1].split("\n")[0])
 
 
+def sse_step(line):
+    return json.loads(line[len("intermediate_data: "):])
+
+
 def test_rails_all_routes_blocked(store, tmp_path, monkeypatch):
     with FakeLLM() as llm:
         with serve(tmp_path, monkeypatch, llm, "rails_fakes:blocking") as client:
@@ -347,8 +351,9 @@ def test_output_held_nonstream(store, tmp_path, monkeypatch):
 def test_intermediate_no_payload(store, tmp_path, monkeypatch):
     """Progress events leave while the answer is held, so they must not carry model text, tool results or the
     request. MARK-STEP is in the model's text and in every tool result; MARK-REQ only in the request, which the
-    workflow's own start step would echo (worker.py drops it). Tool starts stay: the tool name and the arguments the
-    model chose. NAT 1.9.0's ReAct agent emits no LLM_*/TOOL_* steps."""
+    workflow's own start step would echo (worker.py drops it). What stays: each tool's start (the tool name and the
+    arguments the model chose) and its end rebuilt without the result, so the UI can close the row (app.js addStep
+    marks a row done only by an end step with the same id). NAT 1.9.0's ReAct agent emits no LLM_*/TOOL_* steps."""
     summary = register.summary
     monkeypatch.setattr(register, "summary", lambda pid: {**summary(pid), "note": "MARK-STEP"})
     with PlanningLLM(thought="MARK-STEP 목표부터 만듭니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
@@ -356,8 +361,14 @@ def test_intermediate_no_payload(store, tmp_path, monkeypatch):
                    cualign={"case_id": "moderate"})
     steps = [line for line in body.splitlines() if line.startswith("intermediate_data:")]
     assert len(llm.requests) == 4  # three tool calls and the answer: the planner really ran the tools
-    assert len(steps) == 3 and not [s for s in steps if "MARK-STEP" in s or "MARK-REQ" in s]
-    assert all(any(tool in s for s in steps) for tool in ("propose_target", "plan_stages", "select_plan"))
+    assert not [s for s in steps if "MARK-STEP" in s or "MARK-REQ" in s]
+    starts = [s for s in steps if "Function Start: " in s]
+    ends = [s for s in steps if "Function End: " in s]
+    assert len(steps) == 6 and len(starts) == 3 and len(ends) == 3
+    assert all(any(tool in s for s in starts) for tool in ("propose_target", "plan_stages", "select_plan"))
+    # Each end closes its start's row (same id), keeps the input block (the arguments stay on screen) and says 완료.
+    assert all("완료" in s and "Function Input:" in s and sse_step(s)["id"] in {sse_step(t)["id"] for t in starts}
+               for s in ends)
     # The answer and plan events still carry what they should; only the progress events are cut.
     assert MARK in body and sse_event(body, "plan_selected")["plan_id"] in store.plans
 

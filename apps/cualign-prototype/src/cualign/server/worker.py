@@ -10,21 +10,30 @@ from fastapi import FastAPI
 
 from nat.builder.component_utils import WORKFLOW_COMPONENT_NAME
 from nat.builder.workflow_builder import WorkflowBuilder
-from nat.data_models.intermediate_step import IntermediateStep, IntermediateStepType
+from nat.data_models.intermediate_step import IntermediateStep, IntermediateStepType, StreamEventData
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
 
 
 class ToolStepsOnly(StepAdaptor):
-    """Progress steps minus the workflow's own start. That step carries the whole request (chat and server context)
-    and is emitted before the rails run, so a refused request would come back through it. Tool starts carry the
-    tool name and the arguments the model chose; configs/workflow.yml keeps the list to FUNCTION_START."""
+    """Progress steps with nothing the output rail did not check. The workflow's own start and end are dropped: the
+    start carries the whole request (chat and server context) and leaves before the rails run, so a refused request
+    would come back through it. A tool's start passes as NAT builds it (tool name and the arguments the model chose).
+    A tool's end is rebuilt with a fixed output in place of the tool result, because the UI closes a row only when an
+    end step with the same id arrives (app.js addStep); NAT's end body keeps the input block, so the arguments stay."""
 
     def process(self, step: IntermediateStep):
-        if (step.payload.event_type == IntermediateStepType.FUNCTION_START
-                and step.payload.name == WORKFLOW_COMPONENT_NAME):
+        payload = step.payload
+        if payload.name == WORKFLOW_COMPONENT_NAME and payload.event_type in (IntermediateStepType.FUNCTION_START,
+                                                                              IntermediateStepType.FUNCTION_END):
             return None
-        return super().process(step)
+        if payload.event_type != IntermediateStepType.FUNCTION_END:
+            return super().process(step)
+        data = (payload.data or StreamEventData()).model_copy(update={"output": "완료"})  # finished, not succeeded
+        done = super().process(step.model_copy(update={"payload": payload.model_copy(update={"data": data})}))
+        if done is not None:
+            done.name = f"Function End: {payload.name}"  # the UI strips this prefix, not NAT's "Function Complete:"
+        return done
 
 
 class CuAlignWorker(FastApiFrontEndPluginWorker):

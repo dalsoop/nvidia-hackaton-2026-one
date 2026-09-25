@@ -14,8 +14,8 @@ CUALIGN_RAILS_FAIL_CLOSED=1 is an opt-in stop: no key fails the build and a rail
 An explicit CUALIGN_GUARDRAILS=0 still wins over it (still logged at ERROR).
 The answer is held until the output verdict, streamed or not: a blocked answer (and, with the switch on, an
 unchecked one) is replaced by the refusal, and PlanRun.refused keeps its plan out of the UI's plan events.
-Progress events are not held; configs/workflow.yml keeps them to tool starts (tool names and arguments), never tool
-results or model text (step_adaptor), and worker.py drops the workflow's own start, which would echo the request.
+Progress events are not held; worker.py keeps them to tool starts (tool names and arguments) and tool ends without the
+result, and drops the workflow's own start and end (the start would echo the request).
 
 Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
