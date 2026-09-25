@@ -1,5 +1,6 @@
 """No paid calls: inject empty replies, 503, malformed responses and timeouts."""
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -157,3 +158,29 @@ def test_worker_manual_review_uses_workflow_reviewer(tmp_path, monkeypatch):
 def test_upstream_error_labels(exc, label):
     from cualign.agent.reviewer import upstream_error
     assert upstream_error(exc) == label
+
+
+def test_reviewer_gets_what_each_number_means(tmp_path, monkeypatch):
+    """A live memo called the total movement of one tooth "per stage" and the tooth-width sum a space need."""
+    from cualign.agent.reviewer import FIELD_NOTES
+    from cualign.core import limits
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    s = store_module.Store()
+    svc = PlanningService(s)
+    pid = svc.stages(svc.target("severe", "extraction", Constraints(allow_extraction=True)))
+    plan = s.plan_json(pid)
+    # Every noted field exists in the data the reviewer reads, so a rename cannot leave a note behind.
+    assert set(FIELD_NOTES) <= set(plan["info"]) | set(plan["target"])
+    assert str(limits.MAX_LINEAR_PER_ALIGNER) in FIELD_NOTES["per_stage_mm"]
+    assert "TOTAL" in FIELD_NOTES["max_move_mm"] and "not a space shortage" in FIELD_NOTES["needed_mm"]
+    class Capture:
+        messages = None
+        async def ainvoke(self, messages):
+            Capture.messages = messages
+            return SimpleNamespace(content="검토 메모 초안")
+    assert asyncio.run(review_plan(pid, Capture(), store=s, manual=True))["status"] == "passed"
+    system, user = Capture.messages
+    assert "field_notes" in system["content"]
+    sent = json.loads(user["content"])
+    assert sent["field_notes"] == FIELD_NOTES
+    assert sent["plan"]["plan_id"] == pid and "stages" not in sent["plan"] and "approval" not in sent["plan"]

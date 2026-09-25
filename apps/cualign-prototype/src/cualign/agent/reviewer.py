@@ -12,6 +12,7 @@ from nat.data_models.function import FunctionBaseConfig
 from nat.data_models.component_ref import LLMRef
 from pydantic import BaseModel
 
+from cualign.core import limits as L
 from cualign.core.store import STORE
 from .context import CURRENT_RUN
 
@@ -52,6 +53,32 @@ def upstream_error(exc: Exception) -> str:
     return "upstream_503" if "503" in text else "model_error"
 
 
+# The plan data names several totals and per-aligner values alike (a live memo called the 4.35 mm total movement of one
+# tooth "per stage", and the 99.5 mm sum of tooth widths a space need). The reviewer gets what each number means;
+# the stored plan and the API keep their field names.
+FIELD_NOTES = {
+    "n_stages": "number of aligners (stages) in the plan",
+    "months": f"n_stages x {L.WEAR_DAYS} days per aligner, in months",
+    "max_move_mm": "largest TOTAL movement of one tooth from start to the end of the plan, not per aligner",
+    "mean_move_mm": "mean TOTAL movement of the moving teeth from start to the end of the plan, not per aligner",
+    "per_stage_mm": f"largest movement of one tooth in one aligner; the rule limit is {L.MAX_LINEAR_PER_ALIGNER} mm",
+    "stages_per_group": "aligners per movement group; with anterior_first or sequential the groups move one after another",
+    "needed_mm": "sum of the tooth widths along the arch (arch length the teeth take up), not a space shortage",
+    "crowding_mm": "crowding of the case before treatment",
+    "space_gain_mm": "space the strategy creates",
+    "space_deficit_mm": f"space still missing after the strategy; the plan fails the rule above {L.SPACE_DEFICIT_TOLERANCE_MM} mm",
+    "expansion_mm_per_side": f"arch expansion per side; the limit is {L.MAX_EXPANSION_PER_SIDE} mm",
+    "ipr_mm_per_surface": f"IPR per tooth surface; the limit is {L.IPR_PER_SURFACE} mm",
+}
+
+
+def review_messages(snapshot: dict) -> list[dict]:
+    return [
+        {"role": "system", "content": "You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number means what field_notes says: never call a total movement a per-aligner value or a tooth-width sum a space shortage. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval. End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다."},
+        {"role": "user", "content": json.dumps({"plan": snapshot, "field_notes": FIELD_NOTES}, ensure_ascii=False)},
+    ]
+
+
 async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_seconds=20, total_seconds=40,
                       manual=False):
     """`manual` is the dentist's explicit request from the UI (no request context): it reviews a `failed` plan again
@@ -77,10 +104,7 @@ async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_secon
     snapshot = store.plan_json(plan_id)
     snapshot.pop("stages")
     snapshot.pop("approval")
-    messages = [
-        {"role": "system", "content": "You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval. End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다."},
-        {"role": "user", "content": json.dumps(snapshot, ensure_ascii=False)}
-    ]
+    messages = review_messages(snapshot)
     try:
         while attempts < max_attempts and (not run or run.review_attempts < max_attempts):
             remaining = total_seconds - (time.monotonic() - started)
