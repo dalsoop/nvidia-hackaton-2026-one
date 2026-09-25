@@ -49,6 +49,8 @@
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
 | `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공 |
+| `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
+| `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
@@ -67,12 +69,14 @@
 | `.env.example` | 필요한 설정 이름·예시. 실제 키는 로컬 `.env`에만 보관 |
 | `.gitignore` | 비밀·실행 생성물의 추적 제외 |
 | `Dockerfile` | 컨테이너 이미지와 서버 실행 설정 |
+| `Dockerfile.openshell` | OpenShell 샌드박스용 이미지(비root, 출력은 `/sandbox/out`) |
 | `.github/workflows/ci.yml` | 변경 후 자동 검사 실행 |
 | `tests/test_core.py` | 전략·단계·제약·STL 출력 검증 |
 | `tests/test_stack_offline.py` | NAT 구성·도구 등록·Guardrails 구성 검사 |
 | `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·예외 문구·검토 건너뛴 턴·메모 레일 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
 | `tests/test_skill_tool.py` | Skill 이름 검증·도구 등록(검토 에이전트 제외)·지시문 연결 검사 |
+| `tests/test_keys.py`, `tests/test_sandbox_compat.py` | 키 판정(placeholder 포함)·프록시 호환 가드 검사 |
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
 | `tests/test_react_history.py` | 앞선 호출을 기억해야 넘어가는 가짜 모델로 NAT 실제 그래프를 돌려 같은 도구 반복이 없는지 검사 |
 | `tests/test_nim_stream_patch.py` | 과부하 줄(스트림)과 HTTP 429·503(스트림·비스트림)을 보내는 가짜 NIM 서버로 재요청·재시도 소진·재시도 불가 오류·연결 정리 검사 |
@@ -95,7 +99,8 @@
 | `docs/model-swap.md` | 모델·호출 방식별 성공·실패 기록 |
 | `docs/clinical-sources.md` | 계산 상수의 참고 출처 |
 | `openshell/policy.yaml` | 도구 실행의 네트워크·파일 접근 경계 정책 |
-| `docs/openshell.md` | 정책 검증 수준과 서버 통합의 한계 |
+| `openshell/server-policy.yaml` | 서버 전체 샌드박스 정책(쓰기 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만) |
+| `docs/openshell.md` | 정책 검증 수준, 서버 샌드박스 실행 절차와 기록 |
 | `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
 | `skills/skillspector-report-static.md`, `skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
 | `scripts/scan_skill.py` | 위 스캔 재실행 스크립트 |

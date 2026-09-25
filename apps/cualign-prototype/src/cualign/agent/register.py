@@ -7,6 +7,7 @@ from nat.builder.function import FunctionGroup
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.function import FunctionGroupBaseConfig
 
+from cualign import sandbox_compat
 from cualign.agent import nim_stream_patch, react_history_patch, react_patch, reviewer  # register the bounded reviewer
 from cualign.server import rails_middleware  # noqa: F401  register the Guardrails workflow middleware
 from cualign.agent.context import CURRENT_RUN
@@ -19,6 +20,7 @@ from cualign.core.store import OUT_DIR, STORE
 react_patch.apply()
 react_history_patch.apply()
 nim_stream_patch.apply()
+sandbox_compat.apply()  # OpenShell: route aiohttp (NIM async client) through the sandbox proxy
 
 
 class NoInput(BaseModel):
