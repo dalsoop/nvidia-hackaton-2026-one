@@ -64,3 +64,12 @@ def test_manual_review_route(tmp_path, monkeypatch):
         fallback = client.post("/api/plan", json={"case_id": "moderate"}).json()["tried"][0]["plan_id"]
         assert client.post(f"/api/plans/{fallback}/review").status_code == 409
     assert calls == [pid]
+
+
+def test_upload_without_tooth_files_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "OUT_DIR", tmp_path)
+    app = FastAPI()
+    api.add_api_routes(app)
+    with TestClient(app) as client:
+        r = client.post("/api/cases/upload", files=[("files", ("gingiva.stl", b"solid g\nendsolid g\n", "model/stl"))])
+        assert r.status_code == 400

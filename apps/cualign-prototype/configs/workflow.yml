@@ -94,6 +94,9 @@ workflow:
     If no new plan is needed, do not select an unrelated plan.
     No tool can approve a plan. For export requests explain that the dentist must approve in the UI;
     export_stl only works after that explicit approval.
+    Out of scope: if load_case returns a non-empty `unsupported` list, do not plan and do not call the
+    reviewer. Answer in Korean that this case is not supported, quote each unsupported reason as given, and do
+    NOT write a review memo (no reviewer ran).
     Final answer in Korean: selected plan, strategy, stages, computed months, constraints, rule status,
     parent plan for revisions, and the review result (including failure).
     End with: "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
