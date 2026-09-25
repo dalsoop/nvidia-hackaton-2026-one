@@ -5,22 +5,33 @@ what was read from it, then plan. A patient has a pseudonymous id (P0001) and an
 is refused if it looks like a resident number, phone number or e-mail (rail_patterns.PII), and it is never sent to the
 model — tools and the chat see only the case id "P0001-S1".
 
-Layout: patients/<P0001>/patient.json and patients/<P0001>/scans/<S1>/{<tooth>.stl, gingiva.stl}.
+Identity rules (PR #36 review): patient and scan ids are never reused, even after deletion (counters persist), so a
+new patient or scan can never inherit an old one's files, plans or confirmation. Every scan has a revision; changing
+its tooth numbers bumps it, and the dentist's confirmation is tied to the revision it was given for.
+
+Layout: patients/_ids.json, patients/<P0001>/patient.json, patients/<P0001>/scans/<S1>/{<tooth>.stl, gingiva.stl,
+original/}.
 """
 from __future__ import annotations
 
 import json
 import re
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+import numpy as np
+import trimesh
 
 from .intake import mirror_numbers, orient_scan
 from .rail_patterns import PII
 
 ALIAS_MAX = 40
 MEMO_MAX = 200
-_CASE_RE = re.compile(r"^(P\d{4})-(S\d+)$")
+_PID = re.compile(r"P\d{4,}")
+_SID = re.compile(r"S\d+")
+_CASE_RE = re.compile(r"^(P\d{4,})-(S\d+)$")
 
 
 def _root() -> Path:
@@ -41,17 +52,42 @@ def _check_text(label: str, text: str, limit: int) -> str:
     return text
 
 
+def _pdir(pid: str) -> Path:
+    """Patient folder; ids that are not exactly P<digits> are unknown (no path is ever built from them)."""
+    if not isinstance(pid, str) or not _PID.fullmatch(pid):
+        raise KeyError(f"unknown patient {pid}")
+    root = _root().resolve()
+    d = (root / pid).resolve()
+    if d.parent != root:
+        raise KeyError(f"unknown patient {pid}")
+    return d
+
+
 def _read(pid: str) -> dict:
-    f = _root() / pid / "patient.json"
+    f = _pdir(pid) / "patient.json"
     if not f.exists():
         raise KeyError(f"unknown patient {pid}")
     return json.loads(f.read_text(encoding="utf-8"))
 
 
 def _write(p: dict) -> None:
-    d = _root() / p["patient_id"]
+    d = _pdir(p["patient_id"])
     d.mkdir(parents=True, exist_ok=True)
-    (d / "patient.json").write_text(json.dumps(p, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp = d / f".patient.{uuid.uuid4().hex}.json"
+    tmp.write_text(json.dumps(p, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(d / "patient.json")
+
+
+def _next_patient_number() -> int:
+    """Monotonic across deletions: the counter file only ever grows."""
+    root = _root()
+    root.mkdir(parents=True, exist_ok=True)
+    f = root / "_ids.json"
+    last = json.loads(f.read_text(encoding="utf-8"))["last_patient"] if f.exists() else 0
+    existing = max((int(d.name[1:]) for d in root.glob("P*") if _PID.fullmatch(d.name)), default=0)
+    n = max(last, existing) + 1
+    f.write_text(json.dumps({"last_patient": n}), encoding="utf-8")
+    return n
 
 
 def list_patients() -> list[dict]:
@@ -67,8 +103,8 @@ def create_patient(alias: str, memo: str = "") -> dict:
     memo = _check_text("메모", memo, MEMO_MAX)
     if not alias:
         raise ValueError("별칭을 입력하세요.")
-    n = max((int(p["patient_id"][1:]) for p in list_patients()), default=0) + 1
-    p = {"patient_id": f"P{n:04d}", "alias": alias, "memo": memo, "created_at": _now(), "scans": []}
+    p = {"patient_id": f"P{_next_patient_number():04d}", "alias": alias, "memo": memo, "created_at": _now(),
+         "scans": [], "last_scan": 0}
     _write(p)
     return p
 
@@ -77,78 +113,118 @@ def get_patient(pid: str) -> dict:
     return _read(pid)
 
 
+def _scan(p: dict, sid: str) -> dict:
+    if isinstance(sid, str) and _SID.fullmatch(sid):
+        for s in p["scans"]:
+            if s["scan_id"] == sid:
+                return s
+    raise KeyError(f"unknown scan {sid}")
+
+
+def _check_meshes(folder: Path) -> None:
+    """Every uploaded STL must be a readable, non-empty surface with finite coordinates."""
+    for f in sorted(folder.glob("*.stl")):
+        try:
+            m = trimesh.load(f, process=False, force="mesh")
+        except Exception as e:
+            raise ValueError(f"{f.name}: STL을 읽지 못했습니다 ({type(e).__name__}).") from None
+        if len(m.faces) == 0 or not np.isfinite(m.vertices).all() or float(m.area) <= 0.0:
+            raise ValueError(f"{f.name}: 면이 없거나 넓이가 0인 메시입니다.")
+
+
 def add_scan(pid: str, files: dict[str, bytes]) -> dict:
-    """Save one upper-arch scan (per-tooth <n>.stl plus optional gingiva.stl) and register it on the patient.
-    The caller validates that the folder loads as a Case; on failure it calls remove_scan."""
+    """Validate and align the upload in a fresh folder, then register it under a never-used scan id."""
     p = _read(pid)
     teeth = [n for n in files if Path(n).stem.isdigit()]
     if not teeth:
         raise ValueError("치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요. 잇몸 파일만으로는 계획할 수 없습니다.")
-    sid = f"S{len(p['scans']) + 1}"
-    folder = _root() / pid / "scans" / sid
-    folder.mkdir(parents=True, exist_ok=True)
-    for name, data in files.items():
-        (folder / name).write_bytes(data)
+    scans = _pdir(pid) / "scans"
+    scans.mkdir(parents=True, exist_ok=True)
+    incoming = scans / f".incoming-{uuid.uuid4().hex}"
+    incoming.mkdir()
     try:
-        orientation = orient_scan(folder)
+        for name, data in files.items():
+            (incoming / name).write_bytes(data)
+        _check_meshes(incoming)
+        try:
+            orientation = orient_scan(incoming)
+        except Exception as e:
+            raise ValueError(f"방향 정렬에 실패했습니다 ({type(e).__name__}). 치아 파일이 한 악궁의 것인지 확인하세요.") from None
+        p = _read(pid)                                       # re-read: another upload may have registered meanwhile
+        n = max(p.get("last_scan", 0), max((int(s["scan_id"][1:]) for s in p["scans"]), default=0)) + 1
+        sid = f"S{n}"
+        incoming.rename(scans / sid)                         # fails instead of merging if the folder exists
     except Exception:
-        shutil.rmtree(folder, ignore_errors=True)
+        shutil.rmtree(incoming, ignore_errors=True)
         raise
     scan = {"scan_id": sid, "case_id": f"{pid}-{sid}", "arch": "upper", "uploaded_at": _now(),
-            "teeth": sorted(int(Path(n).stem) for n in teeth), "gingiva": "gingiva.stl" in files,
-            "orientation": orientation, "confirmed_at": None}
+            "teeth": sorted(int(Path(t).stem) for t in teeth), "gingiva": "gingiva.stl" in files,
+            "orientation": orientation, "revision": 1, "confirmed_revision": None, "confirmed_at": None}
     p["scans"].append(scan)
+    p["last_scan"] = n
     _write(p)
     return scan
 
 
-def _scan(p: dict, sid: str) -> dict:
-    for s in p["scans"]:
-        if s["scan_id"] == sid:
-            return s
-    raise KeyError(f"unknown scan {sid}")
-
-
-def confirm_scan(pid: str, sid: str) -> dict:
-    """The dentist checked the tooth numbers and the orientation on the input-check screen."""
+def confirm_scan(pid: str, sid: str, revision: int | None = None) -> dict:
+    """The dentist checked the tooth numbers and the orientation of this revision on the input-check screen."""
     p = _read(pid)
     s = _scan(p, sid)
+    if revision is not None and int(revision) != s.get("revision", 1):
+        raise ValueError("화면의 스캔이 최신이 아닙니다(번호가 바뀌었습니다). 입력 확인 화면을 다시 열어 확인하세요.")
+    s["confirmed_revision"] = s.get("revision", 1)
     s["confirmed_at"] = _now()
     _write(p)
     return s
 
 
 def mirror_scan_numbers(pid: str, sid: str) -> dict:
-    """Renumber u -> 17 - u after the dentist saw the numbers running the other way; confirmation is cleared."""
+    """Renumber u -> 17 - u; a new revision, so the confirmation and every plan of the old numbering lapse."""
     p = _read(pid)
     s = _scan(p, sid)
-    s["teeth"] = mirror_numbers(_root() / pid / "scans" / sid)
-    s["orientation"] = {**(s.get("orientation") or {}), "side": "ok" if (s.get("orientation") or {}).get("side") == "reversed" else "reversed",
-                        "renumbered": not (s.get("orientation") or {}).get("renumbered", False)}
+    s["teeth"] = mirror_numbers(_pdir(pid) / "scans" / sid)
+    o = dict(s.get("orientation") or {})
+    o["side"] = {"reversed": "ok", "ok": "reversed"}.get(o.get("side"), o.get("side"))
+    o["renumbered"] = not o.get("renumbered", False)
+    s["orientation"] = o
+    s["revision"] = s.get("revision", 1) + 1
+    s["confirmed_revision"] = None
     s["confirmed_at"] = None
     _write(p)
     return s
 
 
-def is_confirmed(case_id: str) -> bool | None:
-    """True/False for a patient scan case id, None when the id is not a patient scan (samples, uploads)."""
+def input_state(case_id: str) -> dict | None:
+    """{"revision", "confirmed"} for a patient scan case id; None for anything else (samples, anonymous uploads)."""
     m = _CASE_RE.match(case_id or "")
-    if not m or case_folder(case_id) is None:
+    if not m:
         return None
-    return bool(_scan(_read(m.group(1)), m.group(2)).get("confirmed_at"))
+    try:
+        s = _scan(_read(m.group(1)), m.group(2))
+    except KeyError:
+        return {"revision": None, "confirmed": False, "deleted": True}
+    rev = s.get("revision", 1)
+    return {"revision": rev, "confirmed": s.get("confirmed_revision") == rev}
 
 
-def delete_patient(pid: str) -> None:
-    _read(pid)
-    shutil.rmtree(_root() / pid, ignore_errors=True)
+def is_confirmed(case_id: str) -> bool | None:
+    st = input_state(case_id)
+    return None if st is None else st["confirmed"]
 
 
-def remove_scan(pid: str, sid: str) -> None:
+def remove_scan(pid: str, sid: str) -> str:
     p = _read(pid)
-    _scan(p, sid)
-    p["scans"] = [s for s in p["scans"] if s["scan_id"] != sid]
+    s = _scan(p, sid)
+    p["scans"] = [x for x in p["scans"] if x["scan_id"] != sid]
     _write(p)
-    shutil.rmtree(_root() / pid / "scans" / sid, ignore_errors=True)
+    shutil.rmtree(_pdir(pid) / "scans" / sid, ignore_errors=True)
+    return s["case_id"]
+
+
+def delete_patient(pid: str) -> list[str]:
+    p = _read(pid)
+    shutil.rmtree(_pdir(pid), ignore_errors=True)
+    return [s["case_id"] for s in p["scans"]]
 
 
 def case_folder(case_id: str) -> Path | None:
@@ -156,5 +232,9 @@ def case_folder(case_id: str) -> Path | None:
     m = _CASE_RE.match(case_id or "")
     if not m:
         return None
-    folder = _root() / m.group(1) / "scans" / m.group(2)
+    try:
+        _scan(_read(m.group(1)), m.group(2))
+    except KeyError:
+        return None
+    folder = _pdir(m.group(1)) / "scans" / m.group(2)
     return folder if folder.is_dir() else None

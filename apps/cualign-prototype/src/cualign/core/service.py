@@ -1,5 +1,5 @@
 """One constraint-preserving calculation path for API and agent tools."""
-from . import patients, planner
+from . import planner
 from .constraints import Constraints
 from .limits import STRATEGIES
 from .planner import FIRST_PREMOLARS
@@ -10,15 +10,14 @@ class PlanningService:
         self.store = store
 
     def target(self, case_id, strategy, constraints: Constraints):
-        if patients.is_confirmed(case_id) is False:
-            # every planning path (agent tools, comparison, rule fallback) creates targets here
-            raise ValueError("입력 확인 전 스캔입니다. 입력 확인 화면에서 치아 번호와 방향을 확인한 뒤 계획하세요.")
+        self.store.require_current_input(case_id)   # every planning path (tools, comparison, fallback) starts here
         _, case = self.store.load_case(case_id)
         target, info = planner.propose_target(case, strategy, constraints=constraints)
         return self.store.put_target(case_id, target, info, constraints)
 
     def stages(self, target_id, parent_plan_id=None):
         t = self.store.targets[target_id]
+        self.store.require_current_input(t["case_id"], t.get("input_revision"))   # the scan may have changed since
         _, case = self.store.load_case(t["case_id"])
         c = t["constraints"]
         stages, info = planner.plan_stages(case, t["target"], order=c.order)
@@ -30,6 +29,7 @@ class PlanningService:
 
     def validate(self, plan_id):
         p = self.store.plans[plan_id]
+        self.store.require_current_input(p["case_id"], p.get("input_revision"))
         _, case = self.store.load_case(p["case_id"])
         c = p["constraints"]
         info = self.store.targets[p["target_id"]]["info"]

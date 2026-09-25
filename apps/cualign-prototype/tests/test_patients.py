@@ -14,6 +14,10 @@ from cualign.server import api
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "OUT_DIR", tmp_path)
     monkeypatch.setattr(store, "OUT_DIR", tmp_path)
+    s = store.STORE                       # the process-global store: start every test empty
+    for d in (s.cases, s.case_constraints, s.targets, s.plans):
+        d.clear()
+    s.active_case = None
     app = FastAPI()
     api.add_api_routes(app)
     with TestClient(app) as c:
@@ -129,3 +133,85 @@ def test_one_piece_scan_is_explained_and_deletes_work(client):
     assert client.get("/api/cases/P0001-S1/check").status_code == 404
     assert client.delete("/api/patients/P0001").status_code == 200
     assert client.get("/api/patients/P0001").status_code == 404
+
+
+# --------------------------------------------------------------------------- PR #36 review regressions
+def _confirmed_plan(client, pid="P0001", sid="S1"):
+    client.post(f"/api/patients/{pid}/scans/{sid}/confirm")
+    res = client.post("/api/plan", json={"case_id": f"{pid}-{sid}", "allow_extraction": True}).json()
+    return (res["chosen"] or res["best_failed"])["plan_id"]
+
+
+def test_scan_ids_are_never_reused(client):
+    client.post("/api/patients", json={"alias": "스캔 번호"})
+    client.post("/api/patients/P0001/scans", files=_scan_files())
+    client.post("/api/patients/P0001/scans", files=_scan_files())
+    client.post("/api/patients/P0001/scans/S2/confirm")
+    client.delete("/api/patients/P0001/scans/S1")
+    new = client.post("/api/patients/P0001/scans", files=_scan_files(drop=(7,))).json()
+    assert new["scan_id"] == "S3" and new["check"]["n_teeth"] == 13 and not new["check"]["confirmed"]
+    ids = [s["scan_id"] for s in client.get("/api/patients/P0001").json()["scans"]]
+    assert ids == ["S2", "S3"]
+    r = client.post("/api/plan", json={"case_id": "P0001-S3"})       # no confirmation inherited, no plan made
+    assert r.status_code == 400 or not r.json()["tried"]
+    assert not [q for q in store.STORE.plans.values() if q["case_id"] == "P0001-S3"]
+
+
+def test_deleting_a_patient_removes_plans_and_the_id_is_not_reused(client, tmp_path):
+    client.post("/api/patients", json={"alias": "지울 환자"})
+    client.post("/api/patients/P0001/scans", files=_scan_files())
+    pid = _confirmed_plan(client)
+    assert (tmp_path / "plans" / f"{pid}.json").exists()
+    out = client.delete("/api/patients/P0001").json()
+    assert out["plans"] >= 1 and not (tmp_path / "plans" / f"{pid}.json").exists()
+    assert client.get(f"/api/plans/{pid}").status_code == 404
+    assert client.post("/api/patients", json={"alias": "새 환자"}).json()["patient_id"] == "P0002"
+
+
+def test_renumbering_makes_earlier_plans_stale(client):
+    from cualign.core.service import PlanningService
+    client.post("/api/patients", json={"alias": "번호 변경"})
+    client.post("/api/patients/P0001/scans", files=_scan_files())
+    plan_id = _confirmed_plan(client)
+    target = store.STORE.targets[store.STORE.plans[plan_id]["target_id"]]
+    service = PlanningService(store.STORE)
+    tid = service.target("P0001-S1", "expansion", store.STORE.constraints_for("P0001-S1"))
+    assert client.post(f"/api/plans/{plan_id}/approval", json={"confirmed": True}).status_code == 200
+    assert client.get(f"/api/plans/{plan_id}/stl.zip").status_code == 200
+
+    check = client.post("/api/patients/P0001/scans/S1/mirror").json()
+    assert check["revision"] == 2 and not check["confirmed"]
+    plan = client.get(f"/api/plans/{plan_id}").json()
+    assert plan["input_stale"] and plan["approval"] is None
+    assert client.get(f"/api/plans/{plan_id}/stl.zip").status_code == 409
+    assert client.post(f"/api/plans/{plan_id}/approval", json={"confirmed": True}).status_code == 409
+    with pytest.raises(ValueError):
+        service.stages(tid)                         # a target made before the renumbering
+    with pytest.raises(ValueError):
+        service.validate(plan_id)
+    # confirming what the screen showed before the change is refused; the current revision is accepted
+    assert client.post("/api/patients/P0001/scans/S1/confirm", json={"revision": 1}).status_code == 409
+    assert client.post("/api/patients/P0001/scans/S1/confirm", json={"revision": 2}).status_code == 200
+    assert client.get(f"/api/plans/{plan_id}").json()["input_stale"]      # still the old numbering
+    assert target["input_revision"] == 1
+
+
+def test_bad_uploads_are_refused_before_anything_is_stored(client):
+    client.post("/api/patients", json={"alias": "입력 검사"})
+    files = _scan_files()
+    lower = files + [("files", ("24.stl", files[0][1][1], "model/stl"))]
+    assert "하악" in client.post("/api/patients/P0001/scans", files=lower).json()["detail"]
+    dup = files + [files[0]]
+    assert client.post("/api/patients/P0001/scans", files=dup).status_code == 400
+    empty = [f if f[1][0] != "2.stl" else ("files", ("2.stl", b"solid x\nendsolid x\n", "model/stl")) for f in files]
+    r = client.post("/api/patients/P0001/scans", files=empty)
+    assert r.status_code == 400 and "2.stl" in r.json()["detail"]
+    assert client.get("/api/patients/P0001").json()["scans"] == []
+    assert not [d for d in (store.OUT_DIR / "patients" / "P0001" / "scans").glob("*")]   # nothing left behind
+
+
+@pytest.mark.parametrize("pid", ["..", "%2e%2e", "x", "P1", "P0001%2f.."])
+def test_patient_ids_are_never_used_as_paths(client, pid):
+    client.post("/api/patients", json={"alias": "경로"})
+    assert client.get(f"/api/patients/{pid}").status_code == 404
+    assert client.delete(f"/api/patients/{pid}").status_code in (404, 405)

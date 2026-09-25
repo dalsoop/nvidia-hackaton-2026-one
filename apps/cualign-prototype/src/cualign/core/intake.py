@@ -63,7 +63,10 @@ def orient_scan(folder: str | Path) -> dict:
     teeth = {i: trimesh.load(p, process=True, force="mesh") for i, p in files.items()}
     gum = trimesh.load(gum_file, process=True, force="mesh") if gum_file.exists() else None
 
-    ids = sorted(teeth)
+    # the frame comes from the planned teeth (Universal 2..15); third molars 1/16 are moved along but do not steer it
+    ids = sorted(i for i in teeth if 2 <= i <= 15)
+    if len(ids) < MIN_TEETH:
+        ids = sorted(teeth)
     cen = np.array([_surface_centroid(teeth[i]) for i in ids])
     c0 = cen.mean(0)
     n = np.linalg.svd(cen - c0)[2][2]
@@ -73,12 +76,12 @@ def orient_scan(folder: str | Path) -> dict:
         if (_surface_centroid(gum) - c0) @ n > 0:
             n = -n
     else:
-        plus, minus = _cervical_votes(teeth, n)
+        plus, minus = _cervical_votes({i: teeth[i] for i in ids}, n)
         if plus + minus >= max(MIN_TEETH, len(ids) // 2) and plus != minus:
             basis = "cervical"
             if minus > plus:
                 n = -n
-        elif n[2] < 0:          # no evidence: keep the input's up direction
+        elif n[2] < 0:          # no evidence: assume the input's +z is the occlusal side
             n = -n
     R = _rotation_to_z(n)
     P = (cen - c0) @ R.T

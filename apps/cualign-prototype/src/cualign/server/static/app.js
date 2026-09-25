@@ -30,6 +30,8 @@ const state = {
   labels: [],            // CSS2DObject IPR labels
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
   checkCase: null,       // case id shown on the input-check screen
+  checkRevision: null,   // scan revision shown there; the confirmation names it
+  gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
 };
 
 // ------------------------------------------------------------------ three.js
@@ -250,7 +252,7 @@ function updateActions() {
   const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
   for (const id of ["sendBtn", "fallbackBtn", "caseBtn", "planSelect"]) $(id).disabled = !!busy;
   $("constraints").disabled = !!busy;
-  $("approveBtn").disabled = !allowed || !p.passed || !["passed", "skipped"].includes(p.review.status);
+  $("approveBtn").disabled = !allowed || !p.passed || p.input_stale || !["passed", "skipped"].includes(p.review.status);
   $("approveBtn").textContent = p?.approval ? "승인 취소" : "의사 승인";
   const link = $("stlLink"), downloadable = allowed && p.approval;
   link.classList.toggle("disabled", !downloadable);
@@ -304,7 +306,9 @@ async function loadPatients() {
 }
 
 async function openPatient(pid) {
+  const v = ++state.gateVersion;
   const p = await api("/api/patients/" + encodeURIComponent(pid));
+  if (v !== state.gateVersion) return;
   state.patient = p;
   $("patientTitle").textContent = p.alias;
   $("patientMeta").textContent = `${p.patient_id} · 등록 ${fmtDate(p.created_at)}` + (p.memo ? ` · ${p.memo}` : "");
@@ -314,7 +318,7 @@ async function openPatient(pid) {
   for (const sc of [...p.scans].reverse()) {
     const row = document.createElement("div");
     row.className = "scan-row";
-    const ok = !!sc.confirmed_at;
+    const ok = sc.confirmed_revision != null && sc.confirmed_revision === (sc.revision ?? 1);   // confirmed this revision
     row.innerHTML = `<span class="sid"></span><span class="meta"></span>
       <button class="btn ghost small" data-act="check" type="button">입력 확인</button>
       <button class="btn ${ok ? "primary" : "ghost"} small" data-act="${ok ? "plan" : "check"}" type="button">${ok ? "계획" : "확인 필요"}</button>
@@ -335,22 +339,34 @@ async function uploadScan(files) {
   const fd = new FormData();
   for (const f of files) fd.append("files", f, f.name);
   $("uploadStatus").textContent = `${files.length}개 파일 올리는 중 — 치아를 읽고 있습니다`;
+  const pid = state.patient.patient_id;          // the patient this upload belongs to, whatever is on screen later
   try {
-    const res = await api("/api/patients/" + encodeURIComponent(state.patient.patient_id) + "/scans", { method: "POST", body: fd });
-    state.patient = await api("/api/patients/" + encodeURIComponent(state.patient.patient_id));   // now lists the new scan
+    const res = await api("/api/patients/" + encodeURIComponent(pid) + "/scans", { method: "POST", body: fd });
+    if (state.patient?.patient_id !== pid) return;   // the dentist moved to another patient meanwhile
+    const p = await api("/api/patients/" + encodeURIComponent(pid));   // now lists the new scan
+    if (state.patient?.patient_id !== pid) return;
+    state.patient = p;
     await openCheck(res.case_id, res.check);
   } catch (e) {
-    $("uploadStatus").textContent = "업로드 실패: " + e.message;
+    if (state.patient?.patient_id === pid) $("uploadStatus").textContent = "업로드 실패: " + e.message;
   }
 }
 
 async function openCheck(caseId, check) {
-  check ??= await api("/api/cases/" + encodeURIComponent(caseId) + "/check");
+  const v = ++state.gateVersion;
+  $("startPlan").disabled = true;
+  const [c, mesh] = await Promise.all([check ?? api("/api/cases/" + encodeURIComponent(caseId) + "/check"),
+                                       api(`/api/cases/${encodeURIComponent(caseId)}/mesh`)]);
+  if (v !== state.gateVersion) return;          // another scan was opened meanwhile: never mix its mesh and this check
+  check = c;
+  // mesh, check list and the confirm target change together, only for the latest choice
   state.checkCase = caseId;
-  state.meshCase = null;          // force a reload: the viewer may hold another scan
+  state.checkRevision = check.revision ?? null;
   state.messages = [];            // a conversation belongs to one case; planning restarts from 계획 시작
   $("transcript").innerHTML = "";
-  await loadMesh(caseId);
+  state.meshCase = caseId;
+  state.plan = null;
+  buildTeeth(mesh);
   resetPlanPanel();
   const rot = check.rotation_deg ?? {}, vert = check.vertical_mm ?? {};
   for (const [id, m] of Object.entries(state.teeth)) {
@@ -372,9 +388,9 @@ async function openCheck(caseId, check) {
     ["잇몸", check.scanned_gingiva ? "스캔 잇몸" : "표시용 생성 잇몸"],
   ];
   const o = check.orientation;
-  if (o) rows.push(["방향 정렬", ({ gingiva: "잇몸 기준", cervical: "치관 아래 경계 기준", none: "근거 없음 — 입력 방향 그대로" })[o.basis] +
+  if (o) rows.push(["방향 정렬", ({ gingiva: "잇몸 기준", cervical: "치관 아래 경계 기준", none: "근거 없음 — 입력의 +z를 교합면 쪽으로 가정, 방향 확인 필요" })[o.basis] +
     (o.rotation_deg ? ` · ${o.rotation_deg}° 회전` : "") + (o.renumbered ? " · 번호 좌우 뒤집음" : ""), o.basis === "none"]);
-  if (check.confirmed_at) rows.push(["번호 확인", "확인됨 " + fmtDate(check.confirmed_at)]);
+  if (check.revision) rows.push(["번호 확인", (check.confirmed ? "확인됨 " + fmtDate(check.confirmed_at) : "확인 전") + ` · 입력 버전 ${check.revision}`]);
   $("sideWarn").hidden = o?.side !== "reversed";
   if (check.outside.length) rows.splice(2, 0, ["스캔에 없는 끝 치아", check.outside.join(", ")]);
   for (const why of check.unsupported) rows.push(["지원 불가", why, true]);
@@ -532,7 +548,8 @@ function renderResult(plan) {
   $("reviewMemo").textContent = review.message + (review.error ? " (" + review.error + ")" : "");
   $("rApproval").textContent = plan.approval ? "의사 승인됨 · " + plan.approval.approved_at : "미승인";
 
-  if (plan.passed || viol.length === 0) setBadge("규칙 통과 (의사 검토 전 초안)", "pass");
+  if (plan.input_stale) setBadge("이전 입력의 계획 — 승인·출력 불가", "fail");
+  else if (plan.passed || viol.length === 0) setBadge("규칙 통과 (의사 검토 전 초안)", "pass");
   else if (byType.space_deficit) setBadge("제약 모순 — 조건 완화 필요", "fail");
   else setBadge(`위반 ${viol.length}건 — 전략 전환 검토`, "warn");
 
@@ -760,22 +777,26 @@ for (const ev of ["dragenter", "dragover"]) $("dropZone").addEventListener(ev, (
 for (const ev of ["dragleave", "drop"]) $("dropZone").addEventListener(ev, (e) => { e.preventDefault(); $("dropZone").classList.remove("over"); });
 $("dropZone").addEventListener("drop", (e) => uploadScan([...e.dataTransfer.files]));
 $("startPlan").addEventListener("click", async () => {
-  const [pid, sid] = (state.checkCase ?? "").split("-");
+  const caseId = state.checkCase, revision = state.checkRevision;   // exactly what is on screen now
+  const [pid, sid] = (caseId ?? "").split("-");
+  $("startPlan").disabled = true;
   try {
-    // the dentist's confirmation is recorded on the server; planning tools refuse unconfirmed patient scans
+    // the confirmation is recorded on the server for this revision; planning tools refuse anything else
     if (state.patient && sid) {
-      await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}/confirm`, { method: "POST" });
+      await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}/confirm`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision }) });
       state.patient = await api("/api/patients/" + encodeURIComponent(pid));
     }
-    await activateCase(state.checkCase);
-  } catch (err) { alert("계획 시작 실패: " + err.message); }
+    if (state.checkCase === caseId) await activateCase(caseId);
+  } catch (err) { alert("계획 시작 실패: " + err.message); $("startPlan").disabled = false; }
 });
 $("mirrorBtn").addEventListener("click", async () => {
-  const [pid, sid] = (state.checkCase ?? "").split("-");
+  const caseId = state.checkCase;
+  const [pid, sid] = (caseId ?? "").split("-");
   if (!confirm("치아 파일 번호를 좌우로 뒤집습니다 (2↔15, 3↔14 …). 계속할까요?")) return;
   try {
     const check = await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}/mirror`, { method: "POST" });
-    await openCheck(state.checkCase, check);
+    if (state.checkCase === caseId) await openCheck(caseId, check);
   } catch (err) { alert("번호 뒤집기 실패: " + err.message); }
 });
 $("deletePatient").addEventListener("click", async () => {
@@ -816,6 +837,14 @@ for (const b of document.querySelectorAll(".view-btns button")) b.addEventListen
   try {
   if (params.get("plan")) {
     const linkedPlan = await api("/api/plans/" + encodeURIComponent(params.get("plan")));
+    const m = /^(P\d{4,})-(S\d+)$/.exec(linkedPlan.case_id);
+    if (m && linkedPlan.input_stale) {
+      await openPatient(m[1]);
+      await openCheck(linkedPlan.case_id);
+      alert("이 계획은 확인 전이거나 번호가 바뀐 이전 입력으로 만든 것입니다. 입력을 확인한 뒤 다시 계획하세요.");
+      return;
+    }
+    if (m) { try { state.patient = await api("/api/patients/" + m[1]); } catch { /* deleted patient: show the plan read-only */ } }
     await activateCase(linkedPlan.case_id, { greet: false });
     await refreshPlans(params.get("plan"));
     return;

@@ -71,10 +71,45 @@ class Store:
             return parent["constraints"]
         return self.case_constraints.get(case_id, Constraints())
 
+    # ------------------------------------------------------------------ input revision (patient scans)
+    def require_current_input(self, case_id: str, revision: int | None = None) -> None:
+        """Planning, approval and export need a patient scan the dentist confirmed, in the revision the plan was made
+        from. Samples and anonymous uploads (no patient record) pass."""
+        st = patients.input_state(case_id)
+        if st is None:
+            return
+        if st.get("deleted"):
+            raise ValueError("삭제된 스캔입니다.")
+        if not st["confirmed"]:
+            raise ValueError("입력 확인 전 스캔입니다. 입력 확인 화면에서 치아 번호와 방향을 확인한 뒤 계획하세요.")
+        if revision is not None and revision != st["revision"]:
+            raise ValueError("스캔 번호가 바뀐 뒤의 이전 계획입니다. 새 입력으로 다시 계획하세요.")
+
+    def input_stale(self, case_id: str, revision: int | None) -> bool:
+        st = patients.input_state(case_id)
+        return st is not None and (st.get("deleted", False) or not st["confirmed"] or revision != st["revision"])
+
+    def forget_case(self, case_id: str) -> list[str]:
+        """Drop everything derived from a deleted patient scan: case, conditions, targets, plans and their files."""
+        self.cases.pop(case_id, None)
+        self.case_constraints.pop(case_id, None)
+        if self.active_case == case_id:
+            self.active_case = None
+        for tid in [t for t, v in self.targets.items() if v["case_id"] == case_id]:
+            del self.targets[tid]
+        gone = [pid for pid, p in self.plans.items() if p["case_id"] == case_id]
+        for pid in gone:
+            del self.plans[pid]
+            for f in (OUT_DIR / "plans" / f"{pid}.json", OUT_DIR / "stl" / f"{pid}.zip"):
+                f.unlink(missing_ok=True)
+        return gone
+
     def put_target(self, case_id: str, target: dict, info: dict, constraints: Constraints | None = None) -> str:
         tid = "t" + uuid.uuid4().hex
+        st = patients.input_state(case_id)
         self.targets[tid] = {"case_id": case_id, "target": target, "info": info,
-                            "constraints": constraints or self.constraints_for(case_id)}
+                            "constraints": constraints or self.constraints_for(case_id),
+                            "input_revision": st["revision"] if st else None}
         return tid
 
     def put_plan(self, case_id: str, target_id: str | None, stages: list[dict], info: dict,
@@ -87,7 +122,8 @@ class Store:
             "info": info, "violations": violations, "stage_cap": c.stage_cap, "strategy": strategy,
             "constraints": c, "parent_plan_id": parent_plan_id,
             "review": {"status": "not_requested", "attempts": 0, "message": "", "error": None},
-            "approval": None}
+            "approval": None,
+            "input_revision": self.targets.get(target_id or "", {}).get("input_revision")}
         self._persist(pid)
         return pid
 
@@ -98,6 +134,8 @@ class Store:
                 "parent_plan_id": p["parent_plan_id"], "constraints": p["constraints"].model_dump(mode="json"),
                 "review": dict(p["review"]), "approval": dict(p["approval"]) if p["approval"] else None,
                 "info": p["info"], "target": tinfo, "violations": p["violations"], "passed": not p["violations"],
+                "input_revision": p.get("input_revision"),
+                "input_stale": self.input_stale(p["case_id"], p.get("input_revision")),
                 "stages": [{str(i): np.round(v, 4).tolist() for i, v in st.items()} for st in p["stages"]],
                 # degrees about each crown's vertical axis through its centroid (pivot), per stage
                 "rotations": [{str(i): round(float(y), 3) for i, y in getattr(st, "yaw", {}).items()} for st in p["stages"]],
@@ -113,6 +151,7 @@ class Store:
 
     def approve(self, pid: str) -> dict:
         p = self.plans[pid]
+        self.require_current_input(p["case_id"], p.get("input_revision"))
         if p["violations"]:
             raise ValueError("규칙 위반 계획은 승인할 수 없습니다.")
         if p["review"]["status"] not in ("passed", "skipped"):
@@ -129,6 +168,7 @@ class Store:
 
     def require_approved(self, pid: str) -> None:
         p = self.plans[pid]
+        self.require_current_input(p["case_id"], p.get("input_revision"))
         if not p["approval"] or p["approval"]["fingerprint"] != self.fingerprint(pid):
             raise ValueError("의사가 현재 계획을 승인한 뒤 내보낼 수 있습니다.")
 
