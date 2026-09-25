@@ -303,6 +303,7 @@ def test_pii_blocked_before_model(store, tmp_path, monkeypatch):
         with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE}], cualign={"case_id": "moderate"})
             assert REFUSAL in body and MARK not in body
+            assert "0000-0000" not in body  # nothing of the refused request comes back, not even as a progress step
             assert rail_llm.requests == [] and llm.requests == []
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE.split(" 보호자")[0]}],
                        cualign={"case_id": "moderate"})
@@ -345,8 +346,9 @@ def test_output_held_nonstream(store, tmp_path, monkeypatch):
 
 def test_intermediate_no_payload(store, tmp_path, monkeypatch):
     """Progress events leave while the answer is held, so they must not carry model text, tool results or the
-    request. MARK-STEP is in the model's text and in every tool result; MARK-REQ only in the request.
-    NAT 1.9.0's ReAct agent emits only FUNCTION_* steps (no LLM_*/TOOL_*), so today no step is left at all."""
+    request. MARK-STEP is in the model's text and in every tool result; MARK-REQ only in the request, which the
+    workflow's own start step would echo (worker.py drops it). Tool starts stay: the tool name and the arguments the
+    model chose. NAT 1.9.0's ReAct agent emits no LLM_*/TOOL_* steps."""
     summary = register.summary
     monkeypatch.setattr(register, "summary", lambda pid: {**summary(pid), "note": "MARK-STEP"})
     with PlanningLLM(thought="MARK-STEP 목표부터 만듭니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
@@ -354,7 +356,8 @@ def test_intermediate_no_payload(store, tmp_path, monkeypatch):
                    cualign={"case_id": "moderate"})
     steps = [line for line in body.splitlines() if line.startswith("intermediate_data:")]
     assert len(llm.requests) == 4  # three tool calls and the answer: the planner really ran the tools
-    assert not [s for s in steps if "MARK-STEP" in s or "MARK-REQ" in s]
+    assert len(steps) == 3 and not [s for s in steps if "MARK-STEP" in s or "MARK-REQ" in s]
+    assert all(any(tool in s for s in steps) for tool in ("propose_target", "plan_stages", "select_plan"))
     # The answer and plan events still carry what they should; only the progress events are cut.
     assert MARK in body and sse_event(body, "plan_selected")["plan_id"] in store.plans
 

@@ -4,10 +4,11 @@ general:
     _type: fastapi
     runner_class: cualign.server.worker.CuAlignWorker
     # Progress events leave while the answer is held for the output rail, so they carry only tool names and the
-    # arguments the model chose: no model text, tool results or request messages (LLM_*, *_END, FUNCTION_START).
+    # arguments the model chose (FUNCTION_START of the tools): no model text or tool results (*_END). The workflow's
+    # own start would echo the request; worker.py drops that one step. NAT 1.9.0's ReAct agent emits no LLM_*/TOOL_*.
     step_adaptor:
       mode: custom
-      custom_event_types: [TOOL_START]
+      custom_event_types: [FUNCTION_START]
     cors:
       allow_origins: ["*"]
 
