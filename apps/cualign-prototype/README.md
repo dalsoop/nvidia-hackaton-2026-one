@@ -14,6 +14,7 @@
 |---|---|
 | [아이디어 소개](docs/OVERVIEW.md) | 스테이징이 무엇인지, 왜 이 문제를 에이전트로 푸는지 |
 | [PRD](docs/PRD.md) | 사용자·문제·제품 목표·예선 범위·수용 기준 |
+| [목표](docs/GOALS.md) | Phase 1(예선 증거)·Phase 2(제품) 정량 목표와 측정 방법·현재값 |
 | [TRD](docs/TRD.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
 | [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
 | [NVIDIA 활용](docs/NVIDIA_STACK.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |

@@ -74,6 +74,7 @@
 | `tests/test_api.py` | UI 경로·승인→ZIP·잘못된 계획 ID 검사 |
 | `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/승인·지연 응답 검사 |
+| `docs/GOALS.md` | 단계별 정량 목표·측정 방법·현재값. 다른 문서는 목표 ID를 가리킴 |
 | `docs/VERIFICATION.md` | 새 환경 재현 결과와 미검증 범위 |
 | `docs/DEVELOPMENT.md`, `docs/ROADMAP.md` | 개발 진입점과 네 기능 작업·검증 범위 |
 | `docs/KNOWN_ISSUES.md` | reviewer 오류의 관측·재현 조건·영향과 인수 시 주의점 |
