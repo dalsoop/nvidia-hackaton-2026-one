@@ -62,7 +62,11 @@ def flagging(_config_dir, _model_base_url=None):
 
 
 class FakeLLM:
-    """Answers every chat completion with `content` and no tool call, so the ReAct agent ends at once."""
+    """Answers every chat completion with `content` and no tool call, so the ReAct agent ends at once.
+    The first `busy` streamed requests get what the NVIDIA API sends when overloaded (#6): HTTP 200, one error line."""
+
+    busy = 0
+    busy_error = {"message": "Service temporarily overloaded", "code": 503}
 
     def __init__(self, content="MARK-PLANNER 계획 초안입니다."):
         self.content = content
@@ -89,6 +93,9 @@ class FakeLLM:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.end_headers()
+                    if len(fake.requests) <= fake.busy:
+                        self.wfile.write(json.dumps({"error": fake.busy_error}).encode() + b"\n")
+                        return
                     delta = dict(msg)
                     if msg.get("tool_calls"):
                         delta["tool_calls"] = [{"index": i, **c} for i, c in enumerate(msg["tool_calls"])]
