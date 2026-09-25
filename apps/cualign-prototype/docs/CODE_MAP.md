@@ -19,6 +19,7 @@
 | `src/cualign/core/case.py` | 치아별 메시 로딩, 케이스 구성, 이웃 치아 겹침 계산 |
 | `src/cualign/core/arch.py` | 치열궁 곡선과 위치·길이 계산 |
 | `src/cualign/core/limits.py` | 계산 한계값, 전략·치아 집합, 장수·기간 환산 |
+| `src/cualign/core/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터 |
 | `src/cualign/core/synth.py` | 환자 데이터 없이 재현하는 합성 케이스 생성 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증 |
@@ -42,7 +43,7 @@
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 케이스 업로드·계획 조회·규칙 폴백·파일 다운로드 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 사후 검사 |
-| `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고 거절·경고·턴별 레일 상태를 남김 |
+| `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 거절·경고·턴별 레일 상태를 남김 |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
@@ -63,7 +64,8 @@
 | `.github/workflows/ci.yml` | 변경 후 자동 검사 실행 |
 | `tests/test_core.py` | 전략·단계·제약·STL 출력 검증 |
 | `tests/test_stack_offline.py` | NAT 구성·도구 등록·Guardrails 구성 검사 |
-| `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치 검사 |
+| `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일 검사 |
+| `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
 | `tests/test_segmentation.py` | 라벨→메시 분리 검사. 모델 추론 시험은 아님 |
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
