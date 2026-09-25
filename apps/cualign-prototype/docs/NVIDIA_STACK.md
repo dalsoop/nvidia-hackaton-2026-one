@@ -8,7 +8,7 @@
 |---|---|---|---|
 | NeMo Agent Toolkit | `configs/workflow.yml`, `src/cualign/agent/`, `src/cualign/server/worker.py` | 계획 에이전트, 제한된 읽기 전용 검토 함수, 계산 도구, 대화 서버·계획 이벤트. 구성/오프라인 검사와 과거 실호출 기록 | 현재 모델·설정의 전체 대화 재검증 필요 |
 | Nemotron / NIM | `configs/workflow.yml`, `.env.example`, `docs/model-swap.md` | 대화·도구 선택과 모델별 실호출 비교 | 키·모델 가용성 필요. 키 없는 폴백은 NIM 활용 증거가 아님 |
-| NeMo Guardrails | `guardrails/`, `src/cualign/server/rails.py`, `scripts/run_guardrails.py`, `docs/demo/guardrails*.md` | 대화 입력 범위 검사와 출력 사후 경고 | 출력 사전 차단 보장 없음. 타임아웃·오류 시 진행, 계산 API는 별도 |
+| NeMo Guardrails | `guardrails/`, `src/cualign/server/rails.py`, `src/cualign/server/rails_middleware.py`, `scripts/run_guardrails.py`, `docs/demo/guardrails*.md` | NAT 워크플로 미들웨어로 에이전트 호출마다 입력 범위 검사와 출력 사후 경고 | 출력 사전 차단 보장 없음. 타임아웃·오류 시 ERROR 로그 후 진행(`CUALIGN_RAILS_FAIL_CLOSED=1`이면 거절), 계산 API는 별도 |
 | OpenShell | `openshell/policy.yaml`, `docs/openshell.md` | 파일·네트워크 접근 경계의 정책 실험 | 서버 전체를 감싼 운영 샌드박스가 아님. 현 정책은 NIM·출력 경로에 맞춘 완성 정책이 아님 |
 | Agent Skill | `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙·도구 사용 절차를 전달하는 자산 | 파일 존재를 NAT의 자동 로딩·실행 증거로 해석하지 않음 |
 | SkillSpector | `scripts/scan_skill.py`, `skills/skillspector-report*.md` | 위 Skill의 과거 정적·의미 검사 결과와 재실행 방법 | 현재 Skill은 당시 스냅샷과 다를 수 있음. 서버·제품 전체 보안 인증 아님 |

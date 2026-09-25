@@ -8,6 +8,7 @@ from nat.cli.register_workflow import register_function_group
 from nat.data_models.function import FunctionGroupBaseConfig
 
 from cualign.agent import react_patch, reviewer  # register the bounded reviewer
+from cualign.server import rails_middleware  # noqa: F401  register the Guardrails workflow middleware
 from cualign.agent.context import CURRENT_RUN
 from cualign.core import limits as L, planner
 from cualign.core.constraints import Constraints, ConstraintPatch

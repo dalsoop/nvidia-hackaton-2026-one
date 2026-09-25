@@ -44,8 +44,14 @@ llms:
     chat_template_kwargs:
       enable_thinking: false
 
+# NeMo Guardrails wrap the workflow itself, so every route, `nat run` and the eval runner pass them.
+middleware:
+  cualign_rails:
+    _type: cualign_rails
+
 workflow:
   _type: react_agent
+  middleware: [cualign_rails]
   tool_names: [cualign, reviewer]
   llm_name: nim_super
   verbose: true

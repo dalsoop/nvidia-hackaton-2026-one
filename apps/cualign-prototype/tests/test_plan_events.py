@@ -1,4 +1,4 @@
-"""Exercise request context through ASGI task boundaries and Guardrails."""
+"""Exercise request context through ASGI task boundaries. Guardrails: test_rails_middleware.py."""
 import asyncio
 import json
 
@@ -11,7 +11,6 @@ from cualign.core.constraints import Constraints
 from cualign.core.service import PlanningService
 from cualign.core import store as store_module
 from cualign.server import plan_events
-from cualign.server.rails import GuardrailsASGI
 
 
 def test_selected_event_parent_and_context_cleanup(tmp_path, monkeypatch):
@@ -53,26 +52,6 @@ def test_selected_event_parent_and_context_cleanup(tmp_path, monkeypatch):
         assert CURRENT_RUN.get() is None
         bad = client.post("/chat/stream", json={"messages":[], "cualign":{"case_id":"severe","base_plan_id":parent}})
         assert bad.status_code == 400
-
-
-def test_guardrails_refusal_never_enters_planning(tmp_path, monkeypatch):
-    s = store_module.Store()
-    monkeypatch.setattr(plan_events, "STORE", s)
-    app = FastAPI()
-    @app.post("/chat/stream")
-    async def chat():
-        raise AssertionError("blocked input reached agent")
-    class Rails:
-        cs_input_mode = "advisory"
-        async def check_input(self, text):
-            return {"scope":"BLOCKED","content_safety":"PASSED","blocked":True,"cs_mode":"advisory"}
-    app.add_middleware(plan_events.PlanEventsASGI)
-    app.add_middleware(GuardrailsASGI, rails=Rails())
-    with TestClient(app) as client:
-        res = client.post("/chat/stream", json={"messages":[{"role":"user","content":"진단해줘"}]})
-        assert res.status_code == 200
-        assert "plan_selected" not in res.text
-        assert not s.plans
 
 
 def test_generated_but_unselected_plan_is_not_auto_selected(tmp_path, monkeypatch):
