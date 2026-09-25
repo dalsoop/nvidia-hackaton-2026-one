@@ -176,3 +176,18 @@ class PlanningLLM(FakeLLM):
         call = {"id": f"call_{len(self.requests)}", "type": "function",
                 "function": {"name": name, "arguments": json.dumps(args)}}
         return {"role": "assistant", "content": self.thought, "tool_calls": [call]}
+
+
+class SkippingPlanner(PlanningLLM):
+    """PlanningLLM never calls the reviewer (the skipped-review turn in KNOWN_ISSUES). The same fake server answers
+    the reviewer's own call with `memo`."""
+
+    def __init__(self, memo="MARK-MEMO 검토 메모 초안입니다. 최종 판단은 의사가 합니다."):
+        super().__init__()
+        self.memo = memo
+
+    def reply(self, req):
+        system = next((m.get("content") for m in req.get("messages", []) if m.get("role") == "system"), "")
+        if isinstance(system, str) and system.startswith("You are cuAlign's read-only reviewer"):
+            return {"role": "assistant", "content": self.memo}
+        return super().reply(req)

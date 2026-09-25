@@ -23,9 +23,9 @@ from fastapi.routing import APIWebSocketRoute
 from fastapi.testclient import TestClient
 from nat.runtime.loader import load_config, load_workflow
 
-from rails_fakes import A14, FakeLLM, FakeRails, PlanningLLM, RailLLM
+from rails_fakes import A14, FakeLLM, FakeRails, PlanningLLM, RailLLM, SkippingPlanner
 from cualign import cli
-from cualign.agent import register
+from cualign.agent import register, reviewer
 from cualign.core import store as store_module
 from cualign.server import api, plan_events, rails_middleware
 from cualign.server.rails import Rails
@@ -54,7 +54,7 @@ def store(tmp_path, monkeypatch):
     s = store_module.Store()
     for mod in (store_module, api, register):
         monkeypatch.setattr(mod, "OUT_DIR", tmp_path)
-    for mod in (api, register, plan_events):
+    for mod in (api, register, plan_events, reviewer):
         monkeypatch.setattr(mod, "STORE", s)
     return s
 
@@ -388,7 +388,8 @@ def test_intermediate_no_payload(store, tmp_path, monkeypatch):
         body = ask(client, "/chat/stream", [{"role": "user", "content": "MARK-REQ moderate 케이스 계획 짜줘."}],
                    cualign={"case_id": "moderate"})
     steps = [line for line in body.splitlines() if line.startswith("intermediate_data:")]
-    assert len(llm.requests) == 4  # three tool calls and the answer: the planner really ran the tools
+    planner = [r for r in llm.requests if not str(r["messages"][0].get("content", "")).startswith("You are cuAlign's read-only reviewer")]
+    assert len(planner) == 4  # three tool calls and the answer: the planner really ran the tools
     assert not [s for s in steps if "MARK-STEP" in s or "MARK-REQ" in s]
     starts = [s for s in steps if "Function Start: " in s]
     ends = [s for s in steps if "Function End: " in s]
@@ -448,3 +449,42 @@ def test_telemetry_switched_off(store, tmp_path, monkeypatch):
     monkeypatch.setattr(cli.os, "execv", lambda *a: None)
     cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=8000))
     assert os.environ["NAT_TELEMETRY_ENABLED"] == "0"
+
+
+def test_skipped_review_runs_on_server_with_memo_rail(store, tmp_path, monkeypatch):
+    """The agent selects a plan and never calls the reviewer: the server reviews it before offering the plan,
+    and the memo passes the output rail like an answer does."""
+    with SkippingPlanner() as llm, serve(tmp_path, monkeypatch, llm) as client:
+        assert reviewer.MEMO_CHECK is not None
+        body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+        selected = sse_event(body, "plan_selected")
+        assert selected["reviewed_by_server"] is True
+        assert selected["review"]["status"] == "passed" and selected["review"]["rails"] == "passed"
+        assert any("MARK-MEMO" in out for out in FakeRails.last.outputs)
+        # Already reviewed: the dentist's request is refused rather than run again.
+        assert client.post(f"/api/plans/{selected['plan_id']}/review").status_code == 409
+    assert reviewer.MEMO_CHECK is None  # the workflow is gone, so is its check
+
+
+def test_prescriptive_memo_is_not_stored(store, tmp_path, monkeypatch):
+    with SkippingPlanner("검토 결과 발치가 필요합니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
+        body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+        selected = sse_event(body, "plan_selected")
+        review = selected["review"]
+        assert review["status"] == "failed" and review["error"] == "rail_blocked" and review["rails"] == "blocked"
+        assert "발치가 필요" not in json.dumps(store.plan_json(selected["plan_id"]), ensure_ascii=False)
+        # The dentist may ask again; the model still writes the same sentence, so it fails the same way.
+        again = client.post(f"/api/plans/{selected['plan_id']}/review").json()["review"]
+        assert again["error"] == "rail_blocked"
+
+
+@pytest.mark.parametrize("factory,closed,state,refuse", [("output_blocking", False, "blocked", True),
+                                                         ("output_erroring", False, "error", False),
+                                                         ("output_erroring", True, "error", True),
+                                                         ("passing", False, "passed", False)])
+def test_memo_check_follows_output_policy(factory, closed, state, refuse):
+    rails = getattr(__import__("rails_fakes"), factory)(None)
+    middleware = rails_middleware.RailsMiddleware(rails, closed)
+    assert asyncio.run(middleware.check_memo("검토 메모 초안")) == (state, refuse)
+    assert rails.outputs == ["검토 메모 초안"]
+    assert asyncio.run(rails_middleware.RailsMiddleware(None, False).check_memo("메모")) == ("off", False)

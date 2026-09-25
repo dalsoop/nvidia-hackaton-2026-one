@@ -88,7 +88,7 @@ parent_plan_id와 constraints는 계획 API·저장 JSON에 포함된다. 부모
 
 에이전트의 `select_plan` 도구가 이번 요청에서 생성한 최종 계획을 명시적으로 선택한다.
 서버는 기존 /chat/stream 종료 시 `plan_selected` SSE 이벤트로
-schema_version=1, request_id, case_id, plan_id, parent_plan_id, review를 전달한다.
+schema_version=1, request_id, case_id, plan_id, parent_plan_id, review, reviewed_by_server를 전달한다.
 후보는 있지만 선택하지 않았다면 plan_error를 보낸다. plan_context는 최신 조건을 전달한다.
 UI는 자연어 ID 검색을 하지 않으며, 이전 요청·케이스 이벤트와 늦은 조회 응답을 무시한다.
 수동 선택·규칙 폴백도 같은 조회/표시 경로를 사용한다.
@@ -101,6 +101,9 @@ CLI는 HTTP 요청 컨텍스트가 없으므로 계획별 저장 결과로 중�
 검토 실패는 계획 결과와 함께 화면에 표시하며 승인할 수 없다.
 에이전트가 검토를 건너뛰었거나(not_requested) 검토가 실패한(failed) 계획은 의사가 POST /api/plans/{id}/review로 다시 요청한다.
 요청 컨텍스트 없이 워크플로의 reviewer 설정·모델로 같은 상한 안에서 돌고, passed/skipped면 409, 검토 모델이 없으면 503이다.
+에이전트가 계획을 고르고 검토 없이 턴을 끝내면 서버가 plan_selected 전에 같은 방식으로 검토하고 reviewed_by_server=true로 알린다.
+검토 메모는 저장 전에 답과 같은 출력 검사(처방 문구 목록·출력 레일)를 거치며, 결과를 review.rails(passed/blocked/error/off)에 남긴다.
+막힌 메모는 저장하지 않고 재시도하며, 다 쓰면 error=rail_blocked(차단 모드의 레일 오류는 rail_error)로 실패한다.
 
 의사 확인 후 POST /api/plans/{id}/approval (confirmed=true)로 승인하고 DELETE로 취소한다.
 규칙 통과 및 review passed 또는 명시적 규칙 폴백 skipped만 승인 가능하다.

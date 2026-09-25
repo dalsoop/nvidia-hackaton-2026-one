@@ -60,7 +60,10 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
 
 
 def add_api_routes(app: FastAPI, review=None):
-    """`review(plan_id)` runs the bounded reviewer on the dentist's request; None when no reviewer model is wired."""
+    """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
+    chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
+    None when no reviewer model is wired."""
+    app.state.cualign_review = review
     @app.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/ui/")

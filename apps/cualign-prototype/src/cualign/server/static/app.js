@@ -553,6 +553,7 @@ async function send(text) {
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
       if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
+      if (selected.reviewed_by_server) addMsg("system", "에이전트가 검토를 호출하지 않아 서버가 같은 조건으로 검토를 실행했습니다.");
       if (selected.review.status === "failed") addMsg("error", selected.review.message + " (" + selected.review.error + ")");
     } else if (streamError || !answer) {
       throw new Error("모델 실행 또는 최종 계획 선택 실패");
