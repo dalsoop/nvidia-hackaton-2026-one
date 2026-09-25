@@ -66,6 +66,12 @@ async def converse(client, url, text, ctx, log):
             frames = buf.split("\n\n")
             buf = frames.pop()
             for frame in frames:
+                if frame.strip().startswith("{"):  # NAT reports a workflow exception as a bare JSON line
+                    try:
+                        events.append(("error", json.loads(frame)))
+                    except json.JSONDecodeError:
+                        pass
+                    continue
                 # NAT uses the SSE field name itself (`intermediate_data:`), not `event:`.
                 name = None
                 payload = None
@@ -140,6 +146,7 @@ async def main():
             verdict["turn1_answer_nonempty"] = bool(answer.strip())
             verdict["turn1_plan_selected"] = bool(sel)
             verdict["turn1_plan_error"] = pick(events, "plan_error")
+            verdict["turn1_stream_error"] = pick(events, "error")
             if not sel:
                 raise SystemExit(json.dumps(verdict, ensure_ascii=False, indent=2))
             plan_id = sel["plan_id"]
@@ -173,6 +180,7 @@ async def main():
             verdict["turn2_elapsed_s"] = round(elapsed2, 1)
             verdict["turn2_plan_selected"] = bool(sel2)
             verdict["turn2_answer_nonempty"] = bool(answer2.strip())
+            verdict["turn2_stream_error"] = pick(events2, "error")
             if sel2:
                 verdict["turn2_plan_id"] = sel2["plan_id"]
                 verdict["turn2_parent_is_turn1"] = sel2["parent_plan_id"] == plan_id

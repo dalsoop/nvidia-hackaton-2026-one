@@ -393,6 +393,23 @@ def test_output_error_turn_holds_plan(store, tmp_path, monkeypatch):
     assert sse_event(body, "plan_context")["rails"] == "error"
 
 
+def test_workflow_error_hides_model_text(store, tmp_path, monkeypatch, caplog):
+    """A ReAct parse failure raises with the model's raw text in its message, and NAT sends str(e) to the client
+    (the streamed error line, the 422 body, the websocket error) without the output rail seeing it. The model
+    answers "Thought: ..." with no action, which the agent does not take as a direct answer, until retries run out."""
+    with caplog.at_level(logging.ERROR), FakeLLM("Thought: MARK-LEAK") as llm:
+        with serve(tmp_path, monkeypatch, llm) as client:
+            bodies = {"/chat/stream": ask(client, "/chat/stream", cualign={"case_id": "moderate"}),
+                      "/websocket": ask_ws(client)}
+            res = client.post("/generate", json={"messages": [{"role": "user", "content": A14}]})
+    assert res.status_code == 422
+    bodies["/generate"] = plain(res.text)
+    for route, body in bodies.items():
+        assert "MARK-LEAK" not in body and "ReActAgentParsingFailedError" in body, (route, body[:300])
+    logged = [r for r in caplog.records if r.name == rails_middleware.__name__ and r.exc_info]
+    assert len(logged) == 3 and all("MARK-LEAK" in str(r.exc_info[1]) for r in logged)  # the server log keeps it
+
+
 def test_telemetry_switched_off(store, tmp_path, monkeypatch):
     """Guardrails skips usage stats under pytest by itself, so this checks what our start paths set."""
     monkeypatch.delenv("NEMO_GUARDRAILS_NO_USAGE_STATS", raising=False)
