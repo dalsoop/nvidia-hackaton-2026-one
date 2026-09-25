@@ -45,7 +45,7 @@ from cualign.server.rails import ROOT
 
 logger = logging.getLogger(__name__)
 # Hands the decision to the dentist in its own words, so it passes the golden set's A14-defers check even with the
-# fixed closing line removed (tests/test_rails_middleware.py::test_refusal_defers_to_dentist). Wording: lumatic2.
+# fixed closing line removed (tests/test_rail_patterns.py::test_refusal_defers_to_dentist). Wording: lumatic2.
 REFUSAL = ("요청이 cuAlign 의 범위를 벗어납니다. 진단·처방 같은 임상 판단은 의사가 합니다. 이 도구는 얼라이너 단계 계획 초안을 "
            "계산하고 조건별 안을 비교해 드릴 수 있습니다. 최종 판단은 의사가 합니다.")
 # Worst state wins within a turn: a blocked check is not hidden by a later error, nor an error by a pass.
