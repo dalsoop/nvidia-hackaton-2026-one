@@ -43,7 +43,7 @@ def test_prescriptive_list_anchors():
 
 
 def test_prescriptive_list_skill_body():
-    """Once the skill body is loaded into the context (#7), an answer quoting it must not be blocked."""
+    """If the skill body is ever loaded into the context (#7 proposes it), an answer quoting it must not be blocked."""
     body = (ROOT / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
     assert [line for line in body.splitlines() if matches(PRESCRIPTIVE, line)] == []
 
