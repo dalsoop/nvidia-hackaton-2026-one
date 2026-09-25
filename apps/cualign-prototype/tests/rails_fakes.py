@@ -64,11 +64,13 @@ def flagging(_config_dir, _model_base_url=None):
 class FakeLLM:
     """Answers every chat completion with `content` and no tool call, so the ReAct agent ends at once.
     The first `busy` requests get what the NVIDIA API sends when overloaded: streamed, HTTP 200 and one error line
-    (#6); not streamed, the error's code as the HTTP status (#34)."""
+    (#6); not streamed, the error's code as the HTTP status (#34). With `busy_http` a streamed request gets
+    that HTTP status as well."""
 
     busy = 0
     busy_error = {"message": "Service temporarily overloaded", "code": 503}
     busy_hold = 0
+    busy_http = False  # a streamed request gets the error as a real HTTP status too (429 seen live, 9/25)
 
     def __init__(self, content="MARK-PLANNER 계획 초안입니다."):
         self.content = content
@@ -91,7 +93,7 @@ class FakeLLM:
                 msg = fake.reply(req)
                 finish = "tool_calls" if msg.get("tool_calls") else "stop"
                 head = {"id": "fake", "created": int(time.time()), "model": req.get("model", "fake")}
-                if req.get("stream") and len(fake.requests) <= fake.busy:
+                if req.get("stream") and len(fake.requests) <= fake.busy and not fake.busy_http:
                     self.protocol_version = "HTTP/1.1"  # a chunked stream like the API's, ending busy_hold s later
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")

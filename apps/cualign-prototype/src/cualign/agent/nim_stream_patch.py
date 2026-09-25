@@ -9,8 +9,8 @@ content. NAT's LLM retry sees no exception, and the ReAct agent reads the empty 
 again at once and ends the turn when its parse retries run out (measured and fixed this way in #6 by
 hoddukzoa12: 24-31% of planner calls, 32 of 41 recovered on the first re-request).
 
-This wraps the async stream: if its first message is a retryable error, the request is sent again after 1, 2,
-4 ... seconds. An error that is not retryable, or one that outlasts the retries, is logged and raises NIMStreamError.
+This wraps the async stream: if its first message is a retryable error, or the request itself gets a retryable HTTP
+status (the library raises "[429] ..."), the request is sent again after 1, 2, 4 ... seconds. An error that is not retryable, or one that outlasts the retries, is logged and raises NIMStreamError.
 Its message carries no status code or API text: NAT's retry matches codes and the text "429", and would run the
 whole call again. A stream that started normally is passed through unchanged. Applied once at plugin import
 (register.py).
@@ -52,16 +52,25 @@ def apply() -> None:
         for attempt, delay in enumerate((*DELAYS, None), 1):
             stream = original(self, *args, **kwargs)
             try:
-                first = await anext(stream, None)
-                error = first.get("error") if isinstance(first, dict) and "content" not in first else None
-                if not isinstance(error, dict):
-                    if first is not None:
-                        yield first
-                    async for msg in stream:
-                        yield msg
-                    return
-                async for _ in stream:  # read to the end as before; closing early leaves aiohttp an unreleased connection
-                    pass
+                try:
+                    first = await anext(stream, None)
+                except Exception as e:
+                    # The same overload can also come as a real HTTP status before any line; the library raises it
+                    # as "[429] ..." and nothing above asks again (9/25 live: a 429 ended a scenario at once).
+                    status = _STATUS.match(str(e))
+                    if not status or int(status.group(1)) not in RETRY_CODES:
+                        raise
+                    error = {"code": int(status.group(1)), "message": str(e)}
+                else:
+                    error = first.get("error") if isinstance(first, dict) and "content" not in first else None
+                    if not isinstance(error, dict):
+                        if first is not None:
+                            yield first
+                        async for msg in stream:
+                            yield msg
+                        return
+                    async for _ in stream:  # read to the end as before; closing early leaves aiohttp an unreleased connection
+                        pass
             finally:
                 await stream.aclose()
             if delay is None or error.get("code") not in RETRY_CODES:

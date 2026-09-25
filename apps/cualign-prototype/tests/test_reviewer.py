@@ -11,6 +11,7 @@ from cualign.core import store as store_module
 
 
 @pytest.mark.parametrize("failure,error", [("", "empty_response"), (RuntimeError("503 overloaded"), "upstream_503"),
+                                          (Exception("[429] Too Many Requests"), "upstream_429"),
                                           ("Thought: unfinished", "invalid_response")])
 def test_review_budget_and_cached_failure(tmp_path, monkeypatch, failure, error):
     monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
@@ -146,3 +147,13 @@ def test_worker_manual_review_uses_workflow_reviewer(tmp_path, monkeypatch):
         result = await review(pid)
         assert result["status"] == "failed" and result["attempts"] == 1  # the workflow's max_attempts, not the default
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("exc,label", [(Exception("[429] Too Many Requests"), "upstream_429"),
+                                       (Exception("[502] Bad Gateway"), "upstream_502"),
+                                       (Exception("[400] Bad Request"), "model_error"),
+                                       (RuntimeError("503 overloaded"), "upstream_503"),
+                                       (ValueError("parse failed"), "model_error")])
+def test_upstream_error_labels(exc, label):
+    from cualign.agent.reviewer import upstream_error
+    assert upstream_error(exc) == label

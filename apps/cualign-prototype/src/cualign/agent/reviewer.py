@@ -1,6 +1,7 @@
 """Read-only NIM review with explicit, shared retry and elapsed-time budgets."""
 import asyncio
 import json
+import re
 import time
 
 from pydantic import Field
@@ -39,6 +40,16 @@ def response_text(response):
 MEMO_CHECK = None
 # A dentist may ask again for a plan the agent never reviewed or whose review failed; finished ones stay as stored.
 MANUAL_RETRY = ("not_requested", "failed")
+
+
+def upstream_error(exc: Exception) -> str:
+    """The NVIDIA client raises "[<status>] ..."; a rate limit (429) or server error is the API's, not the model's.
+    A bare "503" in the text keeps its old label."""
+    text = str(exc)
+    status = re.match(r"^\[(\d{3})\]", text)
+    if status and (status.group(1) == "429" or status.group(1).startswith("5")):
+        return "upstream_" + status.group(1)
+    return "upstream_503" if "503" in text else "model_error"
 
 
 async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_seconds=20, total_seconds=40,
@@ -98,7 +109,7 @@ async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_secon
             except asyncio.TimeoutError:
                 error = "timeout"
             except Exception as exc:
-                error = "upstream_503" if "503" in str(exc) else "model_error"
+                error = upstream_error(exc)
         return store.set_review(plan_id, {"status": "failed", "attempts": attempts, "message": "검토 실패 — 계획을 승인할 수 없습니다.",
                                           "error": error, "rails": rails})
     except asyncio.CancelledError:
