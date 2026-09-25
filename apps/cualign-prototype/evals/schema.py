@@ -1,4 +1,4 @@
-"""Evaluation run data schema and serialization."""
+"""Evaluation run data schema and serialization without subjective judgments."""
 
 from __future__ import annotations
 
@@ -15,24 +15,25 @@ RUN_ID_REGEX = re.compile(r"^(\d{12}|\d{14})$")
 
 @dataclass
 class MetricRecord:
-    """Quantitative metric record for Phase 1/Phase 2 goals."""
+    """Pure quantitative metric record for Phase 1/Phase 2 goals (no subjective judgment)."""
 
     goal_id: str  # e.g., "P1-1", "P1-2"
     name: str  # e.g., "핵심 시나리오 완주"
     value: Optional[float]  # normalized numeric value (e.g. 0.60), or None if not measured
     raw: str  # e.g., "3/5", "28.6% (2/7)", "0건", "65.8s"
     target: str  # target threshold (e.g. "100%", "0", "미정")
-    status: str  # "passed", "failed", "warning", "pending", "untracked"
     n: int  # sample count
     unit: str = ""  # unit if applicable (%, s, count)
-    notes: str = ""  # details or failure notes
+    notes: str = ""  # factual details or failure notes
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> MetricRecord:
-        return cls(**data)
+        # Backward compatibility: ignore legacy 'status' field if present
+        data_clean = {k: v for k, v in data.items() if k != "status"}
+        return cls(**data_clean)
 
 
 @dataclass
@@ -45,6 +46,7 @@ class RunMetadata:
     git_branch: str
     model: str  # model id (e.g. nvidia/llama-3.1-nemotron-70b-instruct)
     baseline_run_id: Optional[str] = None
+    agent_target: str = "default_react"  # agent target evaluated (from evals/agents/)
     environment: Dict[str, str] = field(default_factory=dict)
     description: str = ""
 

@@ -76,6 +76,7 @@
 | `tests/test_eval_runs.py` | yymmddhhmmss 스냅샷 검증 및 compare delta 정량 비교 검사 |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/승인·지연 응답 검사 |
 | `evals/` | 타임스탬프 기반 불변 실행 레코드(`runs/YYMMDDHHMMSS/`)와 정량 비교 도구(`compare.py`, `recorder.py`) |
+| `evals/agents/` | 다방면 평가 대상 에이전트 후보군(`production_react`, `reference_rule`, `clarification_first`, `loop_guarded`, `baselines`) |
 | `docs/GOALS.md` | 단계별 정량 목표·측정 방법·현재값. 다른 문서는 목표 ID를 가리킴 |
 | `docs/VERIFICATION.md` | 새 환경 재현 결과와 미검증 범위 |
 | `docs/DEVELOPMENT.md`, `docs/ROADMAP.md` | 개발 진입점과 네 기능 작업·검증 범위 |

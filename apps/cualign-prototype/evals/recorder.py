@@ -38,7 +38,7 @@ def get_git_info(base_dir: Path) -> tuple[str, str]:
 
 
 def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
-    """Create template dictionary of Phase 1 Goal metrics."""
+    """Create template dictionary of Phase 1 Goal metrics without subjective judgment."""
     return {
         "P1-1": MetricRecord(
             goal_id="P1-1",
@@ -46,7 +46,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미측정",
             target="미정",
-            status="pending",
             n=0,
             unit="%",
             notes="통과·정직한 실패·비교·되묻기·수정 5대 시나리오",
@@ -57,7 +56,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미측정",
             target="미정",
-            status="pending",
             n=0,
             unit="%",
             notes="모호한 조건 요청 시 사전 되묻기 비율",
@@ -68,7 +66,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=0.0,
             raw="0건",
             target="0건",
-            status="passed",
             n=1,
             unit="건",
             notes="lock·ipr_exclude·비발치 위반 수",
@@ -79,7 +76,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미측정",
             target="0%",
-            status="pending",
             n=0,
             unit="%",
             notes="동일 인자 도구 호출 반복으로 인한 상한 도달률",
@@ -90,7 +86,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미측정",
             target="100%",
-            status="pending",
             n=0,
             unit="%",
             notes="2회/40초 이내 메모 또는 명시적 실패 상태 반환",
@@ -101,7 +96,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미측정",
             target="미정",
-            status="pending",
             n=0,
             unit="건",
             notes="Fail-open 누수 및 범위 외 요청 차단",
@@ -112,7 +106,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미측정",
             target="미정",
-            status="pending",
             n=0,
             unit="s",
             notes="1턴 평균 소요 시간",
@@ -123,7 +116,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미반영",
             target="0건 위반",
-            status="untracked",
             n=0,
             unit="건",
             notes="허용 목록 밖 외부 요청 및 코드 경로 쓰기 거부",
@@ -134,7 +126,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=None,
             raw="미반영",
             target="100%",
-            status="untracked",
             n=0,
             unit="%",
             notes="계획/비교 경로에서 도메인 Skill 참조 비율",
@@ -145,7 +136,6 @@ def create_initial_phase1_metrics() -> dict[str, MetricRecord]:
             value=1.0,
             raw="100%",
             target="100%",
-            status="passed",
             n=1,
             unit="%",
             notes="결정적 기하 벤치 기준선 일치",
@@ -158,6 +148,7 @@ def init_new_run(
     run_id: Optional[str] = None,
     model: str = "nvidia/llama-3.1-nemotron-70b-instruct",
     baseline_id: Optional[str] = None,
+    agent_target: str = "default_react",
     description: str = "",
 ) -> EvaluationRun:
     """Initialize a new evaluation run record directory."""
@@ -178,6 +169,7 @@ def init_new_run(
         git_branch=branch,
         model=model,
         baseline_run_id=baseline_id,
+        agent_target=agent_target,
         description=description,
     )
 
@@ -191,10 +183,11 @@ def init_new_run(
         f.write(f"# Evaluation Summary: {run_id}\n\n")
         f.write(f"- **Created At**: {metadata.created_at}\n")
         f.write(f"- **Git Commit**: `{metadata.git_commit}` (branch: `{metadata.git_branch}`)\n")
+        f.write(f"- **Agent Target**: `{metadata.agent_target}`\n")
         f.write(f"- **Model**: `{metadata.model}`\n")
         if metadata.baseline_run_id:
             f.write(f"- **Baseline Run**: `{metadata.baseline_run_id}`\n")
-        f.write("\n## Overview\n\n(Write high-level run observations here)\n")
+        f.write("\n## 1. 정량 지표\n\n(metrics.json 참조)\n")
 
     return run
 
@@ -203,6 +196,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Create and record evaluation runs with yymmddhhmmss timestamp.")
     parser.add_argument("--new", action="store_true", help="Initialize a new evaluation run template")
     parser.add_argument("--run-id", help="Explicit YYMMDDHHMMSS run_id (defaults to current timestamp)")
+    parser.add_argument("--agent-target", default="default_react", help="Target agent under evaluation (from evals/agents/)")
     parser.add_argument("--model", default="nvidia/llama-3.1-nemotron-70b-instruct", help="Model name")
     parser.add_argument("--baseline", help="Baseline run_id to compare against")
     parser.add_argument("--desc", default="", help="Run description")
@@ -216,6 +210,7 @@ def main() -> None:
             run_id=args.run_id,
             model=args.model,
             baseline_id=args.baseline,
+            agent_target=args.agent_target,
             description=args.desc,
         )
         print(f"Initialized new evaluation run: {run.metadata.run_id} at evals/runs/{run.metadata.run_id}")

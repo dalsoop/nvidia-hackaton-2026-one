@@ -1,4 +1,4 @@
-"""Quantitative comparison tool between evaluation runs."""
+"""Pure quantitative comparison tool between evaluation runs (no subjective judgments)."""
 
 from __future__ import annotations
 
@@ -9,88 +9,59 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from evals.schema import EvaluationRun, MetricRecord
 
-# Higher is better for these metrics
-HIGHER_IS_BETTER = {
-    "P1-1",  # Scenario completion rate
-    "P1-2",  # Clarification rate
-    "P1-5",  # Review visible rate
-    "P1-9",  # Skill usage rate
-    "P1-10",  # Calculation regression rate (match rate)
-}
-
-# Lower is better for these metrics
-LOWER_IS_BETTER = {
-    "P1-3",  # Constraint violations (target: 0)
-    "P1-4",  # Tool loop exhaustion rate (target: 0)
-    "P1-6",  # Rails fail-open count (target: 0)
-    "P1-7",  # Latency (target: lower)
-    "P1-8",  # Sandbox write violations (target: 0)
-}
-
 
 def calculate_delta(
     goal_id: str,
     baseline_record: Optional[MetricRecord],
     current_record: Optional[MetricRecord],
-) -> Tuple[Optional[float], str, str]:
-    """Calculate numerical delta and semantic status.
+) -> Tuple[Optional[float], str]:
+    """Calculate purely factual numerical delta without subjective judgment.
 
     Returns:
-        (delta_value, delta_display_str, indicator_symbol)
+        (delta_value, delta_display_str)
     """
     if baseline_record is None or current_record is None:
-        return (None, "-", "⚪")
+        return (None, "-")
 
     v_base = baseline_record.value
     v_curr = current_record.value
 
     if v_base is None or v_curr is None:
-        # Qualitative comparison
         if baseline_record.raw == current_record.raw:
-            return (None, "동일", "⚪")
-        return (None, f"{baseline_record.raw} → {current_record.raw}", "📝")
+            return (None, "0")
+        return (None, f"{baseline_record.raw} → {current_record.raw}")
 
     delta = v_curr - v_base
 
-    # Format delta string
+    # Format factual delta string
     if current_record.unit == "%" or (0.0 <= v_curr <= 1.0 and current_record.unit == ""):
-        delta_str = f"{delta * 100:+.1f}%p" if delta != 0 else "0.0%p"
+        delta_str = f"{delta * 100:+.1f}%p" if abs(delta) > 1e-6 else "0.0%p"
     elif current_record.unit == "s":
-        delta_str = f"{delta:+.1f}s" if delta != 0 else "0.0s"
+        delta_str = f"{delta:+.1f}s" if abs(delta) > 1e-6 else "0.0s"
     elif current_record.unit == "건" or isinstance(current_record.value, int):
-        delta_str = f"{int(delta):+d}건" if delta != 0 else "0건"
+        delta_str = f"{int(delta):+d}건" if abs(delta) > 1e-6 else "0건"
     else:
-        delta_str = f"{delta:+.2f}" if delta != 0 else "0.00"
+        delta_str = f"{delta:+.2f}" if abs(delta) > 1e-6 else "0.00"
 
-    # Semantic evaluation
-    if abs(delta) < 1e-6:
-        indicator = "⚪ 동일"
-    elif goal_id in HIGHER_IS_BETTER:
-        indicator = "🟢 개선" if delta > 0 else "🔴 악화"
-    elif goal_id in LOWER_IS_BETTER:
-        indicator = "🟢 개선" if delta < 0 else "🔴 악화"
-    else:
-        indicator = "📝 변경"
-
-    return (delta, delta_str, indicator)
+    return (delta, delta_str)
 
 
 def generate_markdown_comparison(
     baseline_run: EvaluationRun,
     current_run: EvaluationRun,
 ) -> str:
-    """Generate a GitHub-flavored Markdown comparison table and analysis."""
+    """Generate a GitHub-flavored Markdown comparison table with pure factual delta."""
     lines: List[str] = []
     lines.append(f"# Evaluation Comparison: {current_run.metadata.run_id} vs {baseline_run.metadata.run_id}")
     lines.append("")
-    lines.append(f"- **Current Run**: `{current_run.metadata.run_id}` ({current_run.metadata.git_commit})")
-    lines.append(f"- **Baseline Run**: `{baseline_run.metadata.run_id}` ({baseline_run.metadata.git_commit})")
+    lines.append(f"- **Current Run**: `{current_run.metadata.run_id}` ({current_run.metadata.git_commit}) [Agent: `{current_run.metadata.agent_target}`]")
+    lines.append(f"- **Baseline Run**: `{baseline_run.metadata.run_id}` ({baseline_run.metadata.git_commit}) [Agent: `{baseline_run.metadata.agent_target}`]")
     lines.append(f"- **Model**: `{current_run.metadata.model}`")
     lines.append("")
-    lines.append("## 1. 정량 목표 비교표 (Phase 1 Goals)")
+    lines.append("## 1. 정량 지표 비교 (Phase 1 Goals)")
     lines.append("")
-    lines.append("| Goal ID | 목표 항목 | 기준선 (Baseline) | 현재 실행 (Current) | 증감 (Delta) | 판정 | 비고 |")
-    lines.append("| :--- | :--- | :---: | :---: | :---: | :---: | :--- |")
+    lines.append("| Goal ID | 목표 항목 | 기준선 (Baseline) | 현재 실행 (Current) | 차이 (Delta) | 비고 |")
+    lines.append("| :--- | :--- | :---: | :---: | :---: | :--- |")
 
     all_goal_ids = sorted(
         set(list(baseline_run.metrics.keys()) + list(current_run.metrics.keys()))
@@ -105,23 +76,24 @@ def generate_markdown_comparison(
         c_raw = c_rec.raw if c_rec else "N/A"
         notes = c_rec.notes if c_rec else ""
 
-        _, delta_str, indicator = calculate_delta(goal_id, b_rec, c_rec)
-        lines.append(f"| **{goal_id}** | {name} | {b_raw} | **{c_raw}** | `{delta_str}` | {indicator} | {notes} |")
+        _, delta_str = calculate_delta(goal_id, b_rec, c_rec)
+        lines.append(f"| **{goal_id}** | {name} | {b_raw} | **{c_raw}** | `{delta_str}` | {notes} |")
 
     lines.append("")
-    lines.append("## 2. 주요 차이 및 실패 케이스 (Analysis)")
+    lines.append("## 2. 관측된 세부 사항 (Observations)")
     lines.append("")
     if current_run.failed_cases:
         for idx, fc in enumerate(current_run.failed_cases, 1):
-            title = fc.get("title", "실패 항목")
-            reason = fc.get("reason", "원인 미상")
+            title = fc.get("title", "관측 항목")
+            reason = fc.get("reason", "")
             impact = fc.get("impact", "")
             lines.append(f"{idx}. **{title}**:")
-            lines.append(f"   - 원인: {reason}")
+            if reason:
+                lines.append(f"   - 현상/원인: {reason}")
             if impact:
                 lines.append(f"   - 영향: {impact}")
     else:
-        lines.append("- 기록된 주요 실패 케이스가 없습니다.")
+        lines.append("- 기록된 세부 특이사항이 없습니다.")
 
     return "\n".join(lines)
 
@@ -152,7 +124,7 @@ def list_runs(base_dir: Path) -> List[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compare two cuAlign evaluation runs quantitatively.")
+    parser = argparse.ArgumentParser(description="Compare two cuAlign evaluation runs quantitatively without judgments.")
     parser.add_argument("baseline", nargs="?", help="Baseline run_id (YYMMDDHHMMSS)")
     parser.add_argument("current", nargs="?", help="Current run_id (YYMMDDHHMMSS)")
     parser.add_argument("--latest", action="store_true", help="Compare the latest run with its predecessor")
@@ -176,7 +148,6 @@ def main() -> None:
         baseline_id = args.baseline
         current_id = args.current
     elif args.baseline and not args.current:
-        # compare baseline against latest
         baseline_id = args.baseline
         current_id = all_runs[-1]
     else:
