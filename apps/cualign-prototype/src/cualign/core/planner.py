@@ -13,7 +13,7 @@ import zipfile
 
 import numpy as np
 
-from .case import Case
+from .case import MD_WINDOW_DEG, Case
 from .constraints import Constraints
 from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER,
                      PREMOLARS, SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
@@ -31,6 +31,7 @@ NEW_OVERLAP_MM3 = 1.0
 # by nature; the end molars are left alone).
 ROTATION_MIN_DEG = 10.0
 VERTICAL_MIN_MM = 1.0
+MD_SEARCH_LIMIT_DEG = MD_WINDOW_DEG - 1.0   # a yaw this large hit the edge of the width-axis search
 
 
 class Moves(dict):
@@ -187,6 +188,21 @@ def _corrections(case: Case, active: list[int], lock) -> tuple[dict[int, float],
         if abs(dz) > VERTICAL_MIN_MM:
             lift[i] = -dz
     return rot, lift
+
+
+def unsupported_reasons(case: Case) -> list[str]:
+    """Why the core cannot plan this arch at all (empty = in scope). Checked before any strategy is tried, so an
+    out-of-scope case ends as "unsupported" with a reason instead of a plan that looks valid but ignores the problem."""
+    out = []
+    missing = [i for i in range(case.ids[0], case.ids[-1] + 1) if i not in case.ids]
+    if missing:
+        out.append(f"치아 {missing} 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)")
+    if len(case.ids) < 6:
+        out.append(f"치아 {len(case.ids)}개: 악궁을 맞추기에 부족 (6개 이상 필요)")
+    for i in case.ids:
+        if case.yaw_measurable(i) and abs(case.crown_yaw(i)) >= MD_SEARCH_LIMIT_DEG:
+            out.append(f"치아 {i} 회전 {case.crown_yaw(i):+.0f}°: 측정 범위(±{MD_SEARCH_LIMIT_DEG:.0f}°) 끝 — 실제로는 더 돌아 있을 수 있음")
+    return out
 
 
 def plan_stages(case: Case, target: dict, order: str = "simultaneous"):

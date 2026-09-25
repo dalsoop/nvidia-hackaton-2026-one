@@ -2,6 +2,7 @@
 
 Each check names the plan step it guards (1 = correctness fixes, 2 = measurement definition, 5 = rotation and
 vertical correction) and returns (ok, measured, expected). Tolerances are part of the spec and stated inline.
+Real-scan regressions from the independent review need git-ignored local data and are skipped without it.
 """
 from __future__ import annotations
 
@@ -200,6 +201,39 @@ def correction_check(yaw: dict | None = None, dz: dict | None = None):
     return run
 
 
+# ------------------------------------------------------------------------------------------ real-scan regressions
+def real_push_check():
+    def run():
+        c = Case.from_dir(POSEIDON / "poseidon-999983")
+        stages = _moves_toward(c, 2, 3, 0.75)
+        base = c._overlap(2, 3, np.zeros(3), np.zeros(3))
+        final = c._overlap(2, 3, stages[-1][2], np.zeros(3))
+        flagged = any(v["type"] == "collision" and set(v.get("teeth", [])) == {2, 3} for v in planner.validate(c, stages))
+        should = final - base > NEW_OVERLAP
+        return flagged == should, f"flagged={flagged} (Δoverlap {final - base:.1f} mm³)", f"flagged={should}"
+    return run
+
+
+def real_extraction_check():
+    def run():
+        c = Case.from_dir(POSEIDON / "poseidon-000001")
+        stages = [{k: v for k, v in st.items() if k not in (5, 12)} for st in _moves_toward(c, 4, 6, float(np.linalg.norm((c.pos0[6] - c.pos0[4])[:2])))]
+        final = c._overlap(4, 6, stages[-1][4], np.zeros(3))
+        flagged = any(v["type"] == "collision" and set(v.get("teeth", [])) == {4, 6} for v in planner.validate(c, stages))
+        return flagged, f"flagged={flagged} (overlap {final:.1f} mm³)", "flagged=True"
+    return run
+
+
+def real_expansion_margin_check():
+    def run():
+        c = Case.from_dir(POSEIDON / "poseidon-000037")
+        cent = np.array([c.pos0[i] for i in c.ids])
+        gains = [planner._expansion_for(Arch(cent, margin=m), 1e9)[1] for m in (0.0, 8.0, 12.0)]
+        spread = max(gains) - min(gains)
+        return spread <= TOL_INV, f"spread {spread:.2f} mm {np.round(gains, 2).tolist()}", f"≤ {TOL_INV}"
+    return run
+
+
 CHECKS: list[Check] = [
     # step 2 — measurement
     *[Check(f"B-width-{f}-{k}", 2, f"MD width, aligned {f} arch, {k} crowns", width_check(f, k))
@@ -226,6 +260,10 @@ CHECKS: list[Check] = [
     Check("B-rot-3-12", 5, "molar rotated -12° is derotated, nothing else turns", correction_check(yaw={3: -12.0})),
     Check("B-level-6", 5, "canine 1.5 mm short of the occlusal level is levelled", correction_check(dz={6: -1.5})),
     Check("B-level-9", 5, "incisor 1.2 mm past the occlusal level is levelled", correction_check(dz={9: 1.2})),
+    # review regressions on real scans (local data)
+    Check("R-push-999983", 1, "real scan: push 2 into 3 by 0.75 mm", real_push_check(), "poseidon-999983"),
+    Check("R-extraction-000001", 1, "real scan: extract 5·12, move 4 onto 6", real_extraction_check(), "poseidon-000001"),
+    Check("R-exp-margin-000037", 1, "real scan: expansion gain independent of margin", real_expansion_margin_check(), "poseidon-000037"),
 ]
 
 

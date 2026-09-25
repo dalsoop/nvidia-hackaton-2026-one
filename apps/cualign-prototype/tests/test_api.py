@@ -36,3 +36,12 @@ def test_missing_plan_returns_404():
     with TestClient(app) as client:
         assert client.get("/api/plans/not-a-plan").status_code == 404
         assert client.get("/api/plans/not-a-plan/stl.zip").status_code == 404
+
+
+def test_upload_without_tooth_files_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "OUT_DIR", tmp_path)
+    app = FastAPI()
+    api.add_api_routes(app)
+    with TestClient(app) as client:
+        r = client.post("/api/cases/upload", files=[("files", ("gingiva.stl", b"solid g\nendsolid g\n", "model/stl"))])
+        assert r.status_code == 400

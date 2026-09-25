@@ -35,6 +35,9 @@ def _summary(pid):
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
                     changes=None, parent_plan_id=None):
     cid, case = STORE.load_case(case_id)
+    why = planner.unsupported_reasons(case)
+    if why:
+        return {"case_id": cid, "chosen": None, "unsupported": why, "tried": []}
     c = STORE.constraints_for(cid, parent_plan_id)
     if changes is None:
         changes = {"stage_cap": stage_cap}
@@ -91,11 +94,11 @@ def add_api_routes(app: FastAPI):
         n = 0
         for f in files:
             name = Path(f.filename or "").name
-            if not name.lower().endswith(".stl") or not Path(name).stem.isdigit():
+            if not name.lower().endswith(".stl") or not (Path(name).stem.isdigit() or name.lower() == "gingiva.stl"):
                 continue
             (folder / name).write_bytes(await f.read())
-            n += 1
-        if n == 0:
+            n += Path(name).stem.isdigit()
+        if n == 0:   # gingiva.stl alone is display-only; there is nothing to plan
             raise HTTPException(400, "upload per-tooth STL files named <tooth_id>.stl (Universal numbering, upper arch)")
         case = Case.from_dir(folder)
         cid = f"upload-{folder.name}"

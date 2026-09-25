@@ -71,7 +71,11 @@ class Case:
                 meshes[i] = trimesh.load(f, process=True, force="mesh")
         if not meshes:
             raise FileNotFoundError(f"no <tooth_id>.stl files in {folder}")
-        return cls(meshes, name=Path(folder).name)
+        case = cls(meshes, name=Path(folder).name)
+        gum = Path(folder) / "gingiva.stl"
+        if gum.exists():   # scanned gingiva (display only) instead of the procedural ridge
+            case._gum = trimesh.load(gum, process=True, force="mesh")
+        return case
 
     @classmethod
     def synthetic(cls, preset: str = "moderate", seed: int = 0, **kw) -> "Case":

@@ -95,10 +95,12 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return {"cases": STORE.available_cases(), "active": run.case_id if run else STORE.active_case}
 
     async def _load_case(inp: CaseInput) -> dict:
-        """화면에서 선택한 케이스를 읽는다. 다른 케이스로 임의 전환할 수 없다."""
+        """화면에서 선택한 케이스를 읽는다. 다른 케이스로 임의 전환할 수 없다.
+        unsupported 가 비어 있지 않으면 이 케이스는 계획하지 말고 그 이유를 의사에게 그대로 전한다."""
         cid, case = current_case(inp.case_id)
         return {"case_id": cid, "teeth": case.ids, "n_teeth": len(case.ids),
-                "crowding_mm": planner.crowding_mm(case), "constraints": constraints_for(cid).model_dump(mode="json")}
+                "crowding_mm": planner.crowding_mm(case), "constraints": constraints_for(cid).model_dump(mode="json"),
+                "unsupported": planner.unsupported_reasons(case)}
 
     async def _get_constraints(inp: NoInput) -> dict:
         """확정 조건을 읽는다. 비교·수정 시 이 조건을 유지한다."""
