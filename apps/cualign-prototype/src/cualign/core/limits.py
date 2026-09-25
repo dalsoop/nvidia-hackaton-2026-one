@@ -7,7 +7,7 @@ Sources (see docs/clinical-sources.md):
 """
 MAX_LINEAR_PER_ALIGNER = 0.25   # mm
 MAX_ANGULAR_PER_ALIGNER = 1.0   # deg (not enforced in MVP: translation-only staging)
-MAX_ROTATION_PER_ALIGNER = 2.0  # deg (not enforced in MVP)
+MAX_ROTATION_PER_ALIGNER = 2.0  # deg about the crown's vertical axis (staged and validated)
 IPR_PER_SURFACE = 0.25          # mm
 MAX_EXPANSION_PER_SIDE = 2.0    # mm
 EXTRACTION_THRESHOLD_MM = 8.0   # mm of space deficit

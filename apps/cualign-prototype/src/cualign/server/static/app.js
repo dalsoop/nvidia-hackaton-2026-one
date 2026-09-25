@@ -58,7 +58,7 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 (function loop() { controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera); requestAnimationFrame(loop); })();
 
 function buildTeeth(mesh) {
-  group.clear(); state.teeth = {}; state.center = {}; clearLabels();
+  group.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(t.v.flat(), 3));
@@ -77,8 +77,9 @@ function buildTeeth(mesh) {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(mesh.gum.v.flat(), 3));
     geo.setIndex(mesh.gum.f.flat());
     geo.computeVertexNormals();
-    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0 }));
+    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1 }));
     gum.userData.gum = true;
+    state.gum = gum;
     group.add(gum);
   }
   state.archOrder = (mesh.arch_order ?? mesh.ids ?? []).map(String);
@@ -152,6 +153,9 @@ function applyStage(k) {
   state.stage = k;
   const plan = state.plan;
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
+  const rot = k > 0 ? plan?.rotations?.[k - 1] ?? {} : {};
+  // the scanned gum does not move with the crowns: fade it once they do, so moved crowns are not hidden in it
+  if (state.gum) { state.gum.material.opacity = k > 0 ? 0.35 : 1; state.gum.material.depthWrite = k === 0; }
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
@@ -160,7 +164,10 @@ function applyStage(k) {
   const maxMove = Math.max(1e-6, ...Object.values(last).map((d) => Math.hypot(...d)));
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
-    if (d) m.position.set(d[0], d[1], d[2]); else m.position.set(0, 0, 0);
+    // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
+    const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
+    m.rotation.set(0, 0, a);
+    m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
     const gone = hasPlan && removed.has(id);
     m.visible = !gone || k === 0;
     m.material.opacity = gone ? 0.25 : 1;
