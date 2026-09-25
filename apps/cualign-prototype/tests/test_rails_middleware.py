@@ -23,12 +23,13 @@ from fastapi.routing import APIWebSocketRoute
 from fastapi.testclient import TestClient
 from nat.runtime.loader import load_config, load_workflow
 
-from rails_fakes import A14, FakeLLM, FakeRails
+from rails_fakes import A14, FakeLLM, FakeRails, PlanningLLM, RailLLM
 from cualign import cli
 from cualign.agent import register
 from cualign.core import store as store_module
 from cualign.server import api, plan_events, rails_middleware
-from cualign.server.rails import REFUSAL, Rails
+from cualign.server.rails import Rails
+from cualign.server.rails_middleware import REFUSAL
 from cualign.server.worker import CuAlignWorker
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +129,10 @@ def sse_event(text, name):
     return json.loads(text.split(f"event: {name}\ndata: ")[1].split("\n")[0])
 
 
+def sse_step(line):
+    return json.loads(line[len("intermediate_data: "):])
+
+
 def test_rails_all_routes_blocked(store, tmp_path, monkeypatch):
     with FakeLLM() as llm:
         with serve(tmp_path, monkeypatch, llm, "rails_fakes:blocking") as client:
@@ -209,8 +214,7 @@ def test_rails_fail_closed_switch(store, tmp_path, monkeypatch):
             whole = ask(client, "/generate")
             streamed = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
         assert REFUSAL in whole and MARK not in whole
-        # A streamed answer has left before the output verdict; holding it back is PR-4's job.
-        assert REFUSAL in streamed
+        assert REFUSAL in streamed and MARK not in streamed  # the streamed answer is held for the verdict
         with serve(tmp_path, monkeypatch, llm, "rails_fakes:erroring") as client:
             n = len(llm.requests)
             body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
@@ -277,14 +281,13 @@ def rail_models_to(url):
 def test_rails_model_url_reaches_fake_server(store, tmp_path, monkeypatch, caplog):
     """The real Rails with every rail model sent to a local fake server. A call that went to NIM instead would
     fail on the fake key and log an ERROR."""
-    with FakeLLM() as llm, FakeLLM("No") as rail_llm:
+    with FakeLLM() as llm, RailLLM() as rail_llm:
         with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
             body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
     assert {r["model"] for r in rail_llm.requests} == {"nvidia/nemotron-3-super-120b-a12b",
                                                         "nvidia/nemotron-3.5-content-safety"}
-    assert not [r for r in caplog.records if r.name.startswith("cualign.server.rails") and r.levelno >= logging.ERROR]
-    # "No" passes the scope rail, so the planner answered; the content safety parser reads it as unsafe output.
-    assert MARK in body and sse_event(body, "plan_context")["rails"] == "blocked"
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]  # every rail verdict parsed
+    assert MARK in body and sse_event(body, "plan_context")["rails"] == "passed"
 
 
 def test_regex_output_rail_blocks_r1(store, tmp_path, monkeypatch):
@@ -292,18 +295,19 @@ def test_regex_output_rail_blocks_r1(store, tmp_path, monkeypatch):
     with FakeLLM("발치해야 합니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
         whole = ask(client, "/generate")
         streamed = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
-    warning = rails_middleware.OUTPUT_WARNING.strip()
-    assert warning in whole and warning in streamed
+    for body in (whole, streamed):
+        assert REFUSAL in body and "발치해야" not in body
     assert sse_event(streamed, "plan_context")["rails"] == "blocked"
     assert FakeRails.last.outputs == []  # blocked before the rail model was asked
 
 
 def test_pii_blocked_before_model(store, tmp_path, monkeypatch):
     """The real Rails with its models on a local fake server: an identifier is refused before any model call."""
-    with FakeLLM() as llm, FakeLLM("No") as rail_llm:
+    with FakeLLM() as llm, RailLLM() as rail_llm:
         with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE}], cualign={"case_id": "moderate"})
             assert REFUSAL in body and MARK not in body
+            assert "0000-0000" not in body  # nothing of the refused request comes back, not even as a progress step
             assert rail_llm.requests == [] and llm.requests == []
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE.split(" 보호자")[0]}],
                        cualign={"case_id": "moderate"})
@@ -323,6 +327,70 @@ def test_pii_in_history_and_case_id(store, tmp_path, monkeypatch):
     for body in (history, folder):  # ask() already checked each is a 200, not the 400 of an unknown case
         assert REFUSAL in body and MARK not in body
     assert FakeRails.last.inputs == [] and llm.requests == []
+
+
+OUT = "MARK-OUT 계획 초안입니다."  # passes the regex list; only the fake output rail blocks it
+
+
+def test_output_held_stream(store, tmp_path, monkeypatch):
+    with FakeLLM(OUT) as llm, serve(tmp_path, monkeypatch, llm, "rails_fakes:output_blocking") as client:
+        bodies = {r: ask(client, r) for r in ("/chat/stream", "/generate/stream")}
+        bodies["/v1/chat/completions"] = ask(client, "/v1/chat/completions", stream=True)
+        bodies["/websocket"] = ask_ws(client)
+    for route, body in bodies.items():
+        assert REFUSAL in body and "MARK-OUT" not in body, (route, body[:300])
+
+
+def test_output_held_nonstream(store, tmp_path, monkeypatch):
+    with FakeLLM(OUT) as llm, serve(tmp_path, monkeypatch, llm, "rails_fakes:output_blocking") as client:
+        bodies = {r: ask(client, r) for r in ("/generate", "/v1/chat/completions", "/v1/workflow")}
+    for route, body in bodies.items():
+        assert REFUSAL in body and "MARK-OUT" not in body, (route, body[:300])
+
+
+def test_intermediate_no_payload(store, tmp_path, monkeypatch):
+    """Progress events leave while the answer is held, so they must not carry model text, tool results or the
+    request. MARK-STEP is in the model's text and in every tool result; MARK-REQ only in the request, which the
+    workflow's own start step would echo (worker.py drops it). What stays: each tool's start (the tool name and the
+    arguments the model chose) and its end rebuilt without the result, so the UI can close the row (app.js addStep
+    marks a row done only by an end step with the same id). NAT 1.9.0's ReAct agent emits no LLM_*/TOOL_* steps."""
+    summary = register.summary
+    monkeypatch.setattr(register, "summary", lambda pid: {**summary(pid), "note": "MARK-STEP"})
+    with PlanningLLM(thought="MARK-STEP 목표부터 만듭니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:
+        body = ask(client, "/chat/stream", [{"role": "user", "content": "MARK-REQ moderate 케이스 계획 짜줘."}],
+                   cualign={"case_id": "moderate"})
+    steps = [line for line in body.splitlines() if line.startswith("intermediate_data:")]
+    assert len(llm.requests) == 4  # three tool calls and the answer: the planner really ran the tools
+    assert not [s for s in steps if "MARK-STEP" in s or "MARK-REQ" in s]
+    starts = [s for s in steps if "Function Start: " in s]
+    ends = [s for s in steps if "Function End: " in s]
+    assert len(steps) == 6 and len(starts) == 3 and len(ends) == 3
+    assert all(any(tool in s for s in starts) for tool in ("propose_target", "plan_stages", "select_plan"))
+    # Each end closes its start's row (same id), keeps the input block (the arguments stay on screen) and says 완료.
+    assert all("완료" in s and "Function Input:" in s and sse_step(s)["id"] in {sse_step(t)["id"] for t in starts}
+               for s in ends)
+    # The answer and plan events still carry what they should; only the progress events are cut.
+    assert MARK in body and sse_event(body, "plan_selected")["plan_id"] in store.plans
+
+
+def test_blocked_turn_no_plan_selected(store, tmp_path, monkeypatch):
+    with PlanningLLM() as llm, serve(tmp_path, monkeypatch, llm, "rails_fakes:output_blocking") as client:
+        body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+    assert store.plans  # a plan was made and selected before the output was blocked
+    assert REFUSAL in body and MARK not in body
+    assert "plan_selected" not in body and "plan_error" not in body
+    assert sse_event(body, "plan_context")["rails"] == "blocked"
+
+
+def test_output_error_turn_holds_plan(store, tmp_path, monkeypatch):
+    """With the switch on, an output rail error refuses the answer after the plan exists, so the plan event must
+    be held on purpose (an input error never reaches planning)."""
+    monkeypatch.setenv("CUALIGN_RAILS_FAIL_CLOSED", "1")
+    with PlanningLLM() as llm, serve(tmp_path, monkeypatch, llm, "rails_fakes:output_erroring") as client:
+        body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+    assert store.plans
+    assert REFUSAL in body and MARK not in body and "plan_selected" not in body
+    assert sse_event(body, "plan_context")["rails"] == "error"
 
 
 def test_telemetry_switched_off(store, tmp_path, monkeypatch):

@@ -18,6 +18,7 @@ class PlanRun:
     review_busy: bool = False
     closed: bool = False
     rails: str | None = None  # passed | flagged | blocked | error | off, set by the rails middleware
+    refused: bool = False  # the rails middleware replaced the answer with its refusal
 
 
 CURRENT_RUN: ContextVar[PlanRun | None] = ContextVar("cualign_plan_run", default=None)

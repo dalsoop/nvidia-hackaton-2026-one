@@ -12,8 +12,10 @@ Policy is unchanged from the old ASGI layer (fail open), but nothing passes sile
     runner). "flagged" is the advisory content-safety verdict: the classifier said unsafe and the turn proceeds.
 CUALIGN_RAILS_FAIL_CLOSED=1 is an opt-in stop: no key fails the build and a rail error refuses the turn.
 An explicit CUALIGN_GUARDRAILS=0 still wins over it (still logged at ERROR).
-The output is still checked after the answer, as before: a blocked answer gets a warning appended. A streamed
-answer has already left when the output verdict arrives, so there the refusal can only follow it.
+The answer is held until the output verdict, streamed or not: a blocked answer (and, with the switch on, an
+unchecked one) is replaced by the refusal, and PlanRun.refused keeps its plan out of the UI's plan events.
+Progress events are not held; worker.py keeps them to tool starts (tool names and arguments) and tool ends without the
+result, and drops the workflow's own start and end (the start would echo the request).
 
 Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
@@ -40,10 +42,13 @@ from nat.middleware.function_middleware import FunctionMiddleware
 
 from cualign.agent.context import CURRENT_RUN
 from cualign.core.rail_patterns import PII, PRESCRIPTIVE
-from cualign.server.rails import REFUSAL, ROOT
+from cualign.server.rails import ROOT
 
 logger = logging.getLogger(__name__)
-OUTPUT_WARNING = "\n\n⚠ 출력 레일: 이 답변에 확정 진단·처방 성격의 문장이 있어 차단 대상으로 표시됐습니다. 초안으로만 읽어 주세요."
+# Hands the decision to the dentist in its own words, so it passes the golden set's A14-defers check even with the
+# fixed closing line removed (tests/test_rail_patterns.py::test_refusal_defers_to_dentist). Wording: lumatic2.
+REFUSAL = ("요청이 cuAlign 의 범위를 벗어납니다. 진단·처방 같은 임상 판단은 의사가 합니다. 이 도구는 얼라이너 단계 계획 초안을 "
+           "계산하고 조건별 안을 비교해 드릴 수 있습니다. 최종 판단은 의사가 합니다.")
 # Worst state wins within a turn: a blocked check is not hidden by a later error, nor an error by a pass.
 _RANK = {"passed": 0, "flagged": 1, "off": 1, "error": 2, "blocked": 3}
 # A caller without a PlanRun sets a dict here before the turn; the middleware writes "state" into it.
@@ -116,6 +121,14 @@ def _record(kind: str, state: str, prev: str | None = None) -> str:
     return state
 
 
+def _refuse() -> str:
+    """The rails replace this turn's answer, so the UI must not be offered its plan either."""
+    run = CURRENT_RUN.get()
+    if run is not None:
+        run.refused = True
+    return REFUSAL
+
+
 class RailsMiddleware(FunctionMiddleware):
 
     def __init__(self, rails: Any | None, fail_closed: bool):
@@ -131,7 +144,7 @@ class RailsMiddleware(FunctionMiddleware):
         if any(matches(PII, t) for t in request_texts(value)):
             # The text is not logged: it holds the identifier.
             logger.warning("cuAlign rails: personal identifier in the request — refused before any model")
-            return user, _record("input", "blocked"), REFUSAL
+            return user, _record("input", "blocked"), _refuse()
         if not user:
             logger.error("cuAlign rails: no non-empty user message to check")
             state = "error"
@@ -147,10 +160,10 @@ class RailsMiddleware(FunctionMiddleware):
         if state == "error":
             logger.error("cuAlign rails: input rail ERROR — %s", "refused" if self.fail_closed else "turn proceeds")
         refuse = state == "blocked" or (state == "error" and self.fail_closed)
-        return user, _record("input", state), REFUSAL if refuse else None
+        return user, _record("input", state), _refuse() if refuse else None
 
     async def _check_output(self, user: str, answer: str, prev: str) -> str | None:
-        """Returns what must replace or follow the answer: REFUSAL, OUTPUT_WARNING, or None."""
+        """Returns the refusal that must replace the answer, or None to let the answer out."""
         if self.rails is None or not answer.strip():
             return None
         if matches(PRESCRIPTIVE, answer):
@@ -166,37 +179,28 @@ class RailsMiddleware(FunctionMiddleware):
         if state == "error":
             logger.error("cuAlign rails: output rail ERROR — %s", "refused" if self.fail_closed else "answer unchecked")
         _record("output", state, prev)
-        if state == "error" and self.fail_closed:
-            return REFUSAL
-        return OUTPUT_WARNING if state == "blocked" else None
+        return _refuse() if state == "blocked" or (state == "error" and self.fail_closed) else None
 
     async def function_middleware_invoke(self, *args: Any, call_next, context, **kwargs: Any) -> Any:
         value = args[0] if args else None
         user, state, refusal = await self._check_input(value)
-        if refusal:
-            return refusal_like(value, refusal)
-        out = await call_next(*args, **kwargs)
-        extra = await self._check_output(user, _text(out), state)
-        if extra == REFUSAL:
-            return refusal_like(value, REFUSAL)
-        if extra:
-            if isinstance(out, str):
-                return out + extra
-            out.choices[0].message.content = (out.choices[0].message.content or "") + extra
-        return out
+        if not refusal:
+            out = await call_next(*args, **kwargs)
+            refusal = await self._check_output(user, _text(out), state)
+        return refusal_like(value, refusal) if refusal else out
 
     async def function_middleware_stream(self, *args: Any, call_next, context, **kwargs: Any) -> AsyncIterator[Any]:
+        """Holds every chunk until the output verdict (the base class passes each chunk on at once)."""
         user, state, refusal = await self._check_input(args[0] if args else None)
+        held = []
+        if not refusal:
+            held = [chunk async for chunk in call_next(*args, **kwargs)]
+            refusal = await self._check_output(user, "".join(_text(c) for c in held), state)
         if refusal:
             yield ChatResponseChunk.create_streaming_chunk(refusal)
             return
-        parts = []
-        async for chunk in call_next(*args, **kwargs):
-            parts.append(_text(chunk))
+        for chunk in held:
             yield chunk
-        extra = await self._check_output(user, "".join(parts), state)
-        if extra:
-            yield ChatResponseChunk.create_streaming_chunk("\n\n" + extra if extra == REFUSAL else extra)
 
 
 def _import(path: str):

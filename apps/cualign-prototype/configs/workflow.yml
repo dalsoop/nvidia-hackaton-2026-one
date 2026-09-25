@@ -3,6 +3,12 @@ general:
   front_end:
     _type: fastapi
     runner_class: cualign.server.worker.CuAlignWorker
+    # Progress events leave while the answer is held for the output rail, so they carry only tool names and the
+    # arguments the model chose: worker.py drops the workflow's own start and end (the start echoes the request) and
+    # rebuilds each tool's end without the tool result, so the UI can close the row. No LLM_*/TOOL_* in NAT 1.9.0.
+    step_adaptor:
+      mode: custom
+      custom_event_types: [FUNCTION_START, FUNCTION_END]
     cors:
       allow_origins: ["*"]
 

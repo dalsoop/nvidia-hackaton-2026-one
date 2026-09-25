@@ -4,6 +4,7 @@ NAT builds middleware from YAML only, so a test config names the rails by import
 (`rails_factory: "rails_fakes:blocking"`). pytest puts tests/ on sys.path, which makes this module importable.
 """
 import json
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -52,6 +53,10 @@ def output_erroring(_config_dir, _model_base_url=None):
     return FakeRails("pass", "error")
 
 
+def output_blocking(_config_dir, _model_base_url=None):
+    return FakeRails("pass", "block")
+
+
 def flagging(_config_dir, _model_base_url=None):
     return FakeRails("flag")
 
@@ -63,6 +68,10 @@ class FakeLLM:
         self.content = content
         self.requests = []
 
+    def reply(self, req):
+        """The assistant message for this request: content, plus tool_calls when a subclass calls a tool."""
+        return {"role": "assistant", "content": self.content}
+
     def __enter__(self):
         fake = self
 
@@ -73,21 +82,24 @@ class FakeLLM:
             def do_POST(self):
                 req = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
                 fake.requests.append(req)
+                msg = fake.reply(req)
+                finish = "tool_calls" if msg.get("tool_calls") else "stop"
                 head = {"id": "fake", "created": int(time.time()), "model": req.get("model", "fake")}
                 if req.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.end_headers()
-                    for choice in ({"index": 0, "delta": {"role": "assistant", "content": fake.content},
-                                    "finish_reason": None},
-                                   {"index": 0, "delta": {}, "finish_reason": "stop"}):
+                    delta = dict(msg)
+                    if msg.get("tool_calls"):
+                        delta["tool_calls"] = [{"index": i, **c} for i, c in enumerate(msg["tool_calls"])]
+                    for choice in ({"index": 0, "delta": delta, "finish_reason": None},
+                                   {"index": 0, "delta": {}, "finish_reason": finish}):
                         chunk = {**head, "object": "chat.completion.chunk", "choices": [choice]}
                         self.wfile.write(f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode())
                     self.wfile.write(b"data: [DONE]\n\n")
                     return
                 body = json.dumps({**head, "object": "chat.completion",
-                                   "choices": [{"index": 0, "finish_reason": "stop",
-                                                "message": {"role": "assistant", "content": fake.content}}],
+                                   "choices": [{"index": 0, "finish_reason": finish, "message": msg}],
                                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}},
                                   ensure_ascii=False).encode()
                 self.send_response(200)
@@ -104,3 +116,37 @@ class FakeLLM:
     def __exit__(self, *_):
         self._server.shutdown()
         self._server.server_close()
+
+
+class RailLLM(FakeLLM):
+    """Every rail model on one fake server, all passing: content safety says safe, self check says No."""
+
+    def reply(self, req):
+        if "content-safety" in req.get("model", ""):
+            return {"role": "assistant", "content": "User Safety: safe\nResponse Safety: safe"}
+        return {"role": "assistant", "content": "No"}
+
+
+class PlanningLLM(FakeLLM):
+    """Calls the real planning tools in order (propose_target -> plan_stages -> select_plan), reading each id from
+    the tool result in the request, then answers with `content`. `thought` rides along with every tool call."""
+
+    def __init__(self, content="MARK-PLANNER 계획 초안입니다.", thought=""):
+        super().__init__(content)
+        self.thought = thought
+
+    def reply(self, req):
+        seen = json.dumps(req.get("messages", []), ensure_ascii=False)
+        plan = re.findall(r"plan_id\W+(p[0-9a-f]{32})", seen)
+        target = re.findall(r"target_id\W+(t[0-9a-f]+)", seen)
+        if "plan_selected" in seen:
+            return super().reply(req)
+        if plan:
+            name, args = "cualign__select_plan", {"plan_id": plan[-1]}
+        elif target:
+            name, args = "cualign__plan_stages", {"target_id": target[-1]}
+        else:
+            name, args = "cualign__propose_target", {"strategy": "expansion_ipr"}
+        call = {"id": f"call_{len(self.requests)}", "type": "function",
+                "function": {"name": name, "arguments": json.dumps(args)}}
+        return {"role": "assistant", "content": self.thought, "tool_calls": [call]}
