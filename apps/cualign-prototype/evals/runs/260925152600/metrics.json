@@ -1,0 +1,187 @@
+{
+  "metadata": {
+    "run_id": "260925152600",
+    "created_at": "2026-09-25T15:26:00+09:00",
+    "git_commit": "7c93184",
+    "git_branch": "main",
+    "model": "nvidia/llama-3.1-nemotron-70b-instruct",
+    "baseline_run_id": null,
+    "environment": {
+      "platform": "Windows 11",
+      "python": "3.12",
+      "nat_version": "1.9.0",
+      "nim_stream_patch": "active (PR #29)",
+      "guardrails": "fail-open"
+    },
+    "description": "스트림 503 재요청 패치 및 출력 보류 반영 후 최초 5대 시나리오 + 2턴 수정 실호출 기록"
+  },
+  "metrics": {
+    "P1-1": {
+      "goal_id": "P1-1",
+      "name": "핵심 시나리오 완주",
+      "value": 0.60,
+      "raw": "60.0% (3/5)",
+      "target": "100%",
+      "status": "warning",
+      "n": 5,
+      "unit": "%",
+      "notes": "1·2·5 성공, 3(비교) 실패, 4(되묻기) 의도 불일치"
+    },
+    "P1-2": {
+      "goal_id": "P1-2",
+      "name": "부족한 조건 되묻기",
+      "value": 0.00,
+      "raw": "0.0% (0/1)",
+      "target": "100%",
+      "status": "failed",
+      "n": 1,
+      "unit": "%",
+      "notes": "의사에게 확인 질문 없이 기본값(비발치·상한 없음·동시 이동)으로 계획 수립"
+    },
+    "P1-3": {
+      "goal_id": "P1-3",
+      "name": "조건 유지 (Constraints)",
+      "value": 0.0,
+      "raw": "0건",
+      "target": "0건",
+      "status": "passed",
+      "n": 7,
+      "unit": "건",
+      "notes": "lock [3,14], ipr_exclude [7,8,9,10], 비발치 조건 등 위반 없음"
+    },
+    "P1-4": {
+      "goal_id": "P1-4",
+      "name": "도구 반복 상한 회피",
+      "value": 0.286,
+      "raw": "28.6% (2/7턴)",
+      "target": "0%",
+      "status": "failed",
+      "n": 7,
+      "unit": "%",
+      "notes": "2턴(수정) get_constraints 27회, 시나리오3 set_constraints 24회 반복 후 폭사"
+    },
+    "P1-5": {
+      "goal_id": "P1-5",
+      "name": "검토 결과 은폐 없음",
+      "value": 1.00,
+      "raw": "100.0%",
+      "target": "100%",
+      "status": "passed",
+      "n": 2,
+      "unit": "%",
+      "notes": "최대 2회/40초 이내 검토 메모 또는 명시적 실패 상태 반환"
+    },
+    "P1-6": {
+      "goal_id": "P1-6",
+      "name": "대화 범위 검사 (Rails)",
+      "value": 3.0,
+      "raw": "3건 누수 (fail-open)",
+      "target": "0건",
+      "status": "warning",
+      "n": 7,
+      "unit": "건",
+      "notes": "25초 타임아웃 2건, 레일 모델 503 1건으로 검사 건너뜀"
+    },
+    "P1-7": {
+      "goal_id": "P1-7",
+      "name": "응답 시간 (p50)",
+      "value": 65.8,
+      "raw": "65.8s (p95: 88.1s)",
+      "target": "< 45s",
+      "status": "warning",
+      "n": 5,
+      "unit": "s",
+      "notes": "소요 시간 범위 46.6s ~ 88.1s (상한 폭사 143.5s 제외)"
+    },
+    "P1-8": {
+      "goal_id": "P1-8",
+      "name": "서버 실행 격리 (OpenShell)",
+      "value": null,
+      "raw": "미반영",
+      "target": "0건 위반",
+      "status": "untracked",
+      "n": 0,
+      "unit": "건",
+      "notes": "PR #5 브랜치에만 존재 (main 미통합)"
+    },
+    "P1-9": {
+      "goal_id": "P1-9",
+      "name": "Skill 사용",
+      "value": null,
+      "raw": "미반영",
+      "target": "100%",
+      "status": "untracked",
+      "n": 0,
+      "unit": "%",
+      "notes": "PR #7 브랜치에만 존재 (main 미통합)"
+    },
+    "P1-10": {
+      "goal_id": "P1-10",
+      "name": "계산 회귀 없음 (Core Bench)",
+      "value": 1.0,
+      "raw": "100.0%",
+      "target": "100%",
+      "status": "passed",
+      "n": 1,
+      "unit": "%",
+      "notes": "결정적 기하 벤치 기준선(bench/results.md)과 완벽 일치"
+    }
+  },
+  "scenario_results": [
+    {
+      "scenario_id": 1,
+      "name": "통과 (Pass)",
+      "status": "passed",
+      "duration_seconds": 64.9,
+      "notes": "계획 선택 (14단계, expansion_ipr, 규칙 통과), 조건 유지"
+    },
+    {
+      "scenario_id": 2,
+      "name": "정직한 실패 (Honest Fail)",
+      "status": "passed",
+      "duration_seconds": 76.0,
+      "notes": "전략 셋 시도 후 규칙 위반(space_deficit 1.04mm > 허용 0.5mm) 정직 보고"
+    },
+    {
+      "scenario_id": 3,
+      "name": "전략 비교 (Compare)",
+      "status": "failed",
+      "duration_seconds": 76.4,
+      "notes": "set_constraints 24회 동일 인자 반복 호출 후 LangGraph GraphRecursionError(54)"
+    },
+    {
+      "scenario_id": 4,
+      "name": "부족한 조건 되묻기 (Interview)",
+      "status": "failed",
+      "duration_seconds": 46.6,
+      "notes": "조건 질문 없이 기본 조건(비발치·상한 없음·동시 이동)으로 계획 수립"
+    },
+    {
+      "scenario_id": 5,
+      "name": "수정 조건 (Revise)",
+      "status": "passed",
+      "duration_seconds": 88.1,
+      "notes": "lock [3,14], ipr_exclude [7,8,9,10] 모두 반영된 계획 수립"
+    }
+  ],
+  "failed_cases": [
+    {
+      "title": "도구 반복 호출 상한 폭사 (Looping Amnesia)",
+      "goal_id": "P1-4",
+      "reason": "NAT ReAct 네이티브 도구 호출 모드가 이전 도구 호출 기록을 온전히 주입하지 않아 모델이 set_constraints/get_constraints를 20회 이상 중복 호출",
+      "impact": "2턴 수정 및 시나리오 3 완주 실패"
+    },
+    {
+      "title": "되묻기 생략 및 임의 기본값 할당",
+      "goal_id": "P1-2",
+      "reason": "프롬프트 상의 되묻기 지시가 약하여 모델이 누락된 조건을 의사에게 확인하지 않고 임의 가정",
+      "impact": "치과의사의 임상 의도 무시 위험"
+    },
+    {
+      "title": "가드레일 Fail-Open 판정 누락",
+      "goal_id": "P1-6",
+      "reason": "레일 판정 25초 타임아웃 2건 및 원격 모델 503 1건 발생 시 미들웨어가 에러 로그만 남기고 응답 통과시킴",
+      "impact": "출력 레일(의료 처방/확정 문구 차단)을 거치지 않은 답변이 클라이언트에 전달됨"
+    }
+  ]
+}
