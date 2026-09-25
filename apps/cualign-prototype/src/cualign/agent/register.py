@@ -172,6 +172,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
     async def _select_plan(inp: PlanIdInput) -> dict:
         """최종 제시할 계획을 선택한다. 후보 생성 순서와 무관하게 이 계획이 3D·카드·다운로드에 표시된다. 이후 reviewer를 호출한다."""
         owned_plan(inp.plan_id, generated=True)
+        p = STORE.plans[inp.plan_id]
+        STORE.require_current_input(p["case_id"], p.get("input_revision"))   # not a plan of an earlier scan revision
         run = CURRENT_RUN.get()
         if run:
             if run.selected_plan_id and run.selected_plan_id != inp.plan_id:

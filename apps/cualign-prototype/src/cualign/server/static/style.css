@@ -181,3 +181,33 @@ button:disabled { opacity:0.45; cursor:not-allowed; }
 .viol tr.collision td.type, .viol tr.move_limit td.type { color: var(--red); }
 .viol tr.space_deficit td.type, .viol tr.stage_cap td.type { color: var(--amber); }
 .viol td.empty { color: var(--muted); text-align: center; padding: 12px; }
+
+/* ---- patient flow: 환자 목록 → 환자(스캔·업로드) → 입력 확인 → 계획 */
+.screen[hidden] { display: none; }
+.gate-panel h2 { margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.gate-panel .back { margin-bottom: 10px; }
+.gate-panel .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.new-patient { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.new-patient h2 { width: 100%; }
+.new-patient label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.new-patient input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; min-width: 200px; }
+.new-patient .hint { width: 100%; }
+.cards .empty, .scan-list .empty { color: var(--muted); font-size: 13px; }
+.scan-list { display: flex; flex-direction: column; gap: 8px; }
+.scan-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+.scan-row .sid { font-weight: 600; min-width: 90px; }
+.scan-row .meta { color: var(--muted); font-size: 12px; flex: 1; }
+.drop { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; padding: 18px; border: 1.5px dashed var(--line); border-radius: 12px; cursor: pointer; text-align: center; }
+.drop:hover, .drop.over { border-color: var(--green); background: rgba(118,185,0,0.06); }
+.drop span { font-size: 12px; }
+.gate.side { background: transparent; justify-content: flex-start; align-items: stretch; pointer-events: none; padding: 12px; }
+.gate.side .gate-panel { pointer-events: auto; width: min(420px, 100%); overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.check { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 14px 0 0; font-size: 13px; }
+.check dt { color: var(--muted); }
+.check dd { margin: 0; }
+.check dd.bad { color: #ff8a80; }
+#checkBadge { display: inline-block; margin-top: 4px; }
+.btn.danger { color: #ff9a9a; border-color: #6b2b2b; }
+.warn-box { margin-top: 12px; padding: 10px 12px; border: 1px solid #8a6a1b; background: #3d2c0c; color: #ffd98a; border-radius: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+.warn-box[hidden] { display: none; }
+.scan-row .del { color: var(--muted); }
