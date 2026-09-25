@@ -1,0 +1,8 @@
+{
+  "agent_target": "clarification_first",
+  "class_name": "ClarificationFirstAgent",
+  "description": "모호한 임상 조건 입력 시 사전 되묻기를 강제하는 인터뷰 강화형 에이전트",
+  "run_id": "260925203100",
+  "scenarios_evaluated": 5,
+  "total_duration_seconds": 0.00042724609375
+}

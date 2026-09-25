@@ -15,6 +15,14 @@ class ToolCallRecord:
     result: Optional[Any] = None
     duration_seconds: float = 0.0
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "args": self.args,
+            "result": self.result,
+            "duration_seconds": self.duration_seconds,
+        }
+
 
 @dataclass
 class AgentTurn:

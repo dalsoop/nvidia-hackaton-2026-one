@@ -1,0 +1,8 @@
+{
+  "agent_target": "reference_rule",
+  "class_name": "ReferenceRuleAgent",
+  "description": "규칙 기반 결정적 기준선 에이전트 (LLM 미사용, 도구 순서 정석 집행)",
+  "run_id": "260925203000",
+  "scenarios_evaluated": 5,
+  "total_duration_seconds": 0.0016417503356933594
+}

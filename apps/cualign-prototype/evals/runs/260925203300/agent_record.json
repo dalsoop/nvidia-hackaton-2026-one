@@ -1,0 +1,8 @@
+{
+  "agent_target": "baseline_tool_looper",
+  "class_name": "ToolLooperAgent",
+  "description": "동일 인자 도구 호출을 20회 이상 고의로 반복하는 루프 카나리 에이전트",
+  "run_id": "260925203300",
+  "scenarios_evaluated": 5,
+  "total_duration_seconds": 0.00014400482177734375
+}

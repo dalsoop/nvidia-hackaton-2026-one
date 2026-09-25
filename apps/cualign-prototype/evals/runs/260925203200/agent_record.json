@@ -1,0 +1,8 @@
+{
+  "agent_target": "loop_guarded",
+  "class_name": "LoopGuardedAgent",
+  "description": "동일 도구 중복 호출 루프를 감지하고 차단하는 루프 방어형 에이전트",
+  "run_id": "260925203200",
+  "scenarios_evaluated": 5,
+  "total_duration_seconds": 0.00014328956604003906
+}
