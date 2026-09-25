@@ -39,7 +39,7 @@ Phase 2는 이 도구가 의사에게 쓸모 있는지를 재는 제품 목표�
 | P1-5 | 검토 결과를 숨기지 않음 | 검토가 2회 안에 메모 또는 명시적 실패 상태로 끝난 비율 | 100% | 계획의 `review` 필드, `tests/test_reviewer.py` | 상한 도입 뒤 기록된 실호출 모두 2회 안에 종료 ([알려진 문제](KNOWN_ISSUES.md)) |
 | P1-6 | 대화 범위 검사 | 범위 밖 요청 차단율, 정상 요청 오차단율, 판정 오류·시간 초과율 | 미정 | `scripts/run_guardrails.py`, 레일 로그 | 2026-09-25 판정 실패 3건(25초 제한 2, 레일 모델 503 1). 모두 정책대로 진행 |
 | P1-7 | 응답 시간 | 시나리오 한 턴의 소요 시간 p50·p95 | 미정 | 시나리오 실행 기록 | 2026-09-25 각 n=1: 46.6–88.1초 |
-| P1-8 | 서버 실행 격리 | OpenShell 안에서 허용 목록 밖 외부 요청 수, 코드 경로 쓰기 시도 거부 | 0 · 전부 거부 | OpenShell 로그 | main 미반영(PR #5) |
+| P1-8 | OpenShell 샌드박스 격리 | 샌드박스 수명주기(create→UI 200→stop) 성공률, 비허용 Egress 차단율, 코드 경로(/app) 쓰기 차단 | 100% · 0건 누수 | `openshell` audit 로그, `openshell/server-policy.yaml` ([Manage Sandboxes](https://docs.nvidia.com/openshell/sandboxes/manage-sandboxes)) | 실측 완료: UI 200, NIM Egress 22건 허용, 비인가 3건 차단, /app 쓰기 거부 ([기록](openshell.md)) |
 | P1-9 | Skill 사용 | 계획·비교 경로에서 Skill을 읽은 턴 비율 | 100% | `/generate/full` 단계 기록 | main 미반영(PR #7) |
 | P1-10 | 계산 회귀 없음 | 벤치 프리셋의 전략·단계 수·위반 수가 기준선과 일치 | 100% | `cualign bench`, [기준선](../bench/results.md) | 기준선 있음, 자동 대조 없음 |
 

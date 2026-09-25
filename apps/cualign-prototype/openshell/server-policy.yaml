@@ -1,0 +1,45 @@
+# cuAlign 서버(nat serve)를 OpenShell 샌드박스 안에서 실행하기 위한 정책.
+# 공식 NVIDIA OpenShell 스펙(https://docs.nvidia.com/openshell/sandboxes/manage-sandboxes) 준수.
+#
+# - 파일: 코드(/app)는 읽기 전용, 쓰기는 작업 공간(/sandbox, 계획 출력 CUALIGN_OUT=/sandbox/out)과 /tmp 만.
+# - 네트워크: NVIDIA 추론 엔드포인트의 POST /v1/chat/completions 하나만 허용 (L7 검사).
+#   API 키는 `--provider nvidia` 로 붙인다. 샌드박스 안에는 placeholder 만 들어가고
+#   프록시가 요청을 내보낼 때 실제 키로 바꾼다. 모델 3개(super·lightning·content-safety)를 그대로 쓸 수 있다.
+# - three.js 는 브라우저가 CDN 에서 받으므로 샌드박스 네트워크 허용이 필요 없다.
+version: 1
+
+filesystem_policy:
+  read_only:
+    - /usr
+    - /lib
+    - /proc
+    - /dev/urandom
+    - /etc
+    - /app
+  read_write:
+    - /sandbox
+    - /tmp
+    - /dev/null
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  nvidia_nim_chat:
+    name: nvidia-nim-chat
+    endpoints:
+      - host: integrate.api.nvidia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: POST
+              path: /v1/chat/completions
+    binaries:
+      # python:3.12-slim 의 실제 인터프리터 경로. /app/.venv/bin/python 은 여기로 가는 심볼릭 링크다.
+      - path: /usr/local/bin/python3.12

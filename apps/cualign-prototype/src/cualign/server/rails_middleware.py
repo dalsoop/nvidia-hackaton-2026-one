@@ -36,6 +36,7 @@ from typing import Any
 
 from pydantic import Field
 
+from cualign.keys import nvidia_key_available
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatResponse, ChatResponseChunk, Usage
@@ -231,7 +232,7 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
     off = None
     if os.environ.get("CUALIGN_GUARDRAILS", "1") == "0":
         off = "CUALIGN_GUARDRAILS=0"
-    elif not os.environ.get("NVIDIA_API_KEY", "").startswith("nvapi-"):
+    elif not nvidia_key_available():
         off = "NVIDIA_API_KEY is not set"
         if fail_closed:
             raise RuntimeError(f"cuAlign: Guardrails cannot start ({off}) and CUALIGN_RAILS_FAIL_CLOSED=1")

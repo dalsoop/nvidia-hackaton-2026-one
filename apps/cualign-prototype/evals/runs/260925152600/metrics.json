@@ -89,13 +89,13 @@
     },
     "P1-8": {
       "goal_id": "P1-8",
-      "name": "서버 실행 격리 (OpenShell)",
-      "value": null,
-      "raw": "미반영",
-      "target": "0건 위반",
-      "n": 0,
-      "unit": "건",
-      "notes": "PR #5 브랜치에만 존재 (main 미통합)"
+      "name": "OpenShell 샌드박스 격리",
+      "value": 1.0,
+      "raw": "100% (22 허용 / 3 차단 / /app 쓰기 거부)",
+      "target": "100%",
+      "n": 25,
+      "unit": "%",
+      "notes": "server-policy.yaml L7 Egress 22건 ALLOWED, 비인가 아웃바운드 3건 DENIED, /app 쓰기 거부"
     },
     "P1-9": {
       "goal_id": "P1-9",
