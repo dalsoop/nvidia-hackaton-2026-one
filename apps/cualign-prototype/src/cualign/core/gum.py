@@ -26,20 +26,13 @@ def make_gum(arch: Arch, teeth: dict[int, trimesh.Trimesh], pos0: dict[int, np.n
     order = np.argsort(s_teeth)
     s_teeth, z_teeth = s_teeth[order], z_teeth[order]
 
-    pts, cum = arch.samples(0.0)
     s_lo, s_hi = s_teeth[0] - END_MARGIN, s_teeth[-1] + END_MARGIN
     ss = np.linspace(s_lo, s_hi, n_along)
     z_line = np.interp(ss, s_teeth, z_teeth)
-    # outward normal, same convention as Arch.samples(offset): away from the inside of the U
-    inside = pts.mean(0)
     verts = []
     for s, z0 in zip(ss, z_line):
         p = arch.point(float(s))
-        t = arch.tangent(float(s))
-        n = np.array([-t[1], t[0]])
-        p_local = arch.to_local(np.array([p[0], p[1], 0.0]))
-        if np.dot(p_local - inside, arch.to_local(np.array([p[0] + n[0], p[1] + n[1], 0.0])) - p_local) < 0:
-            n = -n
+        n = arch.normal(float(s))                        # outward, one sign for the whole arch
         # half-ellipse cross-section from lingual (-n) over the top to buccal (+n), then straight down.
         for k in range(n_around):
             a = np.pi * k / (n_around - 1)               # 0..pi

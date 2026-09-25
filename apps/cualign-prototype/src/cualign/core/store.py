@@ -94,7 +94,11 @@ class Store:
                 "parent_plan_id": p["parent_plan_id"], "constraints": p["constraints"].model_dump(mode="json"),
                 "review": dict(p["review"]), "approval": dict(p["approval"]) if p["approval"] else None,
                 "info": p["info"], "target": tinfo, "violations": p["violations"], "passed": not p["violations"],
-                "stages": [{str(i): np.round(v, 4).tolist() for i, v in st.items()} for st in p["stages"]]}
+                "stages": [{str(i): np.round(v, 4).tolist() for i, v in st.items()} for st in p["stages"]],
+                # degrees about each crown's vertical axis through its centroid (pivot), per stage
+                "rotations": [{str(i): round(float(y), 3) for i, y in getattr(st, "yaw", {}).items()} for st in p["stages"]],
+                "pivots": {str(i): np.round(c, 4).tolist() for i, c in self.cases[p["case_id"]].pos0.items()}
+                if p["case_id"] in self.cases else {}}
 
     def fingerprint(self, pid: str) -> str:
         data = self.plan_json(pid)
