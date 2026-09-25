@@ -1,0 +1,35 @@
+# HTTPS front for cuAlign's /mcp, so NemoClaw can register it (docs/nemoclaw.md).
+# NemoClaw rejects loopback URLs and needs TLS whose certificate matches the URL host. Caddy's internal CA signs the
+# certificate; hand its root to NemoClaw as NEMOCLAW_CORPORATE_CA_BUNDLE.
+#
+#   CUALIGN_MCP_HOST   the address the OpenShell gateway uses to reach this Mac, e.g. 192.168.5.2 (colima's host
+#                      address, host.lima.internal) or this Mac's LAN IP
+#   CUALIGN_MCP_BIND   the local interface to listen on: 127.0.0.1 for colima's host address, else the LAN IP
+#   CUALIGN_MCP_TOKEN  the bearer token (agent-vault card); cuAlign itself holds only its SHA-256
+#
+#   caddy run --config nemoclaw/Caddyfile --adapter caddyfile
+#   root CA: "$(caddy environ | sed -n 's/^caddy.AppDataDir=//p')/pki/authorities/local/root.crt"
+
+{
+	local_certs
+	skip_install_trust
+	admin off
+}
+
+https://{$CUALIGN_MCP_HOST}:8443 {
+	bind {$CUALIGN_MCP_BIND}
+	tls internal
+
+	# Only the MCP path and methods, and only with the token. cuAlign checks the token again.
+	@mcp {
+		path /mcp
+		method GET POST DELETE
+		header Authorization "Bearer {$CUALIGN_MCP_TOKEN}"
+	}
+	handle @mcp {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle {
+		respond 404
+	}
+}
