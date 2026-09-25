@@ -38,7 +38,7 @@ def response_text(response):
 
 
 def crosses_boundary(memo):
-    """The prescriptive list the output rail and the golden-set checker read. A memo that matches is never stored:
+    """The prescriptive list the output rail reads. A memo that matches is never stored:
     once stored it leaves through the plan files, /api/plans, get_plan and plan_selected."""
     return matches(PRESCRIPTIVE, memo)
 
