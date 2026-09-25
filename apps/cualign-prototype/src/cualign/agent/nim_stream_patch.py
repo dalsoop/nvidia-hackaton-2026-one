@@ -10,9 +10,10 @@ again at once and ends the turn when its parse retries run out (measured and fix
 hoddukzoa12: 24-31% of planner calls, 32 of 41 recovered on the first re-request).
 
 This wraps the async stream: if its first message is a retryable error, the request is sent again after 1, 2,
-4 ... seconds. An error that is not retryable, or one that outlasts the retries, raises NIMStreamError, which has no
-status code, so NAT's retry does not repeat the whole call. A stream that started normally is passed through
-unchanged. Applied once at plugin import (register.py).
+4 ... seconds. An error that is not retryable, or one that outlasts the retries, is logged and raises NIMStreamError.
+Its message carries no status code or API text: NAT's retry matches codes and the text "429", and would run the
+whole call again. A stream that started normally is passed through unchanged. Applied once at plugin import
+(register.py).
 """
 from __future__ import annotations
 
@@ -52,7 +53,8 @@ def apply() -> None:
             finally:
                 await stream.aclose()
             if delay is None or error.get("code") not in RETRY_CODES:
-                raise NIMStreamError(f"NIM stream error after {attempt} request(s): {error}")
+                logger.error("cuAlign: NIM stream answered %s on request %d; giving up", error, attempt)
+                raise NIMStreamError(f"NIM stream failed after {attempt} request(s); the API error is in the log")
             logger.warning("cuAlign: NIM stream answered %s; asking again in %ss (%d/%d)",
                            error, delay, attempt, len(DELAYS))
             await asyncio.sleep(delay)

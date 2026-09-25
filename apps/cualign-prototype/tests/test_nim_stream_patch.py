@@ -29,17 +29,21 @@ def test_overloaded_stream_is_asked_again():
     assert len(fake.requests) == 3
 
 
-def test_overload_that_outlasts_the_retries_raises():
+def test_overload_that_outlasts_the_retries_raises(caplog):
+    """429 is the case to watch: NAT's own retry runs the whole call again when the message says "429"."""
     with FakeLLM("MARK-OK") as fake:
-        fake.busy = 99
-        with pytest.raises(nim_stream_patch.NIMStreamError, match="overloaded"):
+        fake.busy, fake.busy_error = 99, {"message": "Too Many Requests", "code": 429}
+        with pytest.raises(nim_stream_patch.NIMStreamError) as raised:
             answer(fake)
     assert len(fake.requests) == len(nim_stream_patch.DELAYS) + 1
+    assert "429" not in str(raised.value) and "Too Many" not in str(raised.value)
+    assert "Too Many Requests" in caplog.text  # the API error goes to the log
 
 
-def test_error_that_is_not_retryable_raises_at_once():
+def test_error_that_is_not_retryable_raises_at_once(caplog):
     with FakeLLM("MARK-OK") as fake:
         fake.busy, fake.busy_error = 99, {"message": "MARK-BAD request", "code": 400}
-        with pytest.raises(nim_stream_patch.NIMStreamError, match="MARK-BAD"):
+        with pytest.raises(nim_stream_patch.NIMStreamError):
             answer(fake)
     assert len(fake.requests) == 1
+    assert "MARK-BAD" in caplog.text
