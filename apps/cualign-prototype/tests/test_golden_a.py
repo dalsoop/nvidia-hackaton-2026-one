@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from evals.golden_a import baselines, mutations  # noqa: E402
 from evals.golden_a.judge import judge, lint, load_specs  # noqa: E402
-from evals.golden_a.nat_log import DEMO_LOG_SPEC, parse_nat_log  # noqa: E402
+from evals.golden_a.nat_log import DEMO_LOG_SPEC, RETIRED_DEMO_LOGS, parse_nat_log  # noqa: E402
 from evals.golden_a.reference_agent import run_reference  # noqa: E402
 from evals.golden_a.trace import Trace  # noqa: E402
 
@@ -111,9 +111,8 @@ def test_known_reviewer_issue_is_caught(reference):
 @pytest.mark.parametrize("make", baselines.BASELINES, ids=lambda f: f.__name__)
 def test_bad_agents_fail(make):
     passed = sorted(sid for sid, s in SPECS.items() if judge(s, make(s)).passed)
-    # always_ask is the correct behaviour for the interview-only spec, nothing else
-    allowed = {"always_ask": {"A01"}}.get(make.__name__, set())
-    assert set(passed) <= allowed, passed
+    # the UI greeting already asks, so re-asking passes nothing (A01 included)
+    assert passed == []
 
 
 def test_nat_logs_parse():
@@ -121,6 +120,9 @@ def test_nat_logs_parse():
     assert logs
     for f in logs:
         key = "-".join(f.name.split("-")[:2])
+        if key in RETIRED_DEMO_LOGS:
+            assert key not in DEMO_LOG_SPEC and parse_nat_log(f, spec_id=key).turns[0].answer, f.name
+            continue
         tr = parse_nat_log(f, spec_id=DEMO_LOG_SPEC[key])
         assert tr.turns[0].user.strip() == SPECS[DEMO_LOG_SPEC[key]].turns[0].strip(), f.name
         assert tr.turns[0].answer, f.name

@@ -21,6 +21,24 @@ class ChatContext(BaseModel):
     constraints: ConstraintPatch = Field(default_factory=ConstraintPatch)
 
 
+def open_run(ctx: ChatContext, store=None) -> tuple[PlanRun, dict]:
+    """Apply the UI form to the case and open the request's PlanRun; also returns the system message that tells the
+    agent the case, parent plan and confirmed constraints. Raises ValueError/KeyError/TypeError on bad input."""
+    store = store or STORE
+    cid, case = store.load_case(ctx.case_id)
+    constraints = store.constraints_for(cid, ctx.base_plan_id).patched(ctx.constraints.changes())
+    constraints.check_case(case.ids)
+    store.case_constraints[cid] = constraints
+    run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints)
+    return run, {
+        "role": "system",
+        "content": "cuAlign server context: " + json.dumps({
+            "case_id": cid, "base_plan_id": ctx.base_plan_id,
+            "constraints": constraints.model_dump(mode="json")
+        }, ensure_ascii=False)
+    }
+
+
 def event(name, payload):
     return ("\n\nevent: " + name + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
 
@@ -59,18 +77,8 @@ class PlanEventsASGI:
             raw = data.pop("cualign", None)
             # Non-UI clients may still use the ordinary NAT endpoint.
             ctx = ChatContext.model_validate(raw) if raw is not None else ChatContext(case_id=STORE.active_case or "moderate")
-            cid, case = STORE.load_case(ctx.case_id)
-            constraints = STORE.constraints_for(cid, ctx.base_plan_id).patched(ctx.constraints.changes())
-            constraints.check_case(case.ids)
-            STORE.case_constraints[cid] = constraints
-            run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints)
-            data.setdefault("messages", []).insert(0, {
-                "role": "system",
-                "content": "cuAlign server context: " + json.dumps({
-                    "case_id": cid, "base_plan_id": ctx.base_plan_id,
-                    "constraints": constraints.model_dump(mode="json")
-                }, ensure_ascii=False)
-            })
+            run, system = open_run(ctx)
+            data.setdefault("messages", []).insert(0, system)
             body = json.dumps(data).encode()
         except (ValueError, KeyError, TypeError):
             return await JSONResponse({"detail": "Invalid case, parent plan or constraints"}, status_code=400)(scope, receive, send)

@@ -50,7 +50,7 @@ def memo_for(plan: dict) -> str:
     info, cons, target = plan.get("info") or {}, plan.get("constraints") or {}, plan.get("target") or {}
     by_type = _by_type(plan)
     status = "통과" if plan.get("passed") else "위반 " + ", ".join(f"{k} {v}건" for k, v in by_type.items())
-    lines = [f"1) 한 줄 요약: 전략 {plan['strategy']} · {info.get('n_stages')}장 · {info.get('months')}개월 · {status}",
+    lines = [f"1) 한 줄 요약: 전략 {plan['strategy']} · {info.get('n_stages')}단계 · {info.get('months')}개월 · {status}",
              f"2) 확인할 지점: 한 치아의 최대 총 이동량 {info.get('max_move_mm')}mm"
              + (f" · 고정 {list(cons['lock'])}" if cons.get("lock") else "")
              + (f" · 발치 {target['removed']}" if target.get("removed") else "")]
@@ -81,9 +81,11 @@ class Tools:
     Use as a context manager: register.py reads its module-level STORE, which is pointed at this store for the
     lifetime of the run and restored afterwards."""
 
-    def __init__(self, fault: dict | None = None):
+    def __init__(self, fault: dict | None = None, form: dict | None = None):
         self.store = _MemStore()
         self.fault = fault or {}
+        self.form_values = form or {}
+        self.form = self._form_case = None
         self.log: list[ToolCall] = []
         self.run = None
         self._loop = asyncio.new_event_loop()
@@ -110,15 +112,24 @@ class Tools:
 
     # ------------------------------------------------------------------ request scope (server: plan_events.PlanEventsASGI)
     def begin(self, case_id: str, base_plan_id: str | None) -> None:
-        from cualign.agent.context import CURRENT_RUN, PlanRun
-        cid, _ = self.store.load_case(case_id)
-        self.run = PlanRun(f"ref-{len(self.log)}", cid, base_plan_id, self.store.constraints_for(cid, base_plan_id))
+        """Opens the request like the server does for a UI turn: the displayed form (spec.form, then what the UI shows
+        after each turn's plan_context) is applied to the case through plan_events.open_run."""
+        from cualign.agent.context import CURRENT_RUN
+        from cualign.core.constraints import Constraints
+        from cualign.server.plan_events import ChatContext, open_run
+        from .runner import form_patch
+        if self.form is None or self._form_case != case_id:
+            self.form, self._form_case = Constraints.model_validate(self.form_values), case_id
+        ctx = ChatContext(request_id=f"ref-{len(self.log)}", case_id=case_id, base_plan_id=base_plan_id,
+                          constraints=form_patch(self.form))
+        self.run, _ = open_run(ctx, store=self.store)
         self._token = CURRENT_RUN.set(self.run)
 
     def end(self) -> str | None:
         from cualign.agent.context import CURRENT_RUN
         self.run.closed = True
         CURRENT_RUN.reset(self._token)
+        self.form = self.run.constraints
         return self.run.selected_plan_id
 
     # ------------------------------------------------------------------ calls
@@ -167,6 +178,13 @@ def _parse(text: str, st: dict) -> None:
             st["ipr_exclude"] |= {int(x) for x in re.findall(r"\d+", grp)}
 
 
+def constraint_labels(cons: dict, months: int | None = None) -> str:
+    """The extraction and stage-cap conditions a plan was computed with, from its tool result."""
+    cap = cons.get("stage_cap")
+    cap_s = (f"단계 상한 {cap}단계" + (f"({months}개월)" if months and L.stage_cap_from_months(months) == cap else "")) if cap else "단계 상한 없음"
+    return f"사용한 조건: {'발치 허용' if cons.get('allow_extraction') else '발치 없이'}, {cap_s}"
+
+
 def _compare_request(text: str) -> bool:
     return bool(re.search(r"(비교|둘 다|여러 안)", text))
 
@@ -185,9 +203,9 @@ def _ipr_question(text: str) -> bool:
 
 
 class ReferenceAgent:
-    def __init__(self, tools: Tools | None = None):   # None: parser state only (tests)
+    def __init__(self, tools: Tools | None = None, case: str | None = None):   # None: parser state only (tests)
         self.tools = tools
-        self.st = {"case": None, "allow_extraction": True, "known_extraction": False, "months": None,
+        self.st = {"case": case, "allow_extraction": True, "known_extraction": False, "months": None,
                    "known_months": False, "order": "simultaneous", "lock": set(), "ipr_exclude": set(),
                    "last": None}
 
@@ -250,13 +268,12 @@ class ReferenceAgent:
             return ("진단에서 정한 조건(발치 금지·기간 상한)은 의사 확인 없이 바꾸지 않습니다. "
                     f"현재 조건에서 가장 나은 안은 plan_id: {last['plan_id']} 이며 규칙을 통과하지 못했습니다. "
                     "발치를 허용하거나 기간을 늘릴까요? " + DISCLAIMER)
+        # No interview: the UI greeting already asked, and what the dentist did not say is the displayed form.
         compare = _compare_request(text)
-        if not compare and (not self.st["known_extraction"] or not self.st["known_months"]):
-            return "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?"
         T = self.tools
         T.tool("load_skill", name="cualign-clinical-rules")
         T.tool("load_case", case_id=self.st["case"])
-        T.tool("set_constraints", **self._constraints(compare, text))
+        cons = T.tool("set_constraints", **self._constraints(compare, text))
         notices = self._notices(text)
         if compare:
             r = T.tool("compare_strategies")
@@ -264,11 +281,10 @@ class ReferenceAgent:
             ok = [p for p in plans if p["passed"]]
             best = (min(ok, key=lambda p: p["info"]["n_stages"]) if ok else
                     min(plans, key=lambda p: (len(p["violations"]), p["info"]["space_deficit_mm"])))
-            cap = r["constraints"]["stage_cap"]
-            lines = [f"동일 조건(장수 상한 {f'{cap}장' if cap else '없음'})으로 {len(plans)}개 안을 계산했습니다."]
+            lines = [f"동일 조건으로 {len(plans)}개 안을 계산했습니다.", constraint_labels(r["constraints"], self.st["months"])]
             for p in plans:
                 st = "통과" if p["passed"] else "위반 " + ", ".join(_by_type(p))
-                lines.append(f"- {p['strategy']}: {p['info']['n_stages']}장 · {p['info']['months']}개월 · {st} · "
+                lines.append(f"- {p['strategy']}: {p['info']['n_stages']}단계 · {p['info']['months']}개월 · {st} · "
                              f"plan_id {p['plan_id']}")
             lines.append(f"검토용으로 먼저 볼 안: {best['plan_id']}")
             T.tool("select_plan", plan_id=best["plan_id"])
@@ -277,7 +293,7 @@ class ReferenceAgent:
             return "\n".join(notices + lines + [self._review(best["plan_id"]), DISCLAIMER])
 
         prev = self.st["last"]
-        allowed = [s for s in L.STRATEGIES if self.st["allow_extraction"] or s != "extraction"]
+        allowed = [s for s in L.STRATEGIES if cons["allow_extraction"] or s != "extraction"]
         ladder = ["ipr"] if _ipr_question(text) else allowed
         tried, chosen = [], None
         for s in ladder:
@@ -293,8 +309,8 @@ class ReferenceAgent:
         s, t, v = chosen
         info = v["info"]
         status = "없음 (통과)" if v["passed"] else ", ".join(_by_type(v))
-        lines = [f"전략: {s} · 총 {info['n_stages']}장 · 예상 기간 {info['months']}개월 · 위반: {status}",
-                 f"plan_id: {v['plan_id']}",
+        lines = [f"전략: {s} · 총 {info['n_stages']}단계 · 예상 기간 {info['months']}개월 · 위반: {status}",
+                 f"plan_id: {v['plan_id']}", constraint_labels(v["constraints"], self.st["months"]),
                  "시도한 전략: " + " → ".join(x[0] + ("(통과)" if x[2]["passed"] else "(위반)") for x in tried)]
         if _ipr_question(text):
             surf = re.search(r"x\s*(\d+)면", " ".join(t["notes"]))
@@ -306,8 +322,8 @@ class ReferenceAgent:
             lines.append(f"허용된 전략이 모두 규칙을 통과하지 못했습니다. 이 안도 공간이 {t['space_deficit_mm']}mm 부족합니다. "
                          "조건을 바꾸려면 의사 확인이 필요합니다. 발치를 허용하거나 기간을 늘릴까요?")
         if prev and self.st["lock"]:
-            lines.append(f"이전 안 {prev['plan_id']}: {prev['strategy']} · {prev['n_stages']}장 · 최대 이동 {prev['max_move_mm']}mm → "
-                         f"새 안 {v['plan_id']}: {s} · {info['n_stages']}장 · 최대 이동 {t['max_move_mm']}mm "
+            lines.append(f"이전 안 {prev['plan_id']}: {prev['strategy']} · {prev['n_stages']}단계 · 최대 이동 {prev['max_move_mm']}mm → "
+                         f"새 안 {v['plan_id']}: {s} · {info['n_stages']}단계 · 최대 이동 {t['max_move_mm']}mm "
                          f"(달라진 점: 고정 치아 {sorted(self.st['lock'])} 반영)")
         if re.search(r"(STL|파일)", text, re.I):
             # No tool can approve a plan (workflow.yml); export_stl only works after the dentist approves in the UI.
@@ -321,7 +337,7 @@ class ReferenceAgent:
 
 
 def run_reference(spec) -> Trace:
-    with Tools(fault=spec.fault_injection) as tools:
-        agent = ReferenceAgent(tools)
+    with Tools(fault=spec.fault_injection, form=spec.form) as tools:
+        agent = ReferenceAgent(tools, case=spec.case)
         turns = [agent.turn(u) for u in spec.turns]
     return Trace(spec_id=spec.id, agent="reference", turns=turns)

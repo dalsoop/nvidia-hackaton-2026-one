@@ -9,8 +9,12 @@ How a run is recorded
     no log-text parsing. Calls of the reviewer's own tools (cualign_ro__*) are marked agent="reviewer".
   * ReAct parse retries and NAT tool-call retries: counted from NAT's log records ("Retrying ReAct Agent",
     "Tool call attempt ... failed").
-  * multi-turn specs: every turn is sent as a ChatRequest carrying the previous user/assistant messages; the
-    in-process cuAlign STORE keeps plans between turns and is reset between runs.
+  * every turn is sent the way the UI sends it (static/app.js): the case is activated first, so the messages open
+    with the UI greeting as an assistant message and carry the previous user/assistant turns; the form's
+    constraints (defaults, or spec.form) go through plan_events.open_run, which writes them to the case and prepends
+    the same "cuAlign server context" system message the server does. The next turn's form is what the UI shows
+    after the plan_context event (the run's constraints) and its base plan is the selected plan. The in-process
+    cuAlign STORE keeps plans between turns and is reset between runs.
   * fault injection (spec.fault_injection.reviewer = "empty"): the reviewer agent's LLM is pointed at a local fake
     server that returns empty completions (the KNOWN_ISSUES failure). The planner keeps the real model.
 
@@ -145,12 +149,39 @@ def _fresh_store(out_dir: Path):
         store_mod.OUT_DIR = old_out
 
 
+# ---------------------------------------------------------------------------------------------- UI request
+def _js_number(x) -> str:
+    """How a JSON number prints in a JS template literal (5.0 -> "5", 3.25 -> "3.25")."""
+    x = float(x)
+    return str(int(x)) if x.is_integer() else repr(x)
+
+
+def ui_greeting(case_id: str) -> str:
+    """The assistant message static/app.js adds when a case is activated (activateCase, greet=true)."""
+    from cualign.core import planner
+    from cualign.core.store import STORE
+    cid, case = STORE.load_case(case_id)
+    return (f"케이스 {cid} (상악 {len(case.ids)}개 치아, 총생 {_js_number(planner.crowding_mm(case))} mm) 를 불러왔습니다. "
+            "계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?")
+
+
+def form_patch(c) -> dict:
+    """static/app.js readConstraints(): every form field is sent, an empty stage cap as clear_stage_cap."""
+    return {"allow_extraction": c.allow_extraction, "lock": list(c.lock), "ipr_exclude": list(c.ipr_exclude),
+            "ipr_limit_mm": c.ipr_limit_mm, "stage_cap": c.stage_cap, "clear_stage_cap": c.stage_cap is None,
+            "order": c.order}
+
+
 # ---------------------------------------------------------------------------------------------- run
 async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -> Trace:
     """One run of one spec: every turn through the same in-process workflow and STORE."""
     from nat.builder.context import Context
     from nat.data_models.api_server import ChatRequest
     from nat.runtime.loader import load_workflow
+
+    from cualign.agent.context import CURRENT_RUN
+    from cualign.core.constraints import Constraints
+    from cualign.server.plan_events import ChatContext, open_run
 
     cfg_path = work_dir / f"workflow-{spec.id}.yml"
     cfg_path.write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -165,15 +196,21 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
     store = _fresh_store(work_dir / "out")
     store.__enter__()
     try:
+        history.append({"role": "assistant", "content": ui_greeting(spec.case)})
+        form, base = Constraints.model_validate(spec.form), None
         async with load_workflow(str(cfg_path)) as workflow:
-            for user in spec.turns:
+            for n, user in enumerate(spec.turns):
                 history.append({"role": "user", "content": user})
+                ctx = ChatContext(request_id=f"{spec.id}-{n}", case_id=spec.case, base_plan_id=base,
+                                  constraints=form_patch(form))
+                run, system = open_run(ctx)
+                token = CURRENT_RUN.set(run)
                 collector = _StepCollector()
                 counter.parse_retries, counter.errors = 0, []
                 errors: list[str] = []
                 answer = ""
                 try:
-                    async with workflow.run(ChatRequest(messages=copy.deepcopy(history))) as runner:
+                    async with workflow.run(ChatRequest(messages=[system, *copy.deepcopy(history)])) as runner:
                         done = asyncio.Event()
                         Context.get().intermediate_step_manager.subscribe(
                             on_next=collector.on_next, on_error=lambda e: done.set(), on_complete=done.set)
@@ -182,6 +219,10 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
                             await asyncio.wait_for(done.wait(), timeout=10)
                 except Exception as e:  # a crashed turn is recorded, not raised: the judge scores it as a failure
                     errors.append(f"{type(e).__name__}: {str(e)[:400]}")
+                finally:
+                    run.closed = True
+                    CURRENT_RUN.reset(token)
+                form, base = run.constraints, run.selected_plan_id or base   # the UI after plan_context/plan_selected
                 turns.append(Turn(user=user, calls=collector.ordered(), answer=answer or "",
                                   errors=errors + list(counter.errors), parse_retries=counter.parse_retries))
                 history.append({"role": "assistant", "content": answer or ""})

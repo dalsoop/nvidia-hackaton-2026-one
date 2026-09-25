@@ -13,12 +13,15 @@ Scoring:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+from cualign.core.constraints import Constraints
 
 from .checks import CHECKS
 from .trace import Trace
@@ -69,6 +72,8 @@ class Spec:
     overrides: dict = field(default_factory=dict)   # {global check id: {param: value}}
     expect: dict = field(default_factory=dict)      # declared reading of the request (refuses_extraction, stage_cap, lock)
     notes: str = ""
+    case: str = "moderate"                          # the case the dentist activated on screen (UI greeting, context)
+    form: dict = field(default_factory=dict)        # constraints form as displayed; {} = the form's defaults
 
     @property
     def all_checks(self) -> list[dict]:
@@ -100,6 +105,13 @@ def lint(specs: dict[str, Spec]) -> list[str]:
         for gid in s.overrides:
             if gid not in {g["id"] for g in GLOBAL_CHECKS}:
                 errs.append(f"{s.id}: override for unknown global check {gid}")
+        named = {m for u in s.turns for m in re.findall(r"\b(aligned|mild|moderate|severe|extraction)\s*케이스", u)}
+        if named - {s.case}:
+            errs.append(f"{s.id}: turns name case {sorted(named)} but the activated case is {s.case!r}")
+        try:
+            Constraints.model_validate(s.form)
+        except ValueError as e:
+            errs.append(f"{s.id}: form is not a valid constraints form ({e})")
         if s.paired_with and s.paired_with not in specs:
             errs.append(f"{s.id}: paired_with {s.paired_with} missing")
         for c in s.checks:

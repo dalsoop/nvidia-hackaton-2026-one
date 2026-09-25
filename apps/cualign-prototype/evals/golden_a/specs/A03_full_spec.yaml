@@ -17,3 +17,4 @@ checks:
   - {id: A03-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S1}
   - {id: A03-plan, type: answer_mentions_plans, turn: 0, min: 1, severity: S1}
   - {id: A03-disclaimer, type: disclaimer, turn: 0, severity: S1}
+  - {id: A03-weeks, type: stage_unit, turn: all, severity: S1}

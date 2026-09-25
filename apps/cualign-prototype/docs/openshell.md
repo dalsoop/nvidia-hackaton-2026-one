@@ -23,7 +23,6 @@ openshell sandbox exec -n cualign-demo -- curl -sS https://example.com  # 기대
 함정: `wsl.exe` 세션이 끝나면 직전 샌드박스가 Error(exit 143)로 전이한다 — 시연은 한 세션에서 create → exec 까지. 라이브 `policy set` 은 파일시스템 항목 삭제를 거부하므로 정책은 생성 시 `--policy` 로.
 
 위 실험은 외부 호스트 요청과 파일 쓰기 차단에 대한 관측이며 실제 환자 스캔 유출 시험이 아니다.
-이 레포 자체를 샌드박스 안에서 `nat serve`로 띄우는 것은 미검증이다.
 
 ## 서버 전체를 샌드박스에서 실행하기
 
@@ -62,6 +61,21 @@ openshell forward stop 8000 cualign && openshell sandbox delete cualign   # 정�
 | 네트워크 로그 | `ALLOWED POST …/v1/chat/completions [policy:nvidia_nim_chat engine:l7]` 22건, `DENIED … events.telemetry.data.nvidia.com:443` 3건(NAT 텔레메트리) |
 | 키 | 샌드박스 안 `NVIDIA_API_KEY`는 placeholder |
 | 정책 파서 | `openshell-prover check openshell/server-policy.yaml --boundary openshell/server-policy.yaml` → `within_boundary` |
+
+### 통합 브랜치 재확인 (2026-09-26, macOS · colima Docker 29.5 · OpenShell 0.0.116)
+
+| 항목 | 결과 |
+|---|---|
+| 되묻기 요청 `moderate 케이스 계획 짜줘.` | 200, 19초, "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?" |
+| 시나리오 1 (발치 없이 12개월, 앞니 먼저) | 200, 89초. expansion_ipr, 16단계, 위반 없음, stage_cap 52, 검토 통과 |
+| 비교 요청 (`/generate/stream`) | 단계 기록에 `cualign__load_skill` → `load_case` → `compare_strategies` → `select_plan` → `reviewer` |
+| 네트워크 | `ALLOWED … /v1/chat/completions` 47건, 샌드박스 안에서 `https://example.com`은 `403 Forbidden` |
+| 파일·키 | `/app` 쓰기 `Permission denied`, `NVIDIA_API_KEY`는 `openshell:` placeholder |
+
+colima처럼 `/var/run/docker.sock`이 실제 데몬을 가리키지 않으면 게이트웨이가 드라이버를 찾지 못한다
+(`no compute driver configured`). `~/.config/openshell/gateway.env`에 `OPENSHELL_DRIVERS=docker`와
+`DOCKER_HOST=unix://$HOME/.colima/default/docker.sock`을 두고 `brew services restart openshell`로 다시 띄운다.
+`openshell sandbox create`도 이미지를 로컬에서 빌드하므로 같은 `DOCKER_HOST`를 셸에 설정한다.
 
 ### 샌드박스에서 동작하도록 고친 것
 

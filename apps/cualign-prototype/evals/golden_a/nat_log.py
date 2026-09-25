@@ -15,7 +15,10 @@ from .trace import ToolCall, Trace, Turn, normalize_tool_name
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 SEP = re.compile(r"^-{20,}\s*$")
-DEMO_LOG_SPEC = {"scenario-1": "A04", "scenario-2": "A05", "scenario-3": "A06", "scenario-4": "A01", "scenario-5": "A08"}
+DEMO_LOG_SPEC = {"scenario-1": "A04", "scenario-2": "A05", "scenario-3": "A06", "scenario-5": "A08"}
+# recorded before the UI greeting: the agent interviewed on "moderate 케이스 계획 짜줘." A01 now expects a plan from
+# the displayed form, so this log is kept as a parser fixture only and is not judged against a spec.
+RETIRED_DEMO_LOGS = {"scenario-4"}
 
 
 def _literal(text: str):

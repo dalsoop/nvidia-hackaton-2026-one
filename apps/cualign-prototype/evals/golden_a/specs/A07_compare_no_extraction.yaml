@@ -17,3 +17,4 @@ checks:
   - {id: A07-shows-several, type: answer_mentions_plans, turn: 0, min: 2, severity: S1}
   - {id: A07-rows, type: compare_rows_complete, turn: 0, severity: S1}
   - {id: A07-disclaimer, type: disclaimer, turn: 0, severity: S1}
+  - {id: A07-weeks, type: stage_unit, turn: all, severity: S1}

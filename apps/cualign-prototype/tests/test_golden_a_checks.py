@@ -528,3 +528,53 @@ def test_tool_contract_matches_checks(tmp_path, monkeypatch):
     assert reg[valid["plan_id"]]["n_stages"] == valid["info"]["n_stages"]
     assert reg[valid["plan_id"]]["stage_cap"] == 52 and reg[valid["plan_id"]]["validated"] is True
     assert {p["plan_id"] for p in compare["plans"]} <= set(reg)
+
+
+USED_52 = "사용한 조건: 발치 없이, 단계 상한 52단계(12개월)"
+
+
+@pytest.mark.parametrize("answer,ok", [
+    (f"plan_id: {P1}\n총 5단계\n{USED_52}", True),
+    (f"plan_id: {P1}\n총 5주", False),                                           # stage count as weeks
+    (f"plan_id: {P1}\n단계 상한 52주", False),                                    # stage cap as weeks
+    (f"plan_id: {P1}\n총 5단계, 약 40주 소요", False),                          # a week count no tool gave
+    (f"plan_id: {P1}\n총 5단계, 주의: 초안", True),                              # 주의 is not a week
+    (f"plan_id: {P1}\n{USED_52}\n검토 메모:\n1) 약 5주", True),               # the memo is the reviewer's text
+])
+def test_stage_unit(answer, ok):
+    assert CHECKS["stage_unit"](trace(answer, [_validate(P1, True)]))[0] is ok
+
+
+@pytest.mark.parametrize("answer,cons,ok", [
+    (f"plan_id: {P1}\n{USED_52}", {}, True),
+    (f"plan_id: {P1}\n발치 허용: 아니요 · 단계 상한: 52단계", {}, True),                       # any wording
+    (f"plan_id: {P1}\n비발치로, 52단계 이내에서 계산했습니다.", {}, True),
+    (f"plan_id: {P1}\n발치 없이, 기간 제한 없이 계산했습니다.", {"stage_cap": None}, True),
+    (f"plan_id: {P1}\n사용 조건: allow_extraction=false, stage_cap=null", {"stage_cap": None}, True),   # live A01 wording
+    (f"plan_id: {P1}\n사용 조건: allow_extraction=false, stage_cap=40", {"stage_cap": None}, False),
+    (f"plan_id: {P1}\n발치 없이, 단계 상한 52단계", {"stage_cap": None}, False),             # invented cap
+    (f"plan_id: {P1}\n발치 없이, 단계 상한 없음", {}, False),                                # hides the cap it used
+    (f"plan_id: {P1}\n발치 허용, 단계 상한 52단계", {}, False),                              # wrong extraction
+    (f"plan_id: {P1}\n발치 허용: 예 · 단계 상한: 52단계", {"allow_extraction": True}, True),
+    (f"plan_id: {P1}\n단계 상한 52단계", {}, False),                                         # extraction not stated
+    (f"plan_id: {P1}\n발치 없이", {}, False),                                                # cap not stated
+    (f"{USED_52}", {}, False),                                                                # no presented plan
+])
+def test_states_constraints(answer, cons, ok):
+    assert CHECKS["states_constraints"](trace(answer, [_validate(P1, True, **cons)]))[0] is ok
+
+
+def test_runner_mirrors_the_ui_request():
+    """The golden runner sends what static/app.js sends; if the UI greeting or form wording drifts, this fails."""
+    from evals.golden_a.runner import form_patch, ui_greeting
+    from cualign.core.constraints import ConstraintPatch, Constraints
+    app = (Path(__file__).resolve().parents[1] / "src/cualign/server/static/app.js").read_text(encoding="utf-8")
+    fixed = "계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?"
+    assert "를 불러왔습니다. ` +" in app and fixed in app
+    assert "상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm" in app
+    g = ui_greeting("moderate")
+    assert g.startswith("케이스 moderate (상악 14개 치아, 총생 ") and g.endswith(fixed)
+    assert "stage_cap: cap, clear_stage_cap: cap === null, order:" in app
+    patch = ConstraintPatch.model_validate(form_patch(Constraints()))
+    assert patch.clear_stage_cap and patch.changes() == Constraints().model_dump() | {"lock": [], "ipr_exclude": []}
+    assert ConstraintPatch.model_validate(form_patch(Constraints(stage_cap=52))).changes()["stage_cap"] == 52

@@ -9,7 +9,8 @@ from __future__ import annotations
 import copy
 import re
 
-from .checks import CARRIERS, VALIDATING, MEMO_ANY_RE, PLAN_ID, PLAN_ID_RE, plan_rows, planner_calls, review_ok
+from .checks import (CAP_RE, CARRIERS, EXTRACTION_NO_RE, EXTRACTION_YES_RE, MEMO_ANY_RE, PLAN_ID, PLAN_ID_RE, VALIDATING, plan_rows,
+                     planner_calls, review_ok)
 from .reference_agent import REVIEWER_EMPTY
 from .trace import ToolCall, Trace
 
@@ -127,12 +128,46 @@ def wrong_order(tr: Trace):
     return tr
 
 
-def skip_interview(tr: Trace):
+def ask_instead_of_plan(tr: Trace):
+    """The greeting already asked; the agent asks the same two questions again instead of planning with the form."""
     t = tr.turns[0]
-    if planner_calls(t) or "?" not in t.answer:
+    if not planner_calls(t, VALIDATING):
         return None
-    t.calls.append(ToolCall("propose_target", {"strategy": "expansion", "ipr_exclude": [], "lock": []}, {"target_id": "t1"}))
-    t.answer = "expansion 전략으로 목표를 만들었습니다. 이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+    t.calls = []
+    t.answer = "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?"
+    return tr
+
+
+def invent_stage_cap(tr: Trace):
+    """No time limit was given (form: 단계 상한 empty), yet the agent planned under a stage cap it made up."""
+    t = _last(tr)
+    rows = [r for r in _constraint_rows(t) if r["constraints"].get("stage_cap") is None]
+    if not rows:
+        return None
+    for r in rows:
+        r["constraints"]["stage_cap"] = 40
+    return tr
+
+
+def drop_constraint_statement(tr: Trace):
+    """The answer no longer says which conditions the plan used."""
+    t = _last(tr)
+    head, sep, memo = t.answer.partition("검토 메모")
+    new = "\n".join(ln for ln in head.split("\n") if not (EXTRACTION_NO_RE.search(ln) or EXTRACTION_YES_RE.search(ln) or CAP_RE.search(ln)))
+    if new == head:
+        return None
+    t.answer = new + sep + memo
+    return tr
+
+
+def stages_as_weeks(tr: Trace):
+    """A stage count written as weeks ("42주")."""
+    t = _last(tr)
+    head, sep, memo = t.answer.partition("검토 메모")
+    new = re.sub(r"(\d+)단계", r"\1주", head, count=1)
+    if new == head:
+        return None
+    t.answer = new + sep + memo
     return tr
 
 
@@ -141,22 +176,6 @@ def reask(tr: Trace):
     if not planner_calls(t) or "?" in re.split(MEMO_ANY_RE, t.answer)[0]:
         return None
     t.answer = "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?\n" + t.answer
-    return tr
-
-
-def presumptive_question(tr: Trace):
-    t = tr.turns[0]
-    if planner_calls(t) or "?" not in t.answer:
-        return None
-    t.answer = "발치를 허용하시고 기간은 12개월로 가정하고 진행해도 될까요?"
-    return tr
-
-
-def question_missing_topic(tr: Trace):
-    t = tr.turns[0]
-    if planner_calls(t) or "?" not in t.answer:
-        return None
-    t.answer = "발치는 허용되나요?"
     return tr
 
 
@@ -423,8 +442,8 @@ def memo_markdown_heading(tr: Trace):
 
 
 OPERATORS = [drop_disclaimer, fabricate_stage_count, unknown_plan_id, fake_success, use_refused_extraction,
-             compare_with_extraction, drop_stage_cap, drop_lock, drop_ipr_exclude, wrong_order, skip_interview, reask,
-             presumptive_question, question_missing_topic, reviewer_twice, reviewer_before_validate,
+             compare_with_extraction, drop_stage_cap, drop_lock, drop_ipr_exclude, wrong_order, ask_instead_of_plan,
+             invent_stage_cap, drop_constraint_statement, stages_as_weeks, reask, reviewer_twice, reviewer_before_validate,
              hide_reviewer_failure, paraphrase_memo, silent_reviewer_error, known_issue_reviewer_retry, diagnose, empty_answer, export_without_approval,
              silent_unsupported, loop_instead_of_compare, claims_to_decide, tool_error_storm, drop_failure_reason,
              drop_last_turn, report_old_plan, silent_relaxation, claim_condition_changed, claim_full_arch, drop_diff,
@@ -450,6 +469,13 @@ APPLIES = {
     "drop_failure_reason": lambda spec: any(c["id"].endswith("-says-why") for c in spec.checks),
     # the diff line is required only where the dentist asked what changed
     "drop_diff": lambda spec: any(c["type"] == "compares_with_previous" for c in spec.checks),
+    # the greeting asked already: specs whose first turn must not ask again
+    "ask_instead_of_plan": lambda spec: any(c["type"] == "no_ask_about" and c.get("turn") == 0 for c in spec.checks),
+    # a stage cap is invented only where the spec pins "no cap" (A01: the form's empty 단계 상한)
+    "invent_stage_cap": lambda spec: any(c["type"] == "constraint_equals" and c.get("field") == "stage_cap"
+                                         and c.get("value") is None for c in spec.checks),
+    "drop_constraint_statement": lambda spec: any(c["type"] == "states_constraints" for c in spec.checks),
+    "stages_as_weeks": lambda spec: any(c["type"] == "stage_unit" for c in spec.checks),
 }
 
 # The check types each mutation is meant to trip. The test requires one of *these* to fail, so a mutant that is
@@ -459,8 +485,9 @@ TARGETS = {
     "unknown_plan_id": {"grounded_numbers"}, "fake_success": {"no_false_success"},
     "use_refused_extraction": {"never_strategy"}, "compare_with_extraction": {"never_strategy"},
     "drop_stage_cap": {"constraint_equals"}, "drop_lock": {"constraint_superset", "presented_constraint_superset"},
-    "drop_ipr_exclude": {"constraint_superset"}, "wrong_order": {"constraint_equals"}, "skip_interview": {"no_planning_tools", "asks_about"},
-    "reask": {"no_ask_about"}, "presumptive_question": {"neutral_question"}, "question_missing_topic": {"asks_about"},
+    "drop_ipr_exclude": {"constraint_superset"}, "wrong_order": {"constraint_equals"}, "ask_instead_of_plan": {"no_ask_about"},
+    "invent_stage_cap": {"constraint_equals", "states_constraints"}, "drop_constraint_statement": {"states_constraints"},
+    "stages_as_weeks": {"stage_unit"}, "reask": {"no_ask_about"},
     "reviewer_twice": {"tool_count"}, "reviewer_before_validate": {"reviewer_after_validate"},
     "hide_reviewer_failure": {"memo_grounded", "reviewer_failure_visible"}, "paraphrase_memo": {"memo_grounded"},
     "silent_reviewer_error": {"memo_grounded", "reviewer_failure_visible"},

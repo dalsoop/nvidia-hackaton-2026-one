@@ -49,6 +49,12 @@ DIFF_RE = re.compile(r"(달라|변경|바뀌|이전\s*안|기존\s*안|→)")
 # number not glued to a letter/digit (so "p3" is not "3"), unit on the same line
 NUM_UNIT_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)[ \t]*(mm|㎜|개월|장|단계|면|°)")
 STAGE_LABEL_RE = re.compile(r"장수\s*[:：]?\s*(\d+)")
+WEEKS_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+)[ \t]*주(?![의요])")
+# how an answer states the conditions it used; any wording, no fixed label format
+EXTRACTION_NO_RE = re.compile(r"(비발치|발치\s*(?:없이|없음|불가|불허|제외|미허용|안\s*함|하지\s*않|허용\s*(?:안|하지\s*않|[:：]\s*\**\s*(?:아니요|아니오|불가|없음)))|allow_extraction\W{0,3}[:=]\s*false)")
+EXTRACTION_YES_RE = re.compile(r"발치\s*(?:허용\s*(?:[:：]\s*\**\s*(?:예|네))?(?!\s*(?:안|하지|[:：]))|포함)|allow_extraction\W{0,3}[:=]\s*true")
+CAP_RE = re.compile(r"(?:(?:단계\s*상한|기간\s*(?:상한|제한)|상한)\s*[:：]?\s*\**\s*(?:(없음|없이)|(\d+)\s*단계)"
+                    r"|(\d+)\s*단계\s*(?:이내|상한)|stage_cap\W{0,3}[:=]\s*(?:(null|None|없음)|(\d+)))")
 STAGE_KEYS = {"n_stages", "stage_cap", "n", "limit", "stages_per_group"}
 # id-like fields whose numbers are tooth numbers or counts, never millimetres
 ID_KEYS = {"teeth", "n_teeth", "lock", "ipr_exclude", "locked", "removed", "removed_teeth", "locked_teeth", "stage",
@@ -791,4 +797,42 @@ def strategy_computed(trace: Trace, turn="last", strategies=(), **_) -> Result:
                   for r in plan_rows(c))
         if not hit:
             return False, f"turn {i}: none of {list(strategies)} computed"
+    return True, "ok"
+
+
+@check
+def stage_unit(trace: Trace, turn="all", **_) -> Result:
+    """A stage is 단계, never 주: a week count is either a stage figure under the wrong unit or a number no tool gave."""
+    for i, t in turns_of(trace, turn):
+        body = _body(t.answer)
+        stages = {int(v) for c in planner_calls(t) for r in plan_rows(c) + ([c.result] if isinstance(c.result, dict) else [])
+                  for v in (_info(r, "n_stages"), (r.get("constraints") or r).get("stage_cap")) if isinstance(v, int)}
+        for n in map(int, WEEKS_RE.findall(body)):
+            what = "stages written as weeks" if n in stages else "week count not in tool results"
+            return False, f"turn {i}: {what} ({n}주)"
+    return True, "ok"
+
+
+@check
+def states_constraints(trace: Trace, turn="last", **_) -> Result:
+    """The answer states the extraction and stage-cap conditions the presented plan was computed with (tool result),
+    so the dentist sees which displayed conditions were used. Any wording; the values must match."""
+    for i, t in turns_of(trace, turn):
+        body = _body(t.answer)
+        pid = _presented_plan(body)
+        cons = plan_registry(trace, i).get(pid, {}).get("constraints") if pid else None
+        if cons is None:
+            return False, f"turn {i}: no presented plan with constraints in the tool results"
+        no, yes = EXTRACTION_NO_RE.search(body), EXTRACTION_YES_RE.search(body)
+        if not (no or yes):
+            return False, f"turn {i}: extraction condition not stated"
+        if (no is None) != bool(cons.get("allow_extraction")):
+            return False, f"turn {i}: states '{(no or yes).group(0)}' but the plan used allow_extraction={cons.get('allow_extraction')}"
+        cap = CAP_RE.search(body)
+        if cap is None:
+            return False, f"turn {i}: stage cap not stated (N단계 or 없음)"
+        n = cap.group(2) or cap.group(3) or cap.group(5)
+        said = int(n) if n else None
+        if said != cons.get("stage_cap"):
+            return False, f"turn {i}: states '{cap.group(0)}' but the plan used stage_cap={cons.get('stage_cap')}"
     return True, "ok"

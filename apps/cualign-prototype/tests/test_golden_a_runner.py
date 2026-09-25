@@ -1,6 +1,7 @@
 """Offline tests for the golden-set runner: the real NAT workflow and cuAlign tools, with every LLM replaced by a
 local fake OpenAI server (no key, no network). Checks that the runner records what the agent actually did."""
 import asyncio
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -11,10 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from evals.golden_a.fake_llm import FakeLLM  # noqa: E402
 from evals.golden_a.judge import judge, load_specs  # noqa: E402
-from evals.golden_a.runner import build_config, run_spec  # noqa: E402
+from evals.golden_a.runner import build_config, run_spec, ui_greeting  # noqa: E402
 
 SPECS = load_specs()
-ASK = "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?"
 # The tools generate uuid ids; FakeLLM fills "$target_id" / "$plan_id" from the latest tool result.
 PLAN_TURN = [{"tool_calls": [("cualign__load_case", {"case_id": "moderate"})]},
              {"tool_calls": [("cualign__set_constraints", {"stage_cap": 52, "allow_extraction": False})]},
@@ -23,48 +23,74 @@ PLAN_TURN = [{"tool_calls": [("cualign__load_case", {"case_id": "moderate"})]},
              {"tool_calls": [("cualign__validate", {"plan_id": "$plan_id"})]}]
 
 
-def _run(spec_id, script, tmp_path, reviewer_empty=False):
+def _run(spec, script, tmp_path, reviewer_empty=False):
+    spec = SPECS[spec] if isinstance(spec, str) else spec
+
     async def go():
         with FakeLLM(script=script) as planner:
             if reviewer_empty:
                 with FakeLLM(mode="empty") as rv:
                     cfg = build_config(all_llms=planner.llm_config(), reviewer_llm=rv.llm_config("fault-empty"))
-                    return await run_spec(SPECS[spec_id], cfg, "nat:fake", tmp_path), planner.requests, rv.requests
+                    return await run_spec(spec, cfg, "nat:fake", tmp_path), planner.requests, rv.requests
             cfg = build_config(all_llms=planner.llm_config())
-            return await run_spec(SPECS[spec_id], cfg, "nat:fake", tmp_path), planner.requests, []
+            return await run_spec(spec, cfg, "nat:fake", tmp_path), planner.requests, []
     return asyncio.run(asyncio.wait_for(go(), timeout=240))
 
 
-def test_runner_records_real_tool_results(tmp_path):
-    tr, _, _ = _run("A01", [{"tool_calls": [("cualign__load_case", {"case_id": "moderate"})]}, {"content": ASK}], tmp_path)
+def _labels(cap: str) -> str:
+    return f"사용한 조건: 발치 없이, 단계 상한 {cap}"
+
+
+def test_runner_sends_what_the_ui_sends(tmp_path):
+    """A01: greeting, server context with the displayed form, the dentist's words. The agent plans with the form."""
+    script = [{"tool_calls": [("cualign__load_case", {"case_id": "moderate"})]},
+              {"tool_calls": [("cualign__propose_target", {"strategy": "expansion_ipr"})]},
+              {"tool_calls": [("cualign__plan_stages", {"target_id": "$target_id"})]},
+              {"tool_calls": [("cualign__validate", {"plan_id": "$plan_id"})]},
+              {"tool_calls": [("cualign__select_plan", {"plan_id": "$plan_id"})]},
+              {"tool_calls": [("reviewer", {"plan_id": "$plan_id"})]},
+              {"content": f"plan_id: $plan_id\n{_labels('없음')}\n검토 메모 생성 실패(empty_response).\n"
+                          "이 계획은 초안입니다. 최종 판단은 의사가 합니다."}]
+    tr, requests, _ = _run("A01", script, tmp_path, reviewer_empty=True)   # the reviewer must not eat the script
     t = tr.turns[0]
-    assert t.answer == ASK
-    assert [(c.name, c.agent) for c in t.calls] == [("load_case", "planner")]
-    assert t.calls[0].args == {"case_id": "moderate"} and t.calls[0].result["case_id"] == "moderate"
+    assert [c.name for c in t.calls if c.agent == "planner"][:4] == ["load_case", "propose_target", "plan_stages", "validate"]
     assert "crowding_mm" in t.calls[0].result            # computed by the real core, not by the fake
-    assert judge(SPECS["A01"], tr).passed
+    v = [c for c in t.calls if c.name == "validate"][-1]
+    assert v.result["constraints"]["stage_cap"] is None and v.result["constraints"]["allow_extraction"] is False
+    # what the model received: server context (form defaults), the UI greeting, then the dentist's words
+    prompt = " ".join(str(m.get("content")) for m in requests[0]["messages"])
+    assert "cuAlign server context: " in prompt and '"allow_extraction": false' in prompt and '"stage_cap": null' in prompt
+    assert SPECS["A01"].turns[0] in prompt
+    # The greeting is sent (as the UI sends it) but NAT's react_agent trims history with start_on="human", so a
+    # leading assistant message never reaches the model, in the UI as here. Pinned so a NAT change is noticed.
+    assert ui_greeting("moderate") not in prompt
+    assert judge(SPECS["A01"], tr).passed, [f["id"] for f in judge(SPECS["A01"], tr).failures]
 
 
-def test_runner_multi_turn_keeps_history_and_store(tmp_path):
-    script = [{"content": ASK},                                                               # turn 1: interview
-              *PLAN_TURN,                                                                     # turn 2
-              {"content": "plan_id: $plan_id. 이 계획은 초안입니다. 최종 판단은 의사가 합니다."}]
-    tr, requests, _ = _run("A02", script, tmp_path)
-    assert [t.user for t in tr.turns] == SPECS["A02"].turns
-    calls = tr.turns[1].calls
-    assert [c.name for c in calls] == ["load_case", "set_constraints", "propose_target", "plan_stages", "validate"]
-    assert calls[3].args["target_id"] == calls[2].result["target_id"]          # placeholders got the real ids
-    v = calls[-1]
-    assert v.args["plan_id"] == calls[3].result["plan_id"] and "passed" in v.result
+def test_runner_carries_form_and_plan_between_turns(tmp_path):
+    """After a turn the UI shows the run's constraints and the selected plan; the next request sends them back."""
+    spec = dataclasses.replace(SPECS["A02"], turns=[*SPECS["A02"].turns, "다시 한 번 요약해줘."])
+    script = [{"tool_calls": [("cualign__load_case", {"case_id": "moderate"})]},
+              {"tool_calls": [("cualign__set_constraints", {"stage_cap": 52, "allow_extraction": False})]},
+              {"tool_calls": [("cualign__propose_target", {"strategy": "expansion_ipr"})]},
+              {"tool_calls": [("cualign__plan_stages", {"target_id": "$target_id"})]},
+              {"tool_calls": [("cualign__validate", {"plan_id": "$plan_id"})]},
+              {"tool_calls": [("cualign__select_plan", {"plan_id": "$plan_id"})]},
+              {"content": f"plan_id: $plan_id\n{_labels('52단계(12개월)')}\n이 계획은 초안입니다. 최종 판단은 의사가 합니다."},
+              {"content": "앞 계획 그대로입니다."}]
+    tr, requests, _ = _run(spec, script, tmp_path)
+    calls = tr.turns[0].calls
+    v = [c for c in calls if c.name == "validate"][-1]
     assert v.result["constraints"]["stage_cap"] == 52                          # set_constraints reached validate
-    assert v.result["plan_id"] in tr.turns[1].answer
-    # NAT's ReAct agent folds earlier turns into the prompt ("Previous conversation history: ...")
-    prompt = " ".join(str(m.get("content")) for m in requests[1]["messages"])
-    assert SPECS["A02"].turns[0] in prompt and ASK in prompt and SPECS["A02"].turns[1] in prompt
+    assert v.result["plan_id"] in tr.turns[0].answer
+    last = " ".join(str(m.get("content")) for m in requests[-1]["messages"])
+    assert f'"base_plan_id": "{v.result["plan_id"]}"' in last and '"stage_cap": 52' in last
+    assert SPECS["A02"].turns[0] in last and "앞 계획 그대로입니다." not in last
 
 
 def test_reviewer_fault_injection_is_recorded(tmp_path):
     script = [*PLAN_TURN,
+              {"tool_calls": [("cualign__select_plan", {"plan_id": "$plan_id"})]},   # the reviewer takes only the selected plan
               {"tool_calls": [("reviewer", {"plan_id": "$plan_id"})]},
               {"content": "plan_id: $plan_id. 검토 메모 생성 실패. 이 계획은 초안입니다. 최종 판단은 의사가 합니다."}]
     tr, _, reviewer_requests = _run("A15", script, tmp_path, reviewer_empty=True)
