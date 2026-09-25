@@ -1,5 +1,5 @@
 """Patterns the rails check with Python `re`, before any rail model. Pure data with no imports, so the rails
-middleware, the review boundary and the golden-set checker can all read the same list.
+middleware and the golden-set checker can read the same list.
 
 The sentences each pattern must and must not match are in tests/test_rail_patterns.py.
 """

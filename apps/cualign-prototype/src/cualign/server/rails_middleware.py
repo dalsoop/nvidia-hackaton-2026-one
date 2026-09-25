@@ -16,6 +16,8 @@ The answer is held until the output verdict, streamed or not: a blocked answer (
 unchecked one) is replaced by the refusal, and PlanRun.refused keeps its plan out of the UI's plan events.
 Progress events are not held; worker.py keeps them to tool starts (tool names and arguments) and tool ends without the
 result, and drops the workflow's own start and end (the start would echo the request).
+A workflow exception reaches the client with its type only: NAT sends str(e) on every route, and a ReAct parse failure
+puts the model's raw text in it, past the output rail. The whole exception goes to the server log.
 
 Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
@@ -121,6 +123,12 @@ def _record(kind: str, state: str, prev: str | None = None) -> str:
     return state
 
 
+def _failed(e: Exception) -> RuntimeError:
+    """Call inside the except block: logs the whole exception and returns one that names only its type."""
+    logger.exception("cuAlign rails: the workflow failed; the client gets only the exception type")
+    return RuntimeError(f"cuAlign: 에이전트 실행이 실패했습니다 ({type(e).__name__}). 자세한 내용은 서버 로그에 있습니다.")
+
+
 def _refuse() -> str:
     """The rails replace this turn's answer, so the UI must not be offered its plan either."""
     run = CURRENT_RUN.get()
@@ -185,7 +193,10 @@ class RailsMiddleware(FunctionMiddleware):
         value = args[0] if args else None
         user, state, refusal = await self._check_input(value)
         if not refusal:
-            out = await call_next(*args, **kwargs)
+            try:
+                out = await call_next(*args, **kwargs)
+            except Exception as e:
+                raise _failed(e) from None
             refusal = await self._check_output(user, _text(out), state)
         return refusal_like(value, refusal) if refusal else out
 
@@ -194,7 +205,10 @@ class RailsMiddleware(FunctionMiddleware):
         user, state, refusal = await self._check_input(args[0] if args else None)
         held = []
         if not refusal:
-            held = [chunk async for chunk in call_next(*args, **kwargs)]
+            try:
+                held = [chunk async for chunk in call_next(*args, **kwargs)]
+            except Exception as e:
+                raise _failed(e) from None
             refusal = await self._check_output(user, "".join(_text(c) for c in held), state)
         if refusal:
             yield ChatResponseChunk.create_streaming_chunk(refusal)
