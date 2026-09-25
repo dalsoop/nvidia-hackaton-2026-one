@@ -1,5 +1,6 @@
 """An overloaded NVIDIA API stream (HTTP 200, one error line) is asked again instead of reaching the planner as an
-empty answer, and an overloaded call that is not streamed (a real HTTP 503: the review) is asked again instead of
+empty answer, the same overload as a real HTTP status on a streamed request is asked again too, and an
+overloaded call that is not streamed (a real HTTP 503: the review) is asked again instead of
 failing at once. The client is the real ChatNVIDIA, the server a local fake (rails_fakes.FakeLLM)."""
 import asyncio
 import gc
@@ -62,6 +63,34 @@ def test_error_that_is_not_retryable_raises_at_once(caplog):
             answer(fake)
     assert len(fake.requests) == 1
     assert "MARK-BAD" in caplog.text
+
+
+def test_stream_request_with_an_http_429_is_asked_again():
+    """The overload as a real HTTP status on the streamed request: the library raises "[429] ..." before any line."""
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy, fake.busy_http = 2, True
+        fake.busy_error = {"message": "Too Many Requests", "code": 429}
+        assert answer(fake) == "MARK-OK"
+    assert len(fake.requests) == 3
+
+
+def test_stream_http_status_that_outlasts_the_retries_raises(caplog):
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy, fake.busy_http = 99, True
+        with pytest.raises(nim_stream_patch.NIMStreamError) as raised:
+            answer(fake)
+    assert len(fake.requests) == len(nim_stream_patch.DELAYS) + 1
+    assert "503" not in str(raised.value) and "overloaded" not in str(raised.value)
+    assert "overloaded" in caplog.text
+
+
+def test_stream_http_status_that_is_not_retryable_raises_at_once():
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy, fake.busy_http = 99, True
+        fake.busy_error = {"message": "MARK-BAD request", "code": 400}
+        with pytest.raises(Exception, match=r"^\[400\]"):
+            answer(fake)
+    assert len(fake.requests) == 1
 
 
 def whole_answer(fake):
