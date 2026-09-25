@@ -9,6 +9,9 @@ import subprocess
 import sys
 from typing import Optional
 
+# Enable running directly as a script without -m
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from evals.schema import (
     EvaluationRun,
     MetricRecord,

@@ -27,6 +27,11 @@ class ClarificationFirstAgent(EvaluationAgent):
         self.confirmed_extraction: bool = False
         self.confirmed_duration: bool = False
 
+    def reset(self) -> None:
+        super().reset()
+        self.confirmed_extraction = False
+        self.confirmed_duration = False
+
     def _execute_turn(self, user_message: str) -> AgentTurn:
         # Check if user message specifies extraction
         if re.search(r"(비발치|발치 없이|발치하지|발치)", user_message):

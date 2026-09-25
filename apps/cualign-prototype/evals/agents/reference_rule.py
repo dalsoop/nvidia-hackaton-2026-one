@@ -36,7 +36,15 @@ def parse_korean_constraints(text: str) -> Dict[str, Any]:
     elif "moderate" in text.lower() or "보통" in text:
         res["case"] = "moderate"
 
-    if "비발치" in text or "발치 없이" in text or "발치하지" in text:
+    # Extraction checking with negative patterns
+    if (
+        "비발치" in text
+        or "발치 없이" in text
+        or "발치하지" in text
+        or "발치 안" in text
+        or "발치는 원치" in text
+        or "발치 제외" in text
+    ):
         res["allow_extraction"] = False
         res["known_extraction"] = True
     elif "발치" in text:
@@ -51,11 +59,13 @@ def parse_korean_constraints(text: str) -> Dict[str, Any]:
     if "앞니" in text and re.search(r"(먼저|부터)", text):
         res["order"] = "anterior_first"
 
-    for grp in re.findall(r"([\d,\s번과와및]+번)\s*(?:치아)?\s*[은는]?\s*움직이지", text):
+    # Support '움직이지', '고정', '유지'
+    for grp in re.findall(r"([\d,\s번과와및]+번)\s*(?:치아)?\s*[은는]?\s*(?:움직이지|고정|유지)", text):
         res["lock"] |= {int(x) for x in re.findall(r"\d+", grp)}
 
-    for grp in re.findall(r"([\d,\s]+)번\s*빼고", text):
-        if "IPR" in text.upper():
+    # Support '빼고', '제외' with IPR or 치간삭제
+    if "IPR" in text.upper() or "치간삭제" in text or "치간 삭제" in text:
+        for grp in re.findall(r"([\d,\s]+)번\s*(?:빼고|제외)", text):
             res["ipr_exclude"] |= {int(x) for x in re.findall(r"\d+", grp)}
 
     return res
@@ -69,7 +79,12 @@ class ReferenceRuleAgent(EvaluationAgent):
             name="reference_rule",
             description="규칙 기반 결정적 기준선 에이전트 (LLM 미사용, 도구 순서 정석 집행)",
         )
-        self.state: Dict[str, Any] = {
+        self.state: Dict[str, Any] = {}
+        self.reset()
+
+    def reset(self) -> None:
+        super().reset()
+        self.state = {
             "case": "moderate",
             "allow_extraction": True,
             "stage_cap": None,
@@ -131,15 +146,18 @@ class ReferenceRuleAgent(EvaluationAgent):
         self.state["last_plan_id"] = plan_id
 
         if is_compare:
+            allowed_strategies = ["expansion_ipr", "expansion", "ipr"]
+            if not self.state["allow_extraction"]:
+                allowed_strategies = [s for s in allowed_strategies if s != "extraction"]
             tool_calls.append(
                 ToolCallRecord(
                     name="compare_strategies",
-                    args={"case_id": self.state["case"]},
+                    args={"allowed": allowed_strategies},
                     result={"plans": [plan_id, "p_ref_002"]},
                 )
             )
             ans = (
-                f"동일 조건으로 3개 전략을 계산했습니다.\n"
+                f"동일 조건으로 {len(allowed_strategies)}개 전략을 계산했습니다.\n"
                 f"- expansion_ipr: 14장 · 통과 · plan_id {plan_id}\n"
                 f"- expansion: 20장 · 위반\n"
                 f"- ipr: 18장 · 통과\n"
@@ -158,6 +176,14 @@ class ReferenceRuleAgent(EvaluationAgent):
                     name="plan_stages",
                     args={"target_id": "t_ref_001"},
                     result={"plan_id": plan_id},
+                )
+            )
+            # Contract: select_plan must precede cualign_reviewer
+            tool_calls.append(
+                ToolCallRecord(
+                    name="select_plan",
+                    args={"plan_id": plan_id},
+                    result={"selected": True},
                 )
             )
             tool_calls.append(

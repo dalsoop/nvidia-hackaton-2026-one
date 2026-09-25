@@ -31,8 +31,9 @@ class MetricRecord:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> MetricRecord:
-        # Backward compatibility: ignore legacy 'status' field if present
-        data_clean = {k: v for k, v in data.items() if k != "status"}
+        # Filter kwargs to only known dataclass fields for forward compatibility
+        valid_keys = cls.__dataclass_fields__.keys()
+        data_clean = {k: v for k, v in data.items() if k in valid_keys}
         return cls(**data_clean)
 
 
@@ -49,6 +50,11 @@ class RunMetadata:
     agent_target: str = "default_react"  # agent target evaluated (from evals/agents/)
     environment: Dict[str, str] = field(default_factory=dict)
     description: str = ""
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> RunMetadata:
+        valid_keys = cls.__dataclass_fields__.keys()
+        return cls(**{k: v for k, v in data.items() if k in valid_keys})
 
 
 @dataclass
@@ -70,7 +76,7 @@ class EvaluationRun:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> EvaluationRun:
-        metadata = RunMetadata(**data["metadata"])
+        metadata = RunMetadata.from_dict(data["metadata"])
         metrics = {k: MetricRecord.from_dict(v) for k, v in data.get("metrics", {}).items()}
         return cls(
             metadata=metadata,
@@ -98,8 +104,15 @@ class EvaluationRun:
 
 
 def validate_run_id(run_id: str) -> bool:
-    """Validate that run_id follows yymmddhhmmss format."""
-    return bool(RUN_ID_REGEX.match(run_id))
+    """Validate that run_id follows yymmddhhmmss format with real datetime."""
+    if not RUN_ID_REGEX.match(run_id):
+        return False
+    fmt = "%Y%m%d%H%M%S" if len(run_id) == 14 else "%y%m%d%H%M%S"
+    try:
+        datetime.strptime(run_id, fmt)
+        return True
+    except ValueError:
+        return False
 
 
 def generate_run_id(dt: Optional[datetime] = None) -> str:

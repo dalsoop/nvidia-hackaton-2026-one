@@ -27,6 +27,10 @@ class LoopGuardedAgent(EvaluationAgent):
         self.max_consecutive_duplicates = max_consecutive_duplicates
         self.call_history: List[Tuple[str, str]] = []
 
+    def reset(self) -> None:
+        super().reset()
+        self.call_history.clear()
+
     def check_and_record_tool(self, name: str, args: Dict[str, Any]) -> bool:
         """Return False if duplicate threshold is exceeded."""
         key = (name, json.dumps(args, sort_keys=True))

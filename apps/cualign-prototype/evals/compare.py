@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-from evals.schema import EvaluationRun, MetricRecord
+# Enable running directly as a script without -m
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from evals.schema import EvaluationRun, MetricRecord, validate_run_id
 
 
 def calculate_delta(
@@ -28,7 +32,7 @@ def calculate_delta(
 
     if v_base is None or v_curr is None:
         if baseline_record.raw == current_record.raw:
-            return (None, "0")
+            return (None, "-")
         return (None, f"{baseline_record.raw} → {current_record.raw}")
 
     delta = v_curr - v_base
@@ -38,8 +42,10 @@ def calculate_delta(
         delta_str = f"{delta * 100:+.1f}%p" if abs(delta) > 1e-6 else "0.0%p"
     elif current_record.unit == "s":
         delta_str = f"{delta:+.1f}s" if abs(delta) > 1e-6 else "0.0s"
-    elif current_record.unit == "건" or isinstance(current_record.value, int):
+    elif current_record.unit == "건":
         delta_str = f"{int(delta):+d}건" if abs(delta) > 1e-6 else "0건"
+    elif current_record.unit:
+        delta_str = f"{delta:+.2f}{current_record.unit}" if abs(delta) > 1e-6 else f"0.00{current_record.unit}"
     else:
         delta_str = f"{delta:+.2f}" if abs(delta) > 1e-6 else "0.00"
 
@@ -63,8 +69,15 @@ def generate_markdown_comparison(
     lines.append("| Goal ID | 목표 항목 | 기준선 (Baseline) | 현재 실행 (Current) | 차이 (Delta) | 비고 |")
     lines.append("| :--- | :--- | :---: | :---: | :---: | :--- |")
 
+    def goal_sort_key(gid: str) -> tuple[int, int, str]:
+        m = re.match(r"^P(\d+)-(\d+)$", gid)
+        if m:
+            return (int(m.group(1)), int(m.group(2)), gid)
+        return (999, 999, gid)
+
     all_goal_ids = sorted(
-        set(list(baseline_run.metrics.keys()) + list(current_run.metrics.keys()))
+        set(list(baseline_run.metrics.keys()) + list(current_run.metrics.keys())),
+        key=goal_sort_key,
     )
 
     for goal_id in all_goal_ids:
@@ -115,12 +128,17 @@ def find_run_dir(base_dir: Path, run_id: str) -> Path:
 
 
 def list_runs(base_dir: Path) -> List[str]:
-    """List all available run_ids sorted chronologically."""
+    """List all available run_ids sorted chronologically (normalizing 12/14 digits)."""
     runs_dir = base_dir / "evals" / "runs"
     if not runs_dir.exists():
         return []
-    runs = [d.name for d in runs_dir.iterdir() if d.is_dir() and (d / "metrics.json").exists()]
-    return sorted(runs)
+    runs = [
+        d.name
+        for d in runs_dir.iterdir()
+        if d.is_dir() and validate_run_id(d.name) and (d / "metrics.json").exists()
+    ]
+    # Normalize sorting key so 12-digit (YYMMDD) and 14-digit (YYYYMMDD) sort properly
+    return sorted(runs, key=lambda r: ("20" + r) if len(r) == 12 else r)
 
 
 def main() -> None:

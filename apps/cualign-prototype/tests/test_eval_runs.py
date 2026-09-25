@@ -1,8 +1,11 @@
 """Unit tests for evals run tracking, comparison system, and candidate agents."""
 
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from evals.agents import (
     AlwaysAskAgent,
