@@ -103,7 +103,7 @@ class _StepCollector:
             args = _parse(raw_in)
             args = args if isinstance(args, dict) else ({"raw": args} if args not in (None, "") else {})
             if tool == "reviewer":
-                args = {"plan_id": str(args.get("input_message", args.get("raw", ""))).strip()}
+                args = {"plan_id": str(args.get("plan_id") or args.get("input_message") or args.get("raw") or "").strip()}
             result = _parse(raw_out)
             error = None
             if isinstance(result, str) and _ERR_RE.match(result):
@@ -138,8 +138,7 @@ def _fresh_store(out_dir: Path):
     old_out = store_mod.OUT_DIR
     store_mod.OUT_DIR = out_dir
     s = store_mod.STORE
-    s.cases.clear(); s.targets.clear(); s.plans.clear()
-    s.active_case = None
+    s.__dict__.update(store_mod.Store().__dict__)   # every field, so e.g. case_constraints cannot leak between runs
     try:
         yield
     finally:

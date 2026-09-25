@@ -58,7 +58,7 @@ def parse_nat_log(path: str | Path, spec_id: str | None = None) -> Trace:
                     resp.append(lines[k]); k += 1
             result = _literal("\n".join(resp))
             if name == "reviewer":
-                args = {"plan_id": str(args.get("input_message", args.get("raw", ""))).strip()}
+                args = {"plan_id": str(args.get("plan_id") or args.get("input_message") or args.get("raw") or "").strip()}
                 agent = "planner"
             call = ToolCall(name=name, args=args, result=result if result != "" else None, agent=agent)
             if isinstance(result, str) and result.startswith(("Error", "Tool call failed")):

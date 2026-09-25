@@ -16,10 +16,10 @@ checks:
   - {id: A17-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A17-no-reask, type: no_ask_about, turn: 1, severity: S1}
   - {id: A17-replanned, type: tool_count, turn: 1, name: propose_target, min: 1, severity: S1}
-  - {id: A17-lock, type: arg_superset, turn: 1, name: propose_target, arg: lock, value: [3, 14], severity: S0}
-  - {id: A17-presented-lock, type: presented_target_arg_superset, turn: 1, arg: lock, value: [3, 14], severity: S0}
+  - {id: A17-lock, type: constraint_superset, turn: 1, name: propose_target, field: lock, value: [3, 14], severity: S0}
+  - {id: A17-presented-lock, type: presented_constraint_superset, turn: 1, field: lock, value: [3, 14], severity: S0}
   - {id: A17-no-compare, type: tool_count, turn: 1, name: compare_strategies, max: 0, severity: S0}
-  - {id: A17-cap-kept, type: arg_equals, turn: 1, name: validate, arg: stage_cap, value: 52, severity: S1}
+  - {id: A17-cap-kept, type: constraint_equals, turn: 1, name: validate, field: stage_cap, value: 52, severity: S1}
   - {id: A17-new-plan, type: new_plan_validated, turn: 1, severity: S1}
   - {id: A17-diff, type: compares_with_previous, turn: 1, severity: S1}
   - {id: A17-disclaimer, type: disclaimer, turn: 1, severity: S1}

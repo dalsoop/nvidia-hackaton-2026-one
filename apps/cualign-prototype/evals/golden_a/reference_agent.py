@@ -1,17 +1,24 @@
-"""Rule-based reference agent: the behaviour the specs describe, executed against the real calculation core.
+"""Rule-based reference agent: the behaviour the specs describe, executed against the real cuAlign tools.
 
 Purpose is validating the judge, not replacing the LLM agent:
   * every spec must pass on the reference trace (the checks are satisfiable and not over-strict), and
   * mutating a reference trace must make the spec fail (the checks are sensitive; see mutations.py).
 
-Tool results mirror src/cualign/agent/register.py field for field but are computed here with the core directly,
-so the tests need neither NAT nor a key. If register.py changes its outputs, update `Tools` too.
+Tool results are not re-implemented here: every call goes through the NAT function group in
+src/cualign/agent/register.py (same inputs, same outputs, same request-scoped PlanRun as the server), and the
+reviewer is the real bounded reviewer (agent/reviewer.py) with a deterministic memo writer in place of the model.
+So the tests need no key and no network, and a change of the tool contract shows up here instead of drifting.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import re
+from pathlib import Path
+from types import SimpleNamespace
 
-import numpy as np
+import yaml
 
 from cualign.core import limits as L
 from cualign.core import planner
@@ -21,6 +28,7 @@ from .trace import ToolCall, Trace, Turn
 
 DISCLAIMER = "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
 REVIEWER_EMPTY = "ReActAgentParsingFailedError: Invalid Format: Missing 'Action:' after 'Thought:'. LLM output: ''"
+WORKFLOW = Path(__file__).resolve().parents[2] / "configs" / "workflow.yml"
 
 
 class _MemStore(Store):
@@ -28,104 +36,109 @@ class _MemStore(Store):
         return None
 
 
+def _wire(value):
+    """What a tool result looks like once serialised for the agent (tuples -> lists, numpy scalars -> numbers)."""
+    return json.loads(json.dumps(value, ensure_ascii=False, default=lambda o: o.item() if hasattr(o, "item") else str(o)))
+
+
+def _by_type(plan: dict) -> dict:
+    return planner.summarize(plan.get("violations") or [])
+
+
+def memo_for(plan: dict) -> str:
+    """The reference reviewer's memo, written from the same plan snapshot the real reviewer model receives."""
+    info, cons, target = plan.get("info") or {}, plan.get("constraints") or {}, plan.get("target") or {}
+    by_type = _by_type(plan)
+    status = "통과" if plan.get("passed") else "위반 " + ", ".join(f"{k} {v}건" for k, v in by_type.items())
+    lines = [f"1) 한 줄 요약: 전략 {plan['strategy']} · {info.get('n_stages')}장 · {info.get('months')}개월 · {status}",
+             f"2) 확인할 지점: 한 치아의 최대 총 이동량 {info.get('max_move_mm')}mm"
+             + (f" · 고정 {list(cons['lock'])}" if cons.get("lock") else "")
+             + (f" · 발치 {target['removed']}" if target.get("removed") else "")]
+    if not plan.get("passed") and info.get("space_deficit_mm"):
+        lines.append(f"3) 공간이 {info['space_deficit_mm']}mm 부족합니다. 발치 허용이나 조건 완화 여부는 의사가 판단합니다.")
+    lines.append("4) 의사에게 질문: 이동량이 큰 치아의 이동 순서를 조정할까요?")
+    lines.append("검토 메모도 초안입니다. 최종 판단은 의사가 합니다.")
+    return "\n".join(lines)
+
+
+class _MemoModel:
+    """Stands in for the reviewer's LLM: reads the plan snapshot from the reviewer's prompt and writes memo_for().
+    fault "empty" returns empty completions (the KNOWN_ISSUES failure), which the real reviewer must report."""
+
+    def __init__(self, empty: bool = False):
+        self.empty = empty
+
+    async def ainvoke(self, messages):
+        if self.empty:
+            return SimpleNamespace(content="", tool_calls=None)
+        plan = json.loads(messages[-1]["content"])["plan"]
+        return SimpleNamespace(content=memo_for(plan), tool_calls=None)
+
+
 class Tools:
-    """Same outputs as the NAT function group; every call is appended to `self.log`."""
+    """The real NAT function group on a private in-memory store; every call is appended to `self.log`.
+
+    Use as a context manager: register.py reads its module-level STORE, which is pointed at this store for the
+    lifetime of the run and restored afterwards."""
 
     def __init__(self, fault: dict | None = None):
         self.store = _MemStore()
         self.fault = fault or {}
         self.log: list[ToolCall] = []
+        self.run = None
+        self._loop = asyncio.new_event_loop()
+        self._stack = contextlib.ExitStack()
+        self._fns: dict = {}
+        cfg = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["functions"]["reviewer"]
+        self._review_budget = {k: cfg[k] for k in ("max_attempts", "timeout_seconds", "total_seconds")}
 
-    def _rec(self, name, args, result, agent="planner"):
+    def __enter__(self) -> "Tools":
+        from cualign.agent import register
+        old = register.STORE
+        register.STORE = self.store
+        self._stack.callback(setattr, register, "STORE", old)
+        self._stack.callback(self._loop.close)
+        gen = register.cualign(register.CuAlignToolConfig(), None)
+        group = self._loop.run_until_complete(gen.__aenter__())
+        self._stack.callback(lambda: self._loop.run_until_complete(gen.__aexit__(None, None, None)))
+        fns = self._loop.run_until_complete(group.get_all_functions())
+        self._fns = {k.split("__")[-1]: fn for k, fn in fns.items()}
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._stack.close()
+
+    # ------------------------------------------------------------------ request scope (server: plan_events.PlanEventsASGI)
+    def begin(self, case_id: str, base_plan_id: str | None) -> None:
+        from cualign.agent.context import CURRENT_RUN, PlanRun
+        cid, _ = self.store.load_case(case_id)
+        self.run = PlanRun(f"ref-{len(self.log)}", cid, base_plan_id, self.store.constraints_for(cid, base_plan_id))
+        self._token = CURRENT_RUN.set(self.run)
+
+    def end(self) -> str | None:
+        from cualign.agent.context import CURRENT_RUN
+        self.run.closed = True
+        CURRENT_RUN.reset(self._token)
+        return self.run.selected_plan_id
+
+    # ------------------------------------------------------------------ calls
+    def _call(self, name: str, args: dict, coro_factory, agent: str = "planner"):
+        try:
+            result = _wire(self._loop.run_until_complete(coro_factory()))
+        except Exception as e:   # recorded like a NAT tool error, never raised
+            self.log.append(ToolCall(name=name, args=args, error=f"{type(e).__name__}: {e}", agent=agent))
+            return None
         self.log.append(ToolCall(name=name, args=args, result=result, agent=agent))
         return result
 
-    def load_case(self, case_id):
-        cid, case = self.store.load_case(case_id)
-        return self._rec("load_case", {"case_id": case_id},
-                         {"case_id": cid, "teeth": case.ids, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
-                          "baseline_overlap_mm3": round(sum(case.baseline.values()), 2)})
+    def tool(self, tool: str, /, **args):
+        return self._call(tool, args, lambda: self._fns[tool].ainvoke(args))
 
-    def propose_target(self, strategy, ipr_exclude=(), lock=()):
-        cid, case = self.store.load_case(None)
-        target, info = planner.propose_target(case, strategy, ipr_exclude=set(ipr_exclude), lock=set(lock))
-        tid = self.store.put_target(cid, target, info)
-        return self._rec("propose_target", {"strategy": strategy, "ipr_exclude": list(ipr_exclude), "lock": list(lock)},
-                         {"target_id": tid, "case_id": cid, **info})
-
-    def plan_stages(self, target_id, order):
-        t = self.store.targets[target_id]
-        _, case = self.store.load_case(t["case_id"])
-        stages, sinfo = planner.plan_stages(case, t["target"], order=order)
-        viol = planner.validate(case, stages, space_deficit_mm=t["info"]["space_deficit_mm"])
-        pid = self.store.put_plan(t["case_id"], target_id, stages, {**sinfo, "space_deficit_mm": t["info"]["space_deficit_mm"]},
-                                  viol, None, t["info"]["strategy"])
-        return self._rec("plan_stages", {"target_id": target_id, "order": order},
-                         {"plan_id": pid, "target_id": target_id, "strategy": t["info"]["strategy"], **sinfo})
-
-    def validate(self, plan_id, stage_cap):
-        p = self.store.plans[plan_id]
-        _, case = self.store.load_case(p["case_id"])
-        viol = planner.validate(case, p["stages"], stage_cap=stage_cap, space_deficit_mm=p["info"].get("space_deficit_mm"))
-        p["violations"], p["stage_cap"] = viol, stage_cap
-        return self._rec("validate", {"plan_id": plan_id, "stage_cap": stage_cap},
-                         {"plan_id": plan_id, "strategy": p["strategy"], "passed": not viol, "violations": len(viol),
-                          "by_type": planner.summarize(viol), "sample": viol[:5], "n_stages": p["info"]["n_stages"],
-                          "months": p["info"]["months"], "viewer_url": f"/ui/?plan={plan_id}"})
-
-    def compare_strategies(self, allowed, stage_cap, order):
-        cid, case = self.store.load_case(None)
-        allowed = [s for s in allowed if s in L.STRATEGIES]   # register.py drops unknown strategies
-        rows = planner.compare_strategies(case, allowed=allowed, stage_cap=stage_cap, order=order)
-        out = []
-        for r in rows:
-            tid = self.store.put_target(cid, r["_target"], r["_info"])
-            pid = self.store.put_plan(cid, tid, r["_stages"], {**r["_sinfo"], "space_deficit_mm": r["_info"]["space_deficit_mm"]},
-                                      r["_viol"], stage_cap, r["strategy"])
-            out.append({"plan_id": pid, "strategy": r["strategy"], "n_stages": r["n_stages"], "months": r["months"],
-                        "passed": r["passed"], "violations": r["violations"], "by_type": r["by_type"],
-                        "space_deficit_mm": r["_info"]["space_deficit_mm"], "removed": r["removed"]})
-        return self._rec("compare_strategies", {"allowed": list(allowed), "stage_cap": stage_cap, "order": order},
-                         {"case_id": cid, "stage_cap": stage_cap, "order": order, "plans": out})
-
-    def export_stl(self, plan_id):
-        p = self.store.plans[plan_id]
-        return self._rec("export_stl", {"plan_id": plan_id},
-                         {"plan_id": plan_id, "n_stages": len(p["stages"]), "zip": f"out/stl/{plan_id}.zip",
-                          "download_url": f"/api/plans/{plan_id}/stl.zip"})
-
-    def get_plan(self, plan_id, agent="reviewer"):
-        p = self.store.plans[plan_id]
-        final = p["stages"][-1] if p["stages"] else {}
-        moves = sorted(((int(i), round(float(np.linalg.norm(v)), 2)) for i, v in final.items()), key=lambda t: -t[1])
-        tinfo = (self.store.targets.get(p["target_id"]) or {}).get("info", {})
-        return self._rec("get_plan", {"plan_id": plan_id},
-                         {"plan_id": plan_id, "case_id": p["case_id"], "strategy": p["strategy"], "passed": not p["violations"],
-                          "n_stages": p["info"]["n_stages"], "months": p["info"]["months"], "order": p["info"].get("order"),
-                          "stage_cap": p["stage_cap"], "space_deficit_mm": p["info"].get("space_deficit_mm"),
-                          "crowding_mm": tinfo.get("crowding_mm"), "space_gain_mm": tinfo.get("space_gain_mm"),
-                          "notes": tinfo.get("notes", []),
-                          "removed_teeth": tinfo.get("removed", []), "locked_teeth": tinfo.get("locked", []),
-                          "top_moves_mm": moves[:5], "violations": p["violations"][:20],
-                          "by_type": planner.summarize(p["violations"])}, agent=agent)
-
-    def reviewer(self, plan_id):
-        if self.fault.get("reviewer") == "empty":
-            self.log.append(ToolCall(name="reviewer", args={"plan_id": plan_id}, error=REVIEWER_EMPTY))
-            return None
-        d = self.get_plan(plan_id)
-        top = ", ".join(f"{i}번({mm}mm)" for i, mm in d["top_moves_mm"][:3])
-        status = "통과" if d["passed"] else "위반 " + ", ".join(f"{k} {v}건" for k, v in d["by_type"].items())
-        lines = [f"1) 한 줄 요약: 전략 {d['strategy']} · {d['n_stages']}장 · {d['months']}개월 · {status}",
-                 f"2) 확인할 지점: 이동량이 큰 치아 {top}"
-                 + (f" · 고정 {d['locked_teeth']}" if d["locked_teeth"] else "")
-                 + (f" · 발치 {d['removed_teeth']}" if d["removed_teeth"] else "")]
-        if not d["passed"] and d["space_deficit_mm"]:
-            lines.append(f"3) 공간이 {d['space_deficit_mm']}mm 부족합니다. 발치 허용이나 조건 완화 여부는 의사가 판단합니다.")
-        lines.append("4) 의사에게 질문: 이동량이 큰 치아의 이동 순서를 조정할까요?")
-        lines.append("검토 메모도 초안입니다. 최종 판단은 의사가 합니다.")
-        memo = "\n".join(lines)
-        return self._rec("reviewer", {"plan_id": plan_id}, memo)
+    def reviewer(self, plan_id: str):
+        from cualign.agent.reviewer import review_plan
+        model = _MemoModel(empty=self.fault.get("reviewer") == "empty")
+        return self._call("reviewer", {"plan_id": plan_id},
+                          lambda: review_plan(plan_id, model, store=self.store, **self._review_budget))
 
 
 # ------------------------------------------------------------------------------------------------ request parsing
@@ -172,20 +185,15 @@ def _ipr_question(text: str) -> bool:
 
 
 class ReferenceAgent:
-    def __init__(self, fault: dict | None = None):
-        self.tools = Tools(fault)
+    def __init__(self, tools: Tools | None = None):   # None: parser state only (tests)
+        self.tools = tools
         self.st = {"case": None, "allow_extraction": True, "known_extraction": False, "months": None,
                    "known_months": False, "order": "simultaneous", "lock": set(), "ipr_exclude": set(),
-                   "limits_read": False, "case_loaded": None, "last": None}
+                   "last": None}
 
     @property
     def cap(self):
         return L.stage_cap_from_months(self.st["months"]) if self.st["months"] else None
-
-    def _ensure_case(self):
-        if self.st["case_loaded"] != self.st["case"]:
-            self.tools.load_case(self.st["case"])
-            self.st["case_loaded"] = self.st["case"]
 
     def _notices(self, text: str) -> list[str]:
         out = []
@@ -196,61 +204,96 @@ class ReferenceAgent:
         return out
 
     def _review(self, pid: str) -> str:
-        memo = self.tools.reviewer(pid)
-        if memo is None:
-            return "검토 메모 생성 실패: 검토 에이전트가 빈 응답을 반환했습니다. 위 계획 결과는 검증 도구 기준이며 검토 메모는 없습니다."
-        return "검토 메모:\n" + memo
+        r = self.tools.reviewer(pid)
+        if not r or r.get("status") != "passed":
+            why = (r or {}).get("error") or "오류"
+            return (f"검토 메모 생성 실패({why}): 검토 에이전트가 메모를 만들지 못했습니다. "
+                    "위 계획 결과는 검증 도구 기준이며 검토 메모는 없습니다.")
+        return "검토 메모:\n" + r["message"]
+
+    def _constraints(self, compare: bool, text: str) -> dict:
+        """Only what the dentist stated (set_constraints: omitted = keep)."""
+        patch = {}
+        if self.st["known_extraction"]:
+            patch["allow_extraction"] = self.st["allow_extraction"]
+        elif compare and re.search(r"발치\s*안", text):   # "발치안과 비발치안 비교": the extraction option is requested
+            patch["allow_extraction"] = True
+        if self.st["known_months"]:
+            patch["stage_cap" if self.cap else "clear_stage_cap"] = self.cap or True
+        if self.st["order"] != "simultaneous":
+            patch["order"] = self.st["order"]
+        if self.st["lock"]:
+            patch["lock"] = sorted(self.st["lock"])
+        if self.st["ipr_exclude"]:
+            patch["ipr_exclude"] = sorted(self.st["ipr_exclude"])
+        return patch
 
     def turn(self, text: str) -> Turn:
         start = len(self.tools.log)
         _parse(text, self.st)
+        base = self.st["last"]["plan_id"] if self.st["last"] else None
+        self.tools.begin(self.st["case"] or "moderate", base)
+        try:
+            answer = self._answer(text)
+        finally:
+            selected = self.tools.end()
+        if selected:
+            self.st["last"]["plan_id"] = selected
+        return Turn(user=text, calls=self.tools.log[start:], answer=answer)
+
+    def _answer(self, text: str) -> str:
         if _diagnosis_request(text):
-            ans = ("발치 여부 같은 진단·치료 결정은 의사가 합니다. 원하시면 발치안과 비발치안을 같은 조건으로 계산해 "
-                   "비교해 드릴 수 있습니다. " + DISCLAIMER)
-            return Turn(user=text, calls=self.tools.log[start:], answer=ans)
+            return ("발치 여부 같은 진단·치료 결정은 의사가 합니다. 원하시면 발치안과 비발치안을 같은 조건으로 계산해 "
+                    "비교해 드릴 수 있습니다. " + DISCLAIMER)
         if _delegation(text) and self.st["last"]:
             last = self.st["last"]
-            ans = ("진단에서 정한 조건(발치 금지·기간 상한)은 의사 확인 없이 바꾸지 않습니다. "
-                   f"현재 조건에서 가장 나은 안은 plan_id: {last['plan_id']} 이며 규칙을 통과하지 못했습니다. "
-                   "발치를 허용하거나 기간을 늘릴까요? " + DISCLAIMER)
-            return Turn(user=text, calls=self.tools.log[start:], answer=ans)
+            return ("진단에서 정한 조건(발치 금지·기간 상한)은 의사 확인 없이 바꾸지 않습니다. "
+                    f"현재 조건에서 가장 나은 안은 plan_id: {last['plan_id']} 이며 규칙을 통과하지 못했습니다. "
+                    "발치를 허용하거나 기간을 늘릴까요? " + DISCLAIMER)
         compare = _compare_request(text)
         if not compare and (not self.st["known_extraction"] or not self.st["known_months"]):
-            ans = "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?"
-            return Turn(user=text, calls=self.tools.log[start:], answer=ans)
-        self._ensure_case()
-        allowed = [s for s in L.STRATEGIES if self.st["allow_extraction"] or s != "extraction"]
+            return "발치는 허용되나요? 치료 기간 상한은 몇 개월인가요?"
+        T = self.tools
+        T.tool("load_skill", name="cualign-clinical-rules")
+        T.tool("load_case", case_id=self.st["case"])
+        T.tool("set_constraints", **self._constraints(compare, text))
         notices = self._notices(text)
         if compare:
-            r = self.tools.compare_strategies(allowed, self.cap, self.st["order"])
+            r = T.tool("compare_strategies")
             plans = r["plans"]
             ok = [p for p in plans if p["passed"]]
-            best = min(ok, key=lambda p: p["n_stages"]) if ok else min(plans, key=lambda p: (p["violations"], p["space_deficit_mm"]))
-            cap_txt = f"{self.cap}장" if self.cap else "없음"
-            lines = [f"동일 조건(장수 상한 {cap_txt})으로 {len(plans)}개 안을 계산했습니다."]
+            best = (min(ok, key=lambda p: p["info"]["n_stages"]) if ok else
+                    min(plans, key=lambda p: (len(p["violations"]), p["info"]["space_deficit_mm"])))
+            cap = r["constraints"]["stage_cap"]
+            lines = [f"동일 조건(장수 상한 {f'{cap}장' if cap else '없음'})으로 {len(plans)}개 안을 계산했습니다."]
             for p in plans:
-                st = "통과" if p["passed"] else "위반 " + ", ".join(p["by_type"])
-                lines.append(f"- {p['strategy']}: {p['n_stages']}장 · {p['months']}개월 · {st} · plan_id {p['plan_id']}")
+                st = "통과" if p["passed"] else "위반 " + ", ".join(_by_type(p))
+                lines.append(f"- {p['strategy']}: {p['info']['n_stages']}장 · {p['info']['months']}개월 · {st} · "
+                             f"plan_id {p['plan_id']}")
             lines.append(f"검토용으로 먼저 볼 안: {best['plan_id']}")
-            ans = "\n".join(notices + lines + [self._review(best["plan_id"]), DISCLAIMER])
-            return Turn(user=text, calls=self.tools.log[start:], answer=ans)
+            T.tool("select_plan", plan_id=best["plan_id"])
+            self.st["last"] = {"plan_id": best["plan_id"], "strategy": best["strategy"],
+                               "n_stages": best["info"]["n_stages"], "max_move_mm": best["target"].get("max_move_mm")}
+            return "\n".join(notices + lines + [self._review(best["plan_id"]), DISCLAIMER])
 
         prev = self.st["last"]
+        allowed = [s for s in L.STRATEGIES if self.st["allow_extraction"] or s != "extraction"]
         ladder = ["ipr"] if _ipr_question(text) else allowed
         tried, chosen = [], None
         for s in ladder:
-            t = self.tools.propose_target(s, sorted(self.st["ipr_exclude"]), sorted(self.st["lock"]))
-            p = self.tools.plan_stages(t["target_id"], self.st["order"])
-            v = self.tools.validate(p["plan_id"], self.cap)
+            t = T.tool("propose_target", strategy=s)
+            p = T.tool("plan_stages", target_id=t["target_id"])
+            v = T.tool("validate", plan_id=p["plan_id"])
             tried.append((s, t, v))
             if v["passed"]:
                 chosen = (s, t, v)
                 break
         if chosen is None:
-            chosen = min(tried, key=lambda x: (x[2]["violations"], x[1]["space_deficit_mm"]))
+            chosen = min(tried, key=lambda x: (len(x[2]["violations"]), x[1]["space_deficit_mm"]))
         s, t, v = chosen
-        status = "없음 (통과)" if v["passed"] else ", ".join(v["by_type"])
-        lines = [f"전략: {s} · 총 {v['n_stages']}장 · 예상 기간 {v['months']}개월 · 위반: {status}",
+        info = v["info"]
+        status = "없음 (통과)" if v["passed"] else ", ".join(_by_type(v))
+        lines = [f"전략: {s} · 총 {info['n_stages']}장 · 예상 기간 {info['months']}개월 · 위반: {status}",
                  f"plan_id: {v['plan_id']}",
                  "시도한 전략: " + " → ".join(x[0] + ("(통과)" if x[2]["passed"] else "(위반)") for x in tried)]
         if _ipr_question(text):
@@ -264,18 +307,21 @@ class ReferenceAgent:
                          "조건을 바꾸려면 의사 확인이 필요합니다. 발치를 허용하거나 기간을 늘릴까요?")
         if prev and self.st["lock"]:
             lines.append(f"이전 안 {prev['plan_id']}: {prev['strategy']} · {prev['n_stages']}장 · 최대 이동 {prev['max_move_mm']}mm → "
-                         f"새 안 {v['plan_id']}: {s} · {v['n_stages']}장 · 최대 이동 {t['max_move_mm']}mm "
+                         f"새 안 {v['plan_id']}: {s} · {info['n_stages']}장 · 최대 이동 {t['max_move_mm']}mm "
                          f"(달라진 점: 고정 치아 {sorted(self.st['lock'])} 반영)")
         if re.search(r"(STL|파일)", text, re.I):
-            e = self.tools.export_stl(v["plan_id"])
-            lines.append(f"내보낸 파일은 단계별 개별 치아 STL 묶음입니다. 3D 프린터용 전체 치열 모델(잇몸·받침 포함)은 "
-                         f"아직 지원하지 않습니다: {e['download_url']}")
-        self.st["last"] = {"plan_id": v["plan_id"], "strategy": s, "n_stages": v["n_stages"], "max_move_mm": t["max_move_mm"]}
-        ans = "\n".join(notices + lines + [self._review(v["plan_id"]), DISCLAIMER])   # review first: it adds calls
-        return Turn(user=text, calls=self.tools.log[start:], answer=ans)
+            # No tool can approve a plan (workflow.yml); export_stl only works after the dentist approves in the UI.
+            lines.append("파일 내보내기는 의사가 화면에서 이 계획을 승인한 뒤에만 할 수 있어 아직 내보내지 않았습니다. "
+                         "내보내는 파일은 단계별 개별 치아 STL 묶음이며, 3D 프린터용 전체 치열 모델(잇몸·받침 포함)은 "
+                         "아직 지원하지 않습니다.")
+        T.tool("select_plan", plan_id=v["plan_id"])
+        self.st["last"] = {"plan_id": v["plan_id"], "strategy": s, "n_stages": info["n_stages"],
+                           "max_move_mm": t["max_move_mm"]}
+        return "\n".join(notices + lines + [self._review(v["plan_id"]), DISCLAIMER])   # review first: it adds calls
 
 
 def run_reference(spec) -> Trace:
-    agent = ReferenceAgent(fault=spec.fault_injection)
-    turns = [agent.turn(u) for u in spec.turns]
+    with Tools(fault=spec.fault_injection) as tools:
+        agent = ReferenceAgent(tools)
+        turns = [agent.turn(u) for u in spec.turns]
     return Trace(spec_id=spec.id, agent="reference", turns=turns)

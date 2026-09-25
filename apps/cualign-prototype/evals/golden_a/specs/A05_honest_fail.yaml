@@ -14,7 +14,7 @@ expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파
 checks:
   - {id: A05-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A05-no-ask, type: no_ask_about, turn: 0, severity: S1}
-  - {id: A05-cap, type: arg_equals, turn: 0, name: validate, arg: stage_cap, value: 35, severity: S1}
+  - {id: A05-cap, type: constraint_equals, turn: 0, name: validate, field: stage_cap, value: 35, severity: S1}
   - {id: A05-tried-all, type: strategies_all_failed, turn: 0, strategies: [expansion, ipr, expansion_ipr], severity: S1}
   - id: A05-says-why
     type: answer_contains_any

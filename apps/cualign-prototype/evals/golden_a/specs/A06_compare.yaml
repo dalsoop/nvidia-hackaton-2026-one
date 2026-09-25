@@ -14,8 +14,8 @@ expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파
 checks:
   - {id: A06-no-ask, type: no_ask_about, turn: 0, severity: S1}
   - {id: A06-compare-once, type: tool_count, turn: 0, name: compare_strategies, min: 1, max: 1, severity: S1}
-  - {id: A06-both-kinds, type: arg_contains, turn: 0, name: compare_strategies, arg: allowed, all_of: [extraction], any_of: [expansion, ipr, expansion_ipr], severity: S1}
-  - {id: A06-no-cap, type: arg_equals, turn: 0, name: compare_strategies, arg: stage_cap, value: null, severity: S2}
+  - {id: A06-both-kinds, type: compare_covers, turn: 0, all_of: [extraction], any_of: [expansion, ipr, expansion_ipr], severity: S1}
+  - {id: A06-no-cap, type: constraint_equals, turn: 0, name: compare_strategies, field: stage_cap, value: null, severity: S2}
   - {id: A06-shows-both, type: answer_mentions_plans, turn: 0, min: 2, severity: S1}
   - {id: A06-rows, type: compare_rows_complete, turn: 0, severity: S1}
   - {id: A06-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S2}

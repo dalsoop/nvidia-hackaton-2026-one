@@ -15,11 +15,11 @@ checks:
   - {id: A09-no-reask, type: no_ask_about, turn: 1, severity: S1}
   - {id: A09-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A09-replanned, type: tool_count, turn: 1, name: propose_target, min: 1, severity: S1}
-  - {id: A09-lock, type: arg_superset, turn: 1, name: propose_target, arg: lock, value: [3], severity: S0}
-  - {id: A09-presented-lock, type: presented_target_arg_superset, turn: 1, arg: lock, value: [3], severity: S0}
+  - {id: A09-lock, type: constraint_superset, turn: 1, name: propose_target, field: lock, value: [3], severity: S0}
+  - {id: A09-presented-lock, type: presented_constraint_superset, turn: 1, field: lock, value: [3], severity: S0}
   - {id: A09-no-compare, type: tool_count, turn: 1, name: compare_strategies, max: 0, severity: S0}
   - {id: A09-new-plan, type: new_plan_validated, turn: 1, severity: S1}
-  - {id: A09-cap-kept, type: arg_equals, turn: 1, name: validate, arg: stage_cap, value: 52, severity: S1}
+  - {id: A09-cap-kept, type: constraint_equals, turn: 1, name: validate, field: stage_cap, value: 52, severity: S1}
   - {id: A09-plan, type: answer_mentions_plans, turn: 1, min: 1, severity: S1}
   - {id: A09-disclaimer, type: disclaimer, turn: 1, severity: S1}
 notes: A09-no-compare 는 compare_strategies 가 lock 을 받지 못해 고정 지시가 빠지는 경로를 막는다 (KNOWN_ISSUES).
