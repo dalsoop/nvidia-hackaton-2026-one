@@ -35,7 +35,7 @@
 |---|---|
 | `src/cualign/agent/register.py` | 조건 수정·계산·최종 계획 선택·승인된 출력 도구 |
 | `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·검토 예산 컨텍스트 |
-| `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`) |
+| `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`), 수치의 뜻을 알려주는 필드 설명(`FIELD_NOTES`) |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
 | `src/cualign/agent/react_history_patch.py` | NAT ReAct 네이티브 도구 호출 모드가 다음 프롬프트에서 빠뜨리는 «실제로 부른 도구·인자»를 기록에 붙이는 호환 가드(같은 도구 반복 방지) |
 | `src/cualign/agent/nim_stream_patch.py` | NIM 스트림 첫 줄의 오류(과부하 503 등)와 스트림 요청의 HTTP 429·5xx 를 빈 답·즉시 실패 대신 재요청·예외로 바꾸고, 스트림이 아닌 호출(검토)의 429·5xx 를 짧게 재요청하는 호환 가드 |
