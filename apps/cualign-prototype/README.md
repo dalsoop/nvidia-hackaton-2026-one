@@ -86,7 +86,7 @@ NAT의 계획 에이전트가 조건을 해석해 계산 도구를 호출합니�
 | `src/cualign/core/` | 목표 배열·단계 생성, 기하 규칙 검사, 저장·출력 |
 | `src/cualign/agent/`, `configs/workflow.yml` | NAT 도구와 계획·검토 에이전트, Nemotron/NIM 연결 |
 | `src/cualign/server/` | API, 대화 검사 미들웨어, 정적 웹 UI |
-| `guardrails/` | NeMo Guardrails 검사 설정과 프롬프트 |
+| `guardrails/` | NeMo Guardrails 검사 설정과 프롬프트, NVIDIA 카탈로그 스킬로 만든 안전 정책(`policy/`) |
 | `openshell/`, `skills/` | 샌드박스 정책 실험, 도메인 Skill, 과거 검사 보고서 |
 | `tests/`, `bench/`, `scripts/`, `docs/demo/` | 자동 검사·규칙 벤치마크·실호출 스크립트·기존 실행 기록 |
 

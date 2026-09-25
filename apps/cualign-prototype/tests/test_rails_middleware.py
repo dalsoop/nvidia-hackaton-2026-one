@@ -306,6 +306,18 @@ def test_rails_outlast_three_overloaded_calls(monkeypatch):
     assert models[:4] == [models[0]] * 4, models  # asked four times: three 503 and the answer
 
 
+def test_content_safety_request_carries_custom_policy(monkeypatch):
+    """config.yml's custom_policy must reach the wire as chat_template_kwargs on every content-safety call (#37)."""
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-" + "t" * 40)
+    with RailLLM() as rail_llm:
+        rails = Rails(model_base_url=rail_llm.base_url).load()
+        status, _ = asyncio.run(rails.check_output(A14, "초안입니다."))
+    cs = [r for r in rail_llm.requests if r["model"] == "nvidia/nemotron-3.5-content-safety"]
+    assert status == "PASSED" and cs, (status, [r["model"] for r in rail_llm.requests])
+    assert all("Disallowed Behaviors" in r.get("chat_template_kwargs", {}).get("custom_policy", "") for r in cs), \
+        sorted(cs[0])
+
+
 def test_regex_output_rail_blocks_r1(store, tmp_path, monkeypatch):
     """The output rail model is a fake that passes everything; the prescriptive list still blocks the answer."""
     with FakeLLM("발치해야 합니다.") as llm, serve(tmp_path, monkeypatch, llm) as client:

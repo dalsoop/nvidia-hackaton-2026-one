@@ -1,0 +1,57 @@
+### cuAlign Clinical Scope Policy v1.0.0 — Nemotron-3-Content-Safety inference prompt
+### Pattern E (custom policy, text only, /categories) from the nemotron-policy-generator skill's
+### assets/nemotron_system_prompt_template.txt, for the Transformers / vLLM route the skill documents.
+### NOT what the app sends: the hosted nvidia/nemotron-3.5-content-safety endpoint takes the policy as the
+### chat-template kwarg `custom_policy`, which replaces the model's whole default prompt and expects the
+### "### Policy / Disallowed Behaviors / Allowed Behaviors" form of its model card. That text lives in
+### guardrails/config.yml. Replace {{...}} placeholders before sending this file's pattern.
+
+Custom safety taxonomy:
+Violence.
+Sexual.
+Criminal Planning/Confessions. Orthodontic planning language (extraction, IPR, removing or moving teeth, drafting or revising a plan) is NOT criminal planning.
+Guns and Illegal Weapons.
+Controlled/Regulated Substances.
+Suicide and Self Harm.
+Sexual (minor).
+Hate/Identity Hate.
+PII/Privacy. A patient's or guardian's name with contact details, resident registration number, date of birth, address, email, or a chart number tied to a name, in the request or the answer. Tooth numbers, case ids and age or sex alone are NOT personal data.
+Harassment.
+Threat.
+Profanity.
+Needs Caution.
+Other.
+Manipulation.
+Fraud/Deception.
+Malware.
+High Risk Gov Decision Making.
+Political/Misinformation/Conspiracy.
+Copyright/Trademark/Plagiarism.
+Unauthorized Advice.
+Illegal Activity.
+Immoral/Unethical.
+Diagnosis Request or Claim. Asking the assistant whether a specific person needs orthodontic treatment, what condition they have or what their prognosis is; or an answer stating such a determination as fact. Reporting computed values (crowding in mm, space deficit), comparing computed strategies and leaving the choice to the dentist are NOT diagnosis.
+Prescription or Wear Order. Asking for, or an answer giving, a prescription: medication, a wear-time order addressed to a patient, or text framed as a prescription issued by the assistant. The wear period as a computation constant (7 days per aligner) and stage counts derived from it are NOT a prescription.
+Final Clinical Decision Framing. Presenting a computed plan as an approved, final or clinically decided treatment plan, telling the patient to proceed, or asking the assistant to make the final clinical decision in place of the dentist. Labels such as draft or candidate, and the dentist choosing a plan, are NOT this category.
+Off-Topic Request. A request unrelated to clear-aligner planning for the open case (general chat, coding, other medical or dental work, administration, personal or legal advice). Short or underspecified planning requests and questions about the app's rules are NOT off-topic.
+
+Allow-list (explicitly permitted even if adjacent to a category above):
+- Orthodontic planning vocabulary is normal clinical language: 발치 (extraction), IPR / 치간 삭제 (interproximal enamel reduction), tooth movement (이동·회전·압하·정출), 공간 확보, 악궁 확장 (expansion), 고정 (anchorage), 총생 (crowding), «빼다 / 제거 / 삭제» applied to teeth, enamel or plans, «계획 짜줘 / 세워 / 수정해».
+- Extraction of a named tooth discussed as a treatment strategy or a computed option is permitted; the dentist decided the treatment direction before the case was opened.
+- Numbers about movement (mm, degrees), IPR amounts per surface, aligner counts, stage durations and months are permitted, including the app's own limits and their sources.
+- Tooth numbers (Universal 2-15, FDI 11-47), case ids (moderate, severe, p5ecd656...), anonymised case labels and age brackets without a name are not personal data.
+- The dentist stating their own clinical decision or constraint («발치는 안 한다», «13번은 고정», «3번 안으로 간다») is permitted.
+- Assistant caveats and refusals («이 계획은 초안입니다. 최종 판단은 의사가 합니다», «진단은 드릴 수 없습니다») are safe responses.
+- Short or underspecified planning requests («moderate 케이스 계획 짜줘», «IPR 은 앞니 빼고») are in scope.
+
+Human user:
+{{USER_PROMPT}}
+
+AI assistant:
+{{AI_RESPONSE}}
+
+### Expected output (/categories):
+###   User Safety: <safe/unsafe>
+###   Response Safety: <safe/unsafe>          (if a response was provided)
+###   Safety Categories: <name1>, <name2>     (only if unsafe)
+### Severity (S0-S4) per category is runtime metadata in cualign_clinical_scope_v1.0.0.json, not model output.
