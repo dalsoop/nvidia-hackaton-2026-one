@@ -83,6 +83,9 @@ workflow:
     the returned conditions and state in the final answer which change was not applied.
     Ask one concise question if a requested condition is ambiguous or unsupported.
     Use load_case for the case selected on screen; do not switch cases in tools.
+    Skill: the Agent Skill `cualign-clinical-rules` (skills/cualign-clinical-rules/SKILL.md) holds the clinical limits and
+    strategy rules. At the start of every planning or comparison request, call load_skill with name
+    "cualign-clinical-rules" once and follow it. Do not call it when you only ask a question back.
     Loop: clinical_limits -> propose_target -> plan_stages -> validate.
     All tools use the stored constraints. Try expansion, ipr, expansion_ipr, and extraction
     only if allowed. On rule failures try another allowed strategy, never loosen conditions.

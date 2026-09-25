@@ -11,6 +11,7 @@ from cualign.agent import nim_stream_patch, react_history_patch, react_patch, re
 from cualign.server import rails_middleware  # noqa: F401  register the Guardrails workflow middleware
 from cualign.agent.context import CURRENT_RUN
 from cualign.core import limits as L, planner
+from cualign.core import skills as S
 from cualign.core.constraints import Constraints, ConstraintPatch
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -44,10 +45,15 @@ class CompareInput(BaseModel):
     allowed: list[str] | None = Field(default=None, description="Optional strategy subset; confirmed constraints always apply")
 
 
+class SkillInput(BaseModel):
+    name: str = Field(description="skill name, e.g. cualign-clinical-rules")
+
+
 class CuAlignToolConfig(FunctionGroupBaseConfig, name="cualign"):
     include: list[str] = Field(default_factory=lambda: [
         "clinical_limits", "list_cases", "load_case", "get_constraints", "set_constraints",
-        "propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "get_plan"])
+        "propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "get_plan",
+        "load_skill"])
 
 
 def current_case(case_id=None):
@@ -195,11 +201,16 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         owned_plan(inp.plan_id)
         return summary(inp.plan_id)
 
+    async def _load_skill(inp: SkillInput) -> dict:
+        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
+        return S.read_skill(inp.name)
+
     fns = {"clinical_limits": _clinical_limits, "list_cases": _list_cases, "load_case": _load_case,
            "get_constraints": _get_constraints, "set_constraints": _set_constraints,
            "propose_target": _propose_target, "plan_stages": _plan_stages, "validate": _validate,
            "compare_strategies": _compare_strategies, "select_plan": _select_plan,
-           "export_stl": _export_stl, "get_plan": _get_plan}
+           "export_stl": _export_stl, "get_plan": _get_plan,
+           "load_skill": _load_skill}
     for name in config.include:
         group.add_function(name=name, fn=fns[name], description=fns[name].__doc__)
     yield group
