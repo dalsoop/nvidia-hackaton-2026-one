@@ -85,3 +85,64 @@ def test_registered_reviewer_function_schema(tmp_path, monkeypatch):
             result = await fn.ainvoke(reviewer.ReviewInput(plan_id=pid))
             assert result["status"] == "passed"
     asyncio.run(run())
+
+
+def test_manual_review_recovers_unreviewed_and_failed_plans(tmp_path, monkeypatch):
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    s = store_module.Store()
+    svc = PlanningService(s)
+    class Reply:
+        def __init__(self, text):
+            self.text, self.calls = text, 0
+        async def ainvoke(self, messages):
+            self.calls += 1
+            return SimpleNamespace(content=self.text)
+    async def run():
+        # The agent skipped the reviewer: the plan stays not_requested until the dentist asks.
+        skipped = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+        assert (await review_plan(skipped, Reply("검토 메모 초안"), store=s, manual=True))["status"] == "passed"
+        # The agent path keeps the stored failure; the dentist's request reviews again with a fresh budget.
+        failed = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+        context = PlanRun("review-run", "moderate", None, Constraints(), selected_plan_id=failed)
+        token = CURRENT_RUN.set(context)
+        try:
+            assert (await review_plan(failed, Reply(""), store=s))["status"] == "failed"
+            again = Reply("검토 메모 초안")
+            assert (await review_plan(failed, again, store=s))["status"] == "failed" and again.calls == 0
+            # A closed or unrelated request context does not block the dentist's request.
+            context.closed = True
+            result = await review_plan(failed, again, store=s, manual=True)
+        finally:
+            CURRENT_RUN.reset(token)
+        assert result["status"] == "passed" and again.calls == 1
+        s.approve(failed)
+        # Finished reviews are not run again.
+        after = Reply("다른 메모")
+        assert (await review_plan(failed, after, store=s, manual=True))["message"] == "검토 메모 초안"
+        assert after.calls == 0
+    asyncio.run(run())
+
+
+def test_worker_manual_review_uses_workflow_reviewer(tmp_path, monkeypatch):
+    from cualign.server.worker import manual_review
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    svc = PlanningService(store_module.STORE)
+    pid = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+    class Builder:
+        def get_function_config(self, name):
+            from cualign.agent.reviewer import BoundedReviewerConfig
+            assert name == "reviewer"
+            return BoundedReviewerConfig(llm_name="nim_review", max_attempts=1)
+        async def get_llm(self, name, wrapper_type):
+            assert str(name) == "nim_review"
+            class LLM:
+                calls = 0
+                async def ainvoke(self, messages):
+                    LLM.calls += 1
+                    return SimpleNamespace(content="")
+            return LLM()
+    async def run():
+        review = await manual_review(Builder())
+        result = await review(pid)
+        assert result["status"] == "failed" and result["attempts"] == 1  # the workflow's max_attempts, not the default
+    asyncio.run(run())

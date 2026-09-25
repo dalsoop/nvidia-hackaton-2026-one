@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, planner
 from cualign.core.constraints import ConstraintPatch
 from cualign.core.service import PlanningService
@@ -58,7 +59,11 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     return result
 
 
-def add_api_routes(app: FastAPI):
+def add_api_routes(app: FastAPI, review=None):
+    """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
+    chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
+    None when no reviewer model is wired."""
+    app.state.cualign_review = review
     @app.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/ui/")
@@ -126,6 +131,17 @@ def add_api_routes(app: FastAPI):
             return STORE.approve(plan_id)
         except ValueError as e:
             raise HTTPException(409, str(e))
+
+    @app.post("/api/plans/{plan_id}/review")
+    async def request_review(plan_id: str):
+        # Recovery for a plan the agent left unreviewed (skipped the call) or whose review failed.
+        p = require_plan(plan_id)
+        if review is None:
+            raise HTTPException(503, "검토 모델이 연결되지 않았습니다.")
+        if p["review"]["status"] not in MANUAL_RETRY:
+            raise HTTPException(409, "미실행이거나 실패한 검토만 다시 요청할 수 있습니다.")
+        await review(plan_id)
+        return STORE.plan_json(plan_id)
 
     @app.delete("/api/plans/{plan_id}/approval")
     async def revoke_approval(plan_id: str):

@@ -1,5 +1,6 @@
 """Attach verified plan selection to NAT's existing chat SSE route."""
 import json
+import logging
 from uuid import uuid4
 
 from fastapi.responses import JSONResponse
@@ -8,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from cualign.agent.context import CURRENT_RUN, PlanRun
 from cualign.core.constraints import ConstraintPatch
 from cualign.core.store import STORE
+
+logger = logging.getLogger(__name__)
 
 
 class ChatContext(BaseModel):
@@ -20,6 +23,18 @@ class ChatContext(BaseModel):
 
 def event(name, payload):
     return ("\n\nevent: " + name + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
+
+
+async def review_skipped(scope, plan_id) -> bool:
+    """The agent selected a plan but ended the turn without calling the reviewer (KNOWN_ISSUES). The procedure must
+    not hang on the model following it, so the server runs the same bounded review before offering the plan."""
+    app = scope.get("app")
+    review = getattr(getattr(app, "state", None), "cualign_review", None)
+    if review is None or STORE.plans[plan_id]["review"]["status"] != "not_requested":
+        return False
+    logger.warning("cuAlign: the agent did not call the reviewer for %s; the server reviews it", plan_id)
+    await review(plan_id)
+    return True
 
 
 class PlanEventsASGI:
@@ -80,10 +95,11 @@ class PlanEventsASGI:
                 if run.refused:
                     pass  # the rails replaced the answer, so its plan is not offered (it stays stored)
                 elif run.selected_plan_id:
+                    by_server = await review_skipped(scope, run.selected_plan_id)
                     plan = STORE.plan_json(run.selected_plan_id)
                     extra = event("plan_selected", {**common, "schema_version": 1,
                         "plan_id": plan["plan_id"], "parent_plan_id": plan["parent_plan_id"],
-                        "review": plan["review"]})
+                        "review": plan["review"], "reviewed_by_server": by_server})
                 elif run.plan_ids:
                     extra = event("plan_error", {**common, "message": "계획은 생성됐으나 최종 선택을 받지 못했습니다."})
                 extra += event("plan_context", {**common, "constraints": run.constraints.model_dump(mode="json"),

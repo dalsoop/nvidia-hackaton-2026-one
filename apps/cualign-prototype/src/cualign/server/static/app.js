@@ -243,6 +243,9 @@ function updateActions() {
   $("constraints").disabled = !!busy;
   $("approveBtn").disabled = !allowed || !p.passed || !["passed", "skipped"].includes(p.review.status);
   $("approveBtn").textContent = p?.approval ? "승인 취소" : "의사 승인";
+  // Recovery when the agent skipped the reviewer or the review failed: the dentist asks for it on this plan.
+  $("reviewBtn").hidden = !p || !["not_requested", "failed"].includes(p.review.status);
+  $("reviewBtn").disabled = !allowed;
   const link = $("stlLink"), downloadable = allowed && p.approval;
   link.classList.toggle("disabled", !downloadable);
   link.setAttribute("aria-disabled", String(!downloadable));
@@ -262,6 +265,24 @@ async function approveCurrent() {
         ...(revoke ? {} : { body: JSON.stringify({ confirmed: true }) }) });
     if (state.plan?.plan_id === p.plan_id) { state.plan = result; renderResult(result); }
   } catch (e) { addMsg("error", e.message); }
+  finally { state.loading = false; updateActions(); }
+}
+
+async function reviewCurrent() {
+  const p = state.plan;
+  if (!p || state.streaming || state.loading || constraintsDirty()) return;
+  state.loading = true; updateActions();
+  $("rReview").textContent = "검토 중";
+  try {
+    const result = await api("/api/plans/" + encodeURIComponent(p.plan_id) + "/review", { method: "POST" });
+    if (state.plan?.plan_id === p.plan_id) {
+      state.plan = result; renderResult(result);
+      if (result.review.status === "failed") addMsg("error", result.review.message + " (" + result.review.error + ")");
+    }
+  } catch (e) {
+    addMsg("error", "검토 요청 실패: " + e.message);
+    if (state.plan?.plan_id === p.plan_id) renderResult(state.plan);
+  }
   finally { state.loading = false; updateActions(); }
 }
 
@@ -532,6 +553,7 @@ async function send(text) {
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
       if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
+      if (selected.reviewed_by_server) addMsg("system", "에이전트가 검토를 호출하지 않아 서버가 같은 조건으로 검토를 실행했습니다.");
       if (selected.review.status === "failed") addMsg("error", selected.review.message + " (" + selected.review.error + ")");
     } else if (streamError || !answer) {
       throw new Error("모델 실행 또는 최종 계획 선택 실패");
@@ -612,6 +634,7 @@ $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.ta
 $("playBtn").addEventListener("click", togglePlay);
 $("fallbackBtn").addEventListener("click", runFallback);
 $("approveBtn").addEventListener("click", approveCurrent);
+$("reviewBtn").addEventListener("click", reviewCurrent);
 $("constraints").addEventListener("input", updateActions);
 $("stlLink").addEventListener("click", e => { if (e.currentTarget.classList.contains("disabled")) e.preventDefault(); });
 $("uploadInput").addEventListener("change", (e) => { upload(e.target.files); e.target.value = ""; });

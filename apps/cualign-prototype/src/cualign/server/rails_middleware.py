@@ -22,6 +22,7 @@ puts the model's raw text in it, past the output rail. The whole exception goes 
 Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
   * a prescriptive sentence in the answer blocks it without asking the output rail model.
+The reviewer's memo goes to the plan card, not the answer, so reviewer.MEMO_CHECK gives it the same output check.
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ import os
 import re
 import unicodedata
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any
 
@@ -51,6 +53,8 @@ logger = logging.getLogger(__name__)
 # fixed closing line removed (tests/test_rail_patterns.py::test_refusal_defers_to_dentist). Wording: lumatic2.
 REFUSAL = ("요청이 cuAlign 의 범위를 벗어납니다. 진단·처방 같은 임상 판단은 의사가 합니다. 이 도구는 얼라이너 단계 계획 초안을 "
            "계산하고 조건별 안을 비교해 드릴 수 있습니다. 최종 판단은 의사가 합니다.")
+# The user side of the output check for a review memo, which has no user message of its own.
+MEMO_REQUEST = "이 계획의 검토 메모를 써줘."
 # Worst state wins within a turn: a blocked check is not hidden by a later error, nor an error by a pass.
 _RANK = {"passed": 0, "flagged": 1, "off": 1, "error": 2, "blocked": 3}
 # A caller without a PlanRun sets a dict here before the turn; the middleware writes "state" into it.
@@ -170,24 +174,36 @@ class RailsMiddleware(FunctionMiddleware):
         refuse = state == "blocked" or (state == "error" and self.fail_closed)
         return user, _record("input", state), _refuse() if refuse else None
 
-    async def _check_output(self, user: str, answer: str, prev: str) -> str | None:
-        """Returns the refusal that must replace the answer, or None to let the answer out."""
-        if self.rails is None or not answer.strip():
-            return None
+    async def _verdict(self, user: str, answer: str, what: str) -> str:
+        """passed / blocked / error for a text shown to the dentist: the prescriptive list, then the output rail."""
         if matches(PRESCRIPTIVE, answer):
-            logger.info("cuAlign rails: answer matched the prescriptive list; output rail model not asked")
+            logger.info("cuAlign rails: %s matched the prescriptive list; output rail model not asked", what)
             status = "BLOCKED"
         else:
             try:
                 status, _ = await self.rails.check_output(user, answer)
             except Exception as e:
-                logger.error("cuAlign rails: output check failed: %s", e)
+                logger.error("cuAlign rails: %s check failed: %s", what, e)
                 status = "ERROR"
         state = {"BLOCKED": "blocked", "ERROR": "error"}.get(status, "passed")
         if state == "error":
-            logger.error("cuAlign rails: output rail ERROR — %s", "refused" if self.fail_closed else "answer unchecked")
-        _record("output", state, prev)
+            logger.error("cuAlign rails: %s rail ERROR — %s", what, "refused" if self.fail_closed else "unchecked")
+        return state
+
+    async def _check_output(self, user: str, answer: str, prev: str) -> str | None:
+        """Returns the refusal that must replace the answer, or None to let the answer out."""
+        if self.rails is None or not answer.strip():
+            return None
+        state = _record("output", await self._verdict(user, answer, "answer"), prev)
         return _refuse() if state == "blocked" or (state == "error" and self.fail_closed) else None
+
+    async def check_memo(self, memo: str) -> tuple[str, bool]:
+        """The reviewer's memo reaches the dentist on the plan card, not through the answer, so it gets the same
+        output check here. Returns (state, refuse). It does not touch the turn's state or refuse the turn."""
+        if self.rails is None:
+            return "off", False
+        state = await self._verdict(MEMO_REQUEST, memo, "review memo")
+        return state, state == "blocked" or (state == "error" and self.fail_closed)
 
     async def function_middleware_invoke(self, *args: Any, call_next, context, **kwargs: Any) -> Any:
         value = args[0] if args else None
@@ -237,7 +253,8 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
             raise RuntimeError(f"cuAlign: Guardrails cannot start ({off}) and CUALIGN_RAILS_FAIL_CLOSED=1")
     if off:
         logger.error("cuAlign: Guardrails OFF (%s) — every turn runs without rails", off)
-        yield RailsMiddleware(None, fail_closed)
+        async with _memo_rail(RailsMiddleware(None, fail_closed)) as middleware:
+            yield middleware
         return
     # Guardrails usage stats go out when LLMRails is built unless this is set; a value set elsewhere is kept.
     if os.environ.setdefault("NEMO_GUARDRAILS_NO_USAGE_STATS", "1") != "1":
@@ -245,4 +262,17 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
     rails = _import(config.rails_factory)(config.rails_config_dir or ROOT / "guardrails",
                                           config.rails_model_base_url).load()
     logger.info("cuAlign: Guardrails ON for the workflow (fail-%s)", "closed" if fail_closed else "open")
-    yield RailsMiddleware(rails, fail_closed)
+    async with _memo_rail(RailsMiddleware(rails, fail_closed)) as middleware:
+        yield middleware
+
+
+@asynccontextmanager
+async def _memo_rail(middleware: RailsMiddleware):
+    """The reviewer runs as a tool and from the dentist's request, outside this middleware, so it gets the check."""
+    from cualign.agent import reviewer
+    reviewer.MEMO_CHECK = middleware.check_memo
+    try:
+        yield middleware
+    finally:
+        if reviewer.MEMO_CHECK == middleware.check_memo:
+            reviewer.MEMO_CHECK = None

@@ -73,3 +73,39 @@ def test_generated_but_unselected_plan_is_not_auto_selected(tmp_path, monkeypatc
         res = client.post("/chat/stream",json={"messages":[],"cualign":{"case_id":"moderate"}})
         assert "event: plan_error" in res.text
         assert "event: plan_selected" not in res.text
+
+
+def test_skipped_review_runs_before_plan_is_offered(tmp_path, monkeypatch):
+    s = store_module.Store()
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(plan_events, "STORE", s)
+    svc = PlanningService(s)
+    calls = []
+    async def review(plan_id):
+        calls.append(plan_id)
+        return s.set_review(plan_id, {"status": "passed", "attempts": 1, "message": "메모", "error": None})
+    app = FastAPI()
+    app.state.cualign_review = review
+    agent_reviews = {}
+    @app.post("/chat/stream")
+    async def chat():
+        async def generate():
+            run = CURRENT_RUN.get()
+            pid = svc.stages(svc.target(run.case_id, "expansion_ipr", run.constraints))
+            run.plan_ids.add(pid)
+            run.selected_plan_id = pid
+            if agent_reviews.get("failed"):  # the agent did call the reviewer this time, and it failed
+                s.set_review(pid, {"status": "failed", "attempts": 2, "message": "검토 실패", "error": "timeout"})
+            yield 'data: {"value":"done"}\n\n'
+        return StreamingResponse(generate(), media_type="text/event-stream")
+    app.add_middleware(plan_events.PlanEventsASGI)
+    def selected(res):
+        return json.loads(res.text.split("event: plan_selected\ndata: ")[1].split("\n")[0])
+    with TestClient(app) as client:
+        event = selected(client.post("/chat/stream", json={"messages": [], "cualign": {"case_id": "moderate"}}))
+        assert event["reviewed_by_server"] is True and event["review"]["status"] == "passed"
+        assert calls == [event["plan_id"]]
+        agent_reviews["failed"] = True
+        event = selected(client.post("/chat/stream", json={"messages": [], "cualign": {"case_id": "moderate"}}))
+        assert event["reviewed_by_server"] is False and event["review"]["error"] == "timeout"
+        assert len(calls) == 1  # a failure the agent got is not overridden; the dentist may ask again

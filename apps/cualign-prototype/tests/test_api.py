@@ -36,3 +36,31 @@ def test_missing_plan_returns_404():
     with TestClient(app) as client:
         assert client.get("/api/plans/not-a-plan").status_code == 404
         assert client.get("/api/plans/not-a-plan/stl.zip").status_code == 404
+
+
+def test_manual_review_route(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(store, "OUT_DIR", tmp_path)
+    from cualign.core.constraints import Constraints
+    from cualign.core.service import PlanningService
+    svc = PlanningService(store.STORE)
+    pid = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+    calls = []
+    async def review(plan_id):
+        calls.append(plan_id)
+        return store.STORE.set_review(plan_id, {"status": "passed", "attempts": 1, "message": "메모", "error": None})
+    bare = FastAPI()
+    api.add_api_routes(bare)
+    with TestClient(bare) as client:
+        assert client.post(f"/api/plans/{pid}/review").status_code == 503
+    app = FastAPI()
+    api.add_api_routes(app, review=review)
+    with TestClient(app) as client:
+        assert client.post("/api/plans/not-a-plan/review").status_code == 404
+        store.STORE.set_review(pid, {"status": "failed", "attempts": 2, "message": "검토 실패", "error": "timeout"})
+        result = client.post(f"/api/plans/{pid}/review")
+        assert result.status_code == 200 and result.json()["review"]["status"] == "passed"
+        assert client.post(f"/api/plans/{pid}/review").status_code == 409
+        fallback = client.post("/api/plan", json={"case_id": "moderate"}).json()["tried"][0]["plan_id"]
+        assert client.post(f"/api/plans/{fallback}/review").status_code == 409
+    assert calls == [pid]

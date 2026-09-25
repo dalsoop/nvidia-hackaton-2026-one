@@ -35,12 +35,22 @@ def response_text(response):
     return ""
 
 
-async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seconds=20, total_seconds=40):
+# Set by the rails middleware while the workflow is built: async memo -> (rail state, refuse). None: no workflow rails.
+MEMO_CHECK = None
+# A dentist may ask again for a plan the agent never reviewed or whose review failed; finished ones stay as stored.
+MANUAL_RETRY = ("not_requested", "failed")
+
+
+async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_seconds=20, total_seconds=40,
+                      manual=False):
+    """`manual` is the dentist's explicit request from the UI (no request context): it reviews a `failed` plan again
+    with a fresh budget. The agent path keeps returning the stored failure so it cannot loop on the model."""
+    store = store or STORE
     p = store.plans[plan_id]
-    run = CURRENT_RUN.get()
+    run = None if manual else CURRENT_RUN.get()
     if run and (run.closed or run.case_id != p["case_id"] or run.selected_plan_id != plan_id):
         raise ValueError("review only the selected plan in this request")
-    if p["review"]["status"] in ("passed", "failed", "skipped"):
+    if p["review"]["status"] in (("passed", "skipped") if manual else ("passed", "failed", "skipped")):
         return dict(p["review"])
     if p["review"]["status"] == "running" or (run and run.review_busy):
         return {"status": "running", "attempts": p["review"]["attempts"], "message": "검토 진행 중", "error": None}
@@ -52,6 +62,7 @@ async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seco
         started = run.review_started
     attempts = 0
     error = "attempt_limit"
+    rails = None
     snapshot = store.plan_json(plan_id)
     snapshot.pop("stages")
     snapshot.pop("approval")
@@ -78,12 +89,18 @@ async def review_plan(plan_id, llm, *, store=STORE, max_attempts=2, timeout_seco
                 if getattr(response, "tool_calls", None) or text.startswith(("Thought:", "Action:")):
                     error = "invalid_response"
                     continue
-                return store.set_review(plan_id, {"status": "passed", "attempts": attempts, "message": text, "error": None})
+                rails, refuse = await MEMO_CHECK(text) if MEMO_CHECK else ("off", False)
+                if refuse:  # the memo is not stored; another attempt may write one that passes
+                    error = "rail_blocked" if rails == "blocked" else "rail_error"
+                    continue
+                return store.set_review(plan_id, {"status": "passed", "attempts": attempts, "message": text,
+                                                  "error": None, "rails": rails})
             except asyncio.TimeoutError:
                 error = "timeout"
             except Exception as exc:
                 error = "upstream_503" if "503" in str(exc) else "model_error"
-        return store.set_review(plan_id, {"status": "failed", "attempts": attempts, "message": "검토 실패 — 계획을 승인할 수 없습니다.", "error": error})
+        return store.set_review(plan_id, {"status": "failed", "attempts": attempts, "message": "검토 실패 — 계획을 승인할 수 없습니다.",
+                                          "error": error, "rails": rails})
     except asyncio.CancelledError:
         store.set_review(plan_id, {"status": "failed", "attempts": attempts, "message": "검토가 중단됐습니다.", "error": "cancelled"})
         raise
