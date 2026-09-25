@@ -2,6 +2,7 @@
 
     python -m evals.golden_a.runner --plan                          # what would run, how many model calls (free)
     python -m evals.golden_a.runner --specs A01,A04 --k 3           # live: needs NVIDIA_API_KEY, uses NIM quota
+    python -m evals.golden_a.runner --nim-preflight 20 --min-success 0.95   # live, only if NIM answers 19 of 20 first
     python -m evals.golden_a.judge --traces out/golden_a/<run>      # score the written traces
 
 How a run is recorded
@@ -17,6 +18,15 @@ How a run is recorded
     cuAlign STORE keeps plans between turns and is reset between runs.
   * fault injection (spec.fault_injection.reviewer = "empty"): the reviewer agent's LLM is pointed at a local fake
     server that returns empty completions (the KNOWN_ISSUES failure). The planner keeps the real model.
+
+NVIDIA API overload (#51)
+  * a turn that crashes because the API stayed overloaded (NIMStreamError, or "[503]"/"[429]" from a call that is not
+    streamed) ends the run: its trace gets meta.unscorable and is saved as <spec>__<agent>__run<n>__unscorable<a>.json.
+    The judge counts such traces as "판정 불가" (unscorable), not as failures, and leaves them out of the pass rate.
+    The run is then started again, up to --unscorable-retries times (default 2).
+  * --nim-preflight N sends N short streamed requests to the planner model first, one request each (no re-request),
+    and stops before any spec runs when fewer than --min-success of them answer. The measured rate is written to
+    <out>/preflight.json, which the judge prints with the report.
 
 Guardrails are not in this path (they wrap the HTTP front end), same as `nat run`.
 """
@@ -40,7 +50,7 @@ from typing import Any
 import yaml
 
 from .judge import Spec, load_specs
-from .trace import ToolCall, Trace, Turn, normalize_tool_name
+from .trace import ToolCall, Trace, Turn, is_overload_crash, normalize_tool_name
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / "configs" / "workflow.yml"
@@ -193,6 +203,7 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
     turns: list[Turn] = []
     history: list[dict] = []
     t0 = time.time()
+    unscorable = None
     store = _fresh_store(work_dir / "out")
     store.__enter__()
     try:
@@ -226,17 +237,24 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
                 turns.append(Turn(user=user, calls=collector.ordered(), answer=answer or "",
                                   errors=errors + list(counter.errors), parse_retries=counter.parse_retries))
                 history.append({"role": "assistant", "content": answer or ""})
+                if errors and is_overload_crash(errors[0]):   # the API, not the agent: later turns would say nothing
+                    unscorable = f"turn {n}: {errors[0][:200]}"
+                    break
     finally:
         nat_logger.removeHandler(counter)
         nat_logger.setLevel(old_level)
         store.__exit__(None, None, None)
     return Trace(spec_id=spec.id, agent=agent_label, turns=turns,
                  meta={"seconds": round(time.time() - t0, 1), "config_llm": config["workflow"]["llm_name"],
-                       "fault_injection": spec.fault_injection})
+                       "fault_injection": spec.fault_injection, **({"unscorable": unscorable} if unscorable else {})})
 
 
-async def run_specs(specs: list[Spec], k: int | None, llm: str, out: Path, llm_override: dict | None = None) -> list[Path]:
-    """Run each spec k times (sequential: the cuAlign STORE is process-global). Returns written trace paths."""
+async def run_specs(specs: list[Spec], k: int | None, llm: str, out: Path, llm_override: dict | None = None,
+                    unscorable_retries: int = 2) -> list[Path]:
+    """Run each spec k times (sequential: the cuAlign STORE is process-global). Returns written trace paths.
+
+    A run the API did not let finish is kept as an unscorable trace and started again, at most unscorable_retries
+    times; the last attempt is saved as the run whatever it was."""
     from .fake_llm import FakeLLM
 
     out.mkdir(parents=True, exist_ok=True)
@@ -244,19 +262,92 @@ async def run_specs(specs: list[Spec], k: int | None, llm: str, out: Path, llm_o
     with tempfile.TemporaryDirectory() as tmp:
         for spec in specs:
             for n in range(1, (k or spec.k_runs) + 1):
-                with contextlib.ExitStack() as stack:
-                    reviewer = None
-                    if spec.fault_injection.get("reviewer") == "empty":
-                        reviewer = stack.enter_context(FakeLLM(mode="empty")).llm_config("fault-empty")
-                    cfg = build_config(llm, reviewer_llm=reviewer, all_llms=llm_override)
-                    label = f"nat:{llm}" if llm_override is None else "nat:fake"
-                    tr = await run_spec(spec, cfg, label, Path(tmp))
-                path = out / f"{spec.id}__{label.replace(':', '-')}__run{n}.json"
-                tr.save(path)
-                written.append(path)
-                print(f"[{spec.id} run {n}] {tr.meta['seconds']}s · turns {len(tr.turns)} · "
-                      f"tool calls {sum(len(t.calls) for t in tr.turns)} -> {path.name}", flush=True)
+                for attempt in range(1, unscorable_retries + 2):
+                    with contextlib.ExitStack() as stack:
+                        reviewer = None
+                        if spec.fault_injection.get("reviewer") == "empty":
+                            reviewer = stack.enter_context(FakeLLM(mode="empty")).llm_config("fault-empty")
+                        cfg = build_config(llm, reviewer_llm=reviewer, all_llms=llm_override)
+                        label = f"nat:{llm}" if llm_override is None else "nat:fake"
+                        tr = await run_spec(spec, cfg, label, Path(tmp))
+                    tr.meta["attempt"] = attempt
+                    stem = f"{spec.id}__{label.replace(':', '-')}__run{n}"
+                    path = out / (f"{stem}__unscorable{attempt}.json" if tr.meta.get("unscorable") else f"{stem}.json")
+                    tr.save(path)
+                    written.append(path)
+                    print(f"[{spec.id} run {n}{f' attempt {attempt}' if attempt > 1 else ''}] {tr.meta['seconds']}s · "
+                          f"turns {len(tr.turns)} · tool calls {sum(len(t.calls) for t in tr.turns)}"
+                          f"{' · 판정 불가 (NIM overload)' if tr.meta.get('unscorable') else ''} -> {path.name}", flush=True)
+                    if not tr.meta.get("unscorable"):
+                        break
     return written
+
+
+# ---------------------------------------------------------------------------------------------- NIM preflight
+def _llm_endpoint(llm: str) -> tuple[str, str]:
+    """(base_url, model) of a workflow.yml LLM, as the NAT nim client resolves them."""
+    entry = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["llms"][llm]
+    return (entry.get("base_url") or "https://integrate.api.nvidia.com/v1").rstrip("/"), entry["model_name"]
+
+
+def nim_call_once(base_url: str, model: str, api_key: str, timeout: float = 60.0) -> str | None:
+    """One short streamed chat request, sent once. None when a content delta arrives, else what went wrong.
+
+    The overload comes as HTTP 200 with an error line in the stream (#6) or as an HTTP 429/503; both count."""
+    import urllib.error
+    import urllib.request
+    body = json.dumps({"model": model, "stream": True, "max_tokens": 8, "temperature": 0.0,
+                       "messages": [{"role": "user", "content": "Reply with OK."}]}).encode()
+    req = urllib.request.Request(f"{base_url}/chat/completions", data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "Accept": "text/event-stream",
+                                          "Authorization": f"Bearer {api_key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for raw in resp:
+                line = raw.decode("utf-8", "replace").strip()
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                if not line or line == "[DONE]":
+                    continue
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(msg, dict) and msg.get("error"):
+                    err = msg["error"]
+                    return f"stream error {err.get('code', '?') if isinstance(err, dict) else ''}".strip()
+                choices = msg.get("choices") if isinstance(msg, dict) else None
+                if choices and (choices[0].get("delta") or {}).get("content"):
+                    return None
+            return "stream ended without content"
+    except urllib.error.HTTPError as e:
+        return f"HTTP {e.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return type(e).__name__
+
+
+def nim_preflight(n: int, call) -> dict:
+    """Send n requests with call() -> error|None and measure the success rate (errors by kind, never the key)."""
+    errors: dict[str, int] = {}
+    t0 = time.time()
+    for _ in range(n):
+        err = call()
+        if err:
+            errors[err] = errors.get(err, 0) + 1
+    ok = n - sum(errors.values())
+    return {"calls": n, "ok": ok, "rate": round(ok / n, 3) if n else 0.0, "errors": errors,
+            "seconds": round(time.time() - t0, 1), "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+
+
+def preflight_gate(out: Path, n: int, min_success: float, call, model: str = "") -> dict:
+    """Measure, write <out>/preflight.json and decide: pre["passed"] is False when the rate is below min_success."""
+    pre = {**nim_preflight(n, call), "model": model, "min_success": min_success}
+    pre["passed"] = pre["rate"] >= min_success
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "preflight.json").write_text(json.dumps(pre, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"NIM preflight: {pre['ok']}/{pre['calls']} ({pre['rate']:.0%}) in {pre['seconds']}s, "
+          f"need {min_success:.0%} -> {'go' if pre['passed'] else 'HOLD'} {pre['errors'] or ''}", flush=True)
+    return pre
 
 
 def plan_summary(specs: list[Spec], k: int | None) -> str:
@@ -273,6 +364,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--llm", default="nim_super", help="workflow llm name in configs/workflow.yml")
     ap.add_argument("--out", default=None, help="trace folder (default out/golden_a/<timestamp>)")
     ap.add_argument("--plan", action="store_true", help="print what would run and exit (no model calls)")
+    ap.add_argument("--unscorable-retries", type=int, default=2,
+                    help="runs ended by NIM overload are started again this many times (default 2)")
+    ap.add_argument("--nim-preflight", type=int, default=0, metavar="N",
+                    help="first send N short requests to the model; stop unless --min-success of them answer")
+    ap.add_argument("--min-success", type=float, default=0.95, help="preflight success rate needed (default 0.95)")
     args = ap.parse_args(argv)
 
     specs_all = load_specs()
@@ -290,7 +386,15 @@ def main(argv: list[str] | None = None) -> int:
     if not os.environ.get("NVIDIA_API_KEY", "").startswith("nvapi-"):
         print("[error] NVIDIA_API_KEY missing (.env)"); return 2
     out = Path(args.out or ROOT / "out" / "golden_a" / time.strftime("%Y%m%d-%H%M%S"))
-    asyncio.run(run_specs(specs, args.k, args.llm, out))
+    if args.nim_preflight > 0:
+        base_url, model = _llm_endpoint(args.llm)
+        key = os.environ["NVIDIA_API_KEY"]
+        pre = preflight_gate(out, args.nim_preflight, args.min_success,
+                             lambda: nim_call_once(base_url, model, key), model=model)
+        if not pre["passed"]:
+            print(f"[hold] NIM is overloaded; no spec was run. preflight: {out / 'preflight.json'}")
+            return 3
+    asyncio.run(run_specs(specs, args.k, args.llm, out, unscorable_retries=args.unscorable_retries))
     print(f"\ntraces: {out}\njudge:  python -m evals.golden_a.judge --traces {out}")
     return 0
 

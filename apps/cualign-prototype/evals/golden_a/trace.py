@@ -6,6 +6,7 @@ agent="reviewer"; the planner's call of the reviewer itself is name="reviewer" w
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -63,3 +64,28 @@ def normalize_tool_name(raw: str) -> tuple[str, str]:
     if raw.startswith("cualign__"):
         return raw[len("cualign__"):], "planner"
     return raw, "planner"
+
+
+# A turn that crashed is recorded as "<ExceptionType>: <message>" (runner.run_spec). The NVIDIA API's overload reaches
+# it as NIMStreamError (nim_stream_patch: 7 streamed requests over ~63 s all overloaded) or as "[503] ..." / "[429] ..."
+# from a call that is not streamed. Tool retries logged by NAT ("retry ...", "Tool call failed ...") are not crashes:
+# a reviewer that failed on a 503 and said so is agent behaviour and is scored (G-review-fail-visible).
+_CRASH = re.compile(r"^(?:[A-Za-z_][\w.]*)?(?:Error|Exception)\b: ")
+_OVERLOAD = re.compile(r"NIMStreamError|\[(?:429|503)\]|\b(?:429|503)\b|overloaded|Too Many Requests|"
+                       r"Service Unavailable|RateLimit", re.I)
+
+
+def is_overload_crash(error: str) -> bool:
+    """True for a crashed-turn record whose cause is the NVIDIA API being overloaded (#51)."""
+    return bool(_CRASH.match(error) and _OVERLOAD.search(error))
+
+
+def unscorable_reason(trace: Trace) -> str | None:
+    """Why the run says nothing about the agent, or None. Such a run is "판정 불가": not a pass, not a failure."""
+    if trace.meta.get("unscorable"):
+        return str(trace.meta["unscorable"])
+    for n, t in enumerate(trace.turns):
+        for e in t.errors:
+            if is_overload_crash(e):
+                return f"turn {n}: {e[:200]}"
+    return None
