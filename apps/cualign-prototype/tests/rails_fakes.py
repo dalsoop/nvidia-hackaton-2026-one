@@ -62,7 +62,12 @@ def flagging(_config_dir, _model_base_url=None):
 
 
 class FakeLLM:
-    """Answers every chat completion with `content` and no tool call, so the ReAct agent ends at once."""
+    """Answers every chat completion with `content` and no tool call, so the ReAct agent ends at once.
+    The first `busy` streamed requests get what the NVIDIA API sends when overloaded (#6): HTTP 200, one error line."""
+
+    busy = 0
+    busy_error = {"message": "Service temporarily overloaded", "code": 503}
+    busy_hold = 0
 
     def __init__(self, content="MARK-PLANNER 계획 초안입니다."):
         self.content = content
@@ -85,6 +90,18 @@ class FakeLLM:
                 msg = fake.reply(req)
                 finish = "tool_calls" if msg.get("tool_calls") else "stop"
                 head = {"id": "fake", "created": int(time.time()), "model": req.get("model", "fake")}
+                if req.get("stream") and len(fake.requests) <= fake.busy:
+                    self.protocol_version = "HTTP/1.1"  # a chunked stream like the API's, ending busy_hold s later
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Transfer-Encoding", "chunked")
+                    self.end_headers()
+                    line = json.dumps({"error": fake.busy_error}).encode() + b"\n"
+                    self.wfile.write(b"%x\r\n%s\r\n" % (len(line), line))
+                    self.wfile.flush()
+                    time.sleep(fake.busy_hold)
+                    self.wfile.write(b"0\r\n\r\n")
+                    return
                 if req.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
