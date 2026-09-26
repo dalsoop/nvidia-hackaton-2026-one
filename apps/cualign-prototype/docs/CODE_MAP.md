@@ -87,6 +87,7 @@
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
 | `tests/test_api.py` | UI 경로·승인→ZIP·잘못된 계획 ID·검토 재요청 경로 검사 |
 | `tests/test_patients.py` | 환자 등록(식별정보 거부)→업로드→입력 확인→번호 확인 뒤에만 계획, 스캐너 좌표 정렬, 좌우 번호 경고·뒤집기, 번호 변경 뒤 이전 계획 차단, ID 비재사용, 삭제 시 파생물 제거, 입력 검증, 경로 ID 거부 |
+| `tests/test_ui_flow.py`, `tests/fixtures/ui_flow.json` | 화면 순서 그대로: 환자 등록→번호 뒤집힌 스캔 업로드→입력 확인(뒤집기·revision)→활성화→규칙 폴백→조건 폼으로 `/chat/stream` 까지, 가짜 계획 모델로 키 없이 검사 (#49). 입력·기대값은 JSON 에서 읽음 |
 | `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
 | `tests/test_context_preload.py` | 서버 문맥에 미리 싣는 케이스 요약·한도·스킬이 설정대로 들어가고, 끄거나 블록이 없으면 전과 같은지(#48) |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/검토 재요청/승인·지연 응답 검사 |
