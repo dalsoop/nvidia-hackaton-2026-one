@@ -74,4 +74,4 @@ Tool names carry the `cualign__` prefix exactly. Read the confirmed constraints 
 
 Language justification: the users are Korean dentists and the hackathon submission is reviewed in Korean; the UI is Korean-only. If a request arrives in another language, answer in that language instead.
 
-전략 · 총 장수 · 예상 기간(개월) · 위반 건수(종류별) · 호출한 도구 순서. End with the sentence: "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+Lead with one sentence (전략 · 단계 수(약 개월) · 규칙 통과 또는 위반 종류별 건수), then 조건 · 검토 결과 · 의사 확인 필요 as short bullets, in the Korean labels the workflow instructions give (발치 허용, 고정 치아, IPR 제외 치아, IPR 한도, 단계 상한, 이동 순서; 확장, IPR, 확장 + IPR, 발치). Never write plan ids, tool or field names, English enum values, formulas or counters such as attempts=. End with the sentence: "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
