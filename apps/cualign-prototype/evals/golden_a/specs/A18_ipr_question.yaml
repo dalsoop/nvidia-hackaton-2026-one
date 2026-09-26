@@ -18,13 +18,14 @@ checks:
   - id: A18-amount
     type: answer_contains_any
     turn: 0
-    patterns: ['IPR[^\n]{0,60}\d+(\.\d+)?\s*mm', '\d+(\.\d+)?\s*mm[^\n]{0,30}IPR']
+    # the condition line ("IPR 제외 치아 없음 · IPR 한도 면당 0.25mm") is not the calculated amount
+    patterns: ['IPR(?!\s*(한도|제외))[^\n·]{0,60}\d+(\.\d+)?\s*mm', '\d+(\.\d+)?\s*mm[^\n·]{0,30}IPR(?!\s*(한도|제외))']
     severity: S1
   - id: A18-ipr-values
     type: numbers_near_keyword_grounded
     turn: 0
     keyword: IPR
-    keys: [ipr_mm_per_surface, space_gain_mm, crowding_mm, space_deficit_mm, needed_mm]
+    keys: [ipr_mm_per_surface, space_gain_mm, crowding_mm, space_deficit_mm, needed_mm, ipr_limit_mm]   # ipr_limit_mm: the stated 조건
     severity: S0
   - id: A18-framed-as-calculation
     type: answer_contains_any

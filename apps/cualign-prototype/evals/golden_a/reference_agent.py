@@ -24,6 +24,7 @@ from cualign.core import limits as L
 from cualign.core import planner
 from cualign.core.store import Store
 
+from .checks import ORDER_KO, STRATEGY_KO, VIOLATION_KO
 from .trace import ToolCall, Trace, Turn
 
 DISCLAIMER = "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
@@ -179,10 +180,18 @@ def _parse(text: str, st: dict) -> None:
 
 
 def constraint_labels(cons: dict, months: int | None = None) -> str:
-    """The extraction and stage-cap conditions a plan was computed with, from its tool result."""
+    """The conditions a plan was computed with (its tool result), in the words of the UI's condition form."""
+    def teeth(xs):
+        return ", ".join(map(str, xs)) + "번" if xs else "없음"
     cap = cons.get("stage_cap")
-    cap_s = (f"단계 상한 {cap}단계" + (f"({months}개월)" if months and L.stage_cap_from_months(months) == cap else "")) if cap else "단계 상한 없음"
-    return f"사용한 조건: {'발치 허용' if cons.get('allow_extraction') else '발치 없이'}, {cap_s}"
+    cap_months = months if months and L.stage_cap_from_months(months) == cap else L.months_from_stages(cap) if cap else None
+    return (f"- 조건: 발치 허용 {'예' if cons.get('allow_extraction') else '아니요'} · 고정 치아 {teeth(cons.get('lock'))}"
+            f" · IPR 제외 치아 {teeth(cons.get('ipr_exclude'))} · IPR 한도 면당 {cons.get('ipr_limit_mm'):g}mm"
+            f" · 단계 상한 {f'{cap}단계(약 {cap_months:g}개월)' if cap else '없음'} · 이동 순서 {ORDER_KO[cons.get('order')]}")
+
+
+def violation_labels(plan: dict) -> str:
+    return ", ".join(f"{VIOLATION_KO.get(k, k)} {n}건" for k, n in _by_type(plan).items())
 
 
 def _compare_request(text: str) -> bool:
@@ -224,8 +233,7 @@ class ReferenceAgent:
     def _review(self, pid: str) -> str:
         r = self.tools.reviewer(pid)
         if not r or r.get("status") != "passed":
-            why = (r or {}).get("error") or "오류"
-            return (f"검토 메모 생성 실패({why}): 검토 에이전트가 메모를 만들지 못했습니다. "
+            return ("검토 메모 생성 실패: 검토 에이전트가 메모를 만들지 못했습니다. "
                     "위 계획 결과는 검증 도구 기준이며 검토 메모는 없습니다.")
         return "검토 메모:\n" + r["message"]
 
@@ -266,7 +274,7 @@ class ReferenceAgent:
         if _delegation(text) and self.st["last"]:
             last = self.st["last"]
             return ("진단에서 정한 조건(발치 금지·기간 상한)은 의사 확인 없이 바꾸지 않습니다. "
-                    f"현재 조건에서 가장 나은 안은 plan_id: {last['plan_id']} 이며 규칙을 통과하지 못했습니다. "
+                    f"현재 조건에서 가장 나은 안({STRATEGY_KO[last['strategy']]}, {last['n_stages']}단계)도 규칙을 통과하지 못했습니다. "
                     "발치를 허용하거나 기간을 늘릴까요? " + DISCLAIMER)
         # No interview: the UI greeting already asked, and what the dentist did not say is the displayed form.
         compare = _compare_request(text)
@@ -281,12 +289,11 @@ class ReferenceAgent:
             ok = [p for p in plans if p["passed"]]
             best = (min(ok, key=lambda p: p["info"]["n_stages"]) if ok else
                     min(plans, key=lambda p: (len(p["violations"]), p["info"]["space_deficit_mm"])))
-            lines = [f"동일 조건으로 {len(plans)}개 안을 계산했습니다.", constraint_labels(r["constraints"], self.st["months"])]
+            lines = [f"**같은 조건으로 {len(plans)}개 안을 비교했습니다.** 먼저 볼 안은 {STRATEGY_KO[best['strategy']]} 안입니다.",
+                     constraint_labels(r["constraints"], self.st["months"])]
             for p in plans:
-                st = "통과" if p["passed"] else "위반 " + ", ".join(_by_type(p))
-                lines.append(f"- {p['strategy']}: {p['info']['n_stages']}단계 · {p['info']['months']}개월 · {st} · "
-                             f"plan_id {p['plan_id']}")
-            lines.append(f"검토용으로 먼저 볼 안: {best['plan_id']}")
+                st = "통과" if p["passed"] else "규칙 위반: " + violation_labels(p)
+                lines.append(f"- {STRATEGY_KO[p['strategy']]}: {p['info']['n_stages']}단계(약 {p['info']['months']}개월) · {st}")
             T.tool("select_plan", plan_id=best["plan_id"])
             self.st["last"] = {"plan_id": best["plan_id"], "strategy": best["strategy"],
                                "n_stages": best["info"]["n_stages"], "max_move_mm": best["target"].get("max_move_mm")}
@@ -308,10 +315,10 @@ class ReferenceAgent:
             chosen = min(tried, key=lambda x: (len(x[2]["violations"]), x[1]["space_deficit_mm"]))
         s, t, v = chosen
         info = v["info"]
-        status = "없음 (통과)" if v["passed"] else ", ".join(_by_type(v))
-        lines = [f"전략: {s} · 총 {info['n_stages']}단계 · 예상 기간 {info['months']}개월 · 위반: {status}",
-                 f"plan_id: {v['plan_id']}", constraint_labels(v["constraints"], self.st["months"]),
-                 "시도한 전략: " + " → ".join(x[0] + ("(통과)" if x[2]["passed"] else "(위반)") for x in tried)]
+        status = "규칙 위반은 없습니다." if v["passed"] else f"규칙 위반: {violation_labels(v)}."
+        lines = [f"**{STRATEGY_KO[s]} 전략으로 {info['n_stages']}단계(약 {info['months']}개월) 계획을 만들었습니다.** {status}",
+                 constraint_labels(v["constraints"], self.st["months"]),
+                 "- 시도한 전략: " + " → ".join(STRATEGY_KO[x[0]] + ("(통과)" if x[2]["passed"] else "(위반)") for x in tried)]
         if _ipr_question(text):
             surf = re.search(r"x\s*(\d+)면", " ".join(t["notes"]))
             lines.append(f"계산상 IPR 면당 {t['ipr_mm_per_surface']}mm"
@@ -322,9 +329,9 @@ class ReferenceAgent:
             lines.append(f"허용된 전략이 모두 규칙을 통과하지 못했습니다. 이 안도 공간이 {t['space_deficit_mm']}mm 부족합니다. "
                          "조건을 바꾸려면 의사 확인이 필요합니다. 발치를 허용하거나 기간을 늘릴까요?")
         if prev and self.st["lock"]:
-            lines.append(f"이전 안 {prev['plan_id']}: {prev['strategy']} · {prev['n_stages']}단계 · 최대 이동 {prev['max_move_mm']}mm → "
-                         f"새 안 {v['plan_id']}: {s} · {info['n_stages']}단계 · 최대 이동 {t['max_move_mm']}mm "
-                         f"(달라진 점: 고정 치아 {sorted(self.st['lock'])} 반영)")
+            lines.append(f"- 이전 안({STRATEGY_KO[prev['strategy']]}, {prev['n_stages']}단계, 최대 이동 {prev['max_move_mm']}mm) → "
+                         f"새 안({STRATEGY_KO[s]}, {info['n_stages']}단계, 최대 이동 {t['max_move_mm']}mm). "
+                         f"달라진 점: 고정 치아 {', '.join(map(str, sorted(self.st['lock'])))}번 반영")
         if re.search(r"(STL|파일)", text, re.I):
             # No tool can approve a plan (workflow.yml); export_stl only works after the dentist approves in the UI.
             lines.append("파일 내보내기는 의사가 화면에서 이 계획을 승인한 뒤에만 할 수 있어 아직 내보내지 않았습니다. "
