@@ -60,6 +60,14 @@ llms:
 middleware:
   cualign_rails:
     _type: cualign_rails
+    # The NIM client's re-request policy (agent/nim_stream_patch.py reads these; nothing is fixed in code).
+    nim_retry:
+      stream_delays: [1, 2, 4, 8, 16, 32]   # seconds before each re-request of a streamed call: 7 requests, 63 s (#6)
+      request_delays: [1, 2, 4]              # calls that are not streamed (the review): 4 requests, 7 s (#34)
+      retry_codes: [429, 500, 502, 503, 504]
+      fallback_models: []                    # tried once each after the re-requests are used up (#51 2번, 팀 결정 전 비움)
+    # Shown on screen with a resend button when a plan request dies of that overload (#51 4번).
+    overload_notice: "NVIDIA API가 일시적으로 과부하 상태입니다. 다시 시도해 주세요."
 
 workflow:
   _type: react_agent

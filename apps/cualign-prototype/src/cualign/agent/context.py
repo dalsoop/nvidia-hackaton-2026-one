@@ -19,6 +19,7 @@ class PlanRun:
     closed: bool = False
     rails: str | None = None  # passed | flagged | blocked | error | off, set by the rails middleware
     refused: bool = False  # the rails middleware replaced the answer with its refusal
+    error: dict | None = None  # {"kind": "nim_overload" | "workflow_error", "message": ...} when the workflow raised
 
 
 CURRENT_RUN: ContextVar[PlanRun | None] = ContextVar("cualign_plan_run", default=None)

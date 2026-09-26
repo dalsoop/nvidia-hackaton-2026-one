@@ -32,6 +32,7 @@ const state = {
   checkCase: null,       // case id shown on the input-check screen
   checkRevision: null,   // scan revision shown there; the confirmation names it
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
+  lastRequest: null,     // {text, constraints} of the last /chat/stream request, replayed by 다시 보내기 (#51)
 };
 
 // ------------------------------------------------------------------ three.js
@@ -659,22 +660,28 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
 }
 
 
-async function send(text) {
+// `constraints` and `resend` come from the 다시 보내기 button: the same text and form values as the failed request,
+// a fresh request id, and the failed turn's user message replaced rather than repeated in the transcript the model sees.
+async function send(text, constraints = null, { resend = false } = {}) {
   text = (text ?? "").trim();
   if (!text || state.streaming || state.loading) return;
   if (!state.meshCase) { $("caseGate").hidden = false; return; }
-  let constraints;
-  try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
+  if (constraints === null) {
+    try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
+  }
   const requestId = crypto.randomUUID(), caseId = state.meshCase;
   state.requestId = requestId;
   state.streaming = true; updateActions();
+  $("retryBar").hidden = true;
   $("planNotice").textContent = state.plan ? "재계획 중 — 현재 3D는 이전 계획입니다." : "계획 생성 중";
   $("chatInput").value = "";
+  if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
+  state.lastRequest = { text, constraints };
   addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
-  let answer = "", selected = null, streamError = false;
+  let answer = "", selected = null, streamError = false, overload = null;
   const handle = ({type, data: obj}) => {
     if (type === "plan_selected") {
       if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
@@ -682,6 +689,7 @@ async function send(text) {
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
       streamError = true; addStep("error", obj, "fallback");
+      if (obj.kind === "nim_overload" && obj.request_id === state.requestId) overload = obj;  // the server's sentence
     } else if (type === "intermediate_data") {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
@@ -710,7 +718,7 @@ async function send(text) {
       if (selected.reviewed_by_server) addMsg("system", "에이전트가 검토를 호출하지 않아 서버가 같은 조건으로 검토를 실행했습니다.");
       if (selected.review.status === "failed") addMsg("error", selected.review.message + " (" + selected.review.error + ")");
     } else if (streamError || !answer) {
-      throw new Error("모델 실행 또는 최종 계획 선택 실패");
+      throw new Error(overload?.message || "모델 실행 또는 최종 계획 선택 실패");
     } else {
       $("planNotice").textContent = "새 계획 선택 없음 — 대화 내용을 확인하세요.";
     }
@@ -719,6 +727,7 @@ async function send(text) {
     bubble.classList.add("error");
     $("planNotice").textContent = "재계획 실패 — 현재 3D는 이전 계획입니다.";
     addMsg("error", e.message);
+    if (overload && state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
     if (state.requestId === requestId) { state.streaming = false; updateActions(); }
   }
@@ -764,6 +773,10 @@ function togglePlay() {
 $("chatForm").addEventListener("submit", (e) => { e.preventDefault(); send($("chatInput").value); });
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
 $("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) send(e.target.textContent); });
+$("resendBtn").addEventListener("click", () => {
+  const last = state.lastRequest;
+  if (last) send(last.text, last.constraints, { resend: true });
+});
 $("caseCards").addEventListener("click", (e) => {
   const card = e.target.closest(".case-card");
   if (card) { state.patient = null; activateCase(card.dataset.id).catch((err) => addMsg("error", `케이스 로드 실패: ${err.message}`)); }

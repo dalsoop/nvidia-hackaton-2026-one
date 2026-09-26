@@ -25,7 +25,7 @@ from nat.runtime.loader import load_config, load_workflow
 
 from rails_fakes import A14, FakeLLM, FakeRails, PlanningLLM, RailLLM, SkippingPlanner
 from cualign import cli
-from cualign.agent import register, reviewer
+from cualign.agent import nim_stream_patch, register, reviewer
 from cualign.core import store as store_module
 from cualign.server import api, plan_events, rails_middleware
 from cualign.server.rails import Rails
@@ -528,3 +528,28 @@ def test_mcp_plan_runs_the_guarded_workflow(store, tmp_path, monkeypatch):
     assert out["plan"]["plan_id"] in store.plans
     assert {"propose_target", "plan_stages", "select_plan"} <= {t.split("__")[-1] for t in out["tools"]}
     assert str(llm.requests[0]["messages"]).count("cuAlign server context") == 1
+
+
+def test_overload_crash_reaches_the_ui_as_a_nim_overload_event(store, tmp_path, monkeypatch):
+    """#51 4번: a turn the NVIDIA API's overload killed ends with plan_error kind=nim_overload and the sentence from
+    configs/workflow.yml (overload_notice), so the UI can show it with a 다시 보내기 button. NAT's own unframed
+    workflow_error line stays for plan-stream.js. The yml's nim_retry block is what the client patch runs with."""
+    for name in ("DELAYS", "REQUEST_DELAYS", "RETRY_CODES", "FALLBACK_MODELS"):
+        monkeypatch.setattr(nim_stream_patch, name, getattr(nim_stream_patch, name))   # restored after the test
+
+    def edit(cfg):
+        for llm in cfg["llms"].values():
+            llm.update(num_retries=1, max_retries=0)   # the fake answers 503 to everything; no waiting in NAT
+        cfg["middleware"]["cualign_rails"]["overload_notice"] = "MARK-NOTICE 과부하입니다."
+        cfg["middleware"]["cualign_rails"]["nim_retry"] = {"stream_delays": [0], "request_delays": [],
+                                                           "retry_codes": [503], "fallback_models": []}
+    with FakeLLM() as llm:
+        llm.busy, llm.busy_http = 99, True
+        with serve(tmp_path, monkeypatch, llm, edit=edit) as client:
+            assert nim_stream_patch.DELAYS == (0,) and nim_stream_patch.RETRY_CODES == {503}
+            body = ask(client, "/chat/stream", cualign={"case_id": "moderate", "request_id": "r-51"})
+    assert "workflow_error" in body
+    error = sse_event(body, "plan_error")
+    assert error["kind"] == "nim_overload" and error["message"] == "MARK-NOTICE 과부하입니다."
+    assert error["request_id"] == "r-51" and "plan_selected" not in body
+    assert sse_event(body, "plan_context")["request_id"] == "r-51"

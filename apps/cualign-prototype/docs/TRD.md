@@ -122,8 +122,9 @@ ZIP API·export_stl 도구는 요청마다 승인과 해시를 검사하며 미�
 ## 5. 오류·안전 동작
 
 이전 검토 에이전트에서 빈 응답·ReAct 파싱 실패와 반복 호출이 관측됐다. 현재 구현은 제한된 검토 호출로 교체했다. 최종 응답이 반환돼도 중간 오류가 없었다는 뜻은 아니다.
-NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 1·2·4…32초 뒤 최대 6회 다시 요청하고, 그래도 안 되거나 재시도할 수 없는 오류면 빈 답 대신 예외로 턴을 끝낸다(`agent/nim_stream_patch.py`).
-검토 호출이 HTTP 429·5xx 를 받으면 1·2·4초 뒤 최대 3회 다시 요청하고, 그래도 안 되면 원래 예외를 그대로 던진다(같은 모듈). 레일 판정은 Guardrails 자체 클라이언트가 최대 4회 다시 묻는다(`guardrails/config.yml` 의 `max_retries`).
+NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 설정된 간격(기본 1·2·4…32초, 최대 6회) 뒤 다시 요청하고, 설정된 대체 모델이 있으면 거기에 한 번씩 더 보낸 뒤, 그래도 안 되거나 재시도할 수 없는 오류면 빈 답 대신 예외로 턴을 끝낸다(`agent/nim_stream_patch.py`).
+검토 호출이 HTTP 429·5xx 를 받으면 설정된 간격(기본 1·2·4초, 최대 3회) 뒤 다시 요청하고, 그래도 안 되면 원래 예외를 그대로 던진다(같은 모듈). 간격·코드·대체 모델은 `configs/workflow.yml` 의 `middleware.cualign_rails.nim_retry` 에 있다. 레일 판정은 Guardrails 자체 클라이언트가 최대 4회 다시 묻는다(`guardrails/config.yml` 의 `max_retries`).
+과부하로 죽은 턴은 `plan_error` 이벤트에 `kind: "nim_overload"` 와 같은 yml 의 `overload_notice` 문장을 실어 보내고, 화면은 «다시 보내기» 버튼을 보여 준다(`agent/overload.py`, `server/plan_events.py`).
 재현 조건·영향·수정 확인 기준은 [알려진 문제](KNOWN_ISSUES.md)에 기록한다.
 
 현재 입력 범위 레일은 차단 판정 시 에이전트를 실행하지 않는다. content safety 입력은 기본 경고 모드다.
