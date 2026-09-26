@@ -1,4 +1,4 @@
-// cuAlign web UI — case gate → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
+// cuAlign web UI — patient → scan upload → input check → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -28,6 +28,10 @@ const state = {
   lastAssistantText: "",
   trace: null,           // inline tool-call trace for the turn in progress
   labels: [],            // CSS2DObject IPR labels
+  patient: null,         // GET /api/patients/{id} payload of the patient on screen
+  checkCase: null,       // case id shown on the input-check screen
+  checkRevision: null,   // scan revision shown there; the confirmation names it
+  gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
 };
 
 // ------------------------------------------------------------------ three.js
@@ -58,7 +62,7 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 (function loop() { controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera); requestAnimationFrame(loop); })();
 
 function buildTeeth(mesh) {
-  group.clear(); state.teeth = {}; state.center = {}; clearLabels();
+  group.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(t.v.flat(), 3));
@@ -77,8 +81,9 @@ function buildTeeth(mesh) {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(mesh.gum.v.flat(), 3));
     geo.setIndex(mesh.gum.f.flat());
     geo.computeVertexNormals();
-    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0 }));
+    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1 }));
     gum.userData.gum = true;
+    state.gum = gum;
     group.add(gum);
   }
   state.archOrder = (mesh.arch_order ?? mesh.ids ?? []).map(String);
@@ -152,6 +157,9 @@ function applyStage(k) {
   state.stage = k;
   const plan = state.plan;
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
+  const rot = k > 0 ? plan?.rotations?.[k - 1] ?? {} : {};
+  // the scanned gum does not move with the crowns: fade it once they do, so moved crowns are not hidden in it
+  if (state.gum) { state.gum.material.opacity = k > 0 ? 0.35 : 1; state.gum.material.depthWrite = k === 0; }
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
@@ -160,7 +168,10 @@ function applyStage(k) {
   const maxMove = Math.max(1e-6, ...Object.values(last).map((d) => Math.hypot(...d)));
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
-    if (d) m.position.set(d[0], d[1], d[2]); else m.position.set(0, 0, 0);
+    // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
+    const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
+    m.rotation.set(0, 0, a);
+    m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
     const gone = hasPlan && removed.has(id);
     m.visible = !gone || k === 0;
     m.material.opacity = gone ? 0.25 : 1;
@@ -241,7 +252,7 @@ function updateActions() {
   const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
   for (const id of ["sendBtn", "fallbackBtn", "caseBtn", "planSelect"]) $(id).disabled = !!busy;
   $("constraints").disabled = !!busy;
-  $("approveBtn").disabled = !allowed || !p.passed || !["passed", "skipped"].includes(p.review.status);
+  $("approveBtn").disabled = !allowed || !p.passed || p.input_stale || !["passed", "skipped"].includes(p.review.status);
   $("approveBtn").textContent = p?.approval ? "승인 취소" : "의사 승인";
   // Recovery when the agent skipped the reviewer or the review failed: the dentist asks for it on this plan.
   $("reviewBtn").hidden = !p || !["not_requested", "failed"].includes(p.review.status);
@@ -286,7 +297,143 @@ async function reviewCurrent() {
   finally { state.loading = false; updateActions(); }
 }
 
-// ------------------------------------------------------------------ case gate (start point)
+// ------------------------------------------------------------------ patient flow (start point)
+// 환자 목록 → 환자(스캔 목록·업로드) → 입력 확인 → 계획. Samples sit outside the flow. The alias stays in the UI;
+// the chat and tools only see the pseudonymous case id (P0001-S1).
+const SCREENS = { patients: "screenPatients", patient: "screenPatient", check: "screenCheck", samples: "screenSamples" };
+function showScreen(name) {
+  for (const [k, id] of Object.entries(SCREENS)) $(id).hidden = k !== name;
+  $("caseGate").classList.toggle("side", name === "check");   // keep the 3D viewer visible while checking
+  $("caseGate").hidden = false;
+}
+const fmtDate = (iso) => (iso ?? "").slice(0, 16).replace("T", " ");
+
+async function loadPatients() {
+  const { patients } = await api("/api/patients");
+  const wrap = $("patientCards");
+  wrap.innerHTML = "";
+  if (!patients.length) wrap.innerHTML = '<p class="empty">등록된 환자가 없습니다. 아래에서 새 환자를 등록하세요.</p>';
+  for (const p of patients) {
+    const b = document.createElement("button");
+    b.className = "case-card";
+    b.dataset.pid = p.patient_id;
+    b.innerHTML = `<span class="cid"></span><span class="sev"></span><span class="meta"></span>`;
+    b.querySelector(".cid").textContent = p.alias;
+    b.querySelector(".sev").textContent = p.patient_id + (p.memo ? " · " + p.memo : "");
+    b.querySelector(".meta").textContent = `스캔 ${p.n_scans}개 · 등록 ${fmtDate(p.created_at)}`;
+    if (state.patient?.patient_id === p.patient_id) b.classList.add("current");
+    wrap.appendChild(b);
+  }
+}
+
+async function openPatient(pid) {
+  const v = ++state.gateVersion;
+  const p = await api("/api/patients/" + encodeURIComponent(pid));
+  if (v !== state.gateVersion) return;
+  state.patient = p;
+  $("patientTitle").textContent = p.alias;
+  $("patientMeta").textContent = `${p.patient_id} · 등록 ${fmtDate(p.created_at)}` + (p.memo ? ` · ${p.memo}` : "");
+  const list = $("scanList");
+  list.innerHTML = "";
+  if (!p.scans.length) list.innerHTML = '<p class="empty">아직 스캔이 없습니다. 아래에 상악 스캔을 올리세요.</p>';
+  for (const sc of [...p.scans].reverse()) {
+    const row = document.createElement("div");
+    row.className = "scan-row";
+    const ok = sc.confirmed_revision != null && sc.confirmed_revision === (sc.revision ?? 1);   // confirmed this revision
+    row.innerHTML = `<span class="sid"></span><span class="meta"></span>
+      <button class="btn ghost small" data-act="check" type="button">입력 확인</button>
+      <button class="btn ${ok ? "primary" : "ghost"} small" data-act="${ok ? "plan" : "check"}" type="button">${ok ? "계획" : "확인 필요"}</button>
+      <button class="btn ghost small del" data-act="delete" type="button" title="스캔 삭제">삭제</button>`;
+    row.querySelector(".sid").textContent = sc.scan_id + " · 상악";
+    row.querySelector(".meta").textContent = `치아 ${sc.teeth.length}개${sc.gingiva ? " · 잇몸 포함" : ""} · ${fmtDate(sc.uploaded_at)} · ` +
+      (ok ? `번호 확인됨 · 계획 ${sc.plans ?? 0}개` : "번호 확인 전");
+    row.dataset.case = sc.case_id;
+    list.appendChild(row);
+  }
+  $("uploadStatus").textContent = "";
+  if (!state.meshCase) $("caseName").textContent = p.alias;
+  showScreen("patient");
+}
+
+async function uploadScan(files) {
+  if (!files?.length || !state.patient) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f, f.name);
+  $("uploadStatus").textContent = `${files.length}개 파일 올리는 중 — 치아를 읽고 있습니다`;
+  const pid = state.patient.patient_id;          // the patient this upload belongs to, whatever is on screen later
+  try {
+    const res = await api("/api/patients/" + encodeURIComponent(pid) + "/scans", { method: "POST", body: fd });
+    if (state.patient?.patient_id !== pid) return;   // the dentist moved to another patient meanwhile
+    const p = await api("/api/patients/" + encodeURIComponent(pid));   // now lists the new scan
+    if (state.patient?.patient_id !== pid) return;
+    state.patient = p;
+    await openCheck(res.case_id, res.check);
+  } catch (e) {
+    if (state.patient?.patient_id === pid) $("uploadStatus").textContent = "업로드 실패: " + e.message;
+  }
+}
+
+async function openCheck(caseId, check) {
+  const v = ++state.gateVersion;
+  $("startPlan").disabled = true;
+  const [c, mesh] = await Promise.all([check ?? api("/api/cases/" + encodeURIComponent(caseId) + "/check"),
+                                       api(`/api/cases/${encodeURIComponent(caseId)}/mesh`)]);
+  if (v !== state.gateVersion) return;          // another scan was opened meanwhile: never mix its mesh and this check
+  check = c;
+  // mesh, check list and the confirm target change together, only for the latest choice
+  state.checkCase = caseId;
+  state.checkRevision = check.revision ?? null;
+  state.messages = [];            // a conversation belongs to one case; planning restarts from 계획 시작
+  $("transcript").innerHTML = "";
+  state.meshCase = caseId;
+  state.plan = null;
+  buildTeeth(mesh);
+  resetPlanPanel();
+  const rot = check.rotation_deg ?? {}, vert = check.vertical_mm ?? {};
+  for (const [id, m] of Object.entries(state.teeth)) {
+    if (id in rot) m.material.color.setHex(AMBER);
+    else if (id in vert) m.material.color.setHex(BLUE);
+  }
+  const sid = caseId.split("-")[1] ?? caseId;
+  $("checkMeta").textContent = `${state.patient ? state.patient.alias + " · " : ""}${sid} · 상악 · 케이스 ${caseId}`;
+  const badge = $("checkBadge");
+  badge.textContent = check.ready ? "계획 가능" : "지원 불가 — 계획할 수 없음";
+  badge.className = "badge " + (check.ready ? "pass" : "fail");
+  const rows = [
+    ["인식된 치아", `${check.n_teeth}개 · ${check.teeth.join(", ")}`],
+    ["빠진 치아", check.missing.length ? check.missing.join(", ") : "없음", check.missing.length > 0],
+    ["총생 추정", `${check.crowding_mm} mm`],
+    ["앞니 회전", Object.keys(rot).length ? Object.entries(rot).map(([i, d]) => `${i}번 ${d > 0 ? "+" : ""}${d}°`).join(", ") : "보정할 회전 없음"],
+    // + = past the neighbours toward the occlusal plane, − = short of it (toward the gum)
+    ["높이 차이", Object.keys(vert).length ? Object.entries(vert).map(([i, d]) => `${i}번 ${d > 0 ? "교합면 쪽" : "잇몸 쪽"} ${Math.abs(d)}mm`).join(", ") : "보정할 차이 없음"],
+    ["잇몸", check.scanned_gingiva ? "스캔 잇몸" : "표시용 생성 잇몸"],
+  ];
+  const o = check.orientation;
+  if (o) rows.push(["방향 정렬", ({ gingiva: "잇몸 기준", cervical: "치관 아래 경계 기준", none: "근거 없음 — 입력의 +z를 교합면 쪽으로 가정, 방향 확인 필요" })[o.basis] +
+    (o.rotation_deg ? ` · ${o.rotation_deg}° 회전` : "") + (o.renumbered ? " · 번호 좌우 뒤집음" : ""), o.basis === "none"]);
+  if (check.revision) rows.push(["번호 확인", (check.confirmed ? "확인됨 " + fmtDate(check.confirmed_at) : "확인 전") + ` · 입력 버전 ${check.revision}`]);
+  $("sideWarn").hidden = o?.side !== "reversed";
+  if (check.outside.length) rows.splice(2, 0, ["스캔에 없는 끝 치아", check.outside.join(", ")]);
+  for (const why of check.unsupported) rows.push(["지원 불가", why, true]);
+  const dl = $("checkList");
+  dl.innerHTML = "";
+  for (const [k, v, bad] of rows) {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v;
+    if (bad) dd.className = "bad";
+    dl.append(dt, dd);
+  }
+  $("startPlan").disabled = !check.ready;
+  $("caseName").textContent = (state.patient ? state.patient.alias + " · " : "") + sid + " · 입력 확인 중";
+  showScreen("check");
+}
+
+function caseTitle(caseId, crowding) {
+  const sc = state.patient?.scans?.find((x) => x.case_id === caseId);
+  return (sc ? `${state.patient.alias} · ${sc.scan_id}` : caseId) + ` · 총생 ${crowding} mm`;
+}
+
+// ------------------------------------------------------------------ samples (outside the patient flow)
 const SEVERITY = (mm) => mm == null ? "" : mm < 1 ? "정렬 상태" : mm <= 3 ? "경도 총생" : mm <= 6 ? "중등도 총생" : mm <= 8 ? "중증 총생" : "발치 임계";
 
 async function loadCases() {
@@ -314,22 +461,12 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.messages = [];
   stopPlay();
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
+  $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   await loadMesh(caseId);
-  state.plan = null;
-  clearLabels(); applyStage(0);
+  resetPlanPanel();
   fillConstraints(info.constraints);
-  $("planSelect").innerHTML = '<option value="">계획 선택…</option>';
-  for (const id of ["rPlan", "rParent", "rReview", "rApproval", "rStrategy", "rStages", "rMonths", "rViol"]) $(id).textContent = "—";
-  $("viewCanvas").dataset.planId = "";
-  $("resultCard").dataset.planId = "";
-  $("reviewMemo").textContent = "";
-  $("planNotice").textContent = "계획 없음";
-  $("stageSlider").disabled = true;
-  $("violTable").querySelector("tbody").innerHTML = "";
-  setBadge("계획 없음", "neutral");
-  updateActions();
   await refreshPlans();
-  $("caseName").textContent = `${caseId} · 총생 ${info.crowding_mm} mm`;
+  $("caseName").textContent = caseTitle(caseId, info.crowding_mm);
   $("caseGate").hidden = true;
   $("gateClose").hidden = false;
   if (greet) {
@@ -340,6 +477,22 @@ async function activateCase(caseId, { greet = true } = {}) {
     addMsg("assistant", text);
     state.messages.push({ role: "assistant", content: text });
   }
+}
+
+function resetPlanPanel() {
+  stopPlay();
+  state.plan = null;
+  clearLabels(); applyStage(0);
+  $("planSelect").innerHTML = '<option value="">계획 선택…</option>';
+  for (const id of ["rPlan", "rParent", "rReview", "rApproval", "rStrategy", "rStages", "rMonths", "rViol"]) $(id).textContent = "—";
+  $("viewCanvas").dataset.planId = "";
+  $("resultCard").dataset.planId = "";
+  $("reviewMemo").textContent = "";
+  $("planNotice").textContent = "계획 없음";
+  $("stageSlider").disabled = true;
+  $("violTable").querySelector("tbody").innerHTML = "";
+  setBadge("계획 없음", "neutral");
+  updateActions();
 }
 
 async function loadMesh(caseId) {
@@ -416,7 +569,8 @@ function renderResult(plan) {
   $("reviewMemo").textContent = review.message + (review.error ? " (" + review.error + ")" : "");
   $("rApproval").textContent = plan.approval ? "의사 승인됨 · " + plan.approval.approved_at : "미승인";
 
-  if (plan.passed || viol.length === 0) setBadge("규칙 통과 (의사 검토 전 초안)", "pass");
+  if (plan.input_stale) setBadge("이전 입력의 계획 — 승인·출력 불가", "fail");
+  else if (plan.passed || viol.length === 0) setBadge("규칙 통과 (의사 검토 전 초안)", "pass");
   else if (byType.space_deficit) setBadge("제약 모순 — 조건 완화 필요", "fail");
   else setBadge(`위반 ${viol.length}건 — 전략 전환 검토`, "warn");
 
@@ -594,19 +748,6 @@ async function runFallback() {
   } finally { state.streaming = false; updateActions(); }
 }
 
-async function upload(files) {
-  if (!files?.length) return;
-  const fd = new FormData();
-  for (const f of files) fd.append("files", f, f.name);
-  try {
-    const res = await api("/api/cases/upload", { method: "POST", body: fd });
-    await loadCases();
-    await activateCase(res.case_id);
-  } catch (e) {
-    addMsg("error", `업로드 실패: ${e.message} — 파일명은 <치아번호>.stl (Universal, 상악) 이어야 합니다`);
-  }
-}
-
 // ------------------------------------------------------------------ stage playback
 function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; $("playBtn").textContent = "▶"; } }
 function togglePlay() {
@@ -625,9 +766,79 @@ $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.
 $("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) send(e.target.textContent); });
 $("caseCards").addEventListener("click", (e) => {
   const card = e.target.closest(".case-card");
-  if (card) activateCase(card.dataset.id).catch((err) => addMsg("error", `케이스 로드 실패: ${err.message}`));
+  if (card) { state.patient = null; activateCase(card.dataset.id).catch((err) => addMsg("error", `케이스 로드 실패: ${err.message}`)); }
 });
-$("caseBtn").addEventListener("click", () => { $("caseGate").hidden = false; });
+$("patientCards").addEventListener("click", (e) => {
+  const card = e.target.closest(".case-card");
+  if (card) openPatient(card.dataset.pid).catch((err) => addMsg("error", "환자 불러오기 실패: " + err.message));
+});
+$("patientForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const p = await api("/api/patients", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias: $("pAlias").value, memo: $("pMemo").value }) });
+    $("pAlias").value = ""; $("pMemo").value = "";
+    await openPatient(p.patient_id);
+  } catch (err) { alert(err.message); }
+});
+$("scanList").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-act]"), caseId = btn?.closest(".scan-row")?.dataset.case;
+  if (!caseId) return;
+  if (btn.dataset.act === "delete") {
+    const sid = caseId.split("-")[1];
+    if (!confirm(`스캔 ${sid}와 그 파일을 지웁니다. 되돌릴 수 없습니다.`)) return;
+    api(`/api/patients/${encodeURIComponent(state.patient.patient_id)}/scans/${encodeURIComponent(sid)}`, { method: "DELETE" })
+      .then(() => openPatient(state.patient.patient_id)).catch((err) => alert("삭제 실패: " + err.message));
+    return;
+  }
+  const go = btn.dataset.act === "check" ? openCheck(caseId) : activateCase(caseId);
+  go.catch((err) => addMsg("error", "스캔 열기 실패: " + err.message));
+});
+$("scanInput").addEventListener("change", (e) => { uploadScan([...e.target.files]); e.target.value = ""; });
+for (const ev of ["dragenter", "dragover"]) $("dropZone").addEventListener(ev, (e) => { e.preventDefault(); $("dropZone").classList.add("over"); });
+for (const ev of ["dragleave", "drop"]) $("dropZone").addEventListener(ev, (e) => { e.preventDefault(); $("dropZone").classList.remove("over"); });
+$("dropZone").addEventListener("drop", (e) => uploadScan([...e.dataTransfer.files]));
+$("startPlan").addEventListener("click", async () => {
+  const caseId = state.checkCase, revision = state.checkRevision;   // exactly what is on screen now
+  const [pid, sid] = (caseId ?? "").split("-");
+  $("startPlan").disabled = true;
+  try {
+    // the confirmation is recorded on the server for this revision; planning tools refuse anything else
+    if (state.patient && sid) {
+      await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}/confirm`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision }) });
+      state.patient = await api("/api/patients/" + encodeURIComponent(pid));
+    }
+    if (state.checkCase === caseId) await activateCase(caseId);
+  } catch (err) { alert("계획 시작 실패: " + err.message); $("startPlan").disabled = false; }
+});
+$("mirrorBtn").addEventListener("click", async () => {
+  const caseId = state.checkCase;
+  const [pid, sid] = (caseId ?? "").split("-");
+  if (!confirm("치아 파일 번호를 좌우로 뒤집습니다 (2↔15, 3↔14 …). 계속할까요?")) return;
+  try {
+    const check = await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}/mirror`, { method: "POST" });
+    if (state.checkCase === caseId) await openCheck(caseId, check);
+  } catch (err) { alert("번호 뒤집기 실패: " + err.message); }
+});
+$("deletePatient").addEventListener("click", async () => {
+  const p = state.patient;
+  if (!p || !confirm(`환자 ${p.alias} (${p.patient_id})와 스캔 ${p.scans.length}개를 이 컴퓨터에서 지웁니다. 되돌릴 수 없습니다.`)) return;
+  try {
+    await api("/api/patients/" + encodeURIComponent(p.patient_id), { method: "DELETE" });
+    state.patient = null;
+    await loadPatients(); showScreen("patients");
+  } catch (err) { alert("삭제 실패: " + err.message); }
+});
+$("toSamples").addEventListener("click", () => loadCases().then(() => showScreen("samples")).catch((err) => addMsg("error", err.message)));
+for (const b of document.querySelectorAll("#caseGate .back")) b.addEventListener("click", () => {
+  if (b.dataset.go === "patient" && state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
+  else loadPatients().then(() => showScreen("patients"));
+});
+$("caseBtn").addEventListener("click", () => {
+  if (state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
+  else loadPatients().then(() => showScreen("patients"));
+});
 $("gateClose").addEventListener("click", () => { $("caseGate").hidden = true; });
 $("planSelect").addEventListener("change", (e) => loadPlan(e.target.value).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`)));
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
@@ -637,7 +848,6 @@ $("approveBtn").addEventListener("click", approveCurrent);
 $("reviewBtn").addEventListener("click", reviewCurrent);
 $("constraints").addEventListener("input", updateActions);
 $("stlLink").addEventListener("click", e => { if (e.currentTarget.classList.contains("disabled")) e.preventDefault(); });
-$("uploadInput").addEventListener("change", (e) => { upload(e.target.files); e.target.value = ""; });
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-btns button")) b.addEventListener("click", () => setView(b.dataset.view));
@@ -650,13 +860,21 @@ for (const b of document.querySelectorAll(".view-btns button")) b.addEventListen
   try {
   if (params.get("plan")) {
     const linkedPlan = await api("/api/plans/" + encodeURIComponent(params.get("plan")));
+    const m = /^(P\d{4,})-(S\d+)$/.exec(linkedPlan.case_id);
+    if (m && linkedPlan.input_stale) {
+      await openPatient(m[1]);
+      await openCheck(linkedPlan.case_id);
+      alert("이 계획은 확인 전이거나 번호가 바뀐 이전 입력으로 만든 것입니다. 입력을 확인한 뒤 다시 계획하세요.");
+      return;
+    }
+    if (m) { try { state.patient = await api("/api/patients/" + m[1]); } catch { /* deleted patient: show the plan read-only */ } }
     await activateCase(linkedPlan.case_id, { greet: false });
     await refreshPlans(params.get("plan"));
     return;
   }
   } catch (e) { addMsg("error", "계획 링크를 불러오지 못했습니다: " + e.message); }
-  // The dentist picks a case every time the page opens (clinical SW: patient first). A case the server
-  // already has active is marked on its card but not auto-selected.
+  // The dentist starts from a patient every time the page opens (clinical SW: patient → scan → plan).
   if (active) document.querySelector(`.case-card[data-id="${CSS.escape(active)}"]`)?.classList.add("current");
-  $("caseGate").hidden = false;
+  try { await loadPatients(); } catch (e) { addMsg("error", "환자 목록 로드 실패: " + e.message); }
+  showScreen("patients");
 })();

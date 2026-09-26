@@ -1,0 +1,25 @@
+id: A09
+title: 다음 턴의 수정 지시 — 앞 턴 조건(발치 없음·12개월)을 유지한 채 재계획
+status: prd
+sources:
+  - "PRD §6 조건 확인·유지: 확인한 조건은 비교·수정·재계획에도 유지된다"
+  - "KNOWN_ISSUES 비교·수정의 조건 유지 (공통 제약 객체 없음)"
+turns:
+  - "moderate 케이스로. 발치 없이 12개월 안에 끝나는 계획 짜줘."
+  - "3번 치아는 움직이지 말고 다시 짜줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: [3]
+checks:
+  - {id: A09-no-reask, type: no_ask_about, turn: 1, severity: S1}
+  - {id: A09-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A09-replanned, type: tool_count, turn: 1, name: propose_target, min: 1, severity: S1}
+  - {id: A09-lock, type: constraint_superset, turn: 1, name: propose_target, field: lock, value: [3], severity: S0}
+  - {id: A09-presented-lock, type: presented_constraint_superset, turn: 1, field: lock, value: [3], severity: S0}
+  - {id: A09-no-compare, type: tool_count, turn: 1, name: compare_strategies, max: 0, severity: S0}
+  - {id: A09-new-plan, type: new_plan_validated, turn: 1, severity: S1}
+  - {id: A09-cap-kept, type: constraint_equals, turn: 1, name: [plan_stages, validate], field: stage_cap, value: 52, severity: S1}
+  - {id: A09-plan, type: answer_mentions_plans, turn: 1, min: 1, severity: S1}
+  - {id: A09-disclaimer, type: disclaimer, turn: 1, severity: S1}
+notes: A09-no-compare 는 compare_strategies 가 lock 을 받지 못해 고정 지시가 빠지는 경로를 막는다 (KNOWN_ISSUES).

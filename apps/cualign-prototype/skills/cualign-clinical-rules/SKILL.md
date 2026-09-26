@@ -17,7 +17,7 @@ description: Validate and stage clear-aligner (투명교정) treatment plans aga
 | Constraint | Value | Note |
 |---|---|---|
 | Linear movement per aligner | 0.25 mm | hard limit for `plan_stages` |
-| Angular / rotational movement per aligner | 1° / 2° | not enforced in MVP |
+| Angular / rotational movement per aligner | 1° / 2° | rotation (2°) enforced for incisor derotation; angulation/torque not supported |
 | Wear period per aligner | 7 days | months = n_stages * 7 / 30.4 |
 | IPR per surface | user limit 0..0.25 mm | PoC space calculation cap; not a patient-specific clinical recommendation |
 | Unilateral arch expansion | max 2 mm | stage the expansion if over 1 mm |
@@ -65,7 +65,8 @@ Tool names carry the `cualign__` prefix exactly. Read the confirmed constraints 
 | `type` | Meaning | Usual fix |
 |---|---|---|
 | `move_limit` | a tooth moves more than 0.25 mm between consecutive stages | more stages (only if the cap allows) or a strategy with smaller total movement |
-| `collision` | convex-hull overlap between two teeth exceeds baseline contact | strategy that creates space first (IPR/expansion), or reorder staging |
+| `collision` | two teeth's convex-hull overlap grows by more than 1 mm³ over where they started | strategy that creates space first (IPR/expansion), or reorder staging |
+| `rotation_limit` | a tooth turns more than 2° between consecutive stages | more stages (only if the cap allows) |
 | `stage_cap` | n_stages exceeds the allowed cap | strategy with less total movement, `simultaneous` order, or ask the dentist to relax the time limit |
 | `space_deficit` | the strategy cannot gain enough space for the crowding | next strategy in the ladder; if extraction is forbidden and nothing passes, say how many mm are missing |
 

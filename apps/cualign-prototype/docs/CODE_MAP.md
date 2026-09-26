@@ -22,8 +22,11 @@
 | `src/cualign/core/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터 |
 | `src/cualign/core/synth.py` | 환자 데이터 없이 재현하는 합성 케이스 생성 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
+| `src/cualign/core/skills.py` | `skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
+| `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
+| `src/cualign/core/intake.py` | 업로드한 치아별 스캔을 코어 좌표계로 정렬(잇몸·치관 경계 기준, 원본은 `original/`), 좌우 번호 점검·뒤집기 |
 | `src/cualign/core/gum.py` | 3D 표시용 잇몸 생성. 검증·출력 대상은 아님 |
 | `src/cualign/core/templates/2.stl`~`15.stl` | 합성 치아와 뷰어에 쓰는 크라운 형상 14개 |
 | `src/cualign/core/templates/ATTRIBUTION.md` | 위 형상 자산의 출처·라이선스 표기. 자산과 함께 보존 |
@@ -43,9 +46,12 @@
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트, 에이전트가 건너뛴 검토의 서버 실행 |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
-| `src/cualign/server/api.py` | 케이스 업로드·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
+| `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
+| `src/cualign/server/mcp_server.py` | NemoClaw용 MCP 서버(`/mcp`): 토큰 확인, `cualign_plan`은 서버 안에서 `/chat/stream`으로 요청해 UI와 같은 경로를 탐, 승인 도구는 승인하지 않고 내보내기 도구는 의사 승인을 요구 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
 | `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공 |
+| `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
+| `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
@@ -64,17 +70,21 @@
 | `.env.example` | 필요한 설정 이름·예시. 실제 키는 로컬 `.env`에만 보관 |
 | `.gitignore` | 비밀·실행 생성물의 추적 제외 |
 | `Dockerfile` | 컨테이너 이미지와 서버 실행 설정 |
+| `Dockerfile.openshell` | OpenShell 샌드박스용 이미지(비root, 출력은 `/sandbox/out`) |
 | `.github/workflows/ci.yml` | 변경 후 자동 검사 실행 |
 | `tests/test_core.py` | 전략·단계·제약·STL 출력 검증 |
 | `tests/test_stack_offline.py` | NAT 구성·도구 등록·Guardrails 구성 검사 |
 | `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·예외 문구·검토 건너뛴 턴·메모 레일 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
+| `tests/test_skill_tool.py` | Skill 이름 검증·도구 등록(검토 에이전트 제외)·지시문 연결 검사 |
+| `tests/test_keys.py`, `tests/test_sandbox_compat.py` | 키 판정(placeholder 포함)·프록시 호환 가드 검사 |
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
 | `tests/test_react_history.py` | 앞선 호출을 기억해야 넘어가는 가짜 모델로 NAT 실제 그래프를 돌려 같은 도구 반복이 없는지 검사 |
 | `tests/test_nim_stream_patch.py` | 과부하 줄(스트림)과 HTTP 429·503(스트림·비스트림)을 보내는 가짜 NIM 서버로 재요청·재시도 소진·재시도 불가 오류·연결 정리 검사 |
 | `tests/test_segmentation.py` | 라벨→메시 분리 검사. 모델 추론 시험은 아님 |
 | `tests/test_packaging.py`, `scripts/check_wheel.py` | wheel의 치아 형상·출처·정적 UI 누락·빈 파일 검사 |
 | `tests/test_api.py` | UI 경로·승인→ZIP·잘못된 계획 ID·검토 재요청 경로 검사 |
+| `tests/test_patients.py` | 환자 등록(식별정보 거부)→업로드→입력 확인→번호 확인 뒤에만 계획, 스캐너 좌표 정렬, 좌우 번호 경고·뒤집기, 번호 변경 뒤 이전 계획 차단, ID 비재사용, 삭제 시 파생물 제거, 입력 검증, 경로 ID 거부 |
 | `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/검토 재요청/승인·지연 응답 검사 |
 | `tests/nim_review_live_check.py` | 실제 워크플로(NIM 검토·Guardrails)로 미실행·실패 계획의 검토 재요청 확인. 원격 사용량 발생 |
@@ -90,7 +100,9 @@
 | `docs/model-swap.md` | 모델·호출 방식별 성공·실패 기록 |
 | `docs/clinical-sources.md` | 계산 상수의 참고 출처 |
 | `openshell/policy.yaml` | 도구 실행의 네트워크·파일 접근 경계 정책 |
-| `docs/openshell.md` | 정책 검증 수준과 서버 통합의 한계 |
+| `openshell/server-policy.yaml` | 서버 전체 샌드박스 정책(쓰기 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만) |
+| `docs/openshell.md` | 정책 검증 수준, 서버 샌드박스 실행 절차와 기록 |
+| `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차, OpenClaw 스킬 |
 | `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
 | `skills/skillspector-report-static.md`, `skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
 | `scripts/scan_skill.py` | 위 스캔 재실행 스크립트 |

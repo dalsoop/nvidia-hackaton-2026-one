@@ -7,10 +7,12 @@ from nat.builder.function import FunctionGroup
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.function import FunctionGroupBaseConfig
 
+from cualign import sandbox_compat
 from cualign.agent import nim_stream_patch, react_history_patch, react_patch, reviewer  # register the bounded reviewer
 from cualign.server import rails_middleware  # noqa: F401  register the Guardrails workflow middleware
 from cualign.agent.context import CURRENT_RUN
 from cualign.core import limits as L, planner
+from cualign.core import skills as S
 from cualign.core.constraints import Constraints, ConstraintPatch
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -18,6 +20,7 @@ from cualign.core.store import OUT_DIR, STORE
 react_patch.apply()
 react_history_patch.apply()
 nim_stream_patch.apply()
+sandbox_compat.apply()  # OpenShell: route aiohttp (NIM async client) through the sandbox proxy
 
 
 class NoInput(BaseModel):
@@ -44,10 +47,15 @@ class CompareInput(BaseModel):
     allowed: list[str] | None = Field(default=None, description="Optional strategy subset; confirmed constraints always apply")
 
 
+class SkillInput(BaseModel):
+    name: str = Field(description="skill name, e.g. cualign-clinical-rules")
+
+
 class CuAlignToolConfig(FunctionGroupBaseConfig, name="cualign"):
     include: list[str] = Field(default_factory=lambda: [
         "clinical_limits", "list_cases", "load_case", "get_constraints", "set_constraints",
-        "propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "get_plan"])
+        "propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "get_plan",
+        "load_skill"])
 
 
 def current_case(case_id=None):
@@ -96,10 +104,12 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return {"cases": STORE.available_cases(), "active": run.case_id if run else STORE.active_case}
 
     async def _load_case(inp: CaseInput) -> dict:
-        """화면에서 선택한 케이스를 읽는다. 다른 케이스로 임의 전환할 수 없다."""
+        """화면에서 선택한 케이스를 읽는다. 다른 케이스로 임의 전환할 수 없다.
+        unsupported 가 비어 있지 않으면 이 케이스는 계획하지 말고 그 이유를 의사에게 그대로 전한다."""
         cid, case = current_case(inp.case_id)
         return {"case_id": cid, "teeth": case.ids, "n_teeth": len(case.ids),
-                "crowding_mm": planner.crowding_mm(case), "constraints": constraints_for(cid).model_dump(mode="json")}
+                "crowding_mm": planner.crowding_mm(case), "constraints": constraints_for(cid).model_dump(mode="json"),
+                "unsupported": planner.unsupported_reasons(case)}
 
     async def _get_constraints(inp: NoInput) -> dict:
         """확정 조건을 읽는다. 비교·수정 시 이 조건을 유지한다."""
@@ -170,6 +180,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
     async def _select_plan(inp: PlanIdInput) -> dict:
         """최종 제시할 계획을 선택한다. 후보 생성 순서와 무관하게 이 계획이 3D·카드·다운로드에 표시된다. 이후 reviewer를 호출한다."""
         owned_plan(inp.plan_id, generated=True)
+        p = STORE.plans[inp.plan_id]
+        STORE.require_current_input(p["case_id"], p.get("input_revision"))   # not a plan of an earlier scan revision
         run = CURRENT_RUN.get()
         if run:
             if run.selected_plan_id and run.selected_plan_id != inp.plan_id:
@@ -191,11 +203,16 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         owned_plan(inp.plan_id)
         return summary(inp.plan_id)
 
+    async def _load_skill(inp: SkillInput) -> dict:
+        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
+        return S.read_skill(inp.name)
+
     fns = {"clinical_limits": _clinical_limits, "list_cases": _list_cases, "load_case": _load_case,
            "get_constraints": _get_constraints, "set_constraints": _set_constraints,
            "propose_target": _propose_target, "plan_stages": _plan_stages, "validate": _validate,
            "compare_strategies": _compare_strategies, "select_plan": _select_plan,
-           "export_stl": _export_stl, "get_plan": _get_plan}
+           "export_stl": _export_stl, "get_plan": _get_plan,
+           "load_skill": _load_skill}
     for name in config.include:
         group.add_function(name=name, fn=fns[name], description=fns[name].__doc__)
     yield group

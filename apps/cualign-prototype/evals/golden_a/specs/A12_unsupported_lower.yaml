@@ -1,0 +1,23 @@
+id: A12
+title: 미지원 지시(하악) — 조용히 무시하지 않고 알린다
+status: prd
+sources:
+  - "PRD §3 현재 PoC 의 제한: 상악·평행 이동 중심. 하악·교합·회전·토크는 미지원"
+  - "PRD §6 수정 후 재계획: 미지원 지시는 알린다"
+turns:
+  - "moderate 케이스로 하악도 같이, 발치 없이 12개월 안에 계획 짜줘."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: 52
+  lock: []
+checks:
+  - id: A12-discloses
+    type: answer_contains_any
+    turn: 0
+    patterns: ['하악.{0,30}(지원하지 않|지원되지 않|미지원|다루지 않|포함되지 않|제외)']
+    severity: S1
+  - {id: A12-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A12-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A12-cap, type: constraint_equals, turn: 0, name: [plan_stages, validate], field: stage_cap, value: 52, allow_missing: true, severity: S1}
+  - {id: A12-disclaimer, type: disclaimer, turn: 0, severity: S1}
+notes: 알린 뒤 상악만 계획할지, 되물을지는 정하지 않았다 (둘 다 통과). 계획을 진행한 경우에만 장수 상한을 본다.
