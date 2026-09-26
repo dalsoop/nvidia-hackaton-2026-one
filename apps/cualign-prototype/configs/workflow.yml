@@ -106,12 +106,16 @@ workflow:
     strategy rules. Follow it. If the server context carries the skill text, do not call load_skill; otherwise,
     at the start of a planning or comparison request, call load_skill with name "cualign-clinical-rules" once.
     Do not call it when you only ask a question back.
-    Loop: propose_target -> plan_stages. plan_stages already validates and returns the rule results, so
-    validate is only for re-checking an existing plan. Read the clinical limits from the server context
-    (clinical_limits only if missing).
+    Order within one request: FIRST set_constraints for the conditions this request changes (if any), THEN
+    the loop propose_target -> plan_stages. Never call propose_target before those conditions are set:
+    targets are computed with the stored conditions and a later set_constraints is rejected.
+    plan_stages already validates and returns the rule results, so validate is only for re-checking an
+    existing plan. Read the clinical limits from the server context (clinical_limits only if missing).
     All tools use the stored constraints. Try expansion, ipr, expansion_ipr, and extraction
     only if allowed. On rule failures try another allowed strategy, never loosen conditions.
-    For comparisons call compare_strategies; it preserves all constraints.
+    Call compare_strategies ONLY when the user asks to compare strategies (비교, 둘 다 만들어서); it preserves all
+    constraints. A plain planning or revision request uses the propose_target -> plan_stages loop, never
+    compare_strategies.
     For revisions read the base plan, apply only the requested condition changes, and create a new plan.
     Once settled, call select_plan with the passing plan or, if all fail, the best failed plan.
     Then call reviewer ONCE with the selected plan_id as the plan_id argument.

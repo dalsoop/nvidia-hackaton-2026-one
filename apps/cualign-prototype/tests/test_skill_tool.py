@@ -50,6 +50,14 @@ def test_planner_instructions_point_to_an_installed_skill():
     assert "cualign-clinical-rules" in S.installed()
 
 
+def test_planner_instructions_fix_the_call_order():
+    """#48 2026-09-27 실측: 문맥을 미리 주자 모델이 set_constraints 전에 propose_target 을 부르거나(A03-cap) 비교 요청이
+    아닌데 compare_strategies 를 불렀다(A08-no-compare). 지시문이 그 둘을 막는다."""
+    text = _workflow()["workflow"]["additional_instructions"]
+    assert "FIRST set_constraints" in text and "Never call propose_target before" in text
+    assert "compare_strategies ONLY when the user asks to compare" in text
+
+
 def test_preloaded_skill_is_the_installed_one():
     """workflow.yml preloads a skill into the server context (#48); it must be an installed skill and the tool's default."""
     from cualign.agent.register import ContextPreload, CuAlignToolConfig
