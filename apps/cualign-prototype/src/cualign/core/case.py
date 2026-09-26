@@ -24,6 +24,13 @@ MD_WINDOW_OTHER_DEG = 15.0   # ... and for canines, premolars, molars: their rho
 # canines/molars read 18–36° with no rotation visible. Only incisors get rotation measured and corrected.
 YAW_MEASURABLE = frozenset({7, 8, 9, 10, 23, 24, 25, 26})
 MD_TURN_COST = 0.03      # mm of extent per degree the axis must save to turn away from the tangent
+# Crowding is measured the clinical way (#59): a tooth's width between its contact points, not its full outline. On a
+# curved arch the crown's straight-line extent also takes in the corners that flare into the embrasures, 0.15–1.1 mm per
+# side, 0.7–1.5 mm buccal or lingual of the contact (Poseidon3D 000174, no treatment needed, averaged +0.8 mm per
+# tooth over its contact spacing). The contacts sit in the middle of the proximal surface, so the width is read in the
+# central bucco-lingual band of the crown only.
+CONTACT_BAND = 0.2       # half-width of that band, as a share of the crown's bucco-lingual half-depth
+CONTACT_NEAR_MM = 0.3    # surface points of two neighbours this close (beyond their minimum) form the contact zone
 
 
 class Case:
@@ -45,6 +52,9 @@ class Case:
         self.pos0 = {i: self.mesh[i].centroid.copy() for i in self.ids}
         self._outline = {i: self.mesh[i].convex_hull.vertices[:, :2].copy() for i in self.ids}
         self._md: dict[int, tuple[float, float]] = {}
+        self._cw: dict = {}
+        self._contact: dict[tuple[int, int], np.ndarray] = {}
+        self._surf: dict[int, np.ndarray] = {}
         self._base_all: dict[tuple[int, int], float] = {}
         # The arch runs through each crown's outline centre (centre of its extents along its own mesiodistal and
         # buccolingual axes), not its centroid: a scanned or concave crown's centroid sits off the contact line by up
@@ -82,15 +92,21 @@ class Case:
     def synthetic(cls, preset: str = "moderate", seed: int = 0, **kw) -> "Case":
         from .synth import PRESETS, make_case
         from .planner import crowding_mm
-        # Build once, measure the crowding the planner will actually see, and rebuild once with the residual
-        # folded in, so a preset's measured crowding equals its nominal value (real crown shapes + the fitted
-        # arch otherwise drift by ~1 mm from the placement arc).
+        # The generator shortens the whole arch by full crown outlines; the planner measures the clinical way (#59:
+        # contact widths between the first molars), which grows only ~0.6 mm per mm of shortening and reads the
+        # uncrowded template arch as ~5 mm of spacing. Rebuild with the shortening solved (secant) until the measured
+        # crowding is the preset's nominal value, so a preset keeps its difficulty.
         target = kw.get("crowding_mm", PRESETS.get(preset, PRESETS["moderate"])["crowding_mm"])
-        case = cls(make_case(preset, seed=seed, **kw), name=f"synthetic:{preset}")
-        err = crowding_mm(case) - target
-        if abs(err) > 0.15:
-            kw2 = {**kw, "crowding_mm": target - err}
-            case = cls(make_case(preset, seed=seed, **kw2), name=f"synthetic:{preset}")
+        pts = []
+        comp = target
+        for _ in range(5):
+            case = cls(make_case(preset, seed=seed, **{**kw, "crowding_mm": comp}), name=f"synthetic:{preset}")
+            got = crowding_mm(case)
+            if abs(got - target) <= 0.15:
+                break
+            pts.append((comp, got))
+            slope = (pts[-1][1] - pts[-2][1]) / (pts[-1][0] - pts[-2][0]) if len(pts) > 1 and pts[-1][0] != pts[-2][0] else 0.6
+            comp += (target - got) / max(slope, 0.2)
         return case
 
     # ------------------------------------------------------------------ geometry
@@ -139,6 +155,7 @@ class Case:
         """Setting the arch drops the cached widths and widens its span to the end crowns' distal contacts."""
         self._arch = arch
         self._md = {}
+        self._cw = {}
         if self.ids:
             arch.end_pad = (self.mesiodistal_width(self.ids[0]) / 2, self.mesiodistal_width(self.ids[-1]) / 2)
 
@@ -149,22 +166,26 @@ class Case:
                 t = self.arch.end_direction(last=i == self.ids[-1], pad=0.0)
             else:
                 t = self.arch.tangent(self.arch.s_of(self.anchor[i]))
-            a0 = np.arctan2(t[1], t[0])
-            V = self._outline[i]
-
-            def extent(deg):
-                a = a0 + np.radians(deg)
-                proj = V @ np.stack([np.cos(a), np.sin(a)])
-                return proj.max(0) - proj.min(0)
-
-            win = MD_WINDOW_DEG if i in YAW_MEASURABLE else MD_WINDOW_OTHER_DEG
-            deg = np.arange(-win, win + 1e-9, 0.5)
-            k = int(np.argmin(extent(deg) + MD_TURN_COST * np.abs(deg)))
-            fine = np.arange(deg[k] - 0.5, deg[k] + 0.5 + 1e-9, 0.02)
-            e = extent(fine)
-            k = int(np.argmin(e + MD_TURN_COST * np.abs(fine)))
-            self._md[i] = (float(e[k]), float(fine[k]), float(a0 + np.radians(fine[k])))
+            self._md[i] = self._axis_search(i, t)
         return self._md[i]
+
+    def _axis_search(self, i: int, t: np.ndarray) -> tuple[float, float, float]:
+        """Turn the axis from tangent t toward the crown's smallest extent while that pays MD_TURN_COST mm/deg."""
+        a0 = np.arctan2(t[1], t[0])
+        V = self._outline[i]
+
+        def extent(deg):
+            a = a0 + np.radians(deg)
+            proj = V @ np.stack([np.cos(a), np.sin(a)])
+            return proj.max(0) - proj.min(0)
+
+        win = MD_WINDOW_DEG if i in YAW_MEASURABLE else MD_WINDOW_OTHER_DEG
+        deg = np.arange(-win, win + 1e-9, 0.5)
+        k = int(np.argmin(extent(deg) + MD_TURN_COST * np.abs(deg)))
+        fine = np.arange(deg[k] - 0.5, deg[k] + 0.5 + 1e-9, 0.02)
+        e = extent(fine)
+        k = int(np.argmin(e + MD_TURN_COST * np.abs(fine)))
+        return float(e[k]), float(fine[k]), float(a0 + np.radians(fine[k]))
 
     def _outline_centre(self, i: int) -> np.ndarray:
         """Centre of crown i's occlusal outline extents along its mesiodistal and buccolingual axes (z = centroid)."""
@@ -183,6 +204,49 @@ class Case:
         tangent instead of rolling off to a narrower diagonal. Checked against known widths in golden set B.
         """
         return self._md_axis(i)[0]
+
+    def _surface_points(self, i: int) -> np.ndarray:
+        """Dense points on crown i: its vertices, plus a fixed-seed surface sample for coarse meshes (e.g. boxes)."""
+        if i not in self._surf:
+            m = self.mesh[i]
+            pts = m.vertices
+            if len(pts) < 1500:
+                pts = np.vstack([pts, trimesh.sample.sample_surface(m, 3000, seed=0)[0]])
+            self._surf[i] = np.asarray(pts, float)
+        return self._surf[i]
+
+    @property
+    def arch_order(self) -> list[int]:
+        return sorted(self.ids, key=lambda i: self.arch.s_of(self.anchor[i]))
+
+    def contact_point(self, a: int, b: int) -> np.ndarray:
+        """Contact of neighbouring crowns a and b: centre of the zone where their surfaces come closest (a shared cut
+        edge for crowns segmented from one scan; the gap midpoint when they do not touch)."""
+        key = (min(a, b), max(a, b))
+        if key not in self._contact:
+            from scipy.spatial import cKDTree
+            pa, pb = self._surface_points(a), self._surface_points(b)
+            d, j = cKDTree(pb).query(pa)
+            near = d <= d.min() + CONTACT_NEAR_MM
+            self._contact[key] = ((pa[near] + pb[j[near]]) / 2).mean(0)
+        return self._contact[key]
+
+    def contact_width(self, i: int, arch: Arch | None = None) -> float:
+        """Mesiodistal width at the contacts: extent along the crown's mesiodistal axis within the central
+        bucco-lingual band (CONTACT_BAND) of the crown. See CONTACT_BAND for why not the whole outline.
+        `arch`: read the axis off this arch's tangent instead of the case's (the crowding measure passes the arch of the
+        crowns standing in line, which a far-out crown does not bend)."""
+        key = (i, id(arch)) if arch is not None else i
+        if key not in self._cw:
+            a = (self._md_axis(i) if arch is None else self._axis_search(i, arch.tangent(arch.s_of(self.anchor[i]))))[2]
+            u, n = np.array([np.cos(a), np.sin(a)]), np.array([-np.sin(a), np.cos(a)])
+            V = self._surface_points(i)[:, :2]
+            pn = V @ n
+            mid, half = (pn.max() + pn.min()) / 2, (pn.max() - pn.min()) / 2
+            band = np.abs(pn - mid) <= CONTACT_BAND * half
+            pr = V[band] @ u if band.sum() >= 3 else V @ u
+            self._cw[key] = float(pr.max() - pr.min())
+        return self._cw[key]
 
     def crown_top(self, i: int) -> float:
         """Highest point of crown i (z; the occlusal plane is z = 0 and crowns hang towards -z)."""
