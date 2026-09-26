@@ -1,0 +1,34 @@
+{
+  "_note": "tests/test_ui_flow.py 가 읽는 값 (#49). 입력은 합성 스캔이라 환자 데이터가 아니다. 기대값은 서버 API 계약이다.",
+  "patient": {"alias": "화면 흐름 시험", "memo": "합성 스캔 · 번호 뒤집힘"},
+  "synthetic_preset": "mild",
+  "reversed_numbering_sum": 17,
+  "fallback_stage_cap": 40,
+  "request": "발치 없이 앞니부터 풀어 주세요.",
+  "form": {
+    "allow_extraction": false,
+    "lock": [3, 14],
+    "ipr_exclude": [8, 9],
+    "ipr_limit_mm": 0.2,
+    "stage_cap": null,
+    "clear_stage_cap": true,
+    "order": "anterior_first"
+  },
+  "expect": {
+    "n_teeth": 14,
+    "teeth": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "side_before_mirror": "reversed",
+    "side_after_mirror": "ok",
+    "revision_after_mirror": 2,
+    "gate_message": "입력 확인",
+    "review_status": "passed",
+    "constraints": {
+      "allow_extraction": false,
+      "lock": [3, 14],
+      "ipr_exclude": [8, 9],
+      "ipr_limit_mm": 0.2,
+      "stage_cap": null,
+      "order": "anterior_first"
+    }
+  }
+}
