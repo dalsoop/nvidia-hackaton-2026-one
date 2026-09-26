@@ -86,8 +86,7 @@ async def main():
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on("dialog", lambda dialog: dialog.accept())
-            await page.goto(url + "/ui/")
-            await page.locator('.case-card[data-id="moderate"]').click()
+            await page.goto(url + "/ui/?case=moderate")      # the synthetic case is not on the start screen (#46)
             await page.wait_for_function("document.querySelector('#caseGate').hidden")
             await page.locator("#fallbackBtn").click()
             await page.wait_for_function("document.querySelector('#rPlan').textContent.startsWith('p') && !document.querySelector('#fallbackBtn').disabled")

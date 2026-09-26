@@ -160,6 +160,15 @@ textarea { resize: vertical; }
 .case-card .sev { color: var(--muted); font-size: 12px; }
 .case-card .meta { color: var(--faint); font-size: 12px; }
 .gate-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+.gate-x { position: absolute; top: 16px; right: 16px; }
+.gate-panel .steps { margin: 0 0 16px; }
+/* start screen sample cards (#46): occlusal thumbnail, case number, finding, prescription */
+.sample-cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.sample-cards .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
+.case-card .rx { font-size: 12px; color: var(--text); }
+.case-card:disabled { cursor: not-allowed; color: var(--faint); }
+.case-card:disabled::before { background: var(--line-strong); }
+.case-card:disabled:hover { border-color: var(--line); }
 .case-pill .k { color: var(--muted); font-weight: 400; margin-right: 4px; }
 
 .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }

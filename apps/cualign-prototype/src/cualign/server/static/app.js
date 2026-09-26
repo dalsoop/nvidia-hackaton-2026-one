@@ -301,7 +301,7 @@ async function reviewCurrent() {
 // ------------------------------------------------------------------ patient flow (start point)
 // 환자 목록 → 환자(스캔 목록·업로드) → 입력 확인 → 계획. Samples sit outside the flow. The alias stays in the UI;
 // the chat and tools only see the pseudonymous case id (P0001-S1).
-const SCREENS = { patients: "screenPatients", patient: "screenPatient", check: "screenCheck", samples: "screenSamples" };
+const SCREENS = { start: "screenStart", patients: "screenPatients", patient: "screenPatient", check: "screenCheck" };
 function showScreen(name) {
   for (const [k, id] of Object.entries(SCREENS)) $(id).hidden = k !== name;
   $("caseGate").classList.toggle("side", name === "check");   // keep the 3D viewer visible while checking
@@ -434,25 +434,52 @@ function caseTitle(caseId, crowding) {
   return (sc ? `${state.patient.alias} · ${sc.scan_id}` : caseId) + ` · 총생 ${crowding} mm`;
 }
 
-// ------------------------------------------------------------------ samples (outside the patient flow)
-const SEVERITY = (mm) => mm == null ? "" : mm < 1 ? "정렬 상태" : mm <= 3 ? "경도 총생" : mm <= 6 ? "중등도 총생" : mm <= 8 ? "중증 총생" : "발치 임계";
-
+// ------------------------------------------------------------------ samples (the start screen, #46)
+// Real scans with the dentist's prescription. The synthetic presets stay loadable by name (agent, tests, ?case=)
+// but are not offered here.
 async function loadCases() {
   const { cases, active } = await api("/api/cases");
   state.cases = cases;
-  const wrap = $("caseCards");
+  const wrap = $("sampleCards");
   wrap.innerHTML = "";
-  for (const c of cases) {
+  for (const c of cases.filter((x) => x.kind !== "synthetic")) {
     const b = document.createElement("button");
     b.className = "case-card";
     b.dataset.id = c.case_id;
-    b.innerHTML = `<span class="cid"></span><span class="sev"></span><span class="meta"></span>`;
-    b.querySelector(".cid").textContent = c.case_id;
-    b.querySelector(".sev").textContent = c.crowding_mm != null ? SEVERITY(c.crowding_mm) : c.kind;
-    b.querySelector(".meta").textContent = c.crowding_mm != null ? `총생 ${c.crowding_mm} mm · 상악 · 합성` : `상악 · ${c.kind}`;
+    b.innerHTML = `<span class="cid"></span><span class="sev"></span><span class="rx"></span><span class="meta"></span>`;
+    if (c.kind === "sample") {
+      const img = document.createElement("img");
+      img.className = "thumb";
+      img.alt = `${c.case_id} 교합면`;
+      img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
+      b.prepend(img);
+      b.querySelector(".cid").textContent = c.case_id.replace(/^poseidon-/, "");
+      b.querySelector(".sev").textContent = c.title;
+      b.querySelector(".rx").textContent = "처방 · " + c.prescription;
+      b.querySelector(".meta").textContent = c.available ? "Poseidon3D · 상악 실제 스캔" : "샘플 파일이 설치되지 않았습니다";
+      b.disabled = !c.available;
+    } else {
+      b.querySelector(".cid").textContent = c.case_id;
+      b.querySelector(".meta").textContent = `상악 · ${c.kind}`;
+    }
     wrap.appendChild(b);
   }
+  if (!wrap.children.length) wrap.innerHTML = '<p class="empty">샘플 케이스가 없습니다. 아래 «내 스캔 올리기»로 시작하세요.</p>';
   return active;
+}
+
+function sampleOf(caseId) {
+  return state.cases.find((c) => c.case_id === caseId && c.kind === "sample") ?? null;
+}
+
+// The first chip is the open sample's prescription as a sentence (DESIGN.md 「칩」: right after opening a case).
+function setPrescriptionChip(sample) {
+  $("chips").querySelector(".chip.rx")?.remove();
+  if (!sample) return;
+  const chip = document.createElement("button");
+  chip.className = "chip rx";
+  chip.textContent = sample.request;
+  $("chips").prepend(chip);
 }
 
 async function activateCase(caseId, { greet = true } = {}) {
@@ -468,13 +495,16 @@ async function activateCase(caseId, { greet = true } = {}) {
   fillConstraints(info.constraints);
   await refreshPlans();
   $("caseName").textContent = caseTitle(caseId, info.crowding_mm);
+  setPrescriptionChip(sampleOf(caseId));
   $("caseGate").hidden = true;
   $("gateClose").hidden = false;
   if (greet) {
     // The agent opens the conversation (clinical SW: case first, then constraints). Kept in the transcript
     // the model sees, so it knows which case is on screen.
-    const text = `케이스 ${caseId} (상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm) 를 불러왔습니다. ` +
-      `계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?`;
+    const sample = sampleOf(caseId);
+    const text = `케이스 ${caseId} (상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm) 를 불러왔습니다. ` + (sample
+      ? `의사 처방(${sample.prescription})을 계획 조건에 넣어 두었습니다. 이 처방으로 계획할까요? 치료 기간 상한이나 먼저 풀고 싶은 부위가 있으면 함께 알려 주세요.`
+      : `계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?`);
     addMsg("assistant", text);
     state.messages.push({ role: "assistant", content: text });
   }
@@ -777,7 +807,7 @@ $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
 });
-$("caseCards").addEventListener("click", (e) => {
+$("sampleCards").addEventListener("click", (e) => {
   const card = e.target.closest(".case-card");
   if (card) { state.patient = null; activateCase(card.dataset.id).catch((err) => addMsg("error", `케이스 로드 실패: ${err.message}`)); }
 });
@@ -843,14 +873,15 @@ $("deletePatient").addEventListener("click", async () => {
     await loadPatients(); showScreen("patients");
   } catch (err) { alert("삭제 실패: " + err.message); }
 });
-$("toSamples").addEventListener("click", () => loadCases().then(() => showScreen("samples")).catch((err) => addMsg("error", err.message)));
+$("toSamples").addEventListener("click", () => loadCases().then(() => showScreen("start")).catch((err) => addMsg("error", err.message)));
+$("toPatients").addEventListener("click", () => loadPatients().then(() => showScreen("patients")).catch((err) => addMsg("error", "환자 목록 로드 실패: " + err.message)));
 for (const b of document.querySelectorAll("#caseGate .back")) b.addEventListener("click", () => {
   if (b.dataset.go === "patient" && state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
   else loadPatients().then(() => showScreen("patients"));
 });
 $("caseBtn").addEventListener("click", () => {
   if (state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
-  else loadPatients().then(() => showScreen("patients"));
+  else loadCases().then(() => showScreen("start")).catch((err) => addMsg("error", err.message));
 });
 $("gateClose").addEventListener("click", () => { $("caseGate").hidden = true; });
 $("planSelect").addEventListener("change", (e) => loadPlan(e.target.value).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`)));
@@ -886,8 +917,12 @@ for (const b of document.querySelectorAll(".view-btns button")) b.addEventListen
     return;
   }
   } catch (e) { addMsg("error", "계획 링크를 불러오지 못했습니다: " + e.message); }
-  // The dentist starts from a patient every time the page opens (clinical SW: patient → scan → plan).
+  // ?case=<id> opens a case directly (development and tests; e.g. the synthetic "moderate")
+  if (params.get("case")) {
+    try { await activateCase(params.get("case")); return; }
+    catch (e) { addMsg("error", `케이스 로드 실패: ${e.message}`); }
+  }
+  // The page opens on the sample cards; "내 스캔 올리기" leads to the patient flow (patient → scan → plan).
   if (active) document.querySelector(`.case-card[data-id="${CSS.escape(active)}"]`)?.classList.add("current");
-  try { await loadPatients(); } catch (e) { addMsg("error", "환자 목록 로드 실패: " + e.message); }
-  showScreen("patients");
+  showScreen("start");
 })();

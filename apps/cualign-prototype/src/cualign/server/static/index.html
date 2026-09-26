@@ -29,10 +29,23 @@
     </div>
   </header>
 
-  <!-- 시작점: 환자 → 스캔 업로드 → 입력 확인 → 계획 (임상 SW 관례) -->
+  <!-- 시작점: 샘플 케이스 카드 (#46). 내 스캔은 환자 → 스캔 업로드 → 입력 확인 → 계획 -->
   <div id="caseGate" class="gate" hidden>
+    <button id="gateClose" class="btn ghost small gate-x" type="button" hidden>닫기</button>
+    <!-- 0. 시작: 샘플 케이스 -->
+    <div id="screenStart" class="gate-panel screen">
+      <h1>케이스 열기</h1>
+      <p class="muted">상악만 다룹니다 · 진단과 처방이 끝난 상태에서 시작합니다 · 결과는 초안이며 최종 판단은 의사가 합니다.</p>
+      <p class="steps">케이스를 열면 의사의 처방(발치·IPR 등)이 계획 조건에 들어갑니다. 에이전트가 그 처방 안에서 단계 계획을 만들고 규칙으로 검증하며, 의사가 승인해야 STL을 내보냅니다.</p>
+      <div id="sampleCards" class="cards sample-cards"></div>
+      <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)의 실제 상악 스캔이고, 처방은 치과의사가 이 스캔을 보고 정한 것입니다.</p>
+      <div class="gate-foot">
+        <button id="toPatients" class="btn ghost small" type="button">내 스캔 올리기 →</button>
+      </div>
+    </div>
+
     <!-- 1. 환자 목록 -->
-    <div id="screenPatients" class="gate-panel screen">
+    <div id="screenPatients" class="gate-panel screen" hidden>
       <h1>환자 선택</h1>
       <p class="muted">환자를 고르거나 새로 등록한 뒤 그 환자의 스캔을 올립니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
       <div id="patientCards" class="cards"></div>
@@ -44,8 +57,7 @@
         <p class="hint">실명·주민번호·연락처는 입력하지 마세요. 가명만 사용합니다.</p>
       </form>
       <div class="gate-foot">
-        <button id="toSamples" class="btn ghost small" type="button">샘플 케이스로 체험</button>
-        <button id="gateClose" class="btn ghost small" type="button" hidden>닫기</button>
+        <button id="toSamples" class="btn ghost small" type="button">← 샘플 케이스</button>
       </div>
     </div>
 
@@ -83,19 +95,12 @@
       </div>
     </div>
 
-    <!-- 샘플 (환자 흐름 밖) -->
-    <div id="screenSamples" class="gate-panel screen" hidden>
-      <button class="btn ghost small back" data-go="patients" type="button">← 환자 목록</button>
-      <h1>샘플 케이스</h1>
-      <p class="muted">환자 데이터가 아닌 합성·공개 케이스입니다. 흐름을 체험하거나 시연할 때만 씁니다.</p>
-      <div id="caseCards" class="cards"></div>
-    </div>
   </div>
 
   <main class="layout">
     <section class="chat">
       <fieldset id="constraints" class="constraints">
-        <legend>계획 조건 · 대화로도 수정 가능</legend>
+        <legend>의사 처방 · 대화로도 수정 가능</legend>
         <label><input id="cExtraction" type="checkbox"> 발치 허용</label>
         <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
         <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
@@ -111,13 +116,13 @@
       <div class="chips" id="chips">
         <button class="chip">발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.</button>
         <button class="chip">발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.</button>
-        <button class="chip">발치안이랑 비발치안 둘 다 만들어서 비교해줘.</button>
+        <button class="chip">이 처방 안에서 확장안과 IPR안을 비교해줘.</button>
         <button class="chip">13번은 움직이지 말고 다시 짜줘.</button>
         <button class="chip">IPR은 앞니(7~10번) 빼고 해줘.</button>
       </div>
 
       <form id="chatForm" class="composer">
-        <textarea id="chatInput" rows="2" placeholder="제약과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
+        <textarea id="chatInput" rows="2" placeholder="처방과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
         <button id="sendBtn" type="submit" class="btn primary">전송</button>
       </form>
     </section>
