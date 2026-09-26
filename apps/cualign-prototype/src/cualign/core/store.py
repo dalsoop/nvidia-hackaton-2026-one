@@ -34,7 +34,8 @@ class Store:
         # real scans with the dentist's prescription first (the start screen shows these); the synthetic presets stay
         # loadable by name for the agent, the tests and the CLI, but the screen does not offer them (#46)
         rows = [{"case_id": s.case_id, "kind": "sample", "title": s.title, "prescription": s.prescription,
-                 "request": s.request, "available": s.available} for s in samples.SAMPLES.values()]
+                 "request": s.request, "note": s.note, "available": s.available,
+                 "constraints": s.initial_constraints().model_dump(mode="json")} for s in samples.SAMPLES.values()]
         rows += [{"case_id": k, "kind": "synthetic", "crowding_mm": v["crowding_mm"]} for k, v in PRESETS.items()]
         env = os.environ.get("CUALIGN_CASE_DIR")
         if env and Path(env).exists():

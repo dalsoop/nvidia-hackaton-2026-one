@@ -27,6 +27,7 @@ def test_start_screen_lists_the_samples_not_the_synthetic_cases():
     rows = Store().available_cases()
     assert [r["case_id"] for r in rows[:3]] == IDS and all(r["kind"] == "sample" and r["available"] for r in rows[:3])
     assert all(r["prescription"] and r["request"] for r in rows[:3])
+    assert all(r["constraints"] == samples.get(r["case_id"]).initial_constraints().model_dump(mode="json") for r in rows[:3])
     # the presets stay loadable by name (agent, tests, CLI); the screen filters them out
     assert {"moderate"} <= {r["case_id"] for r in rows if r["kind"] == "synthetic"}
     html = (STATIC / "index.html").read_text()
@@ -41,7 +42,7 @@ def test_a_sample_opens_with_its_prescription():
     assert st.constraints_for(cid).allow_extraction
     _, _ = st.load_case("poseidon-000131")
     c = st.constraints_for("poseidon-000131")
-    assert not c.allow_extraction and c.ipr_limit_mm == 0.2
+    assert not c.allow_extraction and c.ipr_limit_mm == 0.25
     assert set(range(2, 16)) - set(c.ipr_exclude) == {7, 8, 9, 10}        # FDI 12..22
     c.check_case(case.ids)
     # the dentist's later change is kept: the prescription is only the starting value
@@ -79,3 +80,28 @@ def test_a_missing_sample_is_reported_not_crashed(monkeypatch, tmp_path):
     assert not any(r["available"] for r in rows if r["kind"] == "sample")
     with pytest.raises(FileNotFoundError):
         Store().load_case("poseidon-000001")
+
+
+def test_the_note_states_the_ipr_the_core_computes():
+    # the prescription is not exactly expressible (per-tooth IPR, 0.25 mm per contact at most): the note gives the
+    # app's total, and it must be the core's
+    for s in samples.SAMPLES.values():
+        c = s.initial_constraints()
+        got = planner._ipr_gain(list(range(2, 16)), set(c.ipr_exclude), c.ipr_limit_mm) if c.ipr_exclude else 0.0
+        assert got == pytest.approx(s.ipr_total_mm), s.case_id
+        if got:
+            assert f"총 {got:.1f}mm" in s.note, s.case_id
+
+
+def test_prescriptions_show_fdi_and_the_app_numbers():
+    for s in samples.SAMPLES.values():
+        assert "FDI" in s.prescription and "앱 번호" in s.prescription and "앱 번호" in s.request
+
+
+def test_cli_keeps_the_sample_prescription_unless_the_request_says_otherwise():
+    from cualign.cli import parse_constraints
+    assert parse_constraints(samples.get("poseidon-000131").request)["allow_extraction"] is False
+    assert parse_constraints(samples.get("poseidon-000001").request)["allow_extraction"] is False
+    assert parse_constraints(samples.get("poseidon-000097").request)["allow_extraction"] is True
+    assert parse_constraints("12개월 안에")["allow_extraction"] is None        # not said: the case decides
+    assert parse_constraints("발치 없이 12개월 안에")["allow_extraction"] is False

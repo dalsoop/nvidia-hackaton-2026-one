@@ -16,8 +16,9 @@ APP = Path(__file__).resolve().parents[1]
 KEY = re.compile(rb"nvapi-[A-Za-z0-9_\-]{20,}")
 MESH = {".stl", ".ply", ".obj"}
 TEMPLATES = "src/cualign/core/templates/"
-# the start-screen samples (#46): three public CC-BY scans, named one by one so no other scan slips in beside them
-SAMPLES = tuple(f"src/cualign/core/samples/poseidon-{c}/" for c in ("000097", "000131", "000001"))
+# the start-screen samples (#46): three public CC-BY scans, every file named, so no other scan slips in beside them
+SAMPLE_MESHES = frozenset(f"src/cualign/core/samples/poseidon-{c}/{f}" for c in ("000097", "000131", "000001")
+                          for f in [f"{t}.stl" for t in range(2, 16)] + ["gingiva.stl"])
 
 
 def scan(root, files):
@@ -26,7 +27,7 @@ def scan(root, files):
         path, name = root / rel, Path(rel).as_posix()
         if not path.is_file():
             continue
-        if path.suffix.lower() in MESH and not name.startswith((TEMPLATES, *SAMPLES)):
+        if path.suffix.lower() in MESH and not name.startswith(TEMPLATES) and name not in SAMPLE_MESHES:
             hits.append(f"{name}: mesh outside {TEMPLATES}")
         if path.suffix.lower() == ".zip":
             try:
@@ -58,7 +59,7 @@ def test_no_keys_or_meshes():
     files = committable()
     # The 14 bundled templates prove the exclusion is exercised; change this with the template set.
     assert sum(n.startswith(TEMPLATES) and n.endswith(".stl") for n in files) == 14
-    assert sum(n.startswith(SAMPLES) and n.endswith(".stl") for n in files) == 3 * 15      # 14 crowns + gingiva each
+    assert SAMPLE_MESHES <= set(files)                                                 # 14 crowns + gingiva each
     assert scan(APP, files) == []
 
 
@@ -68,14 +69,18 @@ def test_scan_flags_planted_key(tmp_path):
 
 
 def test_scan_flags_mesh_outside_templates(tmp_path):
-    for rel in (TEMPLATES + "2.stl", SAMPLES[0] + "2.stl", "uploads/ab12cd34/2.stl",
-                "src/cualign/core/samples/poseidon-999999/2.stl"):
+    sample_dir = "src/cualign/core/samples/poseidon-000097/"
+    for rel in (TEMPLATES + "2.stl", sample_dir + "2.stl", "uploads/ab12cd34/2.stl",
+                "src/cualign/core/samples/poseidon-999999/2.stl", sample_dir + "private_scan.obj",
+                sample_dir + "extra/2.ply"):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_bytes(b"solid t\nendsolid t\n")
     with ZipFile(tmp_path / "plan.zip", "w") as z:
         z.writestr("stage_01/2.stl", b"solid t\nendsolid t\n")
     assert sorted(scan(tmp_path, tree(tmp_path))) == [
-        "plan.zip: zip holds 1 meshes", f"src/cualign/core/samples/poseidon-999999/2.stl: mesh outside {TEMPLATES}",
+        "plan.zip: zip holds 1 meshes", f"{sample_dir}extra/2.ply: mesh outside {TEMPLATES}",
+        f"{sample_dir}private_scan.obj: mesh outside {TEMPLATES}",
+        f"src/cualign/core/samples/poseidon-999999/2.stl: mesh outside {TEMPLATES}",
         f"uploads/ab12cd34/2.stl: mesh outside {TEMPLATES}"]
 
 

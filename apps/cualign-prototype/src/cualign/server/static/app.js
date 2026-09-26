@@ -15,6 +15,7 @@ const state = {
   messages: [],          // full transcript sent to /chat/stream
   streaming: false,
   meshCase: null,        // case_id currently loaded in the viewer
+  activeCase: null,      // case_id being planned (the input-check screen can show another scan in the viewer)
   cases: [],             // /api/cases rows
   teeth: {},             // tooth_id -> THREE.Mesh
   center: {},            // tooth_id -> rest centroid (THREE.Vector3)
@@ -305,6 +306,7 @@ const SCREENS = { start: "screenStart", patients: "screenPatients", patient: "sc
 function showScreen(name) {
   for (const [k, id] of Object.entries(SCREENS)) $(id).hidden = k !== name;
   $("caseGate").classList.toggle("side", name === "check");   // keep the 3D viewer visible while checking
+  $("gateClose").hidden = name === "check" || !state.activeCase;   // leave the check screen by confirming or going back
   $("caseGate").hidden = false;
 }
 const fmtDate = (iso) => (iso ?? "").slice(0, 16).replace("T", " ");
@@ -468,6 +470,11 @@ async function loadCases() {
   return active;
 }
 
+function sameConstraints(a, b) {
+  const keys = ["allow_extraction", "lock", "ipr_exclude", "ipr_limit_mm", "stage_cap", "order"];
+  return !!a && !!b && keys.every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
+}
+
 function sampleOf(caseId) {
   return state.cases.find((c) => c.case_id === caseId && c.kind === "sample") ?? null;
 }
@@ -495,6 +502,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   fillConstraints(info.constraints);
   await refreshPlans();
   $("caseName").textContent = caseTitle(caseId, info.crowding_mm);
+  state.activeCase = caseId;
   setPrescriptionChip(sampleOf(caseId));
   $("caseGate").hidden = true;
   $("gateClose").hidden = false;
@@ -502,8 +510,12 @@ async function activateCase(caseId, { greet = true } = {}) {
     // The agent opens the conversation (clinical SW: case first, then constraints). Kept in the transcript
     // the model sees, so it knows which case is on screen.
     const sample = sampleOf(caseId);
+    const asPrescribed = sample && sameConstraints(info.constraints, sample.constraints);
     const text = `케이스 ${caseId} (상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm) 를 불러왔습니다. ` + (sample
-      ? `의사 처방(${sample.prescription})을 계획 조건에 넣어 두었습니다. 이 처방으로 계획할까요? 치료 기간 상한이나 먼저 풀고 싶은 부위가 있으면 함께 알려 주세요.`
+      ? (asPrescribed
+        ? `의사 처방(${sample.prescription})을 계획 조건에 넣어 두었습니다.` + (sample.note ? ` ${sample.note}` : "")
+        : `이 케이스에서 전에 바꾼 계획 조건이 남아 있습니다. 처방(${sample.prescription})과 다르니 조건 칸을 확인해 주세요.`)
+        + ` 이 조건으로 계획할까요? 치료 기간 상한이나 먼저 풀고 싶은 부위가 있으면 함께 알려 주세요.`
       : `계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?`);
     addMsg("assistant", text);
     state.messages.push({ role: "assistant", content: text });
@@ -883,7 +895,14 @@ $("caseBtn").addEventListener("click", () => {
   if (state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
   else loadCases().then(() => showScreen("start")).catch((err) => addMsg("error", err.message));
 });
-$("gateClose").addEventListener("click", () => { $("caseGate").hidden = true; });
+$("gateClose").addEventListener("click", async () => {
+  $("caseGate").hidden = true;
+  // the input-check screen may have put another scan in the viewer: go back to the case being planned, whose
+  // constraints and chips are still on screen (#70 review)
+  if (state.activeCase && state.meshCase !== state.activeCase) {
+    try { await loadMesh(state.activeCase); await refreshPlans(); } catch (err) { addMsg("error", err.message); }
+  }
+});
 $("planSelect").addEventListener("change", (e) => loadPlan(e.target.value).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`)));
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
 $("playBtn").addEventListener("click", togglePlay);
