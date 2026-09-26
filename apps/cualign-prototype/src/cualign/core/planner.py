@@ -60,11 +60,12 @@ def _displaced(case: Case, span: list[int]) -> set[int]:
     through the others is flagged first, then the arch is refitted without it: judged in one pass, the neighbours of a
     far-out canine look displaced too, because every fit that still holds the canine bends toward it."""
     order = case.arch_order
+    ends = {order[0], order[-1]}
     out: set[int] = set()
     while True:
         worst, worst_d = None, DISPLACED_MM
         for i in span:
-            if i in out:
+            if i in out or i in ends:   # nothing beyond an end tooth: the fit without it is extrapolated there
                 continue
             others = np.array([case.anchor[j] for j in order if j != i and j not in out])
             if len(others) < 6:
@@ -78,54 +79,73 @@ def _displaced(case: Case, span: list[int]) -> set[int]:
         out.add(worst)
 
 
-def _span_available(case: Case) -> tuple[list[int], float, float, dict[int, float]]:
-    """(span teeth in arch order, arch length available to them along the contacts, width added for missing end
-    molars, contact widths of the span teeth) — see crowding_mm. Cached on the case (it does not change).
+class _SpanModel:
+    """The clinical span of a case, measured once and shared by the crowding and the layout (they must see the same
+    arch): span teeth, teeth standing out of line, the arch of the teeth in line (`base`), the contact line's offset
+    from it (`e`), contact widths read on it, and where the span ends on any offset of it.
 
     The line of contacts is taken as the arch of the crowns that stand in line (teeth standing out of it left out,
     see _displaced), moved out to where the contacts are: by the median distance of the in-line contacts from it.
     A fit through the contacts themselves would need them all; leaving out a displaced tooth leaves gaps a flexible
     curve overshoots, while the crown-centre arch keeps a dozen points and its shape. The widths are read on the
     same in-line arch: a far-out crown bends the case's arch and tilts its neighbours' axes (+0.9 mm over the span)."""
+
+    def __init__(self, case: Case):
+        order = case.arch_order
+        span = [i for i in order if i in SPAN]
+        if len(span) < 3:
+            span = order
+        self.case, self.order, self.span = case, order, span
+        self.first, self.last = order.index(span[0]), order.index(span[-1])
+        self.out = _displaced(case, span)
+        self.base = base = Arch(np.array([case.anchor[j] for j in order if j not in self.out]))
+        pairs = [(a, b) for a, b in zip(order, order[1:])
+                 if self.first - 1 <= order.index(a) and order.index(b) <= self.last + 1
+                 and a not in self.out and b not in self.out]
+        offs = []
+        for a, b in pairs:
+            p = case.contact_point(a, b)
+            s0 = base.s_of(p)
+            offs.append(float((p[:2] - base.point(s0)) @ base.normal(s0)))
+        self.e = round(float(np.median(offs)), 3) if offs else 0.0
+        self.widths = {i: case.contact_width(i, base) for i in span}
+        sa, sb = self.ends(self.e)
+        self.available = abs(sb - sa)
+        # no molar beyond an end of the span: that end tooth's own half width is measured from its centre
+        self.extra = (self.widths[span[0]] / 2 if self.first == 0 else 0.0) + \
+            (self.widths[span[-1]] / 2 if self.last == len(order) - 1 else 0.0)
+
+    def ends(self, offset: float) -> tuple[float, float]:
+        """Arc positions on the in-line arch offset by `offset` where the span starts and ends: the first molars'
+        mesial contacts (their mesial surfaces when the neighbouring tooth stands out of line), else the end teeth's
+        centres."""
+        case, base, order, span = self.case, self.base, self.order, self.span
+
+        def end(k_molar: int, tooth: int, side: int) -> float:
+            if not 0 <= k_molar < len(order):
+                return base.s_of(case.anchor[tooth], offset)
+            m = order[k_molar]
+            if tooth in self.out:
+                return base.s_of(case.anchor[m], offset) + side * case.contact_width(m, base) / 2
+            return base.s_of(case.contact_point(*((m, tooth) if side > 0 else (tooth, m))), offset)
+
+        return end(self.first - 1, span[0], 1), end(self.last + 1, span[-1], -1)
+
+
+def _span_model(case: Case) -> _SpanModel:
+    """Cached on the case for its current arch."""
     cached = getattr(case, "_span_cache", None)
-    if cached is not None and cached[0] is case.arch:
-        return cached[1]
-    order = case.arch_order
-    span = [i for i in order if i in SPAN]
-    if len(span) < 3:
-        span = order
-    first, last = order.index(span[0]), order.index(span[-1])
-    out = _displaced(case, span)
-    base = Arch(np.array([case.anchor[j] for j in order if j not in out]))
-    pairs = [(a, b) for a, b in zip(order, order[1:]) if first - 1 <= order.index(a) and order.index(b) <= last + 1
-             and a not in out and b not in out]
-    offs = []
-    for a, b in pairs:
-        p = case.contact_point(a, b)
-        s0 = base.s_of(p)
-        offs.append(float((p[:2] - base.point(s0)) @ base.normal(s0)))
-    e = round(float(np.median(offs)), 3) if offs else 0.0
-    widths = {i: case.contact_width(i, base) for i in span}
-    ends, extra = [], 0.0
+    if cached is None or cached[0] is not case.arch:
+        cached = (case.arch, _SpanModel(case))
+        case._span_cache = cached
+    return cached[1]
 
-    def molar_end(m, side):    # the molar's mesial surface on the contact line, when its neighbour stands out of line
-        return base.s_of(case.anchor[m], e) + side * case.contact_width(m, base) / 2
 
-    if first > 0:
-        m = order[first - 1]
-        ends.append(molar_end(m, 1) if span[0] in out else base.s_of(case.contact_point(m, span[0]), e))
-    else:                                     # no molar in front of the span: its first tooth's own width
-        ends.append(base.s_of(case.anchor[span[0]], e))
-        extra += widths[span[0]] / 2
-    if last < len(order) - 1:
-        m = order[last + 1]
-        ends.append(molar_end(m, -1) if span[-1] in out else base.s_of(case.contact_point(span[-1], m), e))
-    else:
-        ends.append(base.s_of(case.anchor[span[-1]], e))
-        extra += widths[span[-1]] / 2
-    result = (span, abs(ends[1] - ends[0]), extra, widths)
-    case._span_cache = (case.arch, result)
-    return result
+def _span_available(case: Case) -> tuple[list[int], float, float, dict[int, float]]:
+    """(span teeth in arch order, arch length available to them along the contacts, width added for missing end
+    molars, contact widths of the span teeth) — see crowding_mm and _SpanModel."""
+    m = _span_model(case)
+    return m.span, m.available, m.extra, m.widths
 
 
 def crowding_mm(case: Case) -> float:
@@ -167,11 +187,8 @@ def _ipr_reductions(ids, ipr_exclude, ipr_limit_mm) -> dict[int, float]:
 
 
 def _span_contacts(case: Case, offset: float) -> tuple[float, float]:
-    """Arc positions (on the curve offset by `offset`) of the mesial contacts of the first molars (3|4 and 13|14)."""
-    order = case.arch_order
-    a = order[order.index(3) + 1] if order.index(3) + 1 < len(order) else 3
-    b = order[order.index(14) - 1] if order.index(14) > 0 else 14
-    return (case.arch.s_of(case.contact_point(3, a), offset), case.arch.s_of(case.contact_point(b, 14), offset))
+    """Arc positions (on the in-line arch offset by `offset`) of the span's ends, the first molars' mesial contacts."""
+    return _span_model(case).ends(offset)
 
 
 def _span_expansion_for(case: Case, need_mm: float) -> tuple[float, float]:
@@ -213,42 +230,57 @@ def _isotonic(y: list[float]) -> list[float]:
     return out
 
 
-def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float,
-                     extra: dict | None = None) -> tuple[list, dict]:
-    """Least movement that aligns the span between the anchored first molars.
+def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float, extra: dict,
+                     lock=frozenset(), close: bool = False) -> tuple[list, dict, bool, tuple[float, float]]:
+    """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
-    Returns (arc position per active tooth, None for the anchors; lateral offset kept per span tooth). Along the arch,
-    each span crown moves only as far as needed so that neighbours sit at least contact width apart and the span fits
-    between the first molars' mesial contacts — an aligned arch stays put, a crowded one opens where it overlaps
-    (a bounded isotonic fit). Across the arch, only crowns more than LATERAL_TOL_MM off the fitted arch are brought
-    onto it. Widths are contact widths laid out along the contact line; the crowns are placed on the crown-centre arch,
-    which runs inside the contacts and is shorter by the ratio k. When the span does not fit, the missing space is
-    shared out as even overlap (the space deficit is reported by the caller). `extra`: more room for a pair of
-    neighbours whose crown shapes still meet at contact width (see SHAPE_STEP_MM)."""
-    arch = case.arch
-    sa, sb = _span_contacts(case, offset)
-    sa0, sb0 = _span_contacts(case, 0.0)
-    _, avail0, _, _ = _span_available(case)
-    avail = avail0 + (sb - sa) - (sb0 - sa0)          # the expansion lengthens the contact line as much as the centre arc
+    Returns (arc position per active tooth, None for the anchors; lateral offset kept per span tooth; whether the span
+    fit; room left in front of each first molar). Along the arch, each span crown moves only as far as needed so that
+    neighbours sit at least contact width apart and the span fits between the first molars' mesial contacts — an
+    aligned arch stays put, a crowded one opens where it overlaps (a bounded isotonic fit). Locked span teeth stay: the
+    fit runs between them. Across the arch, only crowns more than LATERAL_TOL_MM off the arch are brought onto it.
+    Widths are contact widths laid out along the contact line; the crowns are placed on the crown-centre arch, which
+    runs inside the contacts and is shorter by the ratio k. When the span does not fit, the missing space is shared out
+    as even overlap (the space deficit is reported by the caller). `extra`: more room for a pair of neighbours whose
+    crown shapes still meet at contact width (see SHAPE_STEP_MM). `close`: close every space (after an extraction):
+    the span becomes one contiguous chain, and the room left is for the molars to close."""
+    model = _span_model(case)
+    arch = model.base
+    sa, sb = model.ends(offset)
+    sa0, sb0 = model.ends(0.0)
+    avail = model.available + (sb - sa) - (sb0 - sa0)   # the expansion lengthens the contact line as much as the centre arc
     k = (sb - sa) / avail if avail > 0 else 1.0
-    extra = extra or {}
     span = [i for i in active if i in SPAN]
+    fixed = [m for m, i in enumerate(span) if i in lock]
     gaps = [k * ((width[a] + width[b]) / 2 + CLEARANCE + extra.get((a, b), 0.0)) for a, b in zip(span, span[1:])]
     lo = sa + k * (width[span[0]] / 2 + CLEARANCE + extra.get((3, span[0]), 0.0))
     hi = sb - k * (width[span[-1]] / 2 + CLEARANCE + extra.get((span[-1], 14), 0.0))
-    if sum(gaps) > hi - lo and sum(gaps) > 0:          # does not fit: squeeze every gap alike
-        f = max(hi - lo, 0.0) / sum(gaps)
-        gaps = [g * f for g in gaps]
+    fits = True
+    if not fixed and sum(gaps) > hi - lo and sum(gaps) > 0:   # does not fit: squeeze every gap alike
+        gaps = [g * max(hi - lo, 0.0) / sum(gaps) for g in gaps]
+        fits = False
     D = np.concatenate([[0.0], np.cumsum(gaps)])
-    t = _isotonic([s_cur[i] - D[m] for m, i in enumerate(span)])
-    t = np.clip(t, lo, max(lo, hi - D[-1]))
+    y = np.array([s_cur[i] - D[m] for m, i in enumerate(span)])
+    top = hi - D[-1]
+    if close and not fixed:
+        t = np.full(len(span), float(np.clip(np.mean(y), lo, max(lo, top))))
+    else:
+        t = y.copy()
+        cuts = [-1] + fixed + [len(span)]
+        for a, b in zip(cuts, cuts[1:]):                      # each free run between locked teeth (or the molars)
+            if b - a <= 1:
+                continue
+            L = t[a] if a >= 0 else lo
+            R = t[b] if b < len(span) else top
+            fits = fits and L <= R
+            t[a + 1:b] = np.clip(_isotonic(list(y[a + 1:b])), L, max(L, R))
     pos = {i: float(t[m] + D[m]) for m, i in enumerate(span)}
     lateral = {}
     for i in span:
         s0 = arch.s_of(case.anchor[i])
         e = float((case.anchor[i][:2] - arch.point(s0)) @ arch.normal(s0))
-        lateral[i] = e if abs(e) < LATERAL_TOL_MM else 0.0
-    return [pos.get(i) for i in active], lateral
+        lateral[i] = e if abs(e) < LATERAL_TOL_MM or i in lock else 0.0
+    return [pos.get(i) for i in active], lateral, fits, (float(t[0] - lo), float(top - t[-1]))
 
 
 def _ipr_gain(ids, ipr_exclude, ipr_limit_mm=IPR_PER_SURFACE) -> float:
@@ -276,11 +308,14 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
     # expansion is sized for it too; room that cannot be made shows as the collision it leaves.
     extra: dict[tuple[int, int], float] = {}
     for _ in range(SHAPE_ROUNDS):
-        target, info, pairs = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra)
+        target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra)
+        expandable = strategy in ("expansion", "expansion_ipr") and info["expansion_mm_per_side"] < MAX_EXPANSION_PER_SIDE
+        if not fits and not expandable:   # the span is short and cannot be widened: the overlap is what is missing
+            break
         # measured as the validator measures (the meshes are not cut by IPR, #61), so a plan is not built on overlap
         # the validator will reject
-        grow = [(a, b) for a, b in pairs
-                if case._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b))
+        grow = [(a, b) for a, b in pairs if not (a in lock and b in lock)
+                and case._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b))
                 - case.pair_baseline(a, b) > TARGET_OVERLAP_MM3]
         if not grow:
             break
@@ -290,8 +325,7 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
 
 
 def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict):
-    """One layout of propose_target: (target, info, neighbour pairs of the anchored span, empty when not anchored)."""
-    arch = case.arch
+    """One layout of propose_target: (target, info, neighbour pairs laid out, whether the layout fit)."""
     ids = case.ids
     # the same width the space is measured with (at the contacts): the target lays crowns contact to contact, so an
     # arch that is already aligned stays where it is instead of being stretched by the flaring crown corners (#59)
@@ -304,11 +338,17 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     notes: list[str] = []
     offset = 0.0
     # First molars as anchors (the clinical model the crowding is measured in, #59): they stay, the teeth between their
-    # mesial contacts are aligned into that space, and only space made inside it counts. Locked teeth keep the older
-    # whole-arch chain.
-    anchored = not lock and {3, 14} <= set(ids) and sum(1 for i in ids if i in SPAN) >= 3
+    # mesial contacts are aligned into that space (on the same in-line arch the crowding was measured on), and only
+    # space made inside it counts. Arches without both first molars keep the older whole-arch chain.
+    anchored = {3, 14} <= set(ids) and sum(1 for i in ids if i in SPAN) >= 3
+    arch = _span_model(case).base if anchored else case.arch
     in_scope = (lambda i: i in SPAN) if anchored else (lambda i: True)
-    red = _ipr_reductions(ids, ipr_exclude, ipr_limit_mm) if strategy in ("ipr", "expansion_ipr") else {}
+    red = {}
+    if strategy in ("ipr", "expansion_ipr"):
+        # anchored: IPR on the span teeth only, both surfaces of each (the 3|4 and 13|14 contacts included) — stripping
+        # a molar does not make room inside the span
+        red = {i: ipr_limit_mm for i in ids if i in SPAN and i not in ipr_exclude} if anchored \
+            else _ipr_reductions(ids, ipr_exclude, ipr_limit_mm)
     if strategy in ("expansion", "expansion_ipr"):
         # Expand only as much as needed (up to the 2 mm/side limit).
         shape = sum(extra.values())
@@ -337,10 +377,17 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     s_cur = {i: arch.s_of(case.anchor[i], offset) for i in active}
     active.sort(key=lambda i: s_cur[i])
     lateral: dict[int, float] = {}
+    fits, closing = True, (0.0, 0.0)
     if anchored:
-        s_new, lateral = _anchored_layout(case, active, width, s_cur, offset, extra)
+        s_new, lateral, fits, room = _anchored_layout(case, active, width, s_cur, offset, extra, lock,
+                                                      close=strategy == "extraction")
+        if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
+            closing = tuple(0.0 if lock & blk else max(r, 0.0) for r, blk in zip(room, ({2, 3}, {14, 15})))
+            if any(c > 0.05 for c in closing):
+                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 (좌 {closing[0]:.1f}mm, 우 {closing[1]:.1f}mm)")
     else:
-        gaps = [(width[active[k]] + width[active[k + 1]]) / 2 + CLEARANCE for k in range(len(active) - 1)]
+        gaps = [(width[active[k]] + width[active[k + 1]]) / 2 + CLEARANCE + extra.get((active[k], active[k + 1]), 0.0)
+                for k in range(len(active) - 1)]
         chain = np.concatenate([[0.0], np.cumsum(gaps)])          # contact chain, relative
         locked = [i for i in active if i in lock]
         if locked:
@@ -361,7 +408,10 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             # each side's molars move out as one block (along the first molar's normal), straight outward — not along
             # the longer offset arc, and not each along its own normal, which pushes their corners into each other
             block = 3 if i < 4 else 14
-            shift = offset * arch.normal(arch.s_of(case.anchor[block]))
+            sm = arch.s_of(case.anchor[block])
+            shift = offset * arch.normal(sm) + arch.tangent(sm) * (closing[0] if block == 3 else -closing[1])
+            if lock & ({2, 3} if block == 3 else {14, 15}):   # a locked molar holds its side's block
+                shift = np.zeros(2)
             target[i] = np.array([shift[0], shift[1], lift.get(i, 0.0)])
             continue
         xy = arch.point(float(s_new[k]), offset) + arch.normal(float(s_new[k])) * lateral.get(i, 0.0)
@@ -387,13 +437,13 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             "mean_move_mm": round(float(np.mean(disp)), 2), "max_move_mm": round(float(np.max(disp)), 2),
             "notes": notes, "removed": [i for i in ids if target[i] is None], "locked": sorted(lock),
             "ipr_mm_per_surface": ipr_limit_mm if strategy in ("ipr", "expansion_ipr") else 0.0,
-            "ipr_applied_teeth": [i for i in ids if i not in ipr_exclude] if strategy in ("ipr", "expansion_ipr") and ipr_limit_mm > 0 else [],
+            "ipr_applied_teeth": sorted(red) if ipr_limit_mm > 0 else [],
             "ipr_exclude": sorted(ipr_exclude), "expansion_mm_per_side": round(float(offset), 2),
             "rotation_deg": {i: y for i, y in sorted(target.yaw.items())},
             "vertical_mm": {i: round(v, 2) for i, v in sorted(lift.items())},
             "shape_room_mm": round(sum(extra.values()), 2)}
-    span_ids = [i for i in active if i in SPAN or i in (3, 14)] if anchored else []
-    return target, info, list(zip(span_ids, span_ids[1:]))
+    laid = [i for i in active if i in SPAN or i in (3, 14)] if anchored else active
+    return target, info, list(zip(laid, laid[1:])), fits
 
 
 def _corrections(case: Case, active: list[int], lock) -> tuple[dict[int, float], dict[int, float]]:

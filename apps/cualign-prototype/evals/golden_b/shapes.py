@@ -191,14 +191,17 @@ def contact_width(i: int, kind: str) -> float:
 
 
 def build_crowded_arch(family: str = "catenary", deficit: float = 0.0, kind: str = "template",
-                       blocked: tuple[int, ...] = (6, 11), gap: float = 0.05) -> tuple[dict[int, trimesh.Trimesh], Truth]:
+                       blocked: tuple[int, ...] = (6, 11), gap: float = 0.05,
+                       out_mm: float | None = None) -> tuple[dict[int, trimesh.Trimesh], Truth]:
     """Upper arch crowded the way real arches are: teeth that have no room stand out of the arch, they do not pass
     through their neighbours.
 
     Every crown sits on the ideal arch in contact with its neighbours (plus `gap`), except the `blocked` teeth: the
     deficit is shared among them, each keeps a slot `deficit / len(blocked)` narrower than its contact width, and it
     stands buccal of the arch by half its own and half its deepest neighbour's depth, so it overlaps its neighbours in
-    the occlusal view only. Clinical crowding over SPAN is exact by construction:
+    the occlusal view only. `out_mm`: stand that far buccal instead (crown centre from the arch; real blocked-out
+    teeth are often 2–5 mm out, and less than clear of the neighbours). Clinical crowding over SPAN is exact by
+    construction (it does not depend on how far out the blocked teeth stand):
     sum of contact widths - arc between the first molars' mesial contacts (Truth.span_crowding).
     """
     cw = {i: contact_width(i, kind) for i in UPPER}
@@ -220,7 +223,7 @@ def build_crowded_arch(family: str = "catenary", deficit: float = 0.0, kind: str
         p, t, n = cv.at(s[i])
         if i in blocked and share:
             nb = [UPPER[j] for j in (k - 1, k + 1) if 0 <= j < len(UPPER)]
-            p = p + n * (DEPTH[i] / 2 + max(DEPTH[j] for j in nb) / 2 + 0.3)
+            p = p + n * (out_mm if out_mm is not None else DEPTH[i] / 2 + max(DEPTH[j] for j in nb) / 2 + 0.3)
         meshes[i] = _place(crown(i, kind), p, t)
     available = contact_s[(13, 14)] - contact_s[(3, 4)]
     truth = Truth(widths=dict(WIDTHS), arch_length=round(L, 6), crowding=round(deficit, 6), curve=cv, s_center=s)

@@ -5,6 +5,7 @@ construction is checked here with numbers that do not go through the core. Core 
 listed in KNOWN_FAIL with the plan step that should fix them; strict xfail makes a fixed check fail loudly until
 it is removed from the list.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -84,20 +85,34 @@ def test_generator_does_not_import_the_core():
 
 
 # ----------------------------------------------------------------------------------------- the core
+def _num(got: str) -> float:
+    return float(re.search(r"-?\d+\.\d+", got).group())
+
+
+# id -> how it is allowed to fail: a known failure that fails some other way (a new cause, or worse than documented)
+# is a failure of the test.
 KNOWN_FAIL = {
     # step 5 limit, found while adding the rotation checks: a near-square molar outline changes its extent by < 0.1 mm
     # over ±10°, so the width axis (and with it the rotation) stays on the arch tangent — a 12° molar rotation reads 0°.
     # Needs a shape feature (e.g. the buccal surface line), not the outline extent.
-    "B-rot-3-12",
+    "B-rot-3-12": lambda got: got.startswith("3: rot"),
     # step 2 limit (#59): with canines or first premolars blocked out on a tapered arch, the arch refitted through
     # the teeth in line cuts the corner where they stood, so the available length reads short (ellipse at 5 mm:
     # -1.5 mm of length, widths within 0.2 mm) and crowding reads high by 1.3–2.2 mm. It errs toward more space needed.
-    "B-crowd-parabola-9", "B-crowd-ellipse-2", "B-crowd-ellipse-5", "B-crowd-ellipse-9",
-    "B-layout-parabola-5", "B-layout-parabola-9",
+    "B-crowd-parabola-9": lambda got: _num(got) <= 8.5 + 1.5,
+    "B-crowd-ellipse-2": lambda got: _num(got) <= 1.5 + 1.6,
+    "B-crowd-ellipse-5": lambda got: _num(got) <= 4.5 + 2.0,
+    "B-crowd-ellipse-9": lambda got: _num(got) <= 8.5 + 2.5,
+    "B-layout-parabola-5": lambda got: _num(got) <= 1.6,
+    "B-layout-parabola-9": lambda got: _num(got) <= 1.6,
+    # step 2 limit: a tooth under DISPLACED_MM out of the arch still counts in the fit and bends it; past it, it is left
+    # out. On the parabola the measure steps by 1.4 mm across 3 → 3.5 mm (catenary 0.6 mm).
+    "B-out-step-parabola": lambda got: _num(got) <= 1.5,
     # collision validator (#61): the target is clear, but on the way 7 slides past 6's corner (+1.0–1.8 mm³ in the
     # middle stages, straight-line staging) and IPR is not cut from the meshes, so the plan fails on small collisions
-    # although the space is there.
-    "D-plan-000001",
+    # although the space is there. Only that: a space deficit or another pair is a new failure.
+    "D-plan-000001": lambda got: re.fullmatch(r"fail: 최선 \w+: collision \d+건, 가장 큰 충돌 \[6, 7\] 단계 \d+ \(\+1\.\d+mm³\)",
+                                                got) is not None,
 }
 
 
@@ -109,6 +124,8 @@ def test_core(ck):
     if ck.id in KNOWN_FAIL:
         if ok:
             pytest.fail(f"{ck.id} now passes ({got}); remove it from KNOWN_FAIL")
+        if not KNOWN_FAIL[ck.id](got):
+            pytest.fail(f"{ck.id} fails otherwise than documented: {got} vs {want}")
         pytest.xfail(f"known failure (step {ck.step}): {got} vs {want}")
     assert ok, f"{ck.id}: {got} vs {want}"
 
@@ -147,11 +164,14 @@ def test_checks_catch_an_arch_bent_by_teeth_out_of_line(monkeypatch):
 
 
 def test_checks_catch_the_old_crowding_measure(monkeypatch):
-    # #59: all crowns' full outline widths against the crown-centre arch, both molars included
+    # #59: the measure before it (main a9a8db2) — all crowns' full outline widths against the crown-centre arch
+    # between the end crowns' distal surfaces, both molars included
     def old(case):
-        return round(sum(case.mesiodistal_width(i) for i in case.ids) - (case.arch.s_last - case.arch.s_first), 1)
+        w = {i: case.mesiodistal_width(i) for i in case.ids}
+        s = sorted(case.arch.s_of(case.anchor[i]) for i in case.ids)
+        return round(sum(w.values()) - ((s[-1] - s[0]) + (w[case.ids[0]] + w[case.ids[-1]]) / 2), 1)
     monkeypatch.setattr(C.planner, "crowding_mm", old)
-    assert not _by_id("B-crowd-catenary-0").run()[0]
+    assert not _by_id("B-crowd-catenary-5").run()[0]
 
 
 def test_checks_catch_a_translation_only_core(monkeypatch):

@@ -80,10 +80,11 @@ def contact_width_check(family: str):
     return run
 
 
-def crowding_check(family: str, deficit: float, blocked=(6, 11)):
-    """Clinical crowding (#59) on an arch built crowded the way real ones are: the teeth without room stand out of it."""
+def crowding_check(family: str, deficit: float, blocked=(6, 11), out_mm: float | None = None):
+    """Clinical crowding (#59) on an arch built crowded the way real ones are: the teeth without room stand out of it
+    (clear of their neighbours by default, or `out_mm` from the arch)."""
     def run():
-        meshes, t = S.build_crowded_arch(family, deficit=deficit, blocked=blocked)
+        meshes, t = S.build_crowded_arch(family, deficit=deficit, blocked=blocked, out_mm=out_mm)
         got = planner.crowding_mm(_case(meshes))
         tol = TOL_ALIGNED if deficit == 0 else TOL_CROWD
         return abs(got - t.span_crowding) <= tol + 1e-6, f"{got:.2f}", f"{t.span_crowding:.2f} ± {tol}"
@@ -107,6 +108,20 @@ def layout_check(family: str, deficit: float):
             vals.append(planner.crowding_mm(_case(meshes)))
         spread = max(vals) - min(vals)
         return spread <= TOL_LAYOUT + 1e-6, f"spread {spread:.2f} mm {np.round(vals, 1).tolist()}", f"≤ {TOL_LAYOUT}"
+    return run
+
+
+OUT_STEPS = (1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0)
+
+
+def out_continuity_check(family: str, deficit: float = 4.0):
+    """Moving the blocked teeth further out, in 0.5–1 mm steps from 1.5 to 6 mm, changes nothing about the deficit, so the
+    measure must not jump: the step across planner.DISPLACED_MM (where a tooth stops counting in the arch fit) is
+    the one to watch."""
+    def run():
+        vals = [planner.crowding_mm(_case(S.build_crowded_arch(family, deficit=deficit, out_mm=o)[0])) for o in OUT_STEPS]
+        jump = max(abs(b - a) for a, b in zip(vals, vals[1:]))
+        return jump <= TOL_CROWD + 1e-6, f"max step {jump:.2f} mm {vals}", f"≤ {TOL_CROWD}"
     return run
 
 
@@ -314,6 +329,10 @@ CHECKS: list[Check] = [
       for f in ("parabola", "catenary", "ellipse", "skewed") for d in (0.0, 2.0, 5.0, 9.0)],
     *[Check(f"B-crowd-end-{f}-{d:g}", 2, f"crowding {d:g} mm, second premolars blocked out (span ends), {f} arch",
             crowding_check(f, d, blocked=(4, 13))) for f in ("catenary", "skewed") for d in (5.0, 9.0)],
+    *[Check(f"B-crowd-out-{f}-{o:g}", 2, f"crowding 4 mm, canines {o:g} mm out of the arch, {f}",
+            crowding_check(f, 4.0, out_mm=o)) for f in ("catenary", "parabola") for o in (2.0, 3.0, 4.0)],
+    *[Check(f"B-out-step-{f}", 2, f"crowding does not jump as the canines stand further out, {f}", out_continuity_check(f))
+      for f in ("catenary", "parabola")],
     *[Check(f"B-layout-{f}-{d:g}", 2, f"crowding {d:g} mm unchanged by which teeth stand out, {f}", layout_check(f, d))
       for f in ("catenary", "skewed", "parabola") for d in (5.0, 9.0)],
     Check("B-inv-rigid", 2, "crowding unchanged by whole-case rotation/translation", rigid_check()),

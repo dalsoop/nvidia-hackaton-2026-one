@@ -217,7 +217,9 @@ class Case:
 
     @property
     def arch_order(self) -> list[int]:
-        return sorted(self.ids, key=lambda i: self.arch.s_of(self.anchor[i]))
+        """Teeth in arch order: Universal numbers run along the arch. (Sorting by position on the fitted arch put 5
+        before 4 when the molars were missing: the fit bends back past an end crown.)"""
+        return sorted(self.ids)
 
     def contact_point(self, a: int, b: int) -> np.ndarray:
         """Contact of neighbouring crowns a and b: centre of the zone where their surfaces come closest (a shared cut
@@ -236,7 +238,7 @@ class Case:
         bucco-lingual band (CONTACT_BAND) of the crown. See CONTACT_BAND for why not the whole outline.
         `arch`: read the axis off this arch's tangent instead of the case's (the crowding measure passes the arch of the
         crowns standing in line, which a far-out crown does not bend)."""
-        key = (i, id(arch)) if arch is not None else i
+        key = (i, arch) if arch is not None else i       # the arch itself: an id() can be reused once it is freed
         if key not in self._cw:
             a = (self._md_axis(i) if arch is None else self._axis_search(i, arch.tangent(arch.s_of(self.anchor[i]))))[2]
             u, n = np.array([np.cos(a), np.sin(a)]), np.array([-np.sin(a), np.cos(a)])
