@@ -1,5 +1,5 @@
 """NAT FastAPI worker with cuAlign routes added: the agent endpoints (/chat, /generate, ...) come from NAT,
-/api/* and /ui come from here. NeMo Guardrails is workflow middleware (rails_middleware.py), not an HTTP layer.
+/api/*, /ui and /mcp come from here. NeMo Guardrails is workflow middleware (rails_middleware.py), not an HTTP layer.
 One process, one port: `nat serve --config_file configs/workflow.yml`.
 
 Selected via `general.front_end.runner_class: cualign.server.worker.CuAlignWorker`.
@@ -51,6 +51,8 @@ class CuAlignWorker(FastApiFrontEndPluginWorker):
         await super().add_routes(app, builder)
         from .api import add_api_routes
         add_api_routes(app, review=await manual_review(builder))
+        from .mcp_server import add_mcp_route
+        add_mcp_route(app)   # /mcp for NemoClaw (docs/nemoclaw.md); 503 until a token is configured
 
 
 async def manual_review(builder: WorkflowBuilder, name: str = "reviewer"):

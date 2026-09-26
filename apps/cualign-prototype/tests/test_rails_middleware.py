@@ -488,3 +488,43 @@ def test_memo_check_follows_output_policy(factory, closed, state, refuse):
     assert asyncio.run(middleware.check_memo("검토 메모 초안")) == (state, refuse)
     assert rails.outputs == ["검토 메모 초안"]
     assert asyncio.run(rails_middleware.RailsMiddleware(None, False).check_memo("메모")) == ("off", False)
+
+
+def test_mcp_plan_runs_the_guarded_workflow(store, tmp_path, monkeypatch):
+    """cualign_plan over /mcp (docs/nemoclaw.md) on the real worker: the NAT agent plans with the real tools behind
+    the rails, and the tool result carries the selected plan. A real server, because the MCP client and NAT's
+    lifespan must share one event loop."""
+    import asyncio
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+    from cualign.server import mcp_server
+    monkeypatch.setattr(mcp_server, "STORE", store)
+    monkeypatch.setenv(mcp_server.TOKEN_ENV, "test-token-not-a-secret")
+    with PlanningLLM() as llm:
+        path = write_config(tmp_path, llm, "rails_fakes:passing")
+        monkeypatch.setenv("NAT_CONFIG_FILE", str(path))
+        server = uvicorn.Server(uvicorn.Config(CuAlignWorker(load_config(path)).build_app(), host="127.0.0.1",
+                                               port=0, log_level="warning"))
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        while not server.started:
+            time.sleep(0.05)
+        port = server.servers[0].sockets[0].getsockname()[1]
+
+        async def plan():
+            headers = {"Authorization": "Bearer test-token-not-a-secret"}
+            async with httpx.AsyncClient(headers=headers, timeout=60) as http:
+                async with streamable_http_client(f"http://127.0.0.1:{port}/mcp", http_client=http) as (r, w, *_):
+                    async with ClientSession(r, w) as session:
+                        await session.initialize()
+                        return await session.call_tool("cualign_plan", {"case_id": "moderate", "request": A14})
+        try:
+            res = asyncio.run(plan())
+        finally:
+            server.should_exit = True
+            thread.join(10)
+    out = json.loads(res.content[0].text)
+    assert out["status"] == "planned" and MARK in out["answer"]
+    assert out["plan"]["plan_id"] in store.plans
+    assert {"propose_target", "plan_stages", "select_plan"} <= {t.split("__")[-1] for t in out["tools"]}
+    assert str(llm.requests[0]["messages"]).count("cuAlign server context") == 1

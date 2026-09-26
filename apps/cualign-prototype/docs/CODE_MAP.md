@@ -47,6 +47,7 @@
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트, 에이전트가 건너뛴 검토의 서버 실행 |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
+| `src/cualign/server/mcp_server.py` | NemoClaw용 MCP 서버(`/mcp`): 토큰 확인, `cualign_plan`은 서버 안에서 `/chat/stream`으로 요청해 UI와 같은 경로를 탐, 승인 도구는 승인하지 않고 내보내기 도구는 의사 승인을 요구 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
 | `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공 |
 | `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
@@ -101,6 +102,7 @@
 | `openshell/policy.yaml` | 도구 실행의 네트워크·파일 접근 경계 정책 |
 | `openshell/server-policy.yaml` | 서버 전체 샌드박스 정책(쓰기 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만) |
 | `docs/openshell.md` | 정책 검증 수준, 서버 샌드박스 실행 절차와 기록 |
+| `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차, OpenClaw 스킬 |
 | `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
 | `skills/skillspector-report-static.md`, `skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
 | `scripts/scan_skill.py` | 위 스캔 재실행 스크립트 |
