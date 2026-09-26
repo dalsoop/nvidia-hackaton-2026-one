@@ -61,6 +61,22 @@ def test_absent_block_means_nothing_extra(tmp_path, monkeypatch, store):
     assert set(_context(llm)) == {"case_id", "base_plan_id", "constraints"}
 
 
+def test_failing_view_is_left_out_not_a_500(tmp_path, monkeypatch, store, caplog):
+    """A view that raises on some case must not turn the request into an unhandled 500: the item is skipped with a
+    warning and the rest of the context stays, so the agent reads that item with the tool as before."""
+    from cualign.agent import register
+
+    def boom(case):
+        raise IndexError("no teeth")
+    monkeypatch.setattr(register, "case_view", boom)
+    with PlanningLLM() as llm, serve(tmp_path, monkeypatch, llm) as client:
+        with caplog.at_level("WARNING", logger="cualign.agent.register"):
+            ask(client, "/chat/stream", PLAN, cualign={"case_id": "moderate"})   # asserts HTTP 200
+    ctx = _context(llm)
+    assert "case" not in ctx and ctx["limits"] == limits_view() and "skill" in ctx
+    assert any("context preload of case skipped" in r.message and "IndexError" in r.message for r in caplog.records)
+
+
 def test_unknown_skill_fails_at_startup_not_per_request():
     with pytest.raises(ValueError, match="unknown skill"):
         context_preload(ContextPreload(skill="no-such-skill"))

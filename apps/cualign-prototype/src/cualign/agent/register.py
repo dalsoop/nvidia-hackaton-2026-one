@@ -1,5 +1,6 @@
 """NAT planning tools over the shared, constraint-preserving calculation service."""
 from __future__ import annotations
+import logging
 from collections.abc import AsyncGenerator
 from pydantic import BaseModel, Field
 from nat.builder.builder import Builder
@@ -16,6 +17,8 @@ from cualign.core import skills as S
 from cualign.core.constraints import Constraints, ConstraintPatch
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
+
+logger = logging.getLogger(__name__)
 
 react_patch.apply()
 react_history_patch.apply()
@@ -89,13 +92,18 @@ def context_preload(settings: ContextPreload):
         return None
 
     def preload(cid, case, constraints) -> dict:
+        """Fail-open per item: a view that raises is left out with a warning, and the agent reads it with the tool
+        as before (the instructions say to call the tool for what the context lacks). The request itself still
+        gets its 400-or-200 from open_run's own checks, never a 500 from here."""
         extra = {}
-        if settings.case:
-            extra["case"] = case_view(case)
-        if settings.limits:
-            extra["limits"] = limits_view()
-        if skill:
-            extra["skill"] = skill
+        views = [("case", lambda: case_view(case)) if settings.case else None,
+                 ("limits", limits_view) if settings.limits else None,
+                 ("skill", lambda: skill) if skill else None]
+        for name, view in filter(None, views):
+            try:
+                extra[name] = view()
+            except Exception as e:  # noqa: BLE001  the tool path reports the same error to the agent
+                logger.warning("cuAlign: context preload of %s skipped for case %s (%s: %s)", name, cid, type(e).__name__, e)
         return extra
     return preload
 
