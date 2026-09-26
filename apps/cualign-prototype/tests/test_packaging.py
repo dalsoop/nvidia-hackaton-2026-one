@@ -22,11 +22,11 @@ def test_packaged_assets_are_required_and_nonempty(tmp_path):
     root = Path(__file__).parents[1] / "src"
     wheel = tmp_path / "assets.whl"
     with ZipFile(wheel, "w") as archive:
-        for directory in (root / "cualign/core/templates", root / "cualign/server/static"):
-            for path in directory.iterdir():
-                if path.is_file():
+        for directory in (root / "cualign/core/templates", root / "cualign/core/samples", root / "cualign/server/static"):
+            for path in directory.rglob("*"):
+                if path.is_file() and "__pycache__" not in path.parts:
                     archive.write(path, str(path.relative_to(root)))
-    assert module.check_wheel(wheel) == 19
+    assert module.check_wheel(wheel) == 19 + 1 + 3 * (14 + 3)     # + sample credit, 3 samples x (crowns, gum, source, png)
     with ZipFile(wheel, "a") as archive:
         archive.writestr("cualign/server/static/style.css", "")
     with pytest.raises(ValueError, match="empty assets"):
