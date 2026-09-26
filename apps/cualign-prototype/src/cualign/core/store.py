@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import patients
+from . import patients, samples
 from .case import Case
 from .constraints import Constraints
 from .synth import PRESETS
@@ -31,7 +31,12 @@ class Store:
 
     # ------------------------------------------------------------------ cases
     def available_cases(self) -> list[dict]:
-        rows = [{"case_id": k, "kind": "synthetic", "crowding_mm": v["crowding_mm"]} for k, v in PRESETS.items()]
+        # real scans with the dentist's prescription first (the start screen shows these); the synthetic presets stay
+        # loadable by name for the agent, the tests and the CLI, but the screen does not offer them (#46)
+        rows = [{"case_id": s.case_id, "kind": "sample", "title": s.title, "prescription": s.prescription,
+                 "request": s.request, "note": s.note, "available": s.available,
+                 "constraints": s.initial_constraints().model_dump(mode="json")} for s in samples.SAMPLES.values()]
+        rows += [{"case_id": k, "kind": "synthetic", "crowding_mm": v["crowding_mm"]} for k, v in PRESETS.items()]
         env = os.environ.get("CUALIGN_CASE_DIR")
         if env and Path(env).exists():
             rows.append({"case_id": "scan", "kind": "stl-folder", "path": env})
@@ -45,7 +50,13 @@ class Store:
         if case_id is None:
             case_id = self.active_case or ("scan" if os.environ.get("CUALIGN_CASE_DIR") else "moderate")
         if case_id not in self.cases:
-            if case_id in PRESETS:
+            if (sample := samples.get(case_id)) is not None:
+                if not sample.available:
+                    raise FileNotFoundError(f"sample {case_id} is not installed ({sample.folder})")
+                self.cases[case_id] = Case.from_dir(sample.folder)
+                # the case opens with its prescription as the planning constraints (until the dentist changes them)
+                self.case_constraints.setdefault(case_id, sample.initial_constraints())
+            elif case_id in PRESETS:
                 self.cases[case_id] = Case.synthetic(case_id)
             elif case_id == "scan":
                 self.cases[case_id] = Case.from_dir(os.environ["CUALIGN_CASE_DIR"])

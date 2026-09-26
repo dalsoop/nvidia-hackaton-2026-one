@@ -20,10 +20,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def parse_constraints(text: str) -> dict:
-    """Rule-based reading of the request (the agent does this with Nemotron; this is the offline stand-in)."""
-    c = {"allow_extraction": True, "months": None, "stage_cap": None, "order": "simultaneous"}
-    if "발치" in text and any(k in text for k in ("없", "피", "싫", "안 돼", "안돼", "금지")):
+    """Rule-based reading of the request (the agent does this with Nemotron; this is the offline stand-in).
+    allow_extraction is None when the request does not say: the case's own constraints decide (a sample opens with
+    its prescription, #46)."""
+    c = {"allow_extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
+    if "비발치" in text or ("발치" in text and any(k in text for k in ("없", "피", "싫", "안 돼", "안돼", "금지"))):
         c["allow_extraction"] = False
+    elif re.search(r"발치\s*(허용|해|가능|처방|입니다|합니다)", text):
+        c["allow_extraction"] = True
     m = re.search(r"(\d+)\s*개월", text)
     if m:
         from cualign.core.limits import stage_cap_from_months
@@ -48,7 +52,10 @@ def cmd_plan(args):
     if args.export:
         raise SystemExit("[거부] CLI 초안은 미승인입니다. UI에서 계획 생성·의사 승인 후 다운로드하세요.")
     t0 = time.time()
+    from cualign.core import samples
     c = parse_constraints(args.request)
+    if c["allow_extraction"] is None and samples.get(args.case) is None:
+        c["allow_extraction"] = True          # synthetic presets and folders: extraction allowed unless the request says no
     print(f"[요청] {args.request}\n[제약] {json.dumps(c, ensure_ascii=False)}")
     res = rule_based_plan(args.case, c["allow_extraction"], c["stage_cap"], c["order"])
     for r in res["tried"]:

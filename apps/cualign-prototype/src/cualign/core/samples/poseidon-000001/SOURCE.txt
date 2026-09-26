@@ -1,0 +1,3 @@
+Poseidon3D case 000001 (maxilla), teeth [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+tooth labels renumbered u -> 17 - u (dataset order runs opposite to Universal in this frame)
+Poseidon3D dataset by Tibor Kubik and Michal Spanel, "Addressing Challenging Teeth Segmentation Cases in 3D Dental Surface Orthodontic Scans", Bioengineering 11(10):1014, 2024 (https://doi.org/10.3390/bioengineering11101014), data https://zenodo.org/records/15608906, CC-BY-4.0.
