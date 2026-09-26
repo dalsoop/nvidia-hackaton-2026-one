@@ -10,7 +10,6 @@
 #   space: 부족 | 경도_부족 | 남음 | 해당없음   (정성 판정, mm 수치 없음)
 #   plan: 치과의사가 말한 접근. extraction(발치), ipr(치간 삭제), expansion(악궁 확장), arch_form(악궁 형태 변경)
 #   note: 원문에 가까운 메모
-#   unclear: 치과의사에게 다시 확인할 점
 #
 # 치아 번호: 치과의사는 FDI(11~48)를 쓴다(확인함). 앱은 Universal(1~32)을 쓰므로 두 표기를 함께 적는다.
 #   상악 FDI→Universal: 17..11 → 2..8, 21..27 → 9..15 (예: 14 → 5, 24 → 12, 11-21 사이 → 8-9 사이)
@@ -48,8 +47,6 @@ cases:
     space: 경도_부족
     plan: {}
     note: "마일드한 크라우딩."
-    unclear:
-      - "처방(IPR·확장 여부)"
 
   - id: "000097"
     needs_treatment: true
