@@ -578,3 +578,90 @@ def test_runner_mirrors_the_ui_request():
     patch = ConstraintPatch.model_validate(form_patch(Constraints()))
     assert patch.clear_stage_cap and patch.changes() == Constraints().model_dump() | {"lock": [], "ipr_exclude": []}
     assert ConstraintPatch.model_validate(form_patch(Constraints(stage_cap=52))).changes()["stage_cap"] == 52
+
+
+# ---- #47: the answer is written for a dentist (no ids, field names or raw enum values) ----
+
+def _select(pid, passed=True, **kw):
+    return ToolCall("select_plan", {"plan_id": pid}, {"type": "plan_selected", **_summary(pid, passed, **kw)})
+
+
+LIVE_DUMP = (f"선택된 계획: {P1}\n전략: expansion (악궁 편측 0.5mm 확장)\n총 장수: 12단계\n"
+             "예상 기간: 2.8개월 (12단계 × 7일 / 30.4)\n"
+             "사용된 조건: allow_extraction=false, lock=[], ipr_exclude=[], ipr_limit_mm=0.25mm, stage_cap=52, order=anterior_first\n"
+             "검토 결과: 검토 통과 (attempts=1)")   # 2026-09-26 sandbox answer (#47), id replaced
+
+
+@pytest.mark.parametrize("answer,ok", [
+    (LIVE_DUMP, False),
+    ("**확장 전략으로 12단계(약 2.8개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\n"
+     "- 조건: 발치 허용 아니요 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 52단계(약 12개월) · "
+     "이동 순서 앞니 먼저\n- 검토: 통과. 단계당 이동량 0.239mm(한도 0.25mm)", True),
+    (f"선택된 계획: {P1}", False),                                          # plan id
+    ("선택된 계획: p3", False),                                             # legacy id
+    ("조건: allow_extraction 아니요", False),
+    ("단계 상한: stage_cap 52", False),
+    ("고정 치아: lock=[3, 14]", False),
+    ("이동 순서: order: 앞니 먼저", False),
+    ("이동 순서: anterior_first", False),
+    ("전략: expansion_ipr", False),
+    ("전략: ipr", False),                                                    # raw id, lowercase
+    ("규칙 위반: space_deficit 1건", False),                                  # any snake_case id
+    ("cualign__select_plan 을 호출했습니다.", False),                         # tool name
+    ("검토 결과: 통과 (attempts=1)", False),
+    ("예상 기간: 2.8개월 (12단계 × 7일 / 30.4)", False),                      # formula
+    ("IPR 전략, IPR 한도 면당 0.25mm", True),                                # IPR is the UI's own word
+    ("Block 과 clock 은 필드 이름이 아닙니다.", True),                        # "lock" inside a word
+    (f"다운로드: /api/plans/{P1}/stl.zip", True),                            # a download link carries the id by design
+    (f"확장 전략입니다.\n검토 메모:\n전략 expansion · 위반 space_deficit 1건\n이 계획은 초안입니다.", True),  # verbatim memo
+    (f"확장 전략입니다.\n검토 메모 요약: 전략 expansion", False),              # not a memo heading: the planner's own words
+])
+def test_no_internal_terms(answer, ok):
+    assert CHECKS["no_internal_terms"](trace(answer, []))[0] is ok
+
+
+@pytest.mark.parametrize("answer,calls,ok", [
+    ("**IPR 전략으로 5단계 계획을 만들었습니다.** 규칙 위반은 없습니다.", [_validate(P1, True), _select(P1)], True),
+    ("**IPR 전략으로 5단계 계획을 만들었습니다.** 규칙 위반은 없습니다.", [_validate(P1, False), _select(P1, False)], False),
+    ("**IPR 전략으로 5단계 계획을 만들었습니다.** 규칙 위반: 공간 부족 1건.", [_validate(P1, False), _select(P1, False)], True),
+    ("규칙 위반: 공간 부족 1건.\n- 검토: 통과. 단계당 이동량 0.2mm", [_validate(P1, False), _select(P1, False)], True),  # review status
+    ("- 확장: 13단계 · 규칙 위반: 공간 부족 1건\n- IPR: 5단계 · 통과",
+     [_validate(P2, False, strategy="expansion"), _validate(P1, True), _select(P1)], True),
+    ("- 확장: 13단계 · 통과\n- IPR: 5단계 · 통과",                                              # row named by strategy
+     [_validate(P2, False, strategy="expansion"), _validate(P1, True), _select(P1)], False),
+    ("- 시도한 전략: 확장(위반) → 확장 + IPR(통과)",                                            # 확장 + IPR is not 확장
+     [_validate(P2, False, strategy="expansion"), _validate(P1, True, strategy="expansion_ipr"), _select(P1)], True),
+])
+def test_no_false_success_without_ids(answer, calls, ok):
+    """An answer that names no plan id presents the selected plan, and a strategy name points at that strategy's plan."""
+    assert CHECKS["no_false_success"](trace(answer, calls))[0] is ok
+
+
+def test_selected_plan_is_presented_without_ids():
+    ans = "- 조건: 발치 허용 아니요 · 단계 상한 52단계(약 12개월)"
+    assert CHECKS["states_constraints"](trace(ans, [_validate(P1, True), _select(P1)]))[0] is True
+    assert CHECKS["states_constraints"](trace(ans.replace("아니요", "예"), [_validate(P1, True), _select(P1)]))[0] is False
+    assert CHECKS["grounded_numbers"](trace(ans, [_validate(P1, True), _select(P1)]))[0] is True     # 52 x 7 / 30.4
+    assert CHECKS["grounded_numbers"](trace(ans.replace("12개월", "13개월"), [_validate(P1, True), _select(P1)]))[0] is False
+    # selected but never validated: the presented plan still needs a successful validation
+    assert CHECKS["presented_plan_validated"](trace("IPR 전략입니다.", [_select(P1)]))[0] is False
+    assert CHECKS["answer_mentions_plans"](trace("IPR 전략입니다.", [_validate(P1, True), _select(P1)]))[0] is True
+    assert CHECKS["answer_mentions_plans"](trace("계획을 만들었습니다.", [_validate(P1, True), _select(P1)]))[0] is False
+
+
+def test_compare_rows_by_strategy_name():
+    calls = [_validate(P2, False, strategy="expansion", n_stages=13), _validate(P1, True, strategy="expansion_ipr", n_stages=8)]
+    good = "먼저 볼 안은 확장 + IPR 안입니다.\n- 확장: 13단계 · 규칙 위반: 공간 부족 1건\n- 확장 + IPR: 8단계 · 통과"
+    assert CHECKS["compare_rows_complete"](trace(good, calls))[0] is True
+    assert CHECKS["compare_rows_complete"](trace(good.replace("13단계", "12단계"), calls))[0] is False
+    assert CHECKS["compare_rows_complete"](trace(good.replace(" · 통과", ""), calls))[0] is False
+
+
+def test_compares_with_previous_without_ids():
+    tr = _revision("- 이전 안(IPR, 7단계) → 새 안(IPR, 9단계). 달라진 점: 고정 치아 3, 14번 반영")
+    assert CHECKS["compares_with_previous"](tr)[0] is False                  # nothing selected: which plan is new?
+    tr.turns[1].calls.append(_select(P2, n_stages=9, lock=(3, 14)))
+    assert CHECKS["compares_with_previous"](tr)[0] is True
+    assert CHECKS["new_plan_validated"](tr)[0] is True
+    tr.turns[1].answer = "새 안(IPR, 9단계). 고정 치아 3, 14번 반영"                   # the earlier plan is not named
+    assert CHECKS["compares_with_previous"](tr)[0] is False

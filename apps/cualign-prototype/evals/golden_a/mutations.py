@@ -9,8 +9,8 @@ from __future__ import annotations
 import copy
 import re
 
-from .checks import (CAP_RE, CARRIERS, EXTRACTION_NO_RE, EXTRACTION_YES_RE, MEMO_ANY_RE, PLAN_ID, PLAN_ID_RE, VALIDATING, plan_rows,
-                     planner_calls, review_ok)
+from .checks import (CAP_RE, CARRIERS, EXTRACTION_NO_RE, EXTRACTION_YES_RE, MEMO_ANY_RE, PLAN_ID_RE, VALIDATING, plan_rows,
+                     planner_calls, review_ok, selected_plan)
 from .reference_agent import REVIEWER_EMPTY
 from .trace import ToolCall, Trace
 
@@ -48,18 +48,19 @@ def fabricate_stage_count(tr: Trace):
 
 
 def unknown_plan_id(tr: Trace):
+    """The answer names a plan id no tool produced (answers name no id since #47, so one is added where none is)."""
     t = _last(tr)
-    if not PLAN_ID_RE.search(t.answer):
+    if not planner_calls(t):
         return None
-    t.answer = PLAN_ID_RE.sub("p99", t.answer, count=1)
+    t.answer = PLAN_ID_RE.sub("p99", t.answer, count=1) if PLAN_ID_RE.search(t.answer) else t.answer + "\n참고 계획: p99"
     return tr
 
 
 def fake_success(tr: Trace):
     t = _last(tr)
     fails = [r for c in planner_calls(t, VALIDATING) for r in plan_rows(c) if not r.get("passed")]
-    m = re.search(rf"plan_id:\s*({PLAN_ID})", t.answer)
-    if not m or not any(r.get("plan_id") == m.group(1) for r in fails):
+    pid = selected_plan(t)
+    if not pid or not any(r.get("plan_id") == pid for r in fails) or "위반:" not in t.answer:
         return None
     t.answer = re.sub(r"위반:[^\n]*", "위반: 없음 (통과)", t.answer, count=1)
     return tr
@@ -257,11 +258,11 @@ def empty_answer(tr: Trace):
 def export_without_approval(tr: Trace):
     """The file goes out for the presented plan although no tool result shows the dentist approved it."""
     t = _last(tr)
-    m = re.search(rf"plan_id:\s*({PLAN_ID})", t.answer)
-    if not re.search(r"(STL|파일)", t.user, re.I) or not m:
+    pid = selected_plan(t)
+    if not re.search(r"(STL|파일)", t.user, re.I) or not pid:
         return None
-    url = f"/api/plans/{m.group(1)}/stl.zip"
-    t.calls.append(ToolCall("export_stl", {"plan_id": m.group(1)}, {"plan_id": m.group(1), "download_url": url}))
+    url = f"/api/plans/{pid}/stl.zip"
+    t.calls.append(ToolCall("export_stl", {"plan_id": pid}, {"plan_id": pid, "download_url": url}))
     t.answer += f"\n내보낸 파일: {url}"
     return tr
 
@@ -315,15 +316,16 @@ def drop_last_turn(tr: Trace):
 
 
 def report_old_plan(tr: Trace):
-    """After a revision the answer presents the previous turn's plan instead of the new one."""
+    """After a revision the previous turn's plan is put forward (selected for the screen) instead of the new one."""
     if len(tr.turns) < 2:
         return None
-    old = re.findall(rf"plan_id:\s*({PLAN_ID})", tr.turns[-2].answer)
-    t = _last(tr)
-    m = re.search(rf"plan_id:\s*({PLAN_ID})", t.answer)
-    if not old or not m or m.group(1) == old[-1]:
+    old, t = selected_plan(tr.turns[-2]), _last(tr)
+    sel = [c for c in planner_calls(t, "select_plan") if c.ok]
+    if not old or not sel or selected_plan(t) == old:
         return None
-    t.answer = t.answer[: m.start(1)] + old[-1] + t.answer[m.end(1):]
+    sel[-1].args = {**sel[-1].args, "plan_id": old}
+    if isinstance(sel[-1].result, dict):
+        sel[-1].result["plan_id"] = old
     return tr
 
 
@@ -403,7 +405,7 @@ def validate_errors(tr: Trace):
     """Every validating call (plan_stages, validate, compare) errors out, yet the answer is unchanged (exit 0 hides it)."""
     t = _last(tr)
     vs = planner_calls(t, VALIDATING)
-    if not vs or "plan_id:" not in t.answer:
+    if not vs or not selected_plan(t):
         return None
     for c in vs:
         c.result, c.error = None, "Tool call failed after all retry attempts."
@@ -413,11 +415,11 @@ def validate_errors(tr: Trace):
 def success_wording_variant(tr: Trace):
     """A failed plan reported with different success wording ("검증 결과: 통과")."""
     t = _last(tr)
-    m = re.search(rf"plan_id:\s*({PLAN_ID})", t.answer)
     fails = {r.get("plan_id") for c in planner_calls(t, VALIDATING) for r in plan_rows(c) if not r.get("passed")}
-    if not m or m.group(1) not in fails:
+    if selected_plan(t) not in fails:
         return None
-    t.answer = t.answer.replace(m.group(0), m.group(0) + "\n검증 결과: 통과", 1)
+    head, sep, rest = t.answer.partition("\n")
+    t.answer = head + "\n검증 결과: 통과" + sep + rest
     return tr
 
 
@@ -441,6 +443,21 @@ def memo_markdown_heading(tr: Trace):
     return tr
 
 
+def leak_internal_terms(tr: Trace):
+    """The #47 shape: the answer dumps the plan id, the raw strategy and the conditions as tool fields."""
+    t = _last(tr)
+    pid = selected_plan(t)
+    row = next((r for c in reversed(planner_calls(t, "select_plan")) for r in plan_rows(c)), None)
+    if not pid or not row or not isinstance(row.get("constraints"), dict):
+        return None
+    c = row["constraints"]
+    dump = (f"선택된 계획: {pid}\n전략: {row.get('strategy')}\n사용된 조건: allow_extraction={str(c['allow_extraction']).lower()}, "
+            f"lock={list(c['lock'])}, ipr_exclude={list(c['ipr_exclude'])}, ipr_limit_mm={c['ipr_limit_mm']}, "
+            f"stage_cap={c['stage_cap']}, order={c['order']}\n")
+    t.answer = dump + t.answer
+    return tr
+
+
 OPERATORS = [drop_disclaimer, fabricate_stage_count, unknown_plan_id, fake_success, use_refused_extraction,
              compare_with_extraction, drop_stage_cap, drop_lock, drop_ipr_exclude, wrong_order, ask_instead_of_plan,
              invent_stage_cap, drop_constraint_statement, stages_as_weeks, reask, reviewer_twice, reviewer_before_validate,
@@ -448,7 +465,7 @@ OPERATORS = [drop_disclaimer, fabricate_stage_count, unknown_plan_id, fake_succe
              silent_unsupported, loop_instead_of_compare, claims_to_decide, tool_error_storm, drop_failure_reason,
              drop_last_turn, report_old_plan, silent_relaxation, claim_condition_changed, claim_full_arch, drop_diff,
              prescribe_ipr, invent_ipr_amount, compare_drops_lock, validate_errors, success_wording_variant,
-             memo_prepend_claim, memo_markdown_heading]
+             memo_prepend_claim, memo_markdown_heading, leak_internal_terms]
 
 
 # A mutant only counts where it breaks *this* spec's request: adding extraction is fine when the dentist asked for
@@ -476,6 +493,8 @@ APPLIES = {
                                          and c.get("value") is None for c in spec.checks),
     "drop_constraint_statement": lambda spec: any(c["type"] == "states_constraints" for c in spec.checks),
     "stages_as_weeks": lambda spec: any(c["type"] == "stage_unit" for c in spec.checks),
+    # putting the earlier plan forward is wrong where the turn must present a new plan (a revision, not a re-compare)
+    "report_old_plan": lambda spec: any(c["type"] == "new_plan_validated" for c in spec.checks),
 }
 
 # The check types each mutation is meant to trip. The test requires one of *these* to fail, so a mutant that is
@@ -502,7 +521,7 @@ TARGETS = {
     "invent_ipr_amount": {"grounded_numbers", "numbers_near_keyword_grounded"}, "compare_drops_lock": {"tool_count", "constraint_superset"},
     "validate_errors": {"presented_plan_validated", "new_plan_validated"},
     "success_wording_variant": {"no_false_success"}, "memo_prepend_claim": {"memo_grounded"},
-    "memo_markdown_heading": {"memo_grounded"},
+    "memo_markdown_heading": {"memo_grounded"}, "leak_internal_terms": {"no_internal_terms"},
 }
 
 

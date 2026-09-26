@@ -55,6 +55,8 @@ GLOBAL_CHECKS = [
      "why": "reviewer 는 답변당 한 번 (workflow.yml). KNOWN_ISSUES 의 반복 호출을 잡는다"},
     {"id": "G-errors-bounded", "type": "tool_errors_bounded", "turn": "all", "max": 3, "severity": "S1",
      "why": "도구·에이전트 오류가 반복되면 실패로 본다 (KNOWN_ISSUES 재시도 상한)"},
+    {"id": "G-plain-answer", "type": "no_internal_terms", "turn": "all", "severity": "S1",
+     "why": "의사가 읽는 답에 plan id·필드 이름·영문 열거값·계산식·attempts= 같은 내부 표기를 쓰지 않는다 (#47)"},
     {"id": "G-parse-retries", "type": "parse_retries_bounded", "turn": "all", "max": 1, "severity": "S2",
      "why": "ReAct 파싱 재시도는 지연·비용 신호 (가정: 턴당 1회 이하)"},
 ]

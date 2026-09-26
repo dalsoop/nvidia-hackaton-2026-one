@@ -49,7 +49,8 @@ def test_runner_sends_what_the_ui_sends(tmp_path):
               {"tool_calls": [("cualign__validate", {"plan_id": "$plan_id"})]},
               {"tool_calls": [("cualign__select_plan", {"plan_id": "$plan_id"})]},
               {"tool_calls": [("reviewer", {"plan_id": "$plan_id"})]},
-              {"content": f"plan_id: $plan_id\n{_labels('없음')}\n검토 메모 생성 실패(empty_response).\n"
+              # #47: no plan id in the answer; the judge takes the selected plan as the presented one
+              {"content": f"확장 + IPR 전략으로 계획을 만들었습니다.\n{_labels('없음')}\n검토 메모 생성 실패: 빈 응답.\n"
                           "이 계획은 초안입니다. 최종 판단은 의사가 합니다."}]
     tr, requests, _ = _run("A01", script, tmp_path, reviewer_empty=True)   # the reviewer must not eat the script
     t = tr.turns[0]
