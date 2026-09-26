@@ -2,7 +2,8 @@
 
 Each check names the plan step it guards (1 = correctness fixes, 2 = measurement definition, 5 = rotation and
 vertical correction) and returns (ok, measured, expected). Tolerances are part of the spec and stated inline.
-Real-scan regressions from the independent review need git-ignored local data and are skipped without it.
+Real-scan regressions (the independent review, and the dentist's labels in evals/real_scans/dentist_labels.yaml) need
+git-ignored local data and are skipped without it.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import yaml
 
 from cualign.core import planner
 from cualign.core.arch import Arch
@@ -22,7 +24,12 @@ from . import shapes as S
 APP = Path(__file__).resolve().parents[2]
 POSEIDON = APP / "data" / "cases"
 TOL_WIDTH = 0.2        # mm, mesiodistal width
-TOL_CROWD = 0.5        # mm, crowding (space deficit)
+TOL_ALIGNED = 0.5      # mm, crowding of an aligned arch (nothing out of line)
+TOL_CROWD = 1.0        # mm, crowding with teeth standing out of the arch: about one tooth's contact tolerance per side;
+                       # dentists read arch length discrepancy to ~1 mm, and #59 was a 5–10 mm over-estimate
+TOL_LAYOUT = 1.0       # mm, spread of crowding over which teeth are blocked out, same deficit
+TOL_CWIDTH = 0.3       # mm, width at the contacts
+TOL_DENTIST = 1.0      # mm, against the one deficit a dentist gave in mm (000001: 4.0)
 TOL_INV = 0.2          # mm, change allowed under transforms that must not change anything
 TOL_EXP = 0.3          # mm, geometric expansion gain
 TOL_YAW = 3.0          # deg, derotation target (the fitted arch tangent itself is off by ~3° on this arch)
@@ -63,31 +70,49 @@ def width_check(family: str, kind: str):
     return run
 
 
-def crowding_check(family: str, deficit: float, kind: str = "box"):
+def contact_width_check(family: str):
     def run():
-        meshes, t = S.build_arch(family, crowding=deficit, kind=kind)
-        got = planner.crowding_mm(_case(meshes))
-        return abs(got - t.crowding) <= TOL_CROWD, f"{got:.2f}", f"{t.crowding:.2f} ± {TOL_CROWD}"
+        meshes, t = S.build_crowded_arch(family, deficit=0.0)
+        c = _case(meshes)
+        err = {i: c.contact_width(i) - t.contact_widths[i] for i in c.ids}
+        worst = max(err, key=lambda i: abs(err[i]))
+        return abs(err[worst]) <= TOL_CWIDTH, f"max |err| {abs(err[worst]):.2f} mm (tooth {worst})", f"≤ {TOL_CWIDTH}"
     return run
 
 
-def layout_check(family: str, deficit: float):
-    """The same deficit laid out differently (no zigzag, a quarter, the default half, the opposite phase) is the same
-    crowding. This replaces an earlier sweep over the arch-fit degree 2–6: the core now fixes its fit (a parametric
-    quintic with pinned end crowns), so the degree is no longer a free choice — and a pinned quadratic cannot follow a
-    U at all — while the thing the sweep was after, an arch length that does not follow the crowns' zigzag, is what
-    this check measures directly."""
+def crowding_check(family: str, deficit: float, blocked=(6, 11)):
+    """Clinical crowding (#59) on an arch built crowded the way real ones are: the teeth without room stand out of it."""
     def run():
-        vals = [planner.crowding_mm(_case(S.build_arch(family, crowding=deficit, bulge=b)[0]))
-                for b in (0.0, deficit / 4, deficit / 2, -deficit / 2)]
+        meshes, t = S.build_crowded_arch(family, deficit=deficit, blocked=blocked)
+        got = planner.crowding_mm(_case(meshes))
+        tol = TOL_ALIGNED if deficit == 0 else TOL_CROWD
+        return abs(got - t.span_crowding) <= tol + 1e-6, f"{got:.2f}", f"{t.span_crowding:.2f} ± {tol}"
+    return run
+
+
+LAYOUTS = ((6, 11), (7, 10), (5, 12), (6,), (8,))
+
+
+def layout_check(family: str, deficit: float):
+    """The same deficit taken up by different teeth (canines, laterals, first premolars, one canine, one central) is
+    the same crowding. The teeth standing out of line must not shorten or bend the arch the others define. Second
+    premolars (the span's end teeth) are checked on their own (B-crowd-end-*): the span end moves with them."""
+    def run():
+        vals = []
+        for b in LAYOUTS:
+            try:
+                meshes, _ = S.build_crowded_arch(family, deficit=deficit, blocked=b)
+            except ValueError:          # one tooth cannot take the whole deficit
+                continue
+            vals.append(planner.crowding_mm(_case(meshes)))
         spread = max(vals) - min(vals)
-        return spread <= TOL_CROWD, f"spread {spread:.2f} mm {np.round(vals, 1).tolist()}", f"≤ {TOL_CROWD}"
+        return spread <= TOL_LAYOUT + 1e-6, f"spread {spread:.2f} mm {np.round(vals, 1).tolist()}", f"≤ {TOL_LAYOUT}"
     return run
 
 
 def rigid_check():
     def run():
-        meshes, _ = S.build_arch("catenary", crowding=4.0)
+        meshes, _ = S.build_crowded_arch("catenary", deficit=4.0)
         a = planner.crowding_mm(_case(meshes))
         b = planner.crowding_mm(_case(S.rigid(meshes, 37.0, (12.0, -5.0, 3.0))))
         return abs(a - b) <= TOL_INV, f"{a:.2f} → {b:.2f}", f"Δ ≤ {TOL_INV}"
@@ -234,15 +259,63 @@ def real_expansion_margin_check():
     return run
 
 
+# ------------------------------------------------------------------------------------------ dentist labels (#59, #60)
+LABELS = APP / "evals" / "real_scans" / "dentist_labels.yaml"
+
+
+def _label(cid: str) -> dict:
+    return next(c for c in yaml.safe_load(LABELS.read_text(encoding="utf-8"))["cases"] if c["id"] == cid)
+
+
+def _scan(cid: str) -> Case:
+    return Case.from_dir(POSEIDON / f"poseidon-{cid}")
+
+
+def dentist_deficit_check(cid: str):
+    def run():
+        want = float(_label(cid)["space_needed_mm"])
+        got = planner.crowding_mm(_scan(cid))
+        return abs(got - want) <= TOL_DENTIST + 1e-6, f"{got:.1f}", f"{want:.1f} ± {TOL_DENTIST} (dentist)"
+    return run
+
+
+def dentist_spacing_check(cid: str):
+    """An arch the dentist reads as having space left over measures no crowding."""
+    def run():
+        got = planner.crowding_mm(_scan(cid))
+        return got <= 0.0, f"{got:.1f}", "≤ 0 (dentist: space left over)"
+    return run
+
+
+def dentist_plan_check(cid: str, extraction: bool):
+    """The rule-based ladder (evals/real_scans/run.py) finds a plan of the kind the dentist chose: without extraction
+    for arches the dentist would treat (or leave) without it; for an extraction case, the ladder must need it."""
+    def run():
+        from evals.real_scans.run import run_case
+        c = _scan(cid)
+        free = run_case(c, allow_extraction=False)
+        if not extraction:
+            return free["outcome"] == "pass", f"{free['outcome']}: {free['reason']}", "pass without extraction"
+        ext = run_case(c, allow_extraction=True)
+        ok = free["outcome"] == "fail" and ext["outcome"] == "pass" and ext["reason"].startswith("extraction")
+        return ok, f"without: {free['outcome']} · with: {ext['reason']}", "fails without, extraction passes"
+    return run
+
+
+NON_EXTRACTION = ("000124", "000144", "000174", "000001", "999983", "000131", "000157", "000043", "000138")
+
 CHECKS: list[Check] = [
     # step 2 — measurement
     *[Check(f"B-width-{f}-{k}", 2, f"MD width, aligned {f} arch, {k} crowns", width_check(f, k))
       for f in ("parabola", "catenary", "ellipse", "skewed") for k in ("box", "template")],
-    *[Check(f"B-crowd-{f}-{d:g}", 2, f"crowding {d:g} mm, {f} arch", crowding_check(f, d))
+    *[Check(f"B-cwidth-{f}", 2, f"width at the contacts, aligned {f} arch", contact_width_check(f))
+      for f in ("parabola", "catenary", "ellipse", "skewed")],
+    *[Check(f"B-crowd-{f}-{d:g}", 2, f"crowding {d:g} mm (canines blocked out), {f} arch", crowding_check(f, d))
       for f in ("parabola", "catenary", "ellipse", "skewed") for d in (0.0, 2.0, 5.0, 9.0)],
-    Check("B-crowd-template-5", 2, "crowding 5 mm, real crown shapes", crowding_check("catenary", 5.0, "template")),
-    *[Check(f"B-layout-{f}-{d:g}", 2, f"crowding {d:g} mm unchanged by how the crowns zigzag, {f}", layout_check(f, d))
-      for f in ("catenary", "skewed") for d in (5.0, 9.0)],
+    *[Check(f"B-crowd-end-{f}-{d:g}", 2, f"crowding {d:g} mm, second premolars blocked out (span ends), {f} arch",
+            crowding_check(f, d, blocked=(4, 13))) for f in ("catenary", "skewed") for d in (5.0, 9.0)],
+    *[Check(f"B-layout-{f}-{d:g}", 2, f"crowding {d:g} mm unchanged by which teeth stand out, {f}", layout_check(f, d))
+      for f in ("catenary", "skewed", "parabola") for d in (5.0, 9.0)],
     Check("B-inv-rigid", 2, "crowding unchanged by whole-case rotation/translation", rigid_check()),
     Check("B-inv-remesh", 2, "widths unchanged by finer triangulation", remesh_check()),
     *[Check(f"B-spin-{i}-{a:g}-{k}", 2, f"width of tooth {i} after {a:g}° spin about its own axis ({k})", spin_width_check(i, a, k))
@@ -264,6 +337,14 @@ CHECKS: list[Check] = [
     Check("R-push-999983", 1, "real scan: push 2 into 3 by 0.75 mm", real_push_check(), "poseidon-999983"),
     Check("R-extraction-000001", 1, "real scan: extract 5·12, move 4 onto 6", real_extraction_check(), "poseidon-000001"),
     Check("R-exp-margin-000037", 1, "real scan: expansion gain independent of margin", real_expansion_margin_check(), "poseidon-000037"),
+    # dentist labels on real scans (local data; #59, #60)
+    Check("D-deficit-000001", 2, "real scan: deficit the dentist gave in mm", dentist_deficit_check("000001"), "poseidon-000001"),
+    *[Check(f"D-spacing-{cid}", 2, "real scan with space left over (dentist): no crowding", dentist_spacing_check(cid),
+            f"poseidon-{cid}") for cid in ("000018", "000039", "000138")],
+    *[Check(f"D-plan-{cid}", 3, "real scan: plan found without extraction, as the dentist would", dentist_plan_check(cid, False),
+            f"poseidon-{cid}") for cid in NON_EXTRACTION],
+    Check("D-plan-000097", 3, "real scan: needs the extraction the dentist chose", dentist_plan_check("000097", True),
+          "poseidon-000097"),
 ]
 
 

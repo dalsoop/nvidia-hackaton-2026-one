@@ -55,6 +55,28 @@ def test_generator_vertical_and_yaw_are_applied():
     assert not np.allclose(moved[8].vertices, base[8].vertices)
 
 
+@pytest.mark.parametrize("family", ["parabola", "catenary", "ellipse", "skewed"])
+@pytest.mark.parametrize("blocked", [(6, 11), (4, 13), (8,)])
+def test_generator_crowded_arch_truth(family, blocked):
+    meshes, t = S.build_crowded_arch(family, deficit=4.0, blocked=blocked)
+    aligned, t0 = S.build_crowded_arch(family, deficit=0.0)
+    # same crowns, the arch shorter by exactly the deficit
+    assert abs(t0.span_crowding - t.span_crowding + 4.0) < 1e-6
+    assert abs(t0.arch_length - t.arch_length - 4.0) < 1e-6
+    for i in S.UPPER:
+        mid = t.curve.at(t.s_center[i])[0]
+        c = meshes[i].bounds.mean(0)[:2]
+        off = float(np.linalg.norm(c - mid))
+        if i in blocked:
+            assert off > 3.0, (i, off)            # stands out of the arch
+        else:
+            assert off < 1.0, (i, off)            # on it
+
+
+def test_generator_contact_width_of_a_box_is_its_width():
+    assert all(abs(S.contact_width(i, "box") - S.WIDTHS[i]) < 1e-6 for i in S.UPPER)
+
+
 def test_generator_does_not_import_the_core():
     src = Path(S.__file__).read_text()
     assert "cualign" not in src.split('"""', 2)[2].split("TEMPLATES")[0]    # no core import above the data paths
@@ -67,6 +89,15 @@ KNOWN_FAIL = {
     # over ±10°, so the width axis (and with it the rotation) stays on the arch tangent — a 12° molar rotation reads 0°.
     # Needs a shape feature (e.g. the buccal surface line), not the outline extent.
     "B-rot-3-12",
+    # step 2 limit (#59): with canines or first premolars blocked out on a tapered arch, the arch refitted through
+    # the teeth in line cuts the corner where they stood, so the available length reads short (ellipse at 5 mm:
+    # -1.5 mm of length, widths within 0.2 mm) and crowding reads high by 1.3–2.2 mm. It errs toward more space needed.
+    "B-crowd-parabola-9", "B-crowd-ellipse-2", "B-crowd-ellipse-5", "B-crowd-ellipse-9",
+    "B-layout-parabola-5", "B-layout-parabola-9",
+    # collision validator (#61): the target is clear, but on the way 7 slides past 6's corner (+1.0–1.8 mm³ in the
+    # middle stages, straight-line staging) and IPR is not cut from the meshes, so the plan fails on small collisions
+    # although the space is there.
+    "D-plan-000001",
 }
 
 
@@ -109,11 +140,18 @@ def test_checks_catch_wrong_stage_splitting(monkeypatch):
     assert not _by_id("B-staging").run()[0]
 
 
-def test_checks_catch_an_arch_that_follows_the_zigzag(monkeypatch):
-    from cualign.core import case as case_mod
-    real = case_mod.Arch
-    monkeypatch.setattr(case_mod, "Arch", lambda P, **k: real(P, degree=len(P) - 1))   # interpolates every crown
+def test_checks_catch_an_arch_bent_by_teeth_out_of_line(monkeypatch):
+    monkeypatch.setattr(C.planner, "_displaced", lambda case, span: set())    # blocked-out teeth stay in the arch fit
     assert not _by_id("B-layout-catenary-5").run()[0]
+    assert not _by_id("B-crowd-catenary-5").run()[0]
+
+
+def test_checks_catch_the_old_crowding_measure(monkeypatch):
+    # #59: all crowns' full outline widths against the crown-centre arch, both molars included
+    def old(case):
+        return round(sum(case.mesiodistal_width(i) for i in case.ids) - (case.arch.s_last - case.arch.s_first), 1)
+    monkeypatch.setattr(C.planner, "crowding_mm", old)
+    assert not _by_id("B-crowd-catenary-0").run()[0]
 
 
 def test_checks_catch_a_translation_only_core(monkeypatch):
