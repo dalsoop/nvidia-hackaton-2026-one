@@ -55,6 +55,7 @@ class Case:
         self.arch = Arch(np.array([self.anchor[i] for i in self.ids]))
         self.baseline = self._pair_overlaps({i: np.zeros(3) for i in self.ids})
         self._gum: trimesh.Trimesh | None = None   # display-only gingiva, built lazily (see gum.py)
+        self.gum_scan: trimesh.Trimesh | None = None   # scanned gingiva.stl only (the print model needs a real one)
 
     # ------------------------------------------------------------------ constructors
     @classmethod
@@ -74,7 +75,7 @@ class Case:
         case = cls(meshes, name=Path(folder).name)
         gum = Path(folder) / "gingiva.stl"
         if gum.exists():   # scanned gingiva (display only) instead of the procedural ridge
-            case._gum = trimesh.load(gum, process=True, force="mesh")
+            case._gum = case.gum_scan = trimesh.load(gum, process=True, force="mesh")
         return case
 
     @classmethod
