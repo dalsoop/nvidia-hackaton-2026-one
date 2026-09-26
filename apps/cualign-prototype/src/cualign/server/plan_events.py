@@ -21,22 +21,21 @@ class ChatContext(BaseModel):
     constraints: ConstraintPatch = Field(default_factory=ConstraintPatch)
 
 
-def open_run(ctx: ChatContext, store=None) -> tuple[PlanRun, dict]:
+def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]:
     """Apply the UI form to the case and open the request's PlanRun; also returns the system message that tells the
-    agent the case, parent plan and confirmed constraints. Raises ValueError/KeyError/TypeError on bad input."""
+    agent the case, parent plan and confirmed constraints. `preload(cid, case, constraints)` (register.context_preload,
+    from the workflow's `context_preload` block) adds what the agent would otherwise fetch with a tool call each: the
+    case summary, the clinical limits and the skill text (#48). Raises ValueError/KeyError/TypeError on bad input."""
     store = store or STORE
     cid, case = store.load_case(ctx.case_id)
     constraints = store.constraints_for(cid, ctx.base_plan_id).patched(ctx.constraints.changes())
     constraints.check_case(case.ids)
     store.case_constraints[cid] = constraints
     run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints)
-    return run, {
-        "role": "system",
-        "content": "cuAlign server context: " + json.dumps({
-            "case_id": cid, "base_plan_id": ctx.base_plan_id,
-            "constraints": constraints.model_dump(mode="json")
-        }, ensure_ascii=False)
-    }
+    context = {"case_id": cid, "base_plan_id": ctx.base_plan_id, "constraints": constraints.model_dump(mode="json")}
+    if preload is not None:
+        context.update(preload(cid, case, constraints))
+    return run, {"role": "system", "content": "cuAlign server context: " + json.dumps(context, ensure_ascii=False)}
 
 
 def event(name, payload):
@@ -77,7 +76,8 @@ class PlanEventsASGI:
             raw = data.pop("cualign", None)
             # Non-UI clients may still use the ordinary NAT endpoint.
             ctx = ChatContext.model_validate(raw) if raw is not None else ChatContext(case_id=STORE.active_case or "moderate")
-            run, system = open_run(ctx)
+            preload = getattr(getattr(scope.get("app"), "state", None), "cualign_preload", None)  # set by worker.add_routes
+            run, system = open_run(ctx, preload=preload)
             data.setdefault("messages", []).insert(0, system)
             body = json.dumps(data).encode()
         except (ValueError, KeyError, TypeError):

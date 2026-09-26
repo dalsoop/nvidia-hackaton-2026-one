@@ -44,6 +44,16 @@ def test_planner_gets_the_tool_and_reviewer_does_not():
 def test_planner_instructions_point_to_an_installed_skill():
     text = _workflow()["workflow"]["additional_instructions"]
     assert "cualign__ prefix" in text  # instructions name tools without the prefix once it is stated
-    assert "call load_skill" in text
+    assert "call load_skill" in text   # the fallback when the server context does not carry the skill
+    assert "do not call load_skill" in text   # #48: the preloaded skill is not read again
     assert "cualign-clinical-rules" in text
     assert "cualign-clinical-rules" in S.installed()
+
+
+def test_preloaded_skill_is_the_installed_one():
+    """workflow.yml preloads a skill into the server context (#48); it must be an installed skill and the tool's default."""
+    from cualign.agent.register import ContextPreload, CuAlignToolConfig
+
+    pre = ContextPreload.model_validate(_workflow()["function_groups"]["cualign"]["context_preload"])
+    assert pre.case and pre.limits and pre.skill in S.installed()
+    assert CuAlignToolConfig().context_preload == ContextPreload()   # absent block: nothing extra

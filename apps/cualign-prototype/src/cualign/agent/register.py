@@ -51,11 +51,53 @@ class SkillInput(BaseModel):
     name: str = Field(description="skill name, e.g. cualign-clinical-rules")
 
 
+class ContextPreload(BaseModel):
+    """What the `cuAlign server context` system message carries in advance, so the agent does not spend a model
+    round-trip per preparatory tool call (#48). Off by default: an absent block changes nothing."""
+    case: bool = False        # teeth, n_teeth, crowding_mm, unsupported — what load_case returns
+    limits: bool = False      # what clinical_limits returns
+    skill: str | None = None  # this skill's SKILL.md — what load_skill returns for that name
+
+
 class CuAlignToolConfig(FunctionGroupBaseConfig, name="cualign"):
     include: list[str] = Field(default_factory=lambda: [
         "clinical_limits", "list_cases", "load_case", "get_constraints", "set_constraints",
         "propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "get_plan",
         "load_skill"])
+    context_preload: ContextPreload = Field(default_factory=ContextPreload)
+
+
+def limits_view() -> dict:
+    """The clinical_limits tool result; also preloaded into the server context."""
+    return {"max_linear_mm_per_aligner": L.MAX_LINEAR_PER_ALIGNER,
+            "ipr_max_mm_per_surface": L.IPR_PER_SURFACE,
+            "max_expansion_mm_per_side": L.MAX_EXPANSION_PER_SIDE,
+            "wear_days_per_aligner": L.WEAR_DAYS, "strategies": list(L.STRATEGIES)}
+
+
+def case_view(case) -> dict:
+    """The case summary the load_case tool returns (without id and constraints); also preloaded into the server context."""
+    return {"teeth": case.ids, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
+            "unsupported": planner.unsupported_reasons(case)}
+
+
+def context_preload(settings: ContextPreload):
+    """The `preload` callable for plan_events.open_run, built from the workflow config. None when nothing is enabled.
+    The skill is read once here, so a wrong name fails at startup rather than as a 400 on the first request."""
+    skill = S.read_skill(settings.skill) if settings.skill else None
+    if not (settings.case or settings.limits or skill):
+        return None
+
+    def preload(cid, case, constraints) -> dict:
+        extra = {}
+        if settings.case:
+            extra["case"] = case_view(case)
+        if settings.limits:
+            extra["limits"] = limits_view()
+        if skill:
+            extra["skill"] = skill
+        return extra
+    return preload
 
 
 def current_case(case_id=None):
@@ -92,11 +134,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
     service = PlanningService(STORE)
 
     async def _clinical_limits(inp: NoInput) -> dict:
-        """PoC 계산 한계와 단위를 읽는다. 임상 판단이나 의사 승인이 아니다."""
-        return {"max_linear_mm_per_aligner": L.MAX_LINEAR_PER_ALIGNER,
-                "ipr_max_mm_per_surface": L.IPR_PER_SURFACE,
-                "max_expansion_mm_per_side": L.MAX_EXPANSION_PER_SIDE,
-                "wear_days_per_aligner": L.WEAR_DAYS, "strategies": list(L.STRATEGIES)}
+        """PoC 계산 한계와 단위를 읽는다. 서버 문맥에 limits 가 있으면 다시 부르지 않는다. 임상 판단이나 의사 승인이 아니다."""
+        return limits_view()
 
     async def _list_cases(inp: NoInput) -> dict:
         """사용 가능한 케이스와 현재 선택 케이스를 읽는다."""
@@ -104,15 +143,13 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return {"cases": STORE.available_cases(), "active": run.case_id if run else STORE.active_case}
 
     async def _load_case(inp: CaseInput) -> dict:
-        """화면에서 선택한 케이스를 읽는다. 다른 케이스로 임의 전환할 수 없다.
+        """화면에서 선택한 케이스를 읽는다. 서버 문맥에 case 가 있으면 다시 부르지 않는다. 다른 케이스로 임의 전환할 수 없다.
         unsupported 가 비어 있지 않으면 이 케이스는 계획하지 말고 그 이유를 의사에게 그대로 전한다."""
         cid, case = current_case(inp.case_id)
-        return {"case_id": cid, "teeth": case.ids, "n_teeth": len(case.ids),
-                "crowding_mm": planner.crowding_mm(case), "constraints": constraints_for(cid).model_dump(mode="json"),
-                "unsupported": planner.unsupported_reasons(case)}
+        return {"case_id": cid, **case_view(case), "constraints": constraints_for(cid).model_dump(mode="json")}
 
     async def _get_constraints(inp: NoInput) -> dict:
-        """확정 조건을 읽는다. 비교·수정 시 이 조건을 유지한다."""
+        """확정 조건을 읽는다. 서버 문맥의 constraints 와 같으니 그것이 있으면 다시 부르지 않는다. 비교·수정 시 이 조건을 유지한다."""
         cid, _ = current_case()
         return constraints_for(cid).model_dump(mode="json")
 
@@ -213,7 +250,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return summary(inp.plan_id)
 
     async def _load_skill(inp: SkillInput) -> dict:
-        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
+        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 서버 문맥에 skill 이 있으면 다시 부르지 않는다.
+        없으면 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
         return S.read_skill(inp.name)
 
     fns = {"clinical_limits": _clinical_limits, "list_cases": _list_cases, "load_case": _load_case,
