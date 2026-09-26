@@ -25,9 +25,13 @@ cases:
     space_needed_mm: 4.0   # 치과의사가 수치로 준 유일한 케이스: IPR 3.6 + 악궁 확장까지 합쳐 4.0mm
     plan:
       extraction: false
-      ipr: {total_mm: 3.6, from_contacts_fdi: ["14-15", "24-25"], from_contacts_universal: ["4-5", "12-13"], direction: "양쪽 4-5 사이부터 앞쪽으로"}
+      ipr:   # 양쪽 4-5 사이부터 앞쪽 모든 접촉면에 0.4mm씩 9곳 = 3.6mm (치과의사 확인 2026-09-26)
+        mm_per_contact: 0.4
+        total_mm: 3.6
+        contacts_fdi: ["14-15", "13-14", "12-13", "11-12", "11-21", "21-22", "22-23", "23-24", "24-25"]
+        contacts_universal: ["4-5", "5-6", "6-7", "7-8", "8-9", "9-10", "10-11", "11-12", "12-13"]
       expansion: {note: "IPR 3.6mm에 악궁 확장을 더해 총 4.0mm 확보"}
-    note: "IPR로 해결 가능. 양쪽 4번 5번 사이부터 시작해서 IPR 총량 3.6mm. 악궁 확장까지 포함하면 4.0mm."
+    note: "IPR로 해결 가능. 양쪽 4번 5번 사이부터 시작해서 IPR 총량 3.6mm(0.4mm × 9곳). 악궁 확장까지 포함하면 4.0mm."
 
   - id: "000018"
     needs_treatment: true
