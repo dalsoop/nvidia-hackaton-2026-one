@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // Colours follow clinical software conventions (docs/research/2026-09-23-원내-얼라이너-SW-화면-역설계.md):
 // teeth are ivory, movement is a heat tint, collisions red, limit breaches amber, locked teeth blue.
 const IVORY = new THREE.Color(0xe9e3d6), HEAT = new THREE.Color(0x76b900);
-const RED = 0xe23a3a, AMBER = 0xe0a52a, BLUE = 0x4f8fd6;
+const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.error, warning, locked
 
 // ------------------------------------------------------------------ state
 const state = {
