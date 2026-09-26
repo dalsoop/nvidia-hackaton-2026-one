@@ -49,6 +49,10 @@ class CuAlignWorker(FastApiFrontEndPluginWorker):
 
     async def add_routes(self, app: FastAPI, builder: WorkflowBuilder):
         await super().add_routes(app, builder)
+        from cualign.agent.register import context_preload
+        # What the server context carries in advance (workflow.yml function_groups.cualign.context_preload, #48);
+        # plan_events.PlanEventsASGI reads it from app.state on every /chat/stream request.
+        app.state.cualign_preload = context_preload(builder.get_function_group_config("cualign").context_preload)
         from .api import add_api_routes
         add_api_routes(app, review=await manual_review(builder))
         from .mcp_server import add_mcp_route

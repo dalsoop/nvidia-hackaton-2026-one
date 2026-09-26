@@ -190,6 +190,7 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
     from nat.runtime.loader import load_workflow
 
     from cualign.agent.context import CURRENT_RUN
+    from cualign.agent.register import ContextPreload, context_preload
     from cualign.core.constraints import Constraints
     from cualign.server.plan_events import ChatContext, open_run
 
@@ -204,6 +205,9 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
     history: list[dict] = []
     t0 = time.time()
     unscorable = None
+    # The same preload the server applies (worker.add_routes), so live timings include it (#48).
+    preload = context_preload(ContextPreload.model_validate(
+        ((config.get("function_groups") or {}).get("cualign") or {}).get("context_preload") or {}))
     store = _fresh_store(work_dir / "out")
     store.__enter__()
     try:
@@ -214,7 +218,7 @@ async def run_spec(spec: Spec, config: dict, agent_label: str, work_dir: Path) -
                 history.append({"role": "user", "content": user})
                 ctx = ChatContext(request_id=f"{spec.id}-{n}", case_id=spec.case, base_plan_id=base,
                                   constraints=form_patch(form))
-                run, system = open_run(ctx)
+                run, system = open_run(ctx, preload=preload)
                 token = CURRENT_RUN.set(run)
                 collector = _StepCollector()
                 counter.parse_retries, counter.errors = 0, []

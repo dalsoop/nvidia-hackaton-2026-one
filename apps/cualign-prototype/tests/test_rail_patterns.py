@@ -57,6 +57,27 @@ def test_prescriptive_list_skill_body():
     assert [line for line in body.splitlines() if matches(PRESCRIPTIVE, line)] == []
 
 
+def test_pii_list_skill_body():
+    """The skill body rides in every request's system message (#48), and the input rail checks system messages for
+    identifiers before any model: a phone- or id-shaped number in SKILL.md would refuse every turn."""
+    body = (ROOT / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
+    assert [line for line in body.splitlines() if matches(PII, line)] == []
+
+
+def test_pii_list_preloaded_context():
+    """The whole preloaded context (case summary, limits, skill) for the synthetic moderate case, serialised the way
+    plan_events.open_run sends it, must not match an identifier pattern."""
+    import json
+    from cualign.agent.register import ContextPreload, context_preload
+    from cualign.core.store import STORE
+
+    cid, case = STORE.load_case("moderate")
+    extra = context_preload(ContextPreload(case=True, limits=True, skill="cualign-clinical-rules"))(cid, case, None)
+    assert set(extra) == {"case", "limits", "skill"}
+    text = json.dumps(extra, ensure_ascii=False)
+    assert not matches(PII, text)
+
+
 PII_HITS = ["moderate 케이스 계획 짜줘. 보호자 연락처 010-0000-0000", "연락처010-1234-5678로", "900101-1234567",
             "a.b@example.com", "01012345678", "０１０-１２３４-５６７８"]
 PII_MISSES = [

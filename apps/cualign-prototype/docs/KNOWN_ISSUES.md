@@ -97,7 +97,10 @@ API 오류 내용은 로그에만 남기고 예외 문구에는 싣지 않는다
 ## 같은 도구를 반복 호출하다 멈추는 턴
 
 2026-09-25 실호출에서 비교 시나리오가 `set_constraints` 를 24번 넘게, 2턴 수정이 `get_constraints` 를 27번 같은 인자로 불러
-반복 상한에서 끝났다. NAT 1.9 ReAct 의 네이티브 도구 호출 모드는 다음 프롬프트를 앞선 호출의 생각 글(`AgentAction.log`)과
+반복 상한에서 끝났다. (2026-09-26, #48: 서버 문맥이 조건 외에 케이스 요약·임상 한도·스킬 본문도 미리 실어(`configs/workflow.yml`
+`context_preload`) 지시문이 `get_constraints`·`load_case`·`clinical_limits`·`load_skill` 을 문맥에 있으면 부르지 말라고 한다.
+`plan_stages` 가 검증까지 하므로 전략마다 따로 부르던 `validate` 도 지시문에서 뺐다. 계획 한 건의 모델 호출이 약 16회에서 9회로 줄 것으로
+예상하며 실호출 중앙값(A03·A04·A08)은 아직 재지 않았다.) NAT 1.9 ReAct 의 네이티브 도구 호출 모드는 다음 프롬프트를 앞선 호출의 생각 글(`AgentAction.log`)과
 도구 결과로만 만든다. 생각 글이 «먼저 X 를 불러야 한다» 뿐이거나 비어 있으면(`Calling X`) 어떤 도구를 어떤 인자로 불렀는지가
 빠지므로, 모델이 이미 부른 것을 모르고 다시 부른다(`nat/plugins/langchain/agent/react_agent/agent.py` 의 `agent_node`).
 

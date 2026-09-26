@@ -27,9 +27,9 @@ description: Validate and stage clear-aligner (투명교정) treatment plans aga
 
 1. Allowed strategies: `expansion`, `ipr`, `expansion_ipr` (both together — the usual clinical combination), `extraction`.
 2. If the request forbids extraction ("발치 없이", "발치는 절대 안 돼"), set allow_extraction=false and never call `propose_target` with `extraction`. Comparison does not clear this constraint.
-3. Default order when nothing is specified: `expansion` → `ipr` → `expansion_ipr` → `extraction`. Each strategy gains a different amount of space; if the gain does not cover the crowding, `validate` reports `space_deficit` and you move to the next strategy.
+3. Default order when nothing is specified: `expansion` → `ipr` → `expansion_ipr` → `extraction`. Each strategy gains a different amount of space; if the gain does not cover the crowding, `plan_stages` reports `space_deficit` and you move to the next strategy.
 4. Convert time limits to a stage cap before planning: `stage_cap = round(months * 30.4 / 7)`. "12개월" → 52, "10개월" → 43, "8개월" → 34.
-5. After `validate` fails, switch to the next allowed strategy and rerun `propose_target → plan_stages → validate`. Stop when `passed` is true or all allowed strategies are exhausted.
+5. After `plan_stages` reports a failure, switch to the next allowed strategy and rerun `propose_target → plan_stages`. `plan_stages` already validates; `validate` only re-checks an existing plan. Stop when `passed` is true or all allowed strategies are exhausted.
 6. When every allowed strategy fails, report the plan with the fewest violations and state plainly which constraint would have to be relaxed (e.g. "발치 없이는 8개월이 안 됩니다. 10개월이면 IPR 42장으로 됩니다"). Do not soften this.
 
 ## Tool sequence (NeMo Agent Toolkit function group `cualign`)
@@ -48,6 +48,8 @@ reviewer                   {"plan_id": "..."} -> memo or failed status (max 2 at
 cualign__export_stl         {"plan_id": "..."} -> approved plan ZIP only
 ```
 
+The server context (the first system message of the request) already carries the confirmed constraints and may carry the case summary (`case`), the clinical limits (`limits`) and this skill text (`skill`). Do not call `get_constraints`, `load_case`, `clinical_limits` or `load_skill` for what it already provides; each such call costs one model round-trip. Call them only when the message lacks that item.
+
 set_constraints changes ONLY fields explicitly requested in this turn, before target generation.
 Preserve omitted fields. Tooth lists are full lists: merge additions with existing values.
 Only explicit [] clears a tooth list; stage_cap:null clears the stage limit.
@@ -58,7 +60,7 @@ Select the final candidate once, then call reviewer once. Report review failure,
 Only the doctor can approve in the UI; there is no approval tool.
 Rule failures and review failures block approval. Rule fallback is explicitly labelled reviewer-not-run.
 
-Tool names carry the `cualign__` prefix exactly. Read the confirmed constraints first. Ask ONE question if the requested change is ambiguous. Do not repeat questions already answered by the UI or a parent plan.
+Tool names carry the `cualign__` prefix exactly. Read the confirmed constraints first (from the server context; `get_constraints` only if missing). Ask ONE question if the requested change is ambiguous. Do not repeat questions already answered by the UI or a parent plan.
 
 ## Reading a violation report
 
