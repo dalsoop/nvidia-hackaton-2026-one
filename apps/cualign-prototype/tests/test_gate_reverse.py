@@ -61,8 +61,10 @@ def test_export_tool_allows_after_approval(isolated, tmp_path):
 
     out = asyncio.run(scenario())
     assert out["download_url"] == f"/api/plans/{pid}/stl.zip"
+    assert out["kind"] == "per_tooth" and out["n_files"] == 0 and "잇몸" in out["print_models_note"]   # no gingiva scan
     with ZipFile(tmp_path / "stl" / f"{pid}.zip") as z:
-        assert len(z.namelist()) == len(s.plans[pid]["stages"]) * 14
+        assert len([n for n in z.namelist() if n.startswith("stage_")]) == len(s.plans[pid]["stages"]) * 14
+        assert "print_models/README.txt" in z.namelist()
 
 
 def test_stl_zip_not_stale(isolated, tmp_path):

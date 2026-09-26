@@ -190,13 +190,22 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return {"type": "plan_selected", **summary(inp.plan_id)}
 
     async def _export_stl(inp: PlanIdInput) -> dict:
-        """의사가 현재 버전을 승인한 계획만 ZIP으로 내보낸다. 에이전트는 승인할 수 없다."""
+        """의사가 현재 버전을 승인한 계획만 ZIP으로 내보낸다. 에이전트는 승인할 수 없다.
+        ZIP에는 치아별 STL과, 잇몸 스캔이 있으면 단계별 프린트용 상악 모형(kind=full_arch_model)이 들어간다."""
         p = owned_plan(inp.plan_id)
         STORE.require_approved(inp.plan_id)
         _, case = STORE.load_case(p["case_id"])
         path = OUT_DIR / "stl" / f"{inp.plan_id}.zip"
         planner.export_zip(case, p["stages"], str(path))
-        return {"plan_id": inp.plan_id, "download_url": f"/api/plans/{inp.plan_id}/stl.zip"}
+        models = planner.export_print_models(case, p["stages"], str(path), p["case_id"])
+        out = {"plan_id": inp.plan_id, "download_url": f"/api/plans/{inp.plan_id}/stl.zip",
+               "kind": "full_arch_model" if models["status"] == "ok" else "per_tooth", "n_files": models["n_files"]}
+        if models["status"] == "skipped":
+            out["print_models_note"] = models["reason_ko"]
+        elif models["failed"]:
+            out["print_models_note"] = f"프린트용 모형 {len(models['failed'])}개 단계 실패: " + \
+                ", ".join(f"{f['stage']}단계({f['reason']})" for f in models["failed"])
+        return out
 
     async def _get_plan(inp: PlanIdInput) -> dict:
         """읽기 전용: 계획 조건·부모 이력·규칙 위반·검토·승인 상태를 조회한다."""

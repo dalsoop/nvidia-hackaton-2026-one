@@ -116,7 +116,8 @@ def test_approval_export_revoke_revision_and_file_contents(isolated):
         assert output.status_code == 200
         p = s.plans[pid]
         with ZipFile(BytesIO(output.content)) as z:
-            assert len(z.namelist()) == len(p["stages"]) * 14
+            assert len([n for n in z.namelist() if n.startswith("stage_")]) == len(p["stages"]) * 14
+            assert output.headers["X-Cualign-Print-Models"].startswith("skipped; files=0")   # no gingiva scan
             _, case = s.load_case("moderate")
             mesh = trimesh.load(BytesIO(z.read(f"stage_{len(p['stages']):02d}/13.stl")), file_type="stl")
             assert np.allclose(mesh.bounds, case.mesh[13].bounds + p["stages"][-1][13], atol=1e-4)
