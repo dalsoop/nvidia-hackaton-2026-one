@@ -100,7 +100,11 @@ class PlanEventsASGI:
             if is_stream and message["type"] == "http.response.body" and not message.get("more_body", False):
                 extra = b""
                 common = {"request_id": run.request_id, "case_id": run.case_id}
-                if run.refused:
+                if run.error:
+                    # The workflow raised (NAT already wrote its unframed workflow_error line). The kind tells the UI
+                    # whether this was the NVIDIA API's overload, worth a resend button (#51); no plan is offered.
+                    extra = event("plan_error", {**common, **run.error})
+                elif run.refused:
                     pass  # the rails replaced the answer, so its plan is not offered (it stays stored)
                 elif run.selected_plan_id:
                     by_server = await review_skipped(scope, run.selected_plan_id)

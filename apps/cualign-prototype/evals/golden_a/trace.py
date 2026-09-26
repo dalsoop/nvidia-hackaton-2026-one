@@ -6,7 +6,6 @@ agent="reviewer"; the planner's call of the reviewer itself is name="reviewer" w
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -66,18 +65,8 @@ def normalize_tool_name(raw: str) -> tuple[str, str]:
     return raw, "planner"
 
 
-# A turn that crashed is recorded as "<ExceptionType>: <message>" (runner.run_spec). The NVIDIA API's overload reaches
-# it as NIMStreamError (nim_stream_patch: 7 streamed requests over ~63 s all overloaded) or as "[503] ..." / "[429] ..."
-# from a call that is not streamed. Tool retries logged by NAT ("retry ...", "Tool call failed ...") are not crashes:
-# a reviewer that failed on a 503 and said so is agent behaviour and is scored (G-review-fail-visible).
-_CRASH = re.compile(r"^(?:[A-Za-z_][\w.]*)?(?:Error|Exception)\b: ")
-_OVERLOAD = re.compile(r"NIMStreamError|\[(?:429|503)\]|\b(?:429|503)\b|overloaded|Too Many Requests|"
-                       r"Service Unavailable|RateLimit", re.I)
-
-
-def is_overload_crash(error: str) -> bool:
-    """True for a crashed-turn record whose cause is the NVIDIA API being overloaded (#51)."""
-    return bool(_CRASH.match(error) and _OVERLOAD.search(error))
+# The overload classifier lives in cualign.agent.overload, shared with the server's UI notice (#51).
+from cualign.agent.overload import is_overload_crash  # noqa: E402,F401
 
 
 def unscorable_reason(trace: Trace) -> str | None:

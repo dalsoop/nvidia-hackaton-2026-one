@@ -123,3 +123,39 @@ def test_request_error_that_is_not_retryable_raises_at_once():
         with pytest.raises(Exception, match=r"^\[400\]"):
             whole_answer(fake)
     assert len(fake.requests) == 1
+
+
+def test_fallback_model_answers_after_the_primary_is_exhausted(monkeypatch, caplog):
+    """#51 2번: with fallback_models set, a request every primary re-request lost goes once to each listed model."""
+    monkeypatch.setattr(nim_stream_patch, "FALLBACK_MODELS", ("fake/backup",))
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy = len(nim_stream_patch.DELAYS) + 1   # every request to the primary model is overloaded
+        assert answer(fake) == "MARK-OK"
+    assert len(fake.requests) == len(nim_stream_patch.DELAYS) + 2
+    assert [r["model"] for r in fake.requests[-2:]] == ["fake/planner", "fake/backup"]
+    assert "fallback model fake/backup" in caplog.text   # which model answered is in the log
+
+
+def test_overload_that_outlasts_the_fallback_too_raises(monkeypatch):
+    monkeypatch.setattr(nim_stream_patch, "FALLBACK_MODELS", ("fake/backup",))
+    with FakeLLM("MARK-OK") as fake:
+        fake.busy = 99
+        with pytest.raises(nim_stream_patch.NIMStreamError):
+            answer(fake)
+    assert len(fake.requests) == len(nim_stream_patch.DELAYS) + 2
+    assert fake.requests[-1]["model"] == "fake/backup"
+
+
+def test_configure_sets_the_live_policy(monkeypatch):
+    """The policy the patch runs with comes from configs/workflow.yml (middleware.cualign_rails.nim_retry)."""
+    for name in ("DELAYS", "REQUEST_DELAYS", "RETRY_CODES", "FALLBACK_MODELS"):
+        monkeypatch.setattr(nim_stream_patch, name, getattr(nim_stream_patch, name))   # restored after the test
+    nim_stream_patch.configure(nim_stream_patch.NimRetryConfig(
+        stream_delays=[0.5], request_delays=[], retry_codes=[503], fallback_models=["x"]))
+    assert nim_stream_patch.DELAYS == (0.5,) and nim_stream_patch.REQUEST_DELAYS == ()
+    assert nim_stream_patch.RETRY_CODES == {503} and nim_stream_patch.FALLBACK_MODELS == ("x",)
+    from pathlib import Path
+    import yaml
+    yml = yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "workflow.yml").read_text(encoding="utf-8"))
+    block = yml["middleware"]["cualign_rails"]["nim_retry"]
+    assert nim_stream_patch.NimRetryConfig(**block).stream_delays == block["stream_delays"]   # the yml block is valid

@@ -44,7 +44,9 @@ from nat.data_models.api_server import ChatResponse, ChatResponseChunk, Usage
 from nat.data_models.middleware import FunctionMiddlewareBaseConfig
 from nat.middleware.function_middleware import FunctionMiddleware
 
+from cualign.agent import nim_stream_patch
 from cualign.agent.context import CURRENT_RUN
+from cualign.agent.overload import is_overload_error
 from cualign.keys import nvidia_key_available
 from cualign.core.rail_patterns import PII, PRESCRIPTIVE
 from cualign.server.rails import ROOT
@@ -69,6 +71,11 @@ class RailsMiddlewareConfig(FunctionMiddlewareBaseConfig, name="cualign_rails"):
                                "tests put fakes here")
     rails_model_base_url: str | None = Field(default=None,
                                              description="base_url for every rail model; tests put a fake server here")
+    nim_retry: nim_stream_patch.NimRetryConfig = Field(
+        default_factory=nim_stream_patch.NimRetryConfig,
+        description="the NIM client's re-request policy (delays, codes, fallback models), set in configs/workflow.yml")
+    overload_notice: str = Field(default="", description="sentence shown on screen with a resend button when the "
+                                 "workflow dies of an overloaded NVIDIA API (#51); set in configs/workflow.yml")
 
 
 def matches(patterns: tuple[str, ...], text: str) -> bool:
@@ -128,12 +135,6 @@ def _record(kind: str, state: str, prev: str | None = None) -> str:
     return state
 
 
-def _failed(e: Exception) -> RuntimeError:
-    """Call inside the except block: logs the whole exception and returns one that names only its type."""
-    logger.exception("cuAlign rails: the workflow failed; the client gets only the exception type")
-    return RuntimeError(f"cuAlign: 에이전트 실행이 실패했습니다 ({type(e).__name__}). 자세한 내용은 서버 로그에 있습니다.")
-
-
 def _refuse() -> str:
     """The rails replace this turn's answer, so the UI must not be offered its plan either."""
     run = CURRENT_RUN.get()
@@ -144,10 +145,23 @@ def _refuse() -> str:
 
 class RailsMiddleware(FunctionMiddleware):
 
-    def __init__(self, rails: Any | None, fail_closed: bool):
+    def __init__(self, rails: Any | None, fail_closed: bool, overload_notice: str = ""):
         super().__init__()
         self.rails = rails
         self.fail_closed = fail_closed
+        self.overload_notice = overload_notice
+
+    def _failed(self, e: Exception) -> RuntimeError:
+        """Call inside the except block: logs the whole exception, records for the UI's plan_error event whether the
+        NVIDIA API's overload killed this turn (#51), and returns an exception that names only the type."""
+        logger.exception("cuAlign rails: the workflow failed; the client gets only the exception type")
+        message = f"cuAlign: 에이전트 실행이 실패했습니다 ({type(e).__name__}). 자세한 내용은 서버 로그에 있습니다."
+        overload = is_overload_error(e)
+        run = CURRENT_RUN.get()
+        if run is not None:
+            run.error = {"kind": "nim_overload" if overload else "workflow_error",
+                         "message": (self.overload_notice or message) if overload else message}
+        return RuntimeError(message)
 
     async def _check_input(self, value: Any) -> tuple[str, str, str | None]:
         """Returns (user text, turn state, refusal or None)."""
@@ -213,7 +227,7 @@ class RailsMiddleware(FunctionMiddleware):
             try:
                 out = await call_next(*args, **kwargs)
             except Exception as e:
-                raise _failed(e) from None
+                raise self._failed(e) from None
             refusal = await self._check_output(user, _text(out), state)
         return refusal_like(value, refusal) if refusal else out
 
@@ -225,7 +239,7 @@ class RailsMiddleware(FunctionMiddleware):
             try:
                 held = [chunk async for chunk in call_next(*args, **kwargs)]
             except Exception as e:
-                raise _failed(e) from None
+                raise self._failed(e) from None
             refusal = await self._check_output(user, "".join(_text(c) for c in held), state)
         if refusal:
             yield ChatResponseChunk.create_streaming_chunk(refusal)
@@ -244,6 +258,7 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
     from nat.utils.telemetry import config as nat_telemetry
     if nat_telemetry.TELEMETRY_ENABLED:
         logger.warning("NAT CLI telemetry is on; set NAT_TELEMETRY_ENABLED=0 to turn it off")
+    nim_stream_patch.configure(config.nim_retry)  # the NIM client's re-request policy comes from the same yml
     fail_closed = os.environ.get("CUALIGN_RAILS_FAIL_CLOSED") == "1"
     off = None
     if os.environ.get("CUALIGN_GUARDRAILS", "1") == "0":
@@ -254,7 +269,7 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
             raise RuntimeError(f"cuAlign: Guardrails cannot start ({off}) and CUALIGN_RAILS_FAIL_CLOSED=1")
     if off:
         logger.error("cuAlign: Guardrails OFF (%s) — every turn runs without rails", off)
-        async with _memo_rail(RailsMiddleware(None, fail_closed)) as middleware:
+        async with _memo_rail(RailsMiddleware(None, fail_closed, config.overload_notice)) as middleware:
             yield middleware
         return
     # Guardrails usage stats go out when LLMRails is built unless this is set; a value set elsewhere is kept.
@@ -263,7 +278,7 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
     rails = _import(config.rails_factory)(config.rails_config_dir or ROOT / "guardrails",
                                           config.rails_model_base_url).load()
     logger.info("cuAlign: Guardrails ON for the workflow (fail-%s)", "closed" if fail_closed else "open")
-    async with _memo_rail(RailsMiddleware(rails, fail_closed)) as middleware:
+    async with _memo_rail(RailsMiddleware(rails, fail_closed, config.overload_notice)) as middleware:
         yield middleware
 
 

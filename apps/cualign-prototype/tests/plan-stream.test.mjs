@@ -24,3 +24,13 @@ test("unframed NAT errors and trailing event are retained", () => {
   const events = parser.push(new TextEncoder().encode('{"code":"workflow_error","message":"503"}'), true);
   assert.equal(events[0].type, "error");
 });
+
+test("plan_error carries the server's kind and message for the resend button (#51)", () => {
+  const parser = new PlanStream();
+  const frame = 'event: plan_error\ndata: {"request_id":"r1","case_id":"moderate","kind":"nim_overload","message":"MARK"}\n\n';
+  const events = parser.push(new TextEncoder().encode(frame), true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "plan_error");
+  assert.equal(events[0].data.kind, "nim_overload");
+  assert.equal(events[0].data.message, "MARK");
+});
