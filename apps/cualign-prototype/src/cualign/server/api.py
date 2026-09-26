@@ -315,7 +315,10 @@ def add_api_routes(app: FastAPI, review=None):
         path = OUT_DIR / "stl" / f"{plan_id}.zip"
         # Regenerate from the approved snapshot; a stale file cannot bypass approval.
         planner.export_zip(case, p["stages"], str(path))
-        return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip")
+        models = planner.export_print_models(case, p["stages"], str(path), p["case_id"])
+        note = f"{models['status']}; files={models['n_files']}" + (f"; reason={models['reason']}" if models.get("reason") else "")
+        return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
+                            headers={"X-Cualign-Print-Models": note})
 
     @app.post("/api/plan")
     async def rule_plan(req: RulePlanRequest):

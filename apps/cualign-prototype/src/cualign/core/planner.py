@@ -355,6 +355,18 @@ def export_zip(case: Case, stages: list[dict], zip_path: str) -> str:
     return zip_path
 
 
+def export_print_models(case: Case, stages: list[dict], zip_path: str, case_id: str) -> dict:
+    """Add print_models/<case_id>_U_stage<NN>.stl (one printable arch model per stage) and a README to the zip.
+    A case without scanned gingiva gets only the README saying why; the per-tooth files are left as they are."""
+    from .print_model import print_models, readme
+    files, report = print_models(case, stages, case_id)
+    with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as z:
+        for name, data in files.items():
+            z.writestr(f"print_models/{name}", data)
+        z.writestr("print_models/README.txt", readme(report))
+    return report
+
+
 def compare_strategies(case: Case, allowed=STRATEGIES, stage_cap: int | None = None,
                        order: str = "simultaneous", constraints: Constraints | None = None) -> list[dict]:
     rows = []

@@ -28,6 +28,7 @@
 | `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
 | `src/cualign/core/intake.py` | 업로드한 치아별 스캔을 코어 좌표계로 정렬(잇몸·치관 경계 기준, 원본은 `original/`), 좌우 번호 점검·뒤집기 |
 | `src/cualign/core/gum.py` | 3D 표시용 잇몸 생성. 검증·출력 대상은 아님 |
+| `src/cualign/core/print_model.py` | 단계별 프린트용 상악 모형: 스캔 잇몸 변형·높이 지도 합성·닫힌 메시 검사 |
 | `src/cualign/core/templates/2.stl`~`15.stl` | 합성 치아와 뷰어에 쓰는 크라운 형상 14개 |
 | `src/cualign/core/templates/ATTRIBUTION.md` | 위 형상 자산의 출처·라이선스 표기. 자산과 함께 보존 |
 | `src/cualign/core/segmentation.py` | 외부 분리 모델 호출·라벨을 치아별 메시로 변환하는 선택적 어댑터 |
@@ -73,6 +74,7 @@
 | `Dockerfile.openshell` | OpenShell 샌드박스용 이미지(비root, 출력은 `/sandbox/out`) |
 | `.github/workflows/ci.yml` | 변경 후 자동 검사 실행 |
 | `tests/test_core.py` | 전략·단계·제약·STL 출력 검증 |
+| `tests/test_print_model.py` | 합성 잇몸 띠로 모형의 닫힘·치아 위치·잇몸 추종·잇몸 없음 건너뜀·치아별 출력 불변 검사 |
 | `tests/test_stack_offline.py` | NAT 구성·도구 등록·Guardrails 구성 검사 |
 | `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·예외 문구·검토 건너뛴 턴·메모 레일 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
