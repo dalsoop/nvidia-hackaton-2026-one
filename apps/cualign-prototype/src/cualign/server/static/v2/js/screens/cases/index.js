@@ -1,7 +1,7 @@
 // Cases list screen orchestrator: mounts filter panel, table list, and detail panel
 
 import { clear, h } from '../../ui/dom.js';
-import { T } from '../../domain/vocab.js';
+import { TCases } from '../../domain/vocab/cases.js';
 import {
   countByKind,
   countByStatus,
@@ -22,7 +22,7 @@ export function mount(root, params, ctx) {
   let currentKind = 'all';
   let currentSortBy = 'default';
   let currentSortOrder = 'asc';
-  let selectedCaseId = params.caseId || null;
+  let selectedCaseId = params?.caseId || null;
   const checkCache = new Map();
   const checkErrorCache = new Map();
 
@@ -117,6 +117,9 @@ export function mount(root, params, ctx) {
       checkError,
       onClose: () => {
         selectedCaseId = null;
+        if (ctx.store) {
+          ctx.store.set({ caseId: null });
+        }
         if (ctx.navigate) {
           ctx.navigate('#/cases');
         }
@@ -145,7 +148,7 @@ export function mount(root, params, ctx) {
     } catch (err) {
       if (isMounted) {
         checkCache.set(caseId, null);
-        checkErrorCache.set(caseId, err?.message || T.errors.requestFailed);
+        checkErrorCache.set(caseId, err?.message || TCases.requestFailed);
         if (selectedCaseId === caseId) {
           updateView();
         }
@@ -175,10 +178,10 @@ export function mount(root, params, ctx) {
         ctx.store.set({ cases: allCases });
       }
 
-      if (params.caseId) {
+      if (params?.caseId) {
         selectedCaseId = params.caseId;
-      } else if (allCases.length > 0 && !selectedCaseId) {
-        selectedCaseId = allCases[0].case_id;
+      } else {
+        selectedCaseId = null;
       }
 
       if (selectedCaseId) {
@@ -194,7 +197,7 @@ export function mount(root, params, ctx) {
         return;
       }
       clear(root);
-      const errMsg = err?.message || T.errors.server;
+      const errMsg = err?.message || TCases.serverError;
       const errorBox = h('div', { class: 'cases-error-box' }, errMsg);
       root.appendChild(errorBox);
     }

@@ -1,7 +1,7 @@
 // Table and list view component for cases screen
 
 import { clear, h } from '../../ui/dom.js';
-import { T } from '../../domain/vocab.js';
+import { TCases } from '../../domain/vocab/cases.js';
 import { formatPlanSummary, formatViolations } from './data.js';
 
 function getStatusBadgeClass(status) {
@@ -21,6 +21,23 @@ function getStatusBadgeClass(status) {
   }
 }
 
+function getStatusLabel(status) {
+  switch (status) {
+    case 'scan_check':
+      return TCases.statusScanCheck;
+    case 'needs_plan':
+      return TCases.statusNeedsPlan;
+    case 'violation':
+      return TCases.statusViolation;
+    case 'ready':
+      return TCases.statusReady;
+    case 'approved':
+      return TCases.statusApproved;
+    default:
+      return status;
+  }
+}
+
 export function renderCaseList(container, {
   cases = [],
   selectedCaseId = null,
@@ -31,7 +48,7 @@ export function renderCaseList(container, {
 
   // Top header with title and total count
   const titleRow = h('div', { class: 'cases-list-header-row' },
-    h('h1', { class: 'cases-list-title' }, T.cases.title),
+    h('h1', { class: 'cases-list-title' }, TCases.cases),
     h('span', { class: 'cases-list-count' }, String(cases.length))
   );
 
@@ -39,23 +56,23 @@ export function renderCaseList(container, {
 
   // Grid header row
   const tableHeader = h('div', { class: 'cases-table-header' },
-    h('span', { class: 'cases-th-sortable', onClick: () => onSort('case') }, T.cases.colCase),
-    h('span', { class: 'cases-th-sortable', onClick: () => onSort('status') }, T.cases.colStatus),
-    h('span', null, T.cases.colPlan),
-    h('span', null, T.cases.colViolation),
-    h('span', { class: 'cases-th-sortable', onClick: () => onSort('plans') }, T.cases.colPlansCount),
-    h('span', null, T.cases.colPrescription)
+    h('span', { class: 'cases-th-sortable', onClick: () => onSort('case') }, TCases.colCase),
+    h('span', { class: 'cases-th-sortable', onClick: () => onSort('status') }, TCases.colStatus),
+    h('span', null, TCases.colPlan),
+    h('span', null, TCases.colViolation),
+    h('span', { class: 'cases-th-sortable', onClick: () => onSort('plans') }, TCases.colPlans),
+    h('span', null, TCases.colPrescription)
   );
 
   tableContainer.appendChild(tableHeader);
 
   if (cases.length === 0) {
-    const emptyRow = h('div', { class: 'cases-table-empty' }, T.errors.notFound);
+    const emptyRow = h('div', { class: 'cases-table-empty' }, TCases.notFound);
     tableContainer.appendChild(emptyRow);
   } else {
     for (const c of cases) {
       const isSelected = selectedCaseId === c.case_id;
-      const statusLabel = T.status[c.status] || c.status;
+      const statusLabel = getStatusLabel(c.status);
       const badgeCls = getStatusBadgeClass(c.status);
       const planText = formatPlanSummary(c.preferredPlan);
       const violText = formatViolations(c, c.preferredPlan);

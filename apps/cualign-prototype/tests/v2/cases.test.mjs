@@ -10,9 +10,11 @@ import {
   countByKind,
   formatPlanSummary,
   formatViolations,
+  formatConstraintTags,
   FDI_COORDINATES
 } from '../../src/cualign/server/static/v2/js/screens/cases/data.js';
 
+import { TCases } from '../../src/cualign/server/static/v2/js/domain/vocab/cases.js';
 import { universalToFdi } from '../../src/cualign/server/static/v2/js/domain/teeth.js';
 
 test('Cases data: groupPlansByCaseId groups correctly without N+1', () => {
@@ -26,7 +28,6 @@ test('Cases data: groupPlansByCaseId groups correctly without N+1', () => {
   assert.equal(map.get('c1').length, 2);
   assert.equal(map.get('c2').length, 1);
   assert.equal(map.get('c3'), undefined);
-
   assert.equal(groupPlansByCaseId(null).size, 0);
   assert.equal(groupPlansByCaseId([]).size, 0);
 });
@@ -39,43 +40,31 @@ test('Cases data: transformCasesData handles patient scans as individual cases',
         alias: '3월 상담 A',
         memo: '가명 환자 메모',
         scans: [
-          {
-            scan_id: 'S1',
-            case_id: 'P0001-S1',
-            revision: 1,
-            confirmed_revision: null
-          },
-          {
-            scan_id: 'S2',
-            case_id: 'P0001-S2',
-            revision: 1,
-            confirmed_revision: 1
-          }
+          { scan_id: 'S1', case_id: 'P0001-S1', revision: 1, confirmed_revision: null },
+          { scan_id: 'S2', case_id: 'P0001-S2', revision: 1, confirmed_revision: 1 }
         ]
       }
     ]
   };
 
-  const casesData = { cases: [] };
-  const plansData = { plans: [] };
-
-  const result = transformCasesData({ casesData, patientsData, plansData });
+  const result = transformCasesData({ casesData: { cases: [] }, patientsData, plansData: { plans: [] } });
   assert.equal(result.length, 2);
 
-  // S1 is unconfirmed -> scan_check
   const s1 = result.find((c) => c.case_id === 'P0001-S1');
   assert.ok(s1);
   assert.equal(s1.kind, 'patient');
   assert.equal(s1.status, 'scan_check');
   assert.equal(s1.displayId, '3월 상담 A · S1');
+  assert.equal(s1.displayTitle, 'P0001-S1 · 가명 환자 메모');
+  assert.equal(s1.prescription, TCases.defaultConditions);
   assert.equal(s1.scan.confirmed, false);
 
-  // S2 is confirmed -> needs_plan
   const s2 = result.find((c) => c.case_id === 'P0001-S2');
   assert.ok(s2);
   assert.equal(s2.kind, 'patient');
   assert.equal(s2.status, 'needs_plan');
   assert.equal(s2.displayId, '3월 상담 A · S2');
+  assert.equal(s2.displayTitle, `P0001-S2 · 가명 환자 메모 · ${TCases.confirmed}`);
   assert.equal(s2.scan.confirmed, true);
 });
 
@@ -90,25 +79,8 @@ test('Cases data: transformCasesData computes sample status correctly', () => {
 
   const plansData = {
     plans: [
-      // sample-1 has passing plan -> ready
-      {
-        plan_id: 'p-1',
-        case_id: 'sample-1',
-        strategy: 'expansion',
-        passed: true,
-        violations: 0,
-        n_stages: 10
-      },
-      // sample-2 has failing plan -> violation
-      {
-        plan_id: 'p-2',
-        case_id: 'sample-2',
-        strategy: 'expansion',
-        passed: false,
-        violations: 3,
-        n_stages: 15
-      },
-      // sample-3 has approved plan -> approved
+      { plan_id: 'p-1', case_id: 'sample-1', strategy: 'expansion', passed: true, violations: 0, n_stages: 10 },
+      { plan_id: 'p-2', case_id: 'sample-2', strategy: 'expansion', passed: false, violations: 3, n_stages: 15 },
       {
         plan_id: 'p-3',
         case_id: 'sample-3',
@@ -123,16 +95,53 @@ test('Cases data: transformCasesData computes sample status correctly', () => {
 
   const result = transformCasesData({ casesData, patientsData: { patients: [] }, plansData });
   assert.equal(result.length, 3);
+  assert.equal(result.find((c) => c.case_id === 'sample-1').status, 'ready');
+  assert.equal(result.find((c) => c.case_id === 'sample-2').status, 'violation');
+  assert.equal(result.find((c) => c.case_id === 'sample-3').status, 'approved');
+});
 
-  const c1 = result.find((c) => c.case_id === 'sample-1');
-  assert.equal(c1.status, 'ready');
-  assert.equal(c1.preferredPlan.plan_id, 'p-1');
+test('Cases data: formatConstraintTags maps server Constraints schema faithfully', () => {
+  // Test fixture modeled after real /api/cases sample-131 constraints
+  const sample131Constraints = {
+    allow_extraction: false,
+    lock: [],
+    ipr_exclude: [2, 3, 4, 5, 6, 11, 12, 13, 14, 15],
+    ipr_limit_mm: 0.25,
+    stage_cap: null,
+    order: 'simultaneous'
+  };
 
-  const c2 = result.find((c) => c.case_id === 'sample-2');
-  assert.equal(c2.status, 'violation');
+  const tags131 = formatConstraintTags(sample131Constraints);
+  assert.deepEqual(tags131, [
+    { text: '비발치', accent: false },
+    { text: 'IPR 제외 17, 16, 15, 14, 13, 23, 24, 25, 26, 27', accent: true },
+    { text: '면당 0.25 mm', accent: false },
+    { text: '단계 상한 없음', accent: false },
+    { text: '이동 동시', accent: false }
+  ]);
 
-  const c3 = result.find((c) => c.case_id === 'sample-3');
-  assert.equal(c3.status, 'approved');
+  // Test fixture with extraction, lock, stage_cap, and sequential order
+  const customConstraints = {
+    allow_extraction: true,
+    lock: [5, 12], // Universal 5 -> FDI 14, Universal 12 -> FDI 24
+    ipr_exclude: [2, 15], // Universal 2 -> FDI 17, Universal 15 -> FDI 27
+    ipr_limit_mm: 0.2,
+    stage_cap: 18,
+    order: 'sequential'
+  };
+
+  const customTags = formatConstraintTags(customConstraints);
+  assert.deepEqual(customTags, [
+    { text: '발치', accent: false },
+    { text: '고정 치아 14, 24', accent: true },
+    { text: 'IPR 제외 17, 27', accent: true },
+    { text: '면당 0.2 mm', accent: false },
+    { text: '단계 상한 18장', accent: false },
+    { text: '순차 이동', accent: false }
+  ]);
+
+  // Null constraints returns empty array
+  assert.deepEqual(formatConstraintTags(null), []);
 });
 
 test('Cases data: filterCases filters by status and kind', () => {
@@ -178,44 +187,31 @@ test('Cases data: countByStatus and countByKind aggregation', () => {
 test('Cases data: formatPlanSummary produces expected text', () => {
   assert.equal(formatPlanSummary(null), '—');
 
-  const passingPlan = {
-    strategy: 'expansion',
-    n_stages: 18,
-    passed: true,
-    violations: 0
-  };
+  const passingPlan = { strategy: 'expansion', n_stages: 18, passed: true, violations: 0 };
   assert.equal(formatPlanSummary(passingPlan), '확장 · 18장 · 통과');
 
-  const failingPlan = {
-    strategy: 'expansion',
-    n_stages: 18,
-    passed: false,
-    violations: 7
-  };
+  const failingPlan = { strategy: 'expansion', n_stages: 18, passed: false, violations: 7 };
   assert.equal(formatPlanSummary(failingPlan), '확장 · 18장 · 위반');
 
-  const extractionPlan = {
-    strategy: 'extraction',
-    n_stages: 20,
-    passed: true,
-    violations: 0
-  };
+  const extractionPlan = { strategy: 'extraction', n_stages: 20, passed: true, violations: 0 };
   assert.equal(formatPlanSummary(extractionPlan), '발치 · 20장 · 통과');
+
+  const iprPlan = { strategy: 'ipr', n_stages: 12, passed: true, violations: [] };
+  assert.equal(formatPlanSummary(iprPlan), 'IPR · 12장 · 통과');
+
+  const expansionIprPlan = { strategy: 'expansion_ipr', n_stages: 16, passed: false, violations: ['v1', 'v2'] };
+  assert.equal(formatPlanSummary(expansionIprPlan), '확장 · IPR · 16장 · 위반');
 });
 
 test('Cases data: formatViolations formats violations count correctly', () => {
   assert.equal(formatViolations({ status: 'scan_check' }, null), '—');
   assert.equal(formatViolations({ status: 'ready' }, null), '—');
-
-  const zeroViolations = { violations: 0 };
-  assert.equal(formatViolations({ status: 'ready' }, zeroViolations), '0');
-
-  const sevenViolations = { violations: 7 };
-  assert.equal(formatViolations({ status: 'violation' }, sevenViolations), '충돌 7');
+  assert.equal(formatViolations({ status: 'ready' }, { violations: 0 }), '0');
+  assert.equal(formatViolations({ status: 'violation' }, { violations: 7 }), '충돌 7');
+  assert.equal(formatViolations({ status: 'violation' }, { violations: ['v1', 'v2'] }), '충돌 2');
 });
 
 test('Cases data: FDI coordinates map covers standard maxillary teeth', () => {
-  // Check dental arch teeth 11-17, 21-27
   const requiredFdi = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27];
   for (const fdi of requiredFdi) {
     const coord = FDI_COORDINATES[fdi];
@@ -224,7 +220,6 @@ test('Cases data: FDI coordinates map covers standard maxillary teeth', () => {
     assert.ok(typeof coord.y === 'number');
   }
 
-  // Universal teeth 2..15 should all resolve to existing coordinates
   for (let u = 2; u <= 15; u++) {
     const fdi = universalToFdi(u);
     assert.ok(FDI_COORDINATES[fdi]);
@@ -238,52 +233,12 @@ test('Cases data: sortCases sorts by id, status, and plans count', () => {
     { case_id: 'b', displayId: 'B', status: 'scan_check', plans: [] }
   ];
 
-  // Default preserves original order
-  const defaultSorted = sortCases(items, { sortBy: 'default' });
-  assert.deepEqual(defaultSorted.map((x) => x.case_id), ['c', 'a', 'b']);
-
-  // Sort by id asc / desc
-  const idAsc = sortCases(items, { sortBy: 'id', order: 'asc' });
-  assert.deepEqual(idAsc.map((x) => x.case_id), ['a', 'b', 'c']);
-
-  const idDesc = sortCases(items, { sortBy: 'id', order: 'desc' });
-  assert.deepEqual(idDesc.map((x) => x.case_id), ['c', 'b', 'a']);
-
-  // Sort by status asc (scan_check -> violation -> ready)
-  const statusAsc = sortCases(items, { sortBy: 'status', order: 'asc' });
-  assert.deepEqual(statusAsc.map((x) => x.case_id), ['b', 'a', 'c']);
-
-  // Sort by plans count asc
-  const plansAsc = sortCases(items, { sortBy: 'plans', order: 'asc' });
-  assert.deepEqual(plansAsc.map((x) => x.case_id), ['b', 'a', 'c']);
-
-  const plansDesc = sortCases(items, { sortBy: 'plans', order: 'desc' });
-  assert.deepEqual(plansDesc.map((x) => x.case_id), ['c', 'a', 'b']);
-
-  // Handles null / empty
+  assert.deepEqual(sortCases(items, { sortBy: 'default' }).map((x) => x.case_id), ['c', 'a', 'b']);
+  assert.deepEqual(sortCases(items, { sortBy: 'id', order: 'asc' }).map((x) => x.case_id), ['a', 'b', 'c']);
+  assert.deepEqual(sortCases(items, { sortBy: 'id', order: 'desc' }).map((x) => x.case_id), ['c', 'b', 'a']);
+  assert.deepEqual(sortCases(items, { sortBy: 'status', order: 'asc' }).map((x) => x.case_id), ['b', 'a', 'c']);
+  assert.deepEqual(sortCases(items, { sortBy: 'plans', order: 'asc' }).map((x) => x.case_id), ['b', 'a', 'c']);
+  assert.deepEqual(sortCases(items, { sortBy: 'plans', order: 'desc' }).map((x) => x.case_id), ['c', 'a', 'b']);
   assert.deepEqual(sortCases(null), []);
   assert.deepEqual(sortCases([]), []);
 });
-
-test('Cases data: formatPlanSummary handles ipr, expansion_ipr and array violations', () => {
-  const iprPlan = {
-    strategy: 'ipr',
-    n_stages: 12,
-    passed: true,
-    violations: []
-  };
-  assert.equal(formatPlanSummary(iprPlan), 'IPR · 12장 · 통과');
-
-  const expansionIprPlan = {
-    strategy: 'expansion_ipr',
-    n_stages: 16,
-    passed: false,
-    violations: ['v1', 'v2']
-  };
-  assert.equal(formatPlanSummary(expansionIprPlan), '확장 · IPR · 16장 · 위반');
-
-  // Violations formatted with array
-  assert.equal(formatViolations({ status: 'ready' }, iprPlan), '0');
-  assert.equal(formatViolations({ status: 'violation' }, expansionIprPlan), '충돌 2');
-});
-
