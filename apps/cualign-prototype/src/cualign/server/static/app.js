@@ -548,6 +548,16 @@ async function loadMesh(caseId) {
 }
 
 
+const STRATEGY_ORDER = ["expansion", "ipr", "expansion_ipr", "extraction"];
+
+function preferredPlanId(plans) {
+  if (!plans.length) return null;
+  const parent = plans[0].parent_plan_id ?? null;
+  const batch = plans.filter((p) => (p.parent_plan_id ?? null) === parent);
+  const ranked = [...batch].sort((a, b) => STRATEGY_ORDER.indexOf(a.strategy) - STRATEGY_ORDER.indexOf(b.strategy));
+  return (ranked.find((p) => p.passed) ?? ranked[0] ?? plans[0]).plan_id;
+}
+
 async function refreshPlans(selectId) {
   const caseId = state.meshCase, generation = state.selectionVersion;
   const { plans } = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
@@ -560,7 +570,7 @@ async function refreshPlans(selectId) {
     o.textContent = p.plan_id.slice(0,9) + " · " + p.strategy + " · " + p.n_stages + "장 · " + (p.passed ? "통과" : "위반");
     sel.appendChild(o);
   }
-  const id = selectId ?? state.plan?.plan_id ?? plans[0]?.plan_id;
+  const id = selectId ?? state.plan?.plan_id ?? preferredPlanId(plans);
   if (id) { sel.value = id; await loadPlan(id); }
 }
 

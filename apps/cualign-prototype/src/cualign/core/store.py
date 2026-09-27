@@ -21,6 +21,24 @@ from .synth import PRESETS
 OUT_DIR = Path(os.environ.get("CUALIGN_OUT", "out"))
 
 
+class _Stage(dict):
+    """One stage read back from a plan file. Tooth ids are ints, and yaw is the saved rotation."""
+
+    def __init__(self, moves: dict, yaw: dict | None = None):
+        super().__init__({int(k): v for k, v in moves.items()})
+        self.yaw = {int(k): float(v) for k, v in (yaw or {}).items()}
+
+
+def _plan_from_file(data: dict) -> dict:
+    """The file is the plan. Callers read case_id, review, and stages on the plan itself."""
+    rotations = data.get("rotations") or []
+    data["stages"] = [_Stage(st, rotations[i] if i < len(rotations) else None) for i, st in enumerate(data.get("stages") or [])]
+    if isinstance(data.get("constraints"), dict):
+        data["constraints"] = Constraints.model_validate(data["constraints"])
+    data["_from_disk"] = True
+    return data
+
+
 class Store:
     def __init__(self):
         self.cases: dict[str, Case] = {}
@@ -103,11 +121,10 @@ class Store:
             pid = data.get("plan_id")
             if not pid or not data.get("case_id") or pid in self.plans:
                 continue
-            self.plans[pid] = {"_persisted": data}
+            self.plans[pid] = _plan_from_file(data)
 
     def _record(self, pid: str) -> dict:
-        plan = self.plans[pid]
-        return plan["_persisted"] if "_persisted" in plan else plan
+        return self.plans[pid]
 
     def plan_ids_for(self, case_id: str) -> list[str]:
         return [pid for pid in self.plans if self._record(pid)["case_id"] == case_id]
@@ -169,12 +186,18 @@ class Store:
         return pid
 
     def plan_json(self, pid: str) -> dict:
-        saved = self.plans[pid].get("_persisted")
-        if saved is not None:
-            data = dict(saved)
-            data["input_stale"] = self.input_stale(data["case_id"], data.get("input_revision"))
-            return data
         p = self.plans[pid]
+        if p.get("_from_disk"):
+            constraints = p["constraints"]
+            if not isinstance(constraints, dict):
+                constraints = constraints.model_dump(mode="json")
+            data = {k: v for k, v in p.items() if k != "_from_disk"}
+            data["constraints"] = constraints
+            data["stages"] = [{str(i): v for i, v in st.items()} for st in p["stages"]]
+            data["rotations"] = [{str(i): float(y) for i, y in getattr(st, "yaw", {}).items()} for st in p["stages"]]
+            data["passed"] = not p["violations"]
+            data["input_stale"] = self.input_stale(p["case_id"], p.get("input_revision"))
+            return data
         tinfo = self.targets.get(p["target_id"] or "", {}).get("info", {})
         return {"plan_id": pid, "case_id": p["case_id"], "strategy": p["strategy"], "stage_cap": p["stage_cap"],
                 "parent_plan_id": p["parent_plan_id"], "constraints": p["constraints"].model_dump(mode="json"),
@@ -189,9 +212,8 @@ class Store:
                 if p["case_id"] in self.cases else {}}
 
     def fingerprint(self, pid: str) -> str:
-        saved = self.plans[pid].get("_persisted")
-        if saved is not None:
-            data = dict(saved)
+        if self.plans[pid].get("_from_disk"):
+            data = self.plan_json(pid)
             data.pop("approval", None)
             return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         data = self.plan_json(pid)
