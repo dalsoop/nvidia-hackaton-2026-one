@@ -30,6 +30,10 @@ class ConfirmRequest(BaseModel):
     revision: int | None = None
 
 
+class FollowupRequest(BaseModel):
+    messages: list[dict] = Field(default_factory=list, max_length=200)
+
+
 class PatientRequest(BaseModel):
     alias: str = Field(max_length=patients.ALIAS_MAX)
     memo: str = Field(default="", max_length=patients.MEMO_MAX)
@@ -95,11 +99,20 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     return result
 
 
-def add_api_routes(app: FastAPI, review=None):
+def add_api_routes(app: FastAPI, review=None, followup=None):
     """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
     chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
-    None when no reviewer model is wired."""
+    None when no reviewer model is wired. `followup(messages)` writes the question card shown after each agent turn
+    (#90); None means no cards."""
     app.state.cualign_review = review
+
+    @app.post("/api/followup")
+    async def next_followup(req: FollowupRequest):
+        """{"question": {...}} or {"question": null}: the card is optional, so this never fails the screen."""
+        if followup is None:
+            return {"question": None}
+        return {"question": await followup(req.messages)}
+
     @app.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/ui/")

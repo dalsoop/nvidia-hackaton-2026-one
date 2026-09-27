@@ -45,8 +45,6 @@ body {
 .logo b { color: var(--green); }
 .tagline { color: var(--muted); font-size: 12px; }
 .tagline em { font-style: normal; color: var(--faint); }
-.controls { display: flex; align-items: center; gap: 8px; }
-.controls label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 
 select, textarea {
   background: var(--panel-2); color: var(--text); border: 1px solid var(--line-strong);
@@ -107,21 +105,50 @@ body.resizing { cursor: col-resize; user-select: none; }
 .chip:hover { border-color: var(--green); }
 
 .composer { display: flex; gap: 8px; padding: 0 16px 16px; }
+/* + in the composer: example sentences and the rule-based fallback (#90) */
+.plus { position: relative; }
+.plus > summary { list-style: none; width: 36px; height: 100%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line-strong); border-radius: var(--radius); cursor: pointer; color: var(--muted); font-size: 18px; }
+.plus > summary::-webkit-details-marker { display: none; }
+.plus[open] > summary, .plus > summary:hover { color: var(--green); border-color: var(--green); }
+.plus .menu { position: absolute; bottom: calc(100% + 6px); left: 0; width: 380px; max-width: 80vw; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
+.menu-item { font: inherit; font-size: 12px; text-align: left; background: none; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; color: var(--text); cursor: pointer; }
+.menu-item:hover { border-color: var(--green); }
+.menu-item:disabled { color: var(--faint); cursor: not-allowed; }
+.menu-label { font-size: 11px; color: var(--faint); padding: 4px 2px 0; }
+.plus .chips { padding: 0; }
+/* the agent's question card: one question, two or three choices (#90) */
+.question { align-self: stretch; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 13px; }
+.question p { margin: 0 0 8px; }
+.question .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.question .opts button { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; }
+.question .opts button:hover { border-color: var(--green); }
+.question.done { color: var(--muted); border-left-color: var(--line-strong); }
+.question .picked { color: var(--green); font-weight: 700; }
+/* the plan the turn produced, in the transcript (#90) */
+.plan-card { align-self: stretch; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; }
+.plan-card .t { flex: 1; min-width: 0; }
+.plan-card b { display: block; }
+.plan-card small { color: var(--muted); }
+.plan-meta > summary { font-size: 12px; color: var(--muted); cursor: pointer; }
 .sel-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 8px; font-size: 12px; color: var(--muted); }
 .sel-chips[hidden] { display: none; }
 .sel-chips button { font: inherit; font-size: 12px; color: #000000; background: var(--green); border: 0; border-radius: var(--radius); padding: 2px 6px; cursor: pointer; }
 .sel-chips button.clear { color: var(--muted); background: transparent; border: 1px solid var(--line-strong); }
-.chat-tools { display: flex; justify-content: flex-end; padding: 8px 16px 0; }
 /* activity: only the step in progress (or the last one) shows unless the dentist opens the record */
-.trace .step:not(:last-child):not(.running) { display: none; }
-body.show-trace .trace .step:not(:last-child):not(.running) { display: block; }
 .decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 12px; }
 .decision span { flex: 1; min-width: 180px; }
 .decision.done { border-left-color: var(--line-strong); color: var(--muted); }
 .composer textarea { flex: 1; }
 
-.trace { align-self: stretch; display: flex; flex-direction: column; gap: 2px; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
-.trace:empty { display: none; }
+/* one folded line per turn: the running tool while it works, the tools used when done (#90) */
+.trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.trace > summary { list-style: none; cursor: pointer; color: var(--muted); padding: 2px 4px; border-radius: var(--radius); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trace > summary::-webkit-details-marker { display: none; }
+.trace > summary:hover { background: var(--hover); }
+.trace > summary .dot { color: var(--green); margin-right: 6px; }
+.trace.running > summary .dot { animation: blink 1s steps(2) infinite; }
+.trace .rows { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; }
+.trace:not(.running) .rows:empty { display: none; }
 .step summary { list-style: none; cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 2px 4px; border-radius: var(--radius); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .step summary::-webkit-details-marker { display: none; }
 .step summary:hover { background: var(--hover); }
@@ -196,7 +223,6 @@ body.focus3d .chat, body.focus3d .splitter { display: none; }
 .case-card:disabled { cursor: not-allowed; color: var(--faint); }
 .case-card:disabled::before { background: var(--line-strong); }
 .case-card:disabled:hover { border-color: var(--line); }
-.case-pill .k { color: var(--muted); font-weight: 400; margin-right: 4px; }
 
 .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 .stage-bar input[type=range] { width: 100%; accent-color: var(--green); }
@@ -220,7 +246,19 @@ body.focus3d .chat, body.focus3d .splitter { display: none; }
 .badge.fail { background: var(--red-surface); color: var(--red-text); border-color: var(--red); }
 .badge.ask { background: var(--hover); color: var(--text); border-color: var(--line-strong); }
 
-.constraints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; border:1px solid var(--line); margin:12px 16px 0; padding: 8px 12px 12px; border-radius:var(--radius); }
+/* the case on the panel top (the design agent's artifact card) and the conditions folded under it (#90) */
+.case-head { display: flex; align-items: center; gap: 12px; margin: 12px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.case-head .thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius); background: #000; }
+.case-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.case-text b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-text span { font-size: 12px; color: var(--muted); }
+.cond { margin: 8px 16px 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.cond > summary { list-style: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 8px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cond > summary::-webkit-details-marker { display: none; }
+.cond > summary::before { content: "\25B8"; margin-right: 6px; }
+.cond[open] > summary::before { content: "\25BE"; }
+.cond > summary:hover { color: var(--text); }
+.constraints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; border:0; border-top:1px solid var(--line); margin:0; padding: 8px 12px 12px; }
 .constraints legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .constraints label { display:flex; flex-direction:column; gap:4px; font-size:12px; color: var(--muted); }
 .constraints input, .constraints select { min-width:0; color:var(--text); background:var(--panel-2); border:1px solid var(--line-strong); padding:6px 8px; border-radius:var(--radius); font: inherit; }
@@ -300,8 +338,8 @@ body:not(.start) .stage-bar, body:not(.start) .legend { animation: rise 0.35s ea
   body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar,
   body:not(.start) .stage-bar, body:not(.start) .legend { animation: none; }
 }
-body.start .constraints, body.start .transcript, body.start .retry-bar, body.start .chips,
+body.start .case-head, body.start .cond, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar, body.start .result,
-body.start #fallbackBtn, body.start #caseBtn, body.start .chat-tools, body.start .sel-chips, body.start .view-cube { display: none; }
+body.start .sel-chips, body.start .view-cube { display: none; }
 body.start .intro { flex: 1; }
 body.start .composer { display: none; }   /* nothing to send before a case is open */
