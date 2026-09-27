@@ -85,21 +85,32 @@ def test_rules_have_a_reason_and_do_not_copy_the_planner():
         # The boundaries live in AGENTS.md and the skills; the desk files point there instead of copying them.
         for copied in ("Never diagnose", "Never silently relax", "No tool can approve", "이 계획은 초안입니다"):
             assert copied not in text, (name, copied)
-    soul = (WS / "SOUL.md").read_text(encoding="utf-8")
-    assert "skills/cualign-planner/SKILL.md" in soul and (WS / "skills" / "cualign-planner" / "SKILL.md").is_file()
-    # guardrails/ and openshell/ stay the runtime source; SOUL.md points to them instead of copying them.
-    for path in ("guardrails/prompts.yml", "guardrails/policy/cualign_clinical_scope_v1.0.0.md",
-                 "openshell/policy.yaml", "openshell/server-policy.yaml"):
-        assert path in soul and (ROOT / path).is_file()
+    assert "skills/cualign-planner/SKILL.md" in (WS / "SOUL.md").read_text(encoding="utf-8")
 
 
-def test_tools_md_names_tools_and_points_to_their_source():
-    text = (WS / "TOOLS.md").read_text(encoding="utf-8")
-    for path in ("skills/cualign-planner/SKILL.md", "skills/cualign-clinical-rules/SKILL.md"):
-        assert path in text and (WS / path).is_file()
-    for path in ("src/cualign/server/mcp_server.py", "src/cualign/agent/register.py", "docs/nemoclaw.md"):
-        assert path in text and (ROOT / path).is_file()
-    assert "--deny-tool" in text and "null" not in text   # argument meanings stay in the docstrings and the skill
+DESK_FILES = ("SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md", "MEMORY.md")
+
+
+def test_desk_files_point_only_to_files_in_the_desk_workspace():
+    # R-004: the reader follows the links. The desk has its workspace and skills/, not guardrails/, openshell/, src/ or docs/.
+    for name in DESK_FILES:
+        text = re.sub(r"<!--.*?-->", "", (WS / name).read_text(encoding="utf-8"), flags=re.S)
+        for ref in re.findall(r"`([^`\s]+)`", text):
+            if "/" in ref or ref.endswith(".md"):
+                assert ref == "memory/" or (WS / ref).exists(), (name, ref)
+    tools = (WS / "TOOLS.md").read_text(encoding="utf-8")
+    assert "skills/cualign-planner/SKILL.md" in tools and "null" not in tools   # the skill holds when and how
+
+
+def test_readme_lists_the_sources_outside_the_desk_for_the_maintainer():
+    readme = (WS / "README.md").read_text(encoding="utf-8")
+    for path in ("src/cualign/server/mcp_server.py", "src/cualign/agent/register.py", "configs/workflow.yml",
+                 "guardrails/prompts.yml", "guardrails/policy/cualign_clinical_scope_v1.0.0.md",
+                 "openshell/policy.yaml", "openshell/server-policy.yaml", "docs/nemoclaw.md"):
+        assert path in readme and (ROOT / path).is_file(), path
+    assert "--deny-tool" in readme
+    for name in ("SOUL.md", "TOOLS.md"):   # the runtime and tool sources are listed once, in the README
+        assert "--deny-tool" not in (WS / name).read_text(encoding="utf-8"), name
 
 
 def test_vendored_openclaw_templates_match_their_record():

@@ -13,11 +13,11 @@ The English files are the originals. [README.ko.md](README.ko.md) is the Korean 
 | `SOUL.md` | OpenClaw desk (`cualign-desk`) | Use the planner skill for each request, and keep the persona file unchanged | Not done |
 | `IDENTITY.md` | OpenClaw desk | Name itself as the cuAlign front desk | Not done |
 | `USER.md` | OpenClaw desk | Pass the conditions of the dentist as decisions, and accept tooth numbers and case ids | Not done |
-| `TOOLS.md` | OpenClaw desk, maintainer | Find the file that describes a tool | Not done |
+| `TOOLS.md` | OpenClaw desk | Find the skill that tells when to call each tool | Not done |
 | `HEARTBEAT.md` | OpenClaw heartbeat | Skip the scheduled model call | Not done |
 | `MEMORY.md` | OpenClaw desk | Keep no memory, and write no patient identifier | Not done |
 | `skills/cualign-planner/` | OpenClaw desk | Call `cualign_plan` once for each request, and report the result in Korean | Not done |
-| `README.md` | Maintainer | Find which agent reads a file, and install the desk files | Not done |
+| `README.md` | Maintainer | Find which agent reads a file, find the source of a tool or a boundary, and install the desk files | Not done |
 
 A reader test uses a new session with no other context, and it runs more than once. Source: R-004 and `guides/new-project.md` §1 in https://github.com/dalsoop/stable-agent-documentation-guidebook.
 
@@ -28,6 +28,7 @@ A reader test uses a new session with no other context, and it runs more than on
 - `configs/workflow.yml` reads it with `additional_instructions: file://../workspace/AGENTS.md`.
 - `tests/test_workspace.py` checks its sha256 against the text before the move. The golden set (#73) is tuned to this text.
 - A rewrite in Simplified Technical English goes together with a new golden-set run (#96).
+- The two skill bodies also wait for #96. They have Korean text in English sentences and negative rules. The planner reads the clinical-rules skill in its context.
 
 ## Connections
 
@@ -41,6 +42,21 @@ A reader test uses a new session with no other context, and it runs more than on
 
   The planner refuses a `load_skill` request for a skill outside its list. The server does not start when the preloaded skill is outside the list. The allowlist is not a security boundary. Guardrails and OpenShell block tools and network access.
 - **Images:** `Dockerfile` and `Dockerfile.openshell` copy `workspace/` to `/app/workspace`.
+- **OpenClaw templates:** `HEARTBEAT.md` is a copy of an OpenClaw template. `nemoclaw/openclaw-2026.7.1/README.md` records the version and the hashes.
+
+## Sources for the maintainer
+
+The desk files point only to files in the desk workspace. These sources are outside it.
+
+| Subject | Source |
+|---|---|
+| Descriptions of the desk tools | Docstrings in `src/cualign/server/mcp_server.py` |
+| Descriptions of the planner tools | Docstrings in `src/cualign/agent/register.py`. The reviewer is `functions.reviewer` in `configs/workflow.yml` |
+| Planner tool order and example arguments | Section "Tool sequence" in `skills/cualign-clinical-rules/SKILL.md` |
+| Input scope check and output check prompts | `guardrails/prompts.yml` |
+| Content safety policy: categories, allow-list, severity | `guardrails/policy/cualign_clinical_scope_v1.0.0.md`. The deployed text is in `guardrails/config.yml` |
+| Sandbox file and network limits | `openshell/policy.yaml`, `openshell/server-policy.yaml` |
+| Block of the approval and export tools at the desk | `--deny-tool` in `docs/nemoclaw.md` §4 |
 
 ## Install in the OpenClaw sandbox
 
@@ -48,18 +64,18 @@ OpenClaw puts the files in `.openclaw/workspace/` of the sandbox into the conver
 
 1. Install the skill: `nemoclaw cualign-desk skill install workspace/skills/cualign-planner` (`docs/nemoclaw.md` §4).
 2. Copy `SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md` and `MEMORY.md` to `.openclaw/workspace/` in the sandbox. Do the copy from the operator terminal, outside the sandbox.
-3. Make `SOUL.md` read-only for the sandbox user. Course 04a names persona tamper as a risk.
+3. Change `SOUL.md` only in this repository, and copy it again. `docs/nemoclaw.md` records if the sandbox can lock the file.
 4. Keep `AGENTS.md` and `skills/cualign-clinical-rules` out of the desk. They belong to the NAT planner, and the desk has no `cualign__` tools.
 
-Steps 2 and 3 are not yet verified in a real sandbox. `docs/nemoclaw.md` gives the same status.
+`docs/nemoclaw.md` records the verification status of these steps.
 
 ## Differences from the course convention
 
 | Course convention | Here | Reason |
 |---|---|---|
-| Daily notes in `memory/`, summary in `MEMORY.md` | No memory, no `memory/` folder | The server stores the conditions and the plan history. A dentist conversation can contain patient data |
-| Periodic tasks in `HEARTBEAT.md` | The OpenClaw default, with comments only | cuAlign acts only on a request. OpenClaw skips the heartbeat call when the file has only comments |
+| Daily notes in `memory/`, summary in `MEMORY.md` | No memory, no `memory/` folder | See `MEMORY.md` |
+| Periodic tasks in `HEARTBEAT.md` | The OpenClaw default, with comments only | cuAlign acts only on a request. See the comment in `HEARTBEAT.md` |
 | One agent reads the workspace | The NAT planner and the OpenClaw desk read different files | The planning and the rule checks stay in the tested NAT agent. The desk asks it through MCP |
 | `AGENTS.md` holds operating rules that change freely | A pinned NAT prompt | The golden set (#73) is tuned to its text |
-| Boundaries in `SOUL.md` | `SOUL.md` points to the skill and to the runtime files | A copy of a boundary drifts from its source. Guardrails and OpenShell enforce the boundaries |
+| Boundaries in `SOUL.md` | `SOUL.md` points to the planner skill | See rule 1 in `SOUL.md`. The runtime sources are in the table above |
 | An emoji in `IDENTITY.md` | Not set | No source gives one |
