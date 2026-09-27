@@ -16,7 +16,21 @@ export const SIDEBAR_VOCAB = Object.freeze({
     legendVert: '수직',
     legendCollision: '충돌 고리',
     legendLocked: '고정',
-    legendExtracted: '발치'
+    legendExtracted: '발치',
+    toothFdiTitle: (fdi) => `치아 FDI ${fdi}`,
+    lockedTitle: '고정 치아',
+    extractedTitle: '발치 치아',
+    rotTitle: (deg) => `회전 ${deg.toFixed(1)}°`,
+    transTitle: (mm) => `이동 ${(mm * 10).toFixed(1)}mm/10`,
+    collisionTitle: (st, fdi) => `단계 ${st} 치아 FDI ${fdi} 충돌 발생`,
+    noPlanSummary: '계획 없음',
+    defaultPlanLabel: '계획',
+    strategies: {
+      expansion: '확장',
+      ipr: 'IPR',
+      extraction: '발치',
+      expansion_ipr: '확장 · IPR'
+    }
   },
   rules: {
     title: '규칙',
@@ -26,6 +40,19 @@ export const SIDEBAR_VOCAB = Object.freeze({
     stageLabel: '발생 단계:',
     stageChip: (st) => `${st}단계`,
     stageJumpTitle: (st) => `단계 ${st}로 이동`,
+    noPlanStatus: '계획 없음',
+    groupCount: (count) => `${count}건`,
+    toothFdiPairBadge: (fdiText) => `치아 FDI ${fdiText}`,
+    maxOverlap: (overlap) => `최대 겹침 ${overlap}mm³`,
+    fdiToothText: (fdi) => `FDI ${fdi}`,
+    universalToothText: (tooth) => `${tooth}번`,
+    toothBadge: (fdiText) => `치아 ${fdiText}`,
+    violationCountText: (count) => `${count}회 위반`,
+    defaultViolationDesc: '계획 조건 위반',
+    spaceDeficitDesc: (mm, limit) => `공간 부족: ${mm}mm (허용 한도 ${limit ?? 0}mm)`,
+    stageCapDesc: (n, limit) => `단계 상한 초과: ${n}장 (상한 ${limit}장)`,
+    iprLimitDesc: (mm, limit) => `IPR 면당 한도 초과: ${mm}mm (한도 ${limit}mm)`,
+    extractionForbiddenDesc: (teethStr) => `비발치 설정이나 치아 삭제 발생 (${teethStr}번)`,
     violations: {
       collision: '치아 충돌',
       move_limit: '이동량 한도 초과',
@@ -62,6 +89,7 @@ export const SIDEBAR_VOCAB = Object.freeze({
     recalculate: '이 조건으로 계산',
     recalculating: '계산 중...',
     errorStageCapPositiveInt: '단계 상한은 1 이상의 정수여야 합니다.',
-    errorNoCase: '케이스가 선택되지 않았습니다.'
+    errorNoCase: '케이스가 선택되지 않았습니다.',
+    calculateFailed: (msg) => `계산 실패: ${msg}`
   }
 });

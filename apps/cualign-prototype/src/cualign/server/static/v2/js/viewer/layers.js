@@ -6,6 +6,9 @@ import {
   calculateMaxMovement,
   calculateMovementHeat
 } from './math.js';
+import { VIEWER_T } from '../domain/vocab/viewer.js';
+
+export const LAYER_LABELS = VIEWER_T.layers;
 
 export const COLOR_IVORY = 0xe9e3d6;
 export const COLOR_HEAT = 0x76b900;
@@ -24,11 +27,11 @@ export const COLOR_EMISSIVE = 0x2f4a00;
  */
 export function createLayersManager({ ghostGroup, teethManager }) {
   const state = {
-    ghost: false,     // 치료 전 겹쳐 보기 (ghost overlay)
-    heat: true,       // 이동량 색 (heat tint)
-    ipr: true,        // IPR 라벨
-    numbers: false,   // 치아 번호 표시 (상시)
-    gum: true         // 잇몸 표시
+    ghost: false,     // Ghost overlay of pre-treatment mesh
+    heat: true,       // Heat tint based on movement amount
+    ipr: true,        // IPR contact labels
+    numbers: false,   // Permanent tooth number labels
+    gum: true         // Gum geometry visibility
   };
 
   const ivoryColor = new THREE.Color(COLOR_IVORY);
@@ -95,6 +98,7 @@ export function createLayersManager({ ghostGroup, teethManager }) {
   return {
     applyAppearance,
     setLayers,
-    getLayers
+    getLayers,
+    LAYER_LABELS
   };
 }

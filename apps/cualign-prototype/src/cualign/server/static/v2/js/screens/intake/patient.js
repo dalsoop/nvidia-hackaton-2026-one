@@ -3,6 +3,7 @@
 
 import { clear, h } from '../../ui/dom.js';
 import { T } from '../../domain/vocab.js';
+import { INTAKE_TEXTS } from '../../domain/vocab/intake.js';
 import { renderUpload } from './upload.js';
 
 function fmtDate(iso) {
@@ -37,7 +38,7 @@ export function mount(root, params, ctx) {
     // 1. Panel Header
     const countText = T.itemsCount(allPatients.length);
     const headerEl = h('div', { class: 'panel-header intake-list-header' },
-      h('h3', { class: 'panel-title' }, T.cases.newPatient ? '환자 목록' : '환자'),
+      h('h3', { class: 'panel-title' }, T.cases.newPatient ? INTAKE_TEXTS.patientListTitle : INTAKE_TEXTS.patient),
       h('span', { class: 'panel-subtitle' }, countText)
     );
 
@@ -46,7 +47,7 @@ export function mount(root, params, ctx) {
       type: 'text',
       class: 'intake-input',
       name: 'alias',
-      placeholder: '별칭 (필수, 예: 환자 A)',
+      placeholder: INTAKE_TEXTS.aliasPlaceholder,
       maxlength: 40,
       autocomplete: 'off',
       required: true
@@ -56,7 +57,7 @@ export function mount(root, params, ctx) {
       type: 'text',
       class: 'intake-input',
       name: 'memo',
-      placeholder: '메모 (선택, 최대 200자)',
+      placeholder: INTAKE_TEXTS.memoPlaceholder,
       maxlength: 200,
       autocomplete: 'off'
     });
@@ -69,7 +70,7 @@ export function mount(root, params, ctx) {
     const submitBtn = h('button', {
       type: 'submit',
       class: 'btn btn-primary intake-submit-btn'
-    }, '새 환자 등록');
+    }, INTAKE_TEXTS.submitNewPatient);
 
     const formEl = h('form', {
       class: 'intake-patient-form',
@@ -82,7 +83,7 @@ export function mount(root, params, ctx) {
         const memo = memoInput.value.trim();
 
         if (!alias) {
-          formError = '별칭을 입력하세요.';
+          formError = INTAKE_TEXTS.aliasRequired;
           renderListPanel();
           return;
         }
@@ -106,7 +107,7 @@ export function mount(root, params, ctx) {
         }
       }
     },
-      h('div', { class: 'intake-form-title' }, '새 환자 등록'),
+      h('div', { class: 'intake-form-title' }, INTAKE_TEXTS.newPatientTitle),
       aliasInput,
       memoInput,
       formErrorEl,
@@ -117,7 +118,7 @@ export function mount(root, params, ctx) {
     const itemsContainer = h('div', { class: 'intake-patient-items' });
 
     if (allPatients.length === 0) {
-      const emptyEl = h('div', { class: 'intake-patient-empty' }, '등록된 환자가 없습니다.');
+      const emptyEl = h('div', { class: 'intake-patient-empty' }, INTAKE_TEXTS.noPatients);
       itemsContainer.appendChild(emptyEl);
     } else {
       for (const p of allPatients) {
@@ -146,7 +147,7 @@ export function mount(root, params, ctx) {
             h('span', { class: 'intake-card-id' }, p.patient_id)
           ),
           h('div', { class: 'intake-card-bottom' },
-            h('span', { class: 'intake-card-meta' }, `스캔 ${scansCount}`),
+            h('span', { class: 'intake-card-meta' }, INTAKE_TEXTS.scanCountText(scansCount)),
             h('span', { class: 'intake-card-date' }, fmtDate(p.created_at))
           )
         );
@@ -165,8 +166,8 @@ export function mount(root, params, ctx) {
 
     if (!currentPatient) {
       const noPatientEl = h('div', { class: 'intake-empty-view' },
-        h('h2', { class: 'intake-empty-title' }, '환자를 선택하거나 새로 등록하세요'),
-        h('p', { class: 'intake-empty-desc' }, '왼쪽 목록에서 환자를 선택하면 스캔 내역을 확인하고 새 상악 스캔을 올릴 수 있습니다.')
+        h('h2', { class: 'intake-empty-title' }, INTAKE_TEXTS.emptySelectionTitle),
+        h('p', { class: 'intake-empty-desc' }, INTAKE_TEXTS.emptySelectionDesc)
       );
       mainPanelEl.appendChild(noPatientEl);
       return;
@@ -179,7 +180,7 @@ export function mount(root, params, ctx) {
     const headerTextEl = h('div', { class: 'intake-patient-header-text' },
       h('h2', { class: 'intake-patient-alias' }, p.alias),
       h('div', { class: 'intake-patient-meta' },
-        `${p.patient_id} · 등록 ${fmtDate(p.created_at)}${p.memo ? ' · ' + p.memo : ''}`
+        INTAKE_TEXTS.patientMeta(p.patient_id, fmtDate(p.created_at), p.memo)
       )
     );
 
@@ -189,7 +190,7 @@ export function mount(root, params, ctx) {
     if (isDeletingPatient) {
       const confirmBox = h('div', { class: 'intake-inline-confirm-box', role: 'alert' },
         h('span', { class: 'intake-inline-confirm-text' },
-          `환자 ${p.alias} (${p.patient_id})와 모든 스캔을 삭제하시겠습니까? 되돌릴 수 없습니다.`
+          INTAKE_TEXTS.confirmDeletePatient(p.alias, p.patient_id)
         ),
         h('button', {
           type: 'button',
@@ -227,7 +228,7 @@ export function mount(root, params, ctx) {
               renderMainPanel();
             }
           }
-        }, '삭제 확인'),
+        }, INTAKE_TEXTS.deleteConfirmBtn),
         h('button', {
           type: 'button',
           class: 'btn btn-ghost small',
@@ -235,19 +236,19 @@ export function mount(root, params, ctx) {
             isDeletingPatient = false;
             renderMainPanel();
           }
-        }, '취소')
+        }, INTAKE_TEXTS.cancelBtn)
       );
       headerActionsEl.appendChild(confirmBox);
     } else {
       const deleteBtn = h('button', {
         type: 'button',
         class: 'btn btn-ghost intake-delete-patient-btn',
-        title: '환자 삭제',
+        title: INTAKE_TEXTS.deletePatientTitle,
         onClick: () => {
           isDeletingPatient = true;
           renderMainPanel();
         }
-      }, '환자 삭제');
+      }, INTAKE_TEXTS.deletePatientBtn);
       headerActionsEl.appendChild(deleteBtn);
     }
 
@@ -264,14 +265,14 @@ export function mount(root, params, ctx) {
     const scans = p.scans || [];
     const scanSectionEl = h('div', { class: 'intake-scans-section' },
       h('div', { class: 'intake-section-header' },
-        h('h3', { class: 'intake-section-title' }, '스캔 목록'),
+        h('h3', { class: 'intake-section-title' }, INTAKE_TEXTS.scanListTitle),
         h('span', { class: 'intake-section-badge' }, T.itemsCount(scans.length))
       )
     );
 
     if (scans.length === 0) {
       const emptyScansEl = h('div', { class: 'intake-scans-empty' },
-        '아직 등록된 스캔이 없습니다. 아래에서 상악 치아 스캔을 올려주세요.'
+        INTAKE_TEXTS.noScans
       );
       scanSectionEl.appendChild(emptyScansEl);
     } else {
@@ -288,14 +289,19 @@ export function mount(root, params, ctx) {
         // Left info
         const scanInfoEl = h('div', { class: 'intake-scan-info' },
           h('div', { class: 'intake-scan-title-row' },
-            h('span', { class: 'intake-scan-id font-bold' }, `${sc.scan_id} · 상악`),
+            h('span', { class: 'intake-scan-id font-bold' }, INTAKE_TEXTS.scanMaxilla(sc.scan_id)),
             h('span', {
               class: ['badge', isConfirmed ? 'badge-ready' : 'badge-scan-check']
-            }, isConfirmed ? '확인 완료' : '확인 필요')
+            }, isConfirmed ? INTAKE_TEXTS.confirmedBadge : INTAKE_TEXTS.unconfirmedBadge)
           ),
           h('div', { class: 'intake-scan-meta' },
-            `치아 ${sc.teeth?.length || 0}개${sc.gingiva ? ' · 잇몸 포함' : ''} · ${fmtDate(sc.uploaded_at)} · ` +
-            (isConfirmed ? `번호 확인됨 · 계획 ${sc.plans ?? 0}개` : '번호 확인 전')
+            INTAKE_TEXTS.scanMeta({
+              teethCount: sc.teeth?.length || 0,
+              hasGingiva: Boolean(sc.gingiva),
+              uploadedAt: fmtDate(sc.uploaded_at),
+              isConfirmed,
+              plansCount: sc.plans ?? 0
+            })
           )
         );
 
@@ -304,7 +310,7 @@ export function mount(root, params, ctx) {
 
         if (isThisDeleting) {
           const confirmBox = h('div', { class: 'intake-inline-confirm-box', role: 'alert' },
-            h('span', { class: 'intake-inline-confirm-text' }, `스캔 ${sc.scan_id}를 삭제하시겠습니까?`),
+            h('span', { class: 'intake-inline-confirm-text' }, INTAKE_TEXTS.confirmDeleteScan(sc.scan_id)),
             h('button', {
               type: 'button',
               class: 'btn btn-danger small',
@@ -327,7 +333,7 @@ export function mount(root, params, ctx) {
                   renderMainPanel();
                 }
               }
-            }, '삭제 확인'),
+            }, INTAKE_TEXTS.deleteConfirmBtn),
             h('button', {
               type: 'button',
               class: 'btn btn-ghost small',
@@ -335,11 +341,11 @@ export function mount(root, params, ctx) {
                 deletingScanId = null;
                 renderMainPanel();
               }
-            }, '취소')
+            }, INTAKE_TEXTS.cancelBtn)
           );
           scanActionsEl.appendChild(confirmBox);
         } else {
-          // "입력 확인" button navigating to #/check/<pid>-<sid>
+          // Check scan button navigating to #/check/<pid>-<sid>
           const checkBtn = h('a', {
             href: `#/check/${encodeURIComponent(caseId)}`,
             class: 'btn btn-ghost small intake-check-btn',
@@ -352,18 +358,18 @@ export function mount(root, params, ctx) {
                 ctx.navigate(`#/check/${encodeURIComponent(caseId)}`);
               }
             }
-          }, '입력 확인');
+          }, INTAKE_TEXTS.checkScanBtn);
 
-          // "스캔 삭제" button with in-screen confirmation
+          // Delete scan button with in-screen confirmation
           const delBtn = h('button', {
             type: 'button',
             class: 'btn btn-ghost small intake-scan-del-btn',
-            title: '스캔 삭제',
+            title: INTAKE_TEXTS.deleteScanTitle,
             onClick: () => {
               deletingScanId = sc.scan_id;
               renderMainPanel();
             }
-          }, '삭제');
+          }, INTAKE_TEXTS.deleteScanBtn);
 
           scanActionsEl.appendChild(checkBtn);
           scanActionsEl.appendChild(delBtn);

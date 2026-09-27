@@ -1,18 +1,18 @@
-// Plan card component and status decision logic (J6 contract)
-
 import { clear, h } from '../../ui/dom.js';
 import { canApprove } from '../../domain/status.js';
 import { T } from '../../domain/vocab.js';
+import { WORKSPACE_VOCAB } from '../../domain/vocab/workspace.js';
+import { stlUrl } from '../../api/endpoints.js';
 
 export const STRATEGY_LABELS = Object.freeze({
-  expansion: '확장',
-  ipr: 'IPR',
-  expansion_ipr: '확장 + IPR',
-  extraction: '발치'
+  expansion: WORKSPACE_VOCAB.strategies.expansion,
+  ipr: WORKSPACE_VOCAB.strategies.ipr,
+  expansion_ipr: WORKSPACE_VOCAB.strategies.expansion_ipr,
+  extraction: WORKSPACE_VOCAB.strategies.extraction
 });
 
 export function getStrategyLabel(strategy) {
-  if (!strategy) return '전략 미정';
+  if (!strategy) return WORKSPACE_VOCAB.strategies.unknown;
   return STRATEGY_LABELS[strategy] || strategy;
 }
 
@@ -29,16 +29,23 @@ export function getViolationsCount(plan) {
   if (Array.isArray(plan.violations)) {
     return plan.violations.length;
   }
+  if (typeof plan.info?.violations === 'number') {
+    return plan.info.violations;
+  }
+  if (Array.isArray(plan.info?.violations)) {
+    return plan.info.violations.length;
+  }
   return 0;
 }
 
 export function formatPlanTitle(index) {
   const num = typeof index === 'number' ? index + 1 : 1;
-  return `계획 ${num}`;
+  return WORKSPACE_VOCAB.planTitle(num);
 }
 
 export function calculateRailStage(plan) {
   if (!plan) return 'none';
+  if (isPlanStale(plan)) return 'none';
   if (plan.approval) return 'approved';
   const vCount = getViolationsCount(plan);
   if (vCount > 0 || plan.passed === false) return 'violation';
@@ -59,7 +66,7 @@ export function getPlanBadgeState(plan) {
   }
 
   const vCount = getViolationsCount(plan);
-  const stages = plan.n_stages ?? plan.info?.n_stages ?? 0;
+  const stages = plan.n_stages ?? plan.info?.n_stages ?? (Array.isArray(plan.stages) ? plan.stages.length : 0);
   const isStale = isPlanStale(plan);
   const isApproved = Boolean(plan.approval);
   const hasViolations = vCount > 0 || plan.passed === false;
@@ -102,7 +109,7 @@ export function getPlanCardActionState(plan) {
     canRetryReview,
     reviewMessage: plan.review?.message || '',
     reviewError: plan.review?.error || null,
-    approvedAt: plan.approval?.approved_at || null
+    approvedAt: plan.approval?.approved_at || (typeof plan.approval === 'string' ? plan.approval : (plan.approved_at || null))
   };
 }
 
@@ -129,7 +136,7 @@ export function formatDateTime(isoString) {
  * @param {Object} options
  * @param {number} options.index - 0-based plan order
  * @param {boolean} options.isViewing - Whether this plan is currently viewed
- * @param {Function} options.onSelect - Callback when clicking "보기"
+ * @param {Function} options.onSelect - Callback when clicking view button
  * @param {Function} options.onApprove - Callback when confirming approval: async () => Promise<void>
  * @param {Function} options.onRevoke - Callback when revoking approval: async () => Promise<void>
  * @param {Function} options.onRequestReview - Callback when retrying review: async () => Promise<void>
@@ -172,7 +179,7 @@ export function renderPlanCard(plan, {
       type: 'button',
       class: 'btn btn-outline plan-card-view-btn plan-card-view-active',
       disabled: true
-    }, '보는 중');
+    }, WORKSPACE_VOCAB.viewing);
   } else {
     viewBtn = h('button', {
       type: 'button',
@@ -182,7 +189,7 @@ export function renderPlanCard(plan, {
           onSelect(plan);
         }
       }
-    }, '보기');
+    }, WORKSPACE_VOCAB.view);
   }
 
   header.appendChild(titleWrap);
@@ -207,7 +214,7 @@ export function renderPlanCard(plan, {
 
   // Stale badge
   if (badgeState.isStale) {
-    badgesRow.appendChild(h('span', { class: 'badge plan-badge-stale' }, '이전 스캔 기준'));
+    badgesRow.appendChild(h('span', { class: 'badge plan-badge-stale' }, WORKSPACE_VOCAB.staleBadge));
   }
 
   // Approved badge
@@ -241,11 +248,11 @@ export function renderPlanCard(plan, {
       reviewBadgeClass = 'plan-review-failed';
     }
 
-    const reviewStatusBadge = h('span', { class: `plan-review-badge ${reviewBadgeClass}` }, `검토: ${reviewStatusLabel}`);
+    const reviewStatusBadge = h('span', { class: `plan-review-badge ${reviewBadgeClass}` }, WORKSPACE_VOCAB.reviewBadge(reviewStatusLabel));
     const toggleMemoBtn = h('button', {
       type: 'button',
       class: 'btn-ghost plan-review-toggle-btn'
-    }, '메모 펼치기 ▾');
+    }, WORKSPACE_VOCAB.memoExpand);
 
     reviewSummary.appendChild(reviewStatusBadge);
     reviewSummary.appendChild(toggleMemoBtn);
@@ -254,7 +261,16 @@ export function renderPlanCard(plan, {
     // Review memo drawer
     const memoDrawer = h('div', { class: 'plan-review-memo-drawer', style: { display: 'none' } });
     const memoContent = h('div', { class: 'plan-review-memo-content' });
-    const memoText = actionState.reviewMessage || (actionState.reviewError ? `오류: ${actionState.reviewError}` : '검토 메모가 없습니다.');
+    let memoText = actionState.reviewMessage;
+    if (!memoText) {
+      if (actionState.reviewError === 503 || String(actionState.reviewError).includes('503')) {
+        memoText = WORKSPACE_VOCAB.reviewModelDisconnected;
+      } else if (actionState.reviewError) {
+        memoText = WORKSPACE_VOCAB.errorPrefix(actionState.reviewError);
+      } else {
+        memoText = WORKSPACE_VOCAB.noReviewMemo;
+      }
+    }
     memoContent.textContent = memoText;
     memoDrawer.appendChild(memoContent);
 
@@ -262,20 +278,28 @@ export function renderPlanCard(plan, {
     toggleMemoBtn.addEventListener('click', () => {
       memoOpen = !memoOpen;
       memoDrawer.style.display = memoOpen ? 'block' : 'none';
-      toggleMemoBtn.textContent = memoOpen ? '메모 접기 ▴' : '메모 펼치기 ▾';
+      toggleMemoBtn.textContent = memoOpen ? WORKSPACE_VOCAB.memoCollapse : WORKSPACE_VOCAB.memoExpand;
     });
     reviewRow.appendChild(memoDrawer);
 
     // Retry review button (shown if skipped or failed)
     if (actionState.canRetryReview) {
       const retryWrap = h('div', { class: 'plan-review-retry-wrap' });
-      const retryErrEl = h('div', { class: 'plan-action-error', style: { display: 'none' } });
+      const initialErrorMsg = (actionState.reviewStatus === 'failed' && (actionState.reviewError || actionState.reviewMessage))
+        ? (actionState.reviewError === 503 || String(actionState.reviewError).includes('503')
+            ? (actionState.reviewMessage || WORKSPACE_VOCAB.reviewModelDisconnected)
+            : (actionState.reviewMessage || WORKSPACE_VOCAB.errorPrefix(actionState.reviewError)))
+        : '';
+      const retryErrEl = h('div', {
+        class: 'plan-action-error plan-review-error-msg',
+        style: { display: initialErrorMsg ? 'block' : 'none' }
+      }, initialErrorMsg);
       const retryBtn = h('button', {
         type: 'button',
         class: 'btn btn-outline plan-review-retry-btn',
         onClick: async () => {
           retryBtn.disabled = true;
-          retryBtn.textContent = '검토 요청 중...';
+          retryBtn.textContent = WORKSPACE_VOCAB.requestingReview;
           retryErrEl.style.display = 'none';
           try {
             if (typeof onRequestReview === 'function') {
@@ -283,10 +307,11 @@ export function renderPlanCard(plan, {
             }
           } catch (err) {
             retryBtn.disabled = false;
+            retryBtn.textContent = WORKSPACE_VOCAB.requestReviewRetry;
             const is503 = err.status === 503 || String(err.message).includes('503');
             let errorMsg = err.message || err.detail;
             if (is503 && (!errorMsg || errorMsg === 'Service Unavailable' || errorMsg.includes('503'))) {
-              errorMsg = '검토 모델이 연결되지 않았습니다.';
+              errorMsg = WORKSPACE_VOCAB.reviewModelDisconnected;
             } else if (!errorMsg) {
               errorMsg = T.errors.requestFailed;
             }
@@ -294,7 +319,7 @@ export function renderPlanCard(plan, {
             retryErrEl.style.display = 'block';
           }
         }
-      }, T.workspace.requestReviewRetry);
+      }, WORKSPACE_VOCAB.requestReviewRetry);
 
       retryWrap.appendChild(retryBtn);
       retryWrap.appendChild(retryErrEl);
@@ -310,13 +335,13 @@ export function renderPlanCard(plan, {
 
       const approvedMeta = h('div', { class: 'plan-approved-meta' });
       const timeFormatted = formatDateTime(actionState.approvedAt);
-      approvedMeta.textContent = timeFormatted ? `승인 시각: ${timeFormatted}` : '승인 완료';
+      approvedMeta.textContent = timeFormatted ? WORKSPACE_VOCAB.approvedTime(timeFormatted) : WORKSPACE_VOCAB.approvedDone;
       approvedSection.appendChild(approvedMeta);
 
       const approvedButtons = h('div', { class: 'plan-approved-buttons' });
 
       // STL download link
-      const stlHref = typeof getStlUrl === 'function' ? getStlUrl(planId) : `/api/plans/${encodeURIComponent(planId)}/stl.zip`;
+      const stlHref = typeof getStlUrl === 'function' ? getStlUrl(planId) : stlUrl(planId);
       const downloadLink = h('a', {
         href: actionState.isStale ? undefined : stlHref,
         download: `cualign_${planId}_stages.zip`,
@@ -333,7 +358,7 @@ export function renderPlanCard(plan, {
         disabled: actionState.isStale,
         onClick: async () => {
           revokeBtn.disabled = true;
-          revokeBtn.textContent = '승인 취소 중...';
+          revokeBtn.textContent = WORKSPACE_VOCAB.revoking;
           revokeErrEl.style.display = 'none';
           try {
             if (typeof onRevoke === 'function') {
@@ -341,12 +366,12 @@ export function renderPlanCard(plan, {
             }
           } catch (err) {
             revokeBtn.disabled = false;
-            revokeBtn.textContent = '승인 취소';
+            revokeBtn.textContent = WORKSPACE_VOCAB.revokeApproval;
             revokeErrEl.textContent = err.message || T.errors.requestFailed;
             revokeErrEl.style.display = 'block';
           }
         }
-      }, '승인 취소');
+      }, WORKSPACE_VOCAB.revokeApproval);
       approvedButtons.appendChild(revokeBtn);
 
       approvedSection.appendChild(approvedButtons);
@@ -375,7 +400,7 @@ export function renderPlanCard(plan, {
         class: 'btn btn-primary plan-confirm-execute-btn',
         onClick: async () => {
           executeBtn.disabled = true;
-          executeBtn.textContent = '승인 처리 중...';
+          executeBtn.textContent = WORKSPACE_VOCAB.approving;
           confirmErrEl.style.display = 'none';
           try {
             if (typeof onApprove === 'function') {
@@ -383,12 +408,12 @@ export function renderPlanCard(plan, {
             }
           } catch (err) {
             executeBtn.disabled = false;
-            executeBtn.textContent = '확인하고 승인';
+            executeBtn.textContent = WORKSPACE_VOCAB.confirmAndApprove;
             confirmErrEl.textContent = err.message || T.errors.requestFailed;
             confirmErrEl.style.display = 'block';
           }
         }
-      }, '확인하고 승인');
+      }, WORKSPACE_VOCAB.confirmAndApprove);
 
       const cancelBtn = h('button', {
         type: 'button',
@@ -397,7 +422,7 @@ export function renderPlanCard(plan, {
           confirmStep.style.display = 'none';
           initialStep.style.display = 'block';
         }
-      }, '취소');
+      }, WORKSPACE_VOCAB.cancel);
 
       triggerBtn.addEventListener('click', () => {
         initialStep.style.display = 'none';
@@ -416,9 +441,9 @@ export function renderPlanCard(plan, {
     } else if (!actionState.isStale) {
       // Cannot approve (violations exist or review failed)
       const reasons = [];
-      if (badgeState.hasViolations) reasons.push('규칙 위반 해결 필요');
-      if (actionState.reviewStatus !== 'passed' && actionState.reviewStatus !== 'skipped') reasons.push('검토 완료 필요');
-      const cannotApproveEl = h('div', { class: 'plan-cannot-approve-hint' }, `승인 불가 · ${reasons.join(', ')}`);
+      if (badgeState.hasViolations) reasons.push(WORKSPACE_VOCAB.reasonViolations);
+      if (actionState.reviewStatus !== 'passed' && actionState.reviewStatus !== 'skipped') reasons.push(WORKSPACE_VOCAB.reasonReviewNeeded);
+      const cannotApproveEl = h('div', { class: 'plan-cannot-approve-hint' }, WORKSPACE_VOCAB.cannotApproveHint(reasons));
       actionArea.appendChild(cannotApproveEl);
     }
 

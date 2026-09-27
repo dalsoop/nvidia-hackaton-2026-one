@@ -165,6 +165,8 @@ export function createTeethManager({ group, ghostGroup }) {
     getGum: () => gum,
     getArchOrder: () => archOrder,
     getMesh: () => currentMesh,
+    getArch: () => currentMesh?.arch ?? 'upper',
+    getTeethCount: () => Object.keys(teeth).length,
     destroy: clear
   };
 }

@@ -17,6 +17,10 @@ import {
   sortPlansByCreation
 } from '../../src/cualign/server/static/v2/js/screens/workspace/plans.js';
 
+import {
+  WORKSPACE_VOCAB
+} from '../../src/cualign/server/static/v2/js/domain/vocab/workspace.js';
+
 test('Plan Card: formatPlanTitle formats 0-based index to 1-based title', () => {
   assert.equal(formatPlanTitle(0), '계획 1');
   assert.equal(formatPlanTitle(1), '계획 2');
@@ -390,4 +394,83 @@ test('Plans: sortPlansByCreation does not mutate original array', () => {
   assert.equal(sorted[0].plan_id, 'p-1');
   assert.equal(sorted[1].plan_id, 'p-2');
 });
+
+test('Workspace Vocab: constants and helper functions format properly', () => {
+  assert.equal(WORKSPACE_VOCAB.rules, '규칙');
+  assert.equal(WORKSPACE_VOCAB.conditions, '조건');
+  assert.equal(WORKSPACE_VOCAB.stages, '단계 표');
+  assert.equal(WORKSPACE_VOCAB.agent, '에이전트');
+  assert.equal(WORKSPACE_VOCAB.plansTitle, '계획 목록');
+  assert.equal(WORKSPACE_VOCAB.plansCount(3), '계획 3개');
+  assert.equal(WORKSPACE_VOCAB.stagesCount(12), '12장');
+  assert.equal(WORKSPACE_VOCAB.violationsCount(2), '위반 2건');
+  assert.equal(WORKSPACE_VOCAB.viewing, '보는 중');
+  assert.equal(WORKSPACE_VOCAB.view, '보기');
+  assert.equal(WORKSPACE_VOCAB.approveButton, '승인');
+  assert.equal(WORKSPACE_VOCAB.confirmAndApprove, '확인하고 승인');
+  assert.equal(WORKSPACE_VOCAB.revokeApproval, '승인 취소');
+  assert.equal(WORKSPACE_VOCAB.requestReviewRetry, '검토 다시 요청');
+  assert.equal(WORKSPACE_VOCAB.reviewModelDisconnected, '검토 모델이 연결되지 않았습니다.');
+  assert.equal(WORKSPACE_VOCAB.cannotApproveHint(['이유 1', '이유 2']), '승인 불가 · 이유 1, 이유 2');
+  assert.equal(WORKSPACE_VOCAB.calculationFailed('네트워크 오류'), '계산 실패: 네트워크 오류');
+  assert.equal(WORKSPACE_VOCAB.loadingCase('P1'), 'P1 케이스를 여는 중...');
+  assert.equal(WORKSPACE_VOCAB.strategies.expansion_ipr, '확장 + IPR');
+  assert.equal(WORKSPACE_VOCAB.planTitle(1), '계획 1');
+  assert.equal(WORKSPACE_VOCAB.reviewBadge('통과'), '검토: 통과');
+  assert.equal(WORKSPACE_VOCAB.errorPrefix('연결 실패'), '오류: 연결 실패');
+  assert.equal(WORKSPACE_VOCAB.approvedTime('2026-09-27 12:00'), '승인 시각: 2026-09-27 12:00');
+  assert.equal(WORKSPACE_VOCAB.emptyPlansMessage, '이 케이스에 생성된 계획이 없습니다.');
+});
+
+test('Plan Card: getViolationsCount handles info.violations number and array', () => {
+  assert.equal(getViolationsCount({ info: { violations: 4 } }), 4);
+  assert.equal(getViolationsCount({ info: { violations: ['c1', 'c2'] } }), 2);
+  assert.equal(getViolationsCount({ info: {} }), 0);
+});
+
+test('Plan Card: getPlanBadgeState calculates stages from stages array fallback', () => {
+  const plan = {
+    plan_id: 'p-stages-arr',
+    strategy: 'ipr',
+    stages: [{ 1: [0, 0, 0] }, { 1: [1, 0, 0] }, { 1: [2, 0, 0] }],
+    violations: 0,
+    passed: true
+  };
+  const badgeState = getPlanBadgeState(plan);
+  assert.equal(badgeState.stagesLabel, '3장');
+  assert.equal(badgeState.strategyLabel, 'IPR');
+  assert.equal(badgeState.violationsLabel, '통과');
+  assert.equal(badgeState.hasViolations, false);
+});
+
+test('Plan Card: calculateRailStage stale approved plan returns none', () => {
+  const staleApprovedPlan = {
+    plan_id: 'p-stale-approved',
+    input_stale: true,
+    approval: { approved_at: '2026-09-27T10:00:00Z' }
+  };
+  assert.equal(calculateRailStage(staleApprovedPlan), 'none');
+});
+
+test('Plan Card: getPlanCardActionState approved_at from top-level or string approval', () => {
+  const plan1 = {
+    plan_id: 'p-str-app',
+    approval: '2026-09-27T11:00:00Z',
+    passed: true
+  };
+  const act1 = getPlanCardActionState(plan1);
+  assert.equal(act1.isApproved, true);
+  assert.equal(act1.approvedAt, '2026-09-27T11:00:00Z');
+
+  const plan2 = {
+    plan_id: 'p-top-app',
+    approval: true,
+    approved_at: '2026-09-27T12:00:00Z',
+    passed: true
+  };
+  const act2 = getPlanCardActionState(plan2);
+  assert.equal(act2.isApproved, true);
+  assert.equal(act2.approvedAt, '2026-09-27T12:00:00Z');
+});
+
 

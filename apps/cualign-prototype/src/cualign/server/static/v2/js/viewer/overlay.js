@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { universalToFdi } from '../domain/teeth.js';
 import { calculateIprContacts, getViolationsAtStage, projectNormalizedToScreen } from './math.js';
+import { VIEWER_T } from '../domain/vocab/viewer.js';
 
 /**
  * Projects a 3D Vector3 onto 2D screen coordinates.
@@ -32,6 +33,8 @@ export function projectToScreen(worldPos, camera, width, height) {
  * @returns {object}
  */
 export function createOverlayManager({ container, camera, teethManager, options = {} }) {
+  const T = VIEWER_T.overlay;
+
   let overlayRoot = container.querySelector('.viewer-overlay-root');
   if (!overlayRoot) {
     overlayRoot = document.createElement('div');
@@ -101,8 +104,8 @@ export function createOverlayManager({ container, camera, teethManager, options 
             el.className = 'viewer-violation-callout';
             const fdiA = universalToFdi(aId) ?? aId;
             const fdiB = universalToFdi(bId) ?? bId;
-            const vol = v.overlap_mm3 != null ? `${v.overlap_mm3} mm³` : '충돌';
-            el.innerHTML = `<span class="badge-danger">충돌</span> <span class="teeth-pair">${fdiA}-${fdiB}</span> <span class="vol">${vol}</span>`;
+            const vol = v.overlap_mm3 != null ? `${v.overlap_mm3} mm³` : T.collision;
+            el.innerHTML = `<span class="badge-danger">${T.collision}</span> <span class="teeth-pair">#${fdiA}-#${fdiB}</span> <span class="vol">${vol}</span>`;
             labelsLayer.appendChild(el);
 
             dynamicLabels.push({
@@ -135,7 +138,9 @@ export function createOverlayManager({ container, camera, teethManager, options 
           const el = document.createElement('div');
           el.className = 'viewer-ipr-callout';
           el.textContent = `${contact.mm.toFixed(2)}`;
-          el.title = `IPR ${contact.mm.toFixed(2)}mm (${universalToFdi(contact.a)}-${universalToFdi(contact.b)})`;
+          const fdiA = universalToFdi(contact.a) ?? contact.a;
+          const fdiB = universalToFdi(contact.b) ?? contact.b;
+          el.title = T.iprTitle(contact.mm.toFixed(2), `#${fdiA}-#${fdiB}`);
           labelsLayer.appendChild(el);
 
           dynamicLabels.push({
@@ -221,7 +226,7 @@ export function createOverlayManager({ container, camera, teethManager, options 
 
     const titleSpan = document.createElement('span');
     titleSpan.className = 'viewer-chips-title';
-    titleSpan.textContent = '선택한 치아:';
+    titleSpan.textContent = T.selectedTeeth;
     chipsBar.appendChild(titleSpan);
 
     const sorted = [...selectedTeeth].sort((a, b) => Number(a) - Number(b));
@@ -232,7 +237,7 @@ export function createOverlayManager({ container, camera, teethManager, options 
       chip.className = 'viewer-fdi-chip';
       chip.dataset.id = id;
       chip.innerHTML = `<span>#${fdi}</span> <span class="chip-remove">✕</span>`;
-      chip.title = `치아 ${fdi}번 선택 해제`;
+      chip.title = T.removeSelectionTitle(fdi);
       chip.addEventListener('click', () => {
         selectedTeeth.delete(id);
         renderChips();
@@ -244,7 +249,7 @@ export function createOverlayManager({ container, camera, teethManager, options 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'viewer-chips-clear';
-    clearBtn.textContent = '모두 해제';
+    clearBtn.textContent = T.clearSelection;
     clearBtn.addEventListener('click', () => {
       selectedTeeth.clear();
       renderChips();
@@ -281,14 +286,14 @@ export function createOverlayManager({ container, camera, teethManager, options 
     const toothViols = byTooth[toothId] ? [...byTooth[toothId]] : [];
 
     const lines = [];
-    lines.push(`<strong>치아 #${fdi}</strong>`);
+    lines.push(`<strong>${T.toothPrefix(fdi)}</strong>`);
     if (currentPlan) {
-      lines.push(`누적 이동: ${moved.toFixed(2)} mm`);
+      lines.push(T.cumulativeMove(moved));
     }
-    if (locked) lines.push(`<span class="badge-blue">고정</span>`);
-    if (removed) lines.push(`<span class="badge-amber">발치</span>`);
+    if (locked) lines.push(`<span class="badge-blue">${T.locked}</span>`);
+    if (removed) lines.push(`<span class="badge-amber">${T.removed}</span>`);
     if (toothViols.length > 0) {
-      lines.push(`<span class="badge-danger">위반: ${toothViols.join(', ')}</span>`);
+      lines.push(`<span class="badge-danger">${T.violations(toothViols)}</span>`);
     }
 
     tooltip.innerHTML = lines.join(' · ');

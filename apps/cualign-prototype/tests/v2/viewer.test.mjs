@@ -12,6 +12,7 @@ import {
   calculateViewCamera,
   projectNormalizedToScreen
 } from '../../src/cualign/server/static/v2/js/viewer/math.js';
+import { VIEWER_T } from '../../src/cualign/server/static/v2/js/domain/vocab/viewer.js';
 
 test('Pose synthesis: zero translation and zero rotation keeps pivot in place', () => {
   const result = calculateToothPosition([0, 0, 0], [10, 20, 30], 0);
@@ -49,6 +50,34 @@ test('Pose synthesis: rotation around pivot calculates position = d + c - R*c', 
   assert.ok(Math.abs(resultCombined.position[0] - (2 + 10)) < 1e-6);
   assert.ok(Math.abs(resultCombined.position[1] - (3 - 10)) < 1e-6);
   assert.ok(Math.abs(resultCombined.position[2] - 4) < 1e-6);
+});
+
+test('Pose synthesis: pivot center invariant (pivot point always maps to pivot + d)', () => {
+  // Any point at pivot c rotated by R and translated by position must end at c + d:
+  // p' = position + R * c = (d + c - R*c) + R*c = d + c
+  const d = [3.2, -1.8, 0.4];
+  const c = [12.5, -8.3, 14.0];
+  const angle = 37.5;
+
+  const result = calculateToothPosition(d, c, angle);
+  const a = (angle * Math.PI) / 180;
+  const rcX = Math.cos(a) * c[0] - Math.sin(a) * c[1];
+  const rcY = Math.sin(a) * c[0] + Math.cos(a) * c[1];
+
+  const transformedPivotX = result.position[0] + rcX;
+  const transformedPivotY = result.position[1] + rcY;
+  const transformedPivotZ = result.position[2] + c[2];
+
+  assert.ok(Math.abs(transformedPivotX - (c[0] + d[0])) < 1e-5);
+  assert.ok(Math.abs(transformedPivotY - (c[1] + d[1])) < 1e-5);
+  assert.ok(Math.abs(transformedPivotZ - (c[2] + d[2])) < 1e-5);
+});
+
+test('Pose synthesis: 360 degree rotation returns to initial position', () => {
+  const result360 = calculateToothPosition([5, -2, 1], [15, 25, 0], 360);
+  assert.ok(Math.abs(result360.position[0] - 5) < 1e-6);
+  assert.ok(Math.abs(result360.position[1] - (-2)) < 1e-6);
+  assert.ok(Math.abs(result360.position[2] - 1) < 1e-6);
 });
 
 test('Violations at stage: filters stage and groups by tooth', () => {
@@ -100,6 +129,8 @@ test('Slider tick position: percentage calculation and boundaries', () => {
   assert.equal(calculateTickPosition(12, 10), 100); // clamped
   assert.equal(calculateTickPosition(-2, 10), 0); // clamped
   assert.equal(calculateTickPosition(0, 0), 0); // zero stages
+  assert.equal(calculateTickPosition(1, 4), 25);
+  assert.equal(calculateTickPosition(3, 4), 75);
 });
 
 test('Max movement and movement heat calculation', () => {
@@ -120,6 +151,9 @@ test('Max movement and movement heat calculation', () => {
 
   // zero displacement gives 0
   assert.equal(calculateMovementHeat(0, maxMove), 0);
+
+  // Over max displacement is capped at 0.75
+  assert.equal(calculateMovementHeat(1.0, maxMove), 0.75);
 });
 
 test('IPR contacts: calculates mm between adjacent teeth with exclusions', () => {
@@ -218,3 +252,27 @@ test('IPR contacts: edge cases with no IPR or empty arch', () => {
   assert.deepEqual(calculateIprContacts(['1', '2'], null), []);
 });
 
+test('Viewer Vocabulary: verifies all core sections and label generators', () => {
+  assert.equal(VIEWER_T.views.occlusal, '교합면');
+  assert.equal(VIEWER_T.views.frontal, '정면');
+  assert.equal(VIEWER_T.views.right, '우측');
+  assert.equal(VIEWER_T.views.left, '좌측');
+  assert.equal(VIEWER_T.views.viewSuffix('교합면'), '교합면에서 본 모습');
+
+  assert.equal(VIEWER_T.layers.ghost, '치료 전 겹쳐 보기');
+  assert.equal(VIEWER_T.layers.heat, '이동량 색');
+  assert.equal(VIEWER_T.layers.ipr, 'IPR');
+  assert.equal(VIEWER_T.layers.numbers, '치아 번호');
+  assert.equal(VIEWER_T.layers.gum, '잇몸');
+
+  assert.equal(VIEWER_T.stageBar.noPlan, '계획 없음');
+  assert.equal(VIEWER_T.stageBar.beforeTreatment(10), '치료 전 · 총 10단계');
+  assert.equal(VIEWER_T.stageBar.beforeTreatmentWithMonths(10, 5), '치료 전 · 총 10단계 · 예상 5개월');
+  assert.equal(VIEWER_T.stageBar.stageLabel(2, 10), '단계 2 / 10');
+  assert.equal(VIEWER_T.stageBar.stageLabelWithMonths(2, 10, 5), '단계 2 / 10 · 예상 5개월');
+
+  assert.equal(VIEWER_T.overlay.selectedTeeth, '선택한 치아:');
+  assert.equal(VIEWER_T.overlay.clearSelection, '모두 해제');
+  assert.equal(VIEWER_T.overlay.toothPrefix('11'), '치아 #11');
+  assert.equal(VIEWER_T.overlay.cumulativeMove(1.234), '누적 이동: 1.23 mm');
+});

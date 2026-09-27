@@ -9,8 +9,14 @@ import {
   validateScanFiles,
   formatBytes,
   resolveErrorCode,
-  getErrorDetails
+  getErrorDetails,
+  TOOTH_NAMES
 } from '../../src/cualign/server/static/v2/js/screens/intake/upload.js';
+import {
+  TOOTH_NAMES as VOCAB_TOOTH_NAMES,
+  INTAKE_ERROR_DETAILS,
+  INTAKE_TEXTS
+} from '../../src/cualign/server/static/v2/js/domain/vocab/intake.js';
 
 test('Scan file name parser: Universal, gingiva, lower, and other files', () => {
   // Maxillary upper teeth (1..16)
@@ -231,4 +237,23 @@ test('Upload error details and server error code resolution', () => {
   assert.equal(resolveErrorCode(null, 'upper.stl: 한 덩어리 악궁 스캔으로 보입니다.'), UPLOAD_ERROR_CODES.MONOLITHIC_SCAN);
   assert.equal(resolveErrorCode(null, '치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요.'), UPLOAD_ERROR_CODES.NO_TEETH);
   assert.equal(resolveErrorCode(null, '네트워크 연결 실패'), UPLOAD_ERROR_CODES.SERVER_ERROR);
+});
+
+test('Intake domain vocabulary and tooth names', () => {
+  assert.equal(TOOTH_NAMES[1], '우측 제3대구치 (사랑니)');
+  assert.equal(VOCAB_TOOTH_NAMES[1], '우측 제3대구치 (사랑니)');
+  assert.equal(VOCAB_TOOTH_NAMES[8], '우측 중절치 (앞니)');
+  assert.equal(VOCAB_TOOTH_NAMES[9], '좌측 중절치 (앞니)');
+  assert.equal(VOCAB_TOOTH_NAMES[16], '좌측 제3대구치 (사랑니)');
+  assert.equal(Object.keys(VOCAB_TOOTH_NAMES).length, 16);
+
+  assert.equal(INTAKE_TEXTS.newPatientTitle, '새 환자 등록');
+  assert.equal(INTAKE_TEXTS.confirmDeleteScan('1'), '스캔 1를 삭제하시겠습니까?');
+  assert.equal(INTAKE_TEXTS.confirmDeletePatient('환자 A', 'P1'), '환자 환자 A (P1)와 모든 스캔을 삭제하시겠습니까? 되돌릴 수 없습니다.');
+
+  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.LOWER_ARCH]);
+  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.DUPLICATE_TOOTH]);
+  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.SIZE_EXCEEDED]);
+  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.MONOLITHIC_SCAN]);
+  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.NO_TEETH]);
 });

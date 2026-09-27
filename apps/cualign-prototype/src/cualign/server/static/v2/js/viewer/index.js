@@ -8,6 +8,7 @@ import { createLayersManager } from './layers.js';
 import { createViewsManager, VIEW_NAMES_KO } from './views.js';
 import { createOverlayManager } from './overlay.js';
 import { createStageBar } from './stage-bar.js';
+import { VIEWER_T } from '../domain/vocab/viewer.js';
 
 /**
  * Creates and initializes the 3D dental aligner viewer.
@@ -19,6 +20,12 @@ import { createStageBar } from './stage-bar.js';
 export function createViewer(container, options = {}) {
   // Ensure container styling
   container.classList.add('viewer-container');
+
+  // State
+  let currentMesh = null;
+  let currentPlan = null;
+  let currentStage = 0;
+  let customLabels = [];
 
   // 1. Initialize Scene (Renderer, Camera, Lights, OrbitControls)
   const sceneCtx = createScene(container);
@@ -35,14 +42,38 @@ export function createViewer(container, options = {}) {
     teethManager
   });
 
-  // 4. Initialize Views Manager (Occlusal, Frontal, Right, Left)
+  // 4. Initialize Arch Info Badge (e.g. Upper arch, teeth count, occlusal view)
+  const archBadge = document.createElement('div');
+  archBadge.className = 'viewer-arch-info';
+  archBadge.hidden = true;
+  container.appendChild(archBadge);
+
+  function updateArchBadge(viewNameKo) {
+    if (!currentMesh) {
+      archBadge.hidden = true;
+      return;
+    }
+    const archName = currentMesh.arch === 'upper' ? VIEWER_T.arch.upper : (currentMesh.arch === 'lower' ? VIEWER_T.arch.lower : (currentMesh.arch || ''));
+    const teethCount = teethManager.getTeethCount();
+    const viewDesc = VIEWER_T.views.viewSuffix(viewNameKo || VIEWER_T.views.occlusal);
+    archBadge.textContent = VIEWER_T.arch.archInfo(archName, teethCount, viewDesc);
+    archBadge.hidden = false;
+  }
+
+  // 5. Initialize Views Manager (Occlusal, Frontal, Right, Left)
   const viewsManager = createViewsManager({
     camera: sceneCtx.camera,
     controls: sceneCtx.controls,
-    group: sceneCtx.group
+    group: sceneCtx.group,
+    onViewChange: (viewKey, viewLabel) => {
+      viewsBar.querySelectorAll('.viewer-view-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === viewKey);
+      });
+      updateArchBadge(viewLabel);
+    }
   });
 
-  // 5. Initialize Overlay Manager (Labels, Violations, Tooltips, FDI chips)
+  // 6. Initialize Overlay Manager (Labels, Violations, Tooltips, FDI chips)
   const overlayManager = createOverlayManager({
     container,
     camera: sceneCtx.camera,
@@ -55,37 +86,38 @@ export function createViewer(container, options = {}) {
     }
   });
 
-  // 6. View Controls UI (교합면, 정면, 우측, 좌측)
+  // 7. View Controls UI (Occlusal, Frontal, Right, Left)
   const viewsBar = document.createElement('div');
   viewsBar.className = 'viewer-views-bar';
-  for (const [key, label] of Object.entries(VIEW_NAMES_KO)) {
-    if (['occlusal', 'frontal', 'right', 'left'].includes(key)) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `viewer-view-btn ${key === 'occlusal' ? 'active' : ''}`;
-      btn.dataset.view = key;
-      btn.textContent = label;
-      btn.addEventListener('click', () => {
-        viewsBar.querySelectorAll('.viewer-view-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        viewsManager.setView(key);
-      });
-      viewsBar.appendChild(btn);
-    }
+  const supportedViews = ['occlusal', 'frontal', 'right', 'left'];
+
+  for (const key of supportedViews) {
+    const label = VIEW_NAMES_KO[key] || key;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `viewer-view-btn ${key === 'occlusal' ? 'active' : ''}`;
+    btn.dataset.view = key;
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      viewsBar.querySelectorAll('.viewer-view-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      viewsManager.setView(key);
+    });
+    viewsBar.appendChild(btn);
   }
   container.appendChild(viewsBar);
 
-  // 7. Layer Controls UI (치료 전 겹쳐 보기, 이동량 색, IPR, 치아 번호, 잇몸)
+  // 8. Layer Controls UI (Ghost overlay, Heat tint, IPR, Numbers, Gum)
   const layersBar = document.createElement('div');
   layersBar.className = 'viewer-layers-bar';
 
   const layerButtons = {};
   const layerDefs = [
-    { key: 'ghost', label: '치료 전 겹쳐 보기' },
-    { key: 'heat', label: '이동량 색' },
-    { key: 'ipr', label: 'IPR' },
-    { key: 'numbers', label: '치아 번호' },
-    { key: 'gum', label: '잇몸' }
+    { key: 'ghost', label: VIEWER_T.layers.ghost },
+    { key: 'heat', label: VIEWER_T.layers.heat },
+    { key: 'ipr', label: VIEWER_T.layers.ipr },
+    { key: 'numbers', label: VIEWER_T.layers.numbers },
+    { key: 'gum', label: VIEWER_T.layers.gum }
   ];
 
   for (const def of layerDefs) {
@@ -106,13 +138,7 @@ export function createViewer(container, options = {}) {
   }
   container.appendChild(layersBar);
 
-  // State
-  let currentMesh = null;
-  let currentPlan = null;
-  let currentStage = 0;
-  let customLabels = [];
-
-  // 8. Initialize 440px Stage Bar (Bottom-Right)
+  // 9. Initialize 440px Stage Bar (Bottom-Right)
   const stageBarTarget = options.stageBarContainer || container;
   const stageBar = options.stageBar === false ? null : createStageBar(stageBarTarget, {
     max: 0,
@@ -186,18 +212,22 @@ export function createViewer(container, options = {}) {
 
     teethManager.loadMesh(meshJson);
     stageBar?.setMax(0);
+    stageBar?.setMonths(null);
     stageBar?.setStage(0);
     stageBar?.setViolations([]);
 
     applyStage(0);
     viewsManager.setView('occlusal');
+    updateArchBadge(VIEW_NAMES_KO.occlusal);
   }
 
   function setPlan(planJson) {
     currentPlan = planJson;
     const totalStages = planJson?.stages?.length || 0;
+    const months = planJson?.info?.months ?? null;
 
     stageBar?.setMax(totalStages);
+    stageBar?.setMonths(months);
     stageBar?.setViolations(planJson?.violations || []);
 
     applyStage(Math.min(currentStage, totalStages));
@@ -236,9 +266,6 @@ export function createViewer(container, options = {}) {
 
   function setView(name) {
     viewsManager.setView(name);
-    viewsBar.querySelectorAll('.viewer-view-btn').forEach((b) => {
-      b.classList.toggle('active', b.dataset.view === name);
-    });
   }
 
   function setLabels(list) {
@@ -252,6 +279,7 @@ export function createViewer(container, options = {}) {
     sceneCtx.canvas.removeEventListener('pointerup', onPointerUp);
     sceneCtx.canvas.removeEventListener('pointerleave', onPointerLeave);
 
+    archBadge.remove();
     viewsBar.remove();
     layersBar.remove();
     stageBar?.destroy();

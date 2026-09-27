@@ -1,7 +1,7 @@
-// Plans list orchestrator and management component (J6 contract)
-
 import { clear, h } from '../../ui/dom.js';
 import { T } from '../../domain/vocab.js';
+import { WORKSPACE_VOCAB } from '../../domain/vocab/workspace.js';
+import { stlUrl } from '../../api/endpoints.js';
 import {
   renderPlanCard,
   calculateRailStage
@@ -9,7 +9,7 @@ import {
 
 /**
  * Sort plans by their creation order (oldest to newest).
- * Backend /api/plans returns reversed(list(STORE.plans)), so reversing yields creation order.
+ * Backend returns plans reversed, so reversing yields creation order.
  * If created_at is present on the items, sorts by timestamp ascending.
  *
  * @param {Array<Object>} plans
@@ -30,7 +30,7 @@ export function sortPlansByCreation(plans) {
     });
   }
 
-  // Otherwise, since /api/plans returns them in reversed order, reverse to get creation order
+  // Otherwise, since backend returns them in reversed order, reverse to get creation order
   return [...plans].reverse();
 }
 
@@ -62,8 +62,8 @@ export function mountPlans(container, {
 
   const wrapper = h('div', { class: 'plans-panel' });
   const header = h('div', { class: 'plans-panel-header' });
-  const title = h('h2', { class: 'plans-panel-title' }, '계획 목록');
-  const countBadge = h('span', { class: 'plans-panel-count' }, T.plansCount(currentPlans.length));
+  const title = h('h2', { class: 'plans-panel-title' }, WORKSPACE_VOCAB.plansTitle);
+  const countBadge = h('span', { class: 'plans-panel-count' }, WORKSPACE_VOCAB.plansCount(currentPlans.length));
   header.appendChild(title);
   header.appendChild(countBadge);
   wrapper.appendChild(header);
@@ -121,7 +121,7 @@ export function mountPlans(container, {
     countBadge.textContent = T.plansCount(currentPlans.length);
 
     if (currentPlans.length === 0) {
-      listEl.appendChild(h('div', { class: 'plans-empty-note' }, '저장된 계획이 없습니다.'));
+      listEl.appendChild(h('div', { class: 'plans-empty-note' }, WORKSPACE_VOCAB.emptyPlansNote));
       return;
     }
 
@@ -142,7 +142,7 @@ export function mountPlans(container, {
         onApprove: handleApprove,
         onRevoke: handleRevoke,
         onRequestReview: handleRequestReview,
-        getStlUrl: (id) => (ctx?.api?.stlUrl ? ctx.api.stlUrl(id) : `/api/plans/${encodeURIComponent(id)}/stl.zip`)
+        getStlUrl: (id) => (ctx?.api?.stlUrl ? ctx.api.stlUrl(id) : stlUrl(id))
       });
 
       listEl.appendChild(card);

@@ -147,7 +147,7 @@ export function renderChecks(container, ctx) {
     h('h3', { class: 'sidebar-panel-title' }, SIDEBAR_VOCAB.rules.title),
     h('span', {
       class: `sidebar-status-pill ${!currentPlan ? 'neutral' : (currentPlan.violations?.length ? 'danger' : 'success')}`
-    }, !currentPlan ? '계획 없음' : (currentPlan.violations?.length ? T.violations(currentPlan.violations.length) : T.workspace.passed))
+    }, !currentPlan ? SIDEBAR_VOCAB.rules.noPlanStatus : (currentPlan.violations?.length ? T.violations(currentPlan.violations.length) : T.workspace.passed))
   ]);
   panelRoot.appendChild(headerEl);
 
@@ -188,7 +188,7 @@ export function renderChecks(container, ctx) {
         h('span', { class: 'checks-danger-dot' }),
         h('strong', null, group.label)
       ]),
-      h('span', { class: 'checks-group-count' }, `${group.count}건`)
+      h('span', { class: 'checks-group-count' }, SIDEBAR_VOCAB.rules.groupCount(group.count))
     ]);
     groupCard.appendChild(groupHeader);
 
@@ -209,9 +209,9 @@ export function renderChecks(container, ctx) {
         }
 
         const infoEl = h('div', { class: 'checks-item-info' }, [
-          h('span', { class: 'checks-tooth-badge' }, `치아 FDI ${fdiText}`),
+          h('span', { class: 'checks-tooth-badge' }, SIDEBAR_VOCAB.rules.toothFdiPairBadge(fdiText)),
           pair.maxOverlap > 0
-            ? h('span', { class: 'checks-metric' }, `최대 겹침 ${pair.maxOverlap}mm³`)
+            ? h('span', { class: 'checks-metric' }, SIDEBAR_VOCAB.rules.maxOverlap(pair.maxOverlap))
             : null
         ]);
         itemEl.appendChild(infoEl);
@@ -240,7 +240,7 @@ export function renderChecks(container, ctx) {
     // 2. Single teeth (e.g. Move limit, rotation limit, locked tooth)
     if (group.byTooth.length > 0) {
       for (const tEntry of group.byTooth) {
-        const fdiText = tEntry.fdiTooth ? `FDI ${tEntry.fdiTooth}` : `${tEntry.tooth}번`;
+        const fdiText = tEntry.fdiTooth ? SIDEBAR_VOCAB.rules.fdiToothText(tEntry.fdiTooth) : SIDEBAR_VOCAB.rules.universalToothText(tEntry.tooth);
         const itemEl = h('div', { class: 'checks-item-row' });
 
         if (tEntry.stages.length > 0) {
@@ -252,8 +252,8 @@ export function renderChecks(container, ctx) {
         }
 
         const infoEl = h('div', { class: 'checks-item-info' }, [
-          h('span', { class: 'checks-tooth-badge' }, `치아 ${fdiText}`),
-          h('span', { class: 'checks-metric' }, `${tEntry.count}회 위반`)
+          h('span', { class: 'checks-tooth-badge' }, SIDEBAR_VOCAB.rules.toothBadge(fdiText)),
+          h('span', { class: 'checks-metric' }, SIDEBAR_VOCAB.rules.violationCountText(tEntry.count))
         ]);
         itemEl.appendChild(infoEl);
 
@@ -280,15 +280,15 @@ export function renderChecks(container, ctx) {
     // 3. General plan-level violations (space_deficit, stage_cap, etc.)
     if (group.general.length > 0) {
       for (const gItem of group.general) {
-        let desc = '계획 조건 위반';
+        let desc = SIDEBAR_VOCAB.rules.defaultViolationDesc;
         if (gItem.type === 'space_deficit') {
-          desc = `공간 부족: ${gItem.mm}mm (허용 한도 ${gItem.limit ?? 0}mm)`;
+          desc = SIDEBAR_VOCAB.rules.spaceDeficitDesc(gItem.mm, gItem.limit);
         } else if (gItem.type === 'stage_cap') {
-          desc = `단계 상한 초과: ${gItem.n}장 (상한 ${gItem.limit}장)`;
+          desc = SIDEBAR_VOCAB.rules.stageCapDesc(gItem.n, gItem.limit);
         } else if (gItem.type === 'ipr_limit') {
-          desc = `IPR 면당 한도 초과: ${gItem.mm}mm (한도 ${gItem.limit}mm)`;
+          desc = SIDEBAR_VOCAB.rules.iprLimitDesc(gItem.mm, gItem.limit);
         } else if (gItem.type === 'extraction_forbidden') {
-          desc = `비발치 설정이나 치아 삭제 발생 (${gItem.teeth?.join(', ')}번)`;
+          desc = SIDEBAR_VOCAB.rules.extractionForbiddenDesc(gItem.teeth?.join(', '));
         }
 
         const itemEl = h('div', { class: 'checks-item-row checks-item-general' }, [

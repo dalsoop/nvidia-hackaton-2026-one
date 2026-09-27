@@ -53,6 +53,8 @@ export const CHECK_VOCAB = {
     none: '근거 없음'
   },
   renumberedSuffix: ' · 번호 좌우 뒤집음',
+  rotationSuffix: (deg) => ` · ${deg}° 회전`,
+  errorPrefix: '오류: ',
 
   // Tooth width table
   widthTableTitle: '치아 폭 표 (FDI)',

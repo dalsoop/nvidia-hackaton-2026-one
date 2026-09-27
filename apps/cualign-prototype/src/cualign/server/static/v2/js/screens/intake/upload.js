@@ -4,6 +4,13 @@ import { clear, h } from '../../ui/dom.js';
 import { T } from '../../domain/vocab.js';
 import { UPPER_UNIVERSAL, universalToFdi } from '../../domain/teeth.js';
 import { ApiError } from '../../api/endpoints.js';
+import {
+  TOOTH_NAMES,
+  INTAKE_ERROR_DETAILS,
+  INTAKE_TEXTS,
+  UPLOAD_MESSAGES,
+  matchErrorCode
+} from '../../domain/vocab/intake.js';
 
 export const MAX_FILE_BYTES = 60 * 1024 * 1024;       // 60 MB: per-file STL limit
 export const MAX_UPLOAD_BYTES = 400 * 1024 * 1024;   // 400 MB: total scan upload limit
@@ -18,24 +25,7 @@ export const UPLOAD_ERROR_CODES = {
   SERVER_ERROR: 'SERVER_ERROR'
 };
 
-const TOOTH_NAMES = {
-  1: '우측 제3대구치 (사랑니)',
-  2: '우측 제2대구치',
-  3: '우측 제1대구치',
-  4: '우측 제2소구치',
-  5: '우측 제1소구치',
-  6: '우측 견치 (송곳니)',
-  7: '우측 측절치',
-  8: '우측 중절치 (앞니)',
-  9: '좌측 중절치 (앞니)',
-  10: '좌측 측절치',
-  11: '좌측 견치 (송곳니)',
-  12: '좌측 제1소구치',
-  13: '좌측 제2소구치',
-  14: '좌측 제1대구치',
-  15: '좌측 제2대구치',
-  16: '좌측 제3대구치 (사랑니)'
-};
+export { TOOTH_NAMES };
 
 export function scanFileName(fileName) {
   const base = String(fileName || '').split('/').pop().split('\\').pop();
@@ -62,7 +52,7 @@ export function validateScanFiles(files) {
       ok: false,
       valid: false,
       code: UPLOAD_ERROR_CODES.EMPTY,
-      error: '올릴 스캔 파일을 선택해 주세요.',
+      error: UPLOAD_MESSAGES.selectFiles,
       teeth: [],
       hasGingiva: false,
       totalBytes: 0,
@@ -100,7 +90,7 @@ export function validateScanFiles(files) {
         ok: false,
         valid: false,
         code: UPLOAD_ERROR_CODES.DUPLICATE_TOOTH,
-        error: `${name}: 같은 번호의 파일이 두 개 있습니다.`,
+        error: UPLOAD_MESSAGES.duplicateTooth(name),
         offendingFile: name,
         offendingFiles: [name],
         teeth,
@@ -115,7 +105,7 @@ export function validateScanFiles(files) {
         ok: false,
         valid: false,
         code: UPLOAD_ERROR_CODES.SIZE_EXCEEDED,
-        error: `파일이 너무 큽니다(파일당 ${MAX_FILE_BYTES >> 20}MB, 한 번에 ${MAX_UPLOAD_BYTES >> 20}MB까지).`,
+        error: UPLOAD_MESSAGES.sizeExceeded(MAX_FILE_BYTES >> 20, MAX_UPLOAD_BYTES >> 20),
         offendingFile: rawName,
         offendingFiles: [rawName],
         teeth,
@@ -130,7 +120,7 @@ export function validateScanFiles(files) {
         ok: false,
         valid: false,
         code: UPLOAD_ERROR_CODES.SIZE_EXCEEDED,
-        error: `파일이 너무 큽니다(파일당 ${MAX_FILE_BYTES >> 20}MB, 한 번에 ${MAX_UPLOAD_BYTES >> 20}MB까지).`,
+        error: UPLOAD_MESSAGES.sizeExceeded(MAX_FILE_BYTES >> 20, MAX_UPLOAD_BYTES >> 20),
         offendingFile: rawName,
         offendingFiles: [rawName],
         teeth,
@@ -151,7 +141,7 @@ export function validateScanFiles(files) {
       ok: false,
       valid: false,
       code: UPLOAD_ERROR_CODES.LOWER_ARCH,
-      error: `${lower.slice(0, 3).join(', ')}: 하악(Universal 17~32) 번호입니다. 지금은 상악 스캔만 받습니다.`,
+      error: UPLOAD_MESSAGES.lowerArch(lower.slice(0, 3).join(', ')),
       offendingFiles: lower,
       teeth,
       hasGingiva,
@@ -164,7 +154,7 @@ export function validateScanFiles(files) {
       ok: false,
       valid: false,
       code: UPLOAD_ERROR_CODES.MONOLITHIC_SCAN,
-      error: `${other.slice(0, 3).join(', ')}: 한 덩어리 악궁 스캔으로 보입니다. 지금은 치아별로 나뉜 파일(2.stl … 15.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.`,
+      error: UPLOAD_MESSAGES.monolithicScan(other.slice(0, 3).join(', ')),
       offendingFiles: other,
       teeth,
       hasGingiva,
@@ -177,7 +167,7 @@ export function validateScanFiles(files) {
       ok: false,
       valid: false,
       code: UPLOAD_ERROR_CODES.NO_TEETH,
-      error: '치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요. 잇몸 파일만으로는 계획할 수 없습니다.',
+      error: UPLOAD_MESSAGES.noTeeth,
       offendingFiles: other,
       teeth: [],
       hasGingiva,
@@ -207,54 +197,15 @@ export function formatBytes(bytes) {
 export function resolveErrorCode(code, message) {
   if (code && code !== UPLOAD_ERROR_CODES.SERVER_ERROR) return code;
   if (!message) return UPLOAD_ERROR_CODES.SERVER_ERROR;
-  if (message.includes('하악') || message.includes('Universal 17')) return UPLOAD_ERROR_CODES.LOWER_ARCH;
-  if (message.includes('같은 번호') || message.includes('중복')) return UPLOAD_ERROR_CODES.DUPLICATE_TOOTH;
-  if (message.includes('너무 큽니다') || message.includes('한 번에') || message.includes('413')) return UPLOAD_ERROR_CODES.SIZE_EXCEEDED;
-  if (message.includes('한 덩어리 악궁 스캔')) return UPLOAD_ERROR_CODES.MONOLITHIC_SCAN;
-  if (message.includes('치아별 STL') || message.includes('잇몸 파일만으로')) return UPLOAD_ERROR_CODES.NO_TEETH;
+  const matched = matchErrorCode(message);
+  if (matched && UPLOAD_ERROR_CODES[matched]) {
+    return UPLOAD_ERROR_CODES[matched];
+  }
   return UPLOAD_ERROR_CODES.SERVER_ERROR;
 }
 
 export function getErrorDetails(code) {
-  switch (code) {
-    case UPLOAD_ERROR_CODES.LOWER_ARCH:
-      return {
-        title: '하악 치아 번호 감지',
-        badge: '하악 불가',
-        guide: '현재 cuAlign은 상악(Universal 1~16) 스캔 계획만 지원합니다. 하악 치아(Universal 17~32) 파일을 제외하고 올려주세요.'
-      };
-    case UPLOAD_ERROR_CODES.DUPLICATE_TOOTH:
-      return {
-        title: '중복 치아 번호 감지',
-        badge: '중복 파일',
-        guide: '동일한 번호의 치아 STL 파일이 중복 선택되었습니다. 하나의 파일만 남기고 다시 선택해주세요.'
-      };
-    case UPLOAD_ERROR_CODES.SIZE_EXCEEDED:
-      return {
-        title: '파일 크기 한도 초과',
-        badge: '용량 초과',
-        guide: '개별 파일은 60MB 이하, 전체 스캔 합계는 400MB 이하여야 합니다. 메시 해상도를 줄이거나 필요 없는 파일을 정리해주세요.'
-      };
-    case UPLOAD_ERROR_CODES.MONOLITHIC_SCAN:
-      return {
-        title: '한 덩어리 악궁 스캔 감지',
-        badge: '미분리 스캔',
-        guide: '치아가 개별 STL로 분리되지 않은 악궁 전체 메시입니다. 2.stl~15.stl로 분리된 치아 파일을 올려주세요.'
-      };
-    case UPLOAD_ERROR_CODES.NO_TEETH:
-      return {
-        title: '상악 치아 파일 누락',
-        badge: '치아 없음',
-        guide: '계획을 위해서는 2.stl~15.stl 중 최소 1개 이상의 상악 치아 STL이 필요합니다. 잇몸 파일(gingiva.stl)만으로는 계획할 수 없습니다.'
-      };
-    case UPLOAD_ERROR_CODES.SERVER_ERROR:
-    default:
-      return {
-        title: '스캔 올리기 실패',
-        badge: '서버 오류',
-        guide: '스캔 데이터를 서버에서 처리하는 중 오류가 발생했습니다. 파일 손상 여부를 확인하세요.'
-      };
-  }
+  return INTAKE_ERROR_DETAILS[code] || INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.SERVER_ERROR];
 }
 
 export function renderUpload(container, {
@@ -308,7 +259,7 @@ export function renderUpload(container, {
     class: 'upload-dropzone',
     tabIndex: 0,
     role: 'button',
-    'aria-label': '스캔 파일 드롭 영역',
+    'aria-label': INTAKE_TEXTS.dropzoneAriaLabel,
     onClick: () => {
       if (!isUploading) {
         fileInput.click();
@@ -341,9 +292,9 @@ export function renderUpload(container, {
     }
   },
     dropzoneIcon,
-    h('div', { class: 'upload-dropzone-primary-text' }, '치아별 STL 파일을 이곳에 끌어다 놓거나 클릭하여 선택'),
-    h('div', { class: 'upload-dropzone-secondary-text' }, '파일명: 2.stl … 15.stl (Universal 상악 번호) · 선택: gingiva.stl (잇몸)'),
-    h('div', { class: 'upload-dropzone-limit-text' }, `파일당 최대 ${MAX_FILE_BYTES >> 20}MB · 1회 업로드 최대 ${MAX_UPLOAD_BYTES >> 20}MB`)
+    h('div', { class: 'upload-dropzone-primary-text' }, INTAKE_TEXTS.dropzonePrimary),
+    h('div', { class: 'upload-dropzone-secondary-text' }, INTAKE_TEXTS.dropzoneSecondary),
+    h('div', { class: 'upload-dropzone-limit-text' }, INTAKE_TEXTS.dropzoneLimits(MAX_FILE_BYTES >> 20, MAX_UPLOAD_BYTES >> 20))
   );
 
   // 3. Error and Status Display Box
@@ -393,12 +344,12 @@ export function renderUpload(container, {
     if (currentValidation && currentValidation.valid && !serverError) {
       const teethList = currentValidation.teeth || [];
       const hasGum = currentValidation.hasGingiva;
-      const countText = `상악 치아 ${teethList.length}개${hasGum ? ' · 잇몸 파일 포함' : ''}`;
+      const countText = INTAKE_TEXTS.summaryTeethCount(teethList.length, hasGum);
       const sizeText = formatBytes(currentValidation.totalBytes);
 
       const summaryCard = h('div', { class: 'upload-summary-card' },
         h('div', { class: 'upload-summary-info' },
-          h('span', { class: 'badge badge-ready' }, '검사 통과'),
+          h('span', { class: 'badge badge-ready' }, INTAKE_TEXTS.validationPassedBadge),
           h('span', { class: 'upload-summary-count' }, countText),
           h('span', { class: 'upload-summary-size' }, sizeText)
         ),
@@ -414,7 +365,7 @@ export function renderUpload(container, {
         class: 'btn btn-primary upload-submit-btn',
         disabled: isUploading,
         onClick: () => doUpload()
-      }, isUploading ? '스캔 올리는 중 — 치아를 읽고 있습니다...' : '스캔 올리기');
+      }, isUploading ? INTAKE_TEXTS.uploading : INTAKE_TEXTS.uploadBtn);
 
       const resetBtn = h('button', {
         type: 'button',
@@ -428,7 +379,7 @@ export function renderUpload(container, {
           updateStatusAndActions();
           renderTeethTable();
         }
-      }, '다시 선택');
+      }, INTAKE_TEXTS.reselectBtn);
 
       actionContainerEl.appendChild(h('div', { class: 'upload-btn-row' }, submitBtn, resetBtn));
     }
@@ -439,7 +390,7 @@ export function renderUpload(container, {
       return;
     }
     if (!patient || !patient.patient_id) {
-      serverError = new ApiError(0, '선택된 환자가 없습니다.');
+      serverError = new ApiError(0, INTAKE_TEXTS.noPatientSelected);
       updateStatusAndActions();
       return;
     }
@@ -480,18 +431,18 @@ export function renderUpload(container, {
     const uploadedTeethSet = new Set(currentValidation?.teeth || []);
 
     const heading = h('div', { class: 'upload-table-heading' },
-      h('h4', { class: 'upload-table-title' }, 'Universal ↔ FDI 치아 번호 대응표'),
-      h('span', { class: 'upload-table-note' }, 'cuAlign 파일명: Universal 번호(2.stl~15.stl) · 화면 차트: FDI 번호')
+      h('h4', { class: 'upload-table-title' }, INTAKE_TEXTS.tableTitle),
+      h('span', { class: 'upload-table-note' }, INTAKE_TEXTS.tableNote)
     );
 
     const table = h('table', { class: 'upload-table' },
       h('thead', null,
         h('tr', null,
-          h('th', { style: { width: '80px' } }, 'Universal'),
-          h('th', { style: { width: '70px' } }, 'FDI'),
-          h('th', null, '치아 명칭 (상악)'),
-          h('th', { style: { width: '100px' } }, '권장 파일명'),
-          h('th', { style: { width: '90px' } }, '선택 상태')
+          h('th', { style: { width: '80px' } }, INTAKE_TEXTS.tableColUniversal),
+          h('th', { style: { width: '70px' } }, INTAKE_TEXTS.tableColFdi),
+          h('th', null, INTAKE_TEXTS.tableColName),
+          h('th', { style: { width: '100px' } }, INTAKE_TEXTS.tableColFileName),
+          h('th', { style: { width: '90px' } }, INTAKE_TEXTS.tableColStatus)
         )
       )
     );
@@ -504,15 +455,15 @@ export function renderUpload(container, {
       const fileName = `${u}.stl`;
 
       const statusBadge = isSelected
-        ? h('span', { class: 'badge badge-ready' }, '선택됨')
+        ? h('span', { class: 'badge badge-ready' }, INTAKE_TEXTS.badgeSelected)
         : isOptional
-        ? h('span', { class: 'badge badge-needs-plan' }, '선택(사랑니)')
-        : h('span', { class: 'badge' }, '미포함');
+        ? h('span', { class: 'badge badge-needs-plan' }, INTAKE_TEXTS.badgeOptionalWisdom)
+        : h('span', { class: 'badge' }, INTAKE_TEXTS.badgeNotIncluded);
 
       const tr = h('tr', { class: isSelected ? 'upload-tr-selected' : '' },
         h('td', { class: 'upload-cell-mono font-bold' }, String(u)),
         h('td', { class: 'upload-cell-mono upload-cell-fdi' }, String(fdi)),
-        h('td', null, TOOTH_NAMES[u] || `상악 치아 ${u}`),
+        h('td', null, TOOTH_NAMES[u] || INTAKE_TEXTS.defaultToothName(u)),
         h('td', { class: 'upload-cell-mono' }, fileName),
         h('td', null, statusBadge)
       );
@@ -524,9 +475,9 @@ export function renderUpload(container, {
     const gumTr = h('tr', { class: isGumSelected ? 'upload-tr-selected' : '' },
       h('td', { class: 'upload-cell-mono' }, '-'),
       h('td', { class: 'upload-cell-mono' }, '-'),
-      h('td', null, '상악 잇몸 메시 (선택 사항)'),
+      h('td', null, INTAKE_TEXTS.gingivaMeshLabel),
       h('td', { class: 'upload-cell-mono' }, 'gingiva.stl'),
-      h('td', null, isGumSelected ? h('span', { class: 'badge badge-ready' }, '선택됨') : h('span', { class: 'badge' }, '선택'))
+      h('td', null, isGumSelected ? h('span', { class: 'badge badge-ready' }, INTAKE_TEXTS.badgeSelected) : h('span', { class: 'badge' }, INTAKE_TEXTS.badgeSelect))
     );
     tbody.appendChild(gumTr);
 

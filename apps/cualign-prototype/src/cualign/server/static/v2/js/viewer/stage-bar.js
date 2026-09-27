@@ -2,6 +2,7 @@
 // 440px bar at bottom-right with play, first, track, ticks, violation red dots, last, stage label, and keyboard controls (←→, Home, End)
 
 import { calculateTickPosition, getStageViolationsSummary } from './math.js';
+import { VIEWER_T } from '../domain/vocab/viewer.js';
 
 /**
  * Creates the 440px stage scrubber bar.
@@ -10,23 +11,27 @@ import { calculateTickPosition, getStageViolationsSummary } from './math.js';
  * @param {object} [options]
  * @param {number} [options.max=0]
  * @param {number} [options.value=0]
+ * @param {number|string|null} [options.months=null]
  * @param {Array} [options.violations=[]]
  * @param {(stage: number) => void} [options.onChange]
- * @returns {{ setStage: (n: number) => void, setMax: (n: number) => void, setViolations: (v: Array) => void, destroy: () => void }}
+ * @returns {{ setStage: (n: number) => void, setMax: (n: number) => void, setViolations: (v: Array) => void, setMonths: (m: number|string|null) => void, getStage: () => number, getMax: () => number, play: () => void, pause: () => void, isPlaying: () => boolean, destroy: () => void }}
  */
-export function createStageBar(container, { max = 0, value = 0, violations = [], onChange = null } = {}) {
+export function createStageBar(container, { max = 0, value = 0, months = null, violations = [], onChange = null } = {}) {
   let currentMax = Number(max) || 0;
   let currentStage = Math.max(0, Math.min(currentMax, Number(value) || 0));
   let currentViolations = violations || [];
+  let currentMonths = months ?? null;
   let isPlaying = false;
   let playTimer = null;
+
+  const T = VIEWER_T.stageBar;
 
   // Root bar container
   const bar = document.createElement('div');
   bar.className = 'stage-bar';
   bar.setAttribute('tabindex', '0');
   bar.setAttribute('role', 'region');
-  bar.setAttribute('aria-label', '3D 단계 제어기');
+  bar.setAttribute('aria-label', T.ariaLabel);
 
   // Top/main row
   const row = document.createElement('div');
@@ -37,7 +42,8 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   const firstBtn = document.createElement('button');
   firstBtn.type = 'button';
   firstBtn.className = 'stage-btn stage-first-btn';
-  firstBtn.title = '처음 단계 (Home)';
+  firstBtn.title = T.firstTitle;
+  firstBtn.setAttribute('aria-label', T.firstTitle);
   firstBtn.innerHTML = `
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
       <rect x="2" y="3" width="2" height="10" rx="1" />
@@ -50,7 +56,8 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   const playBtn = document.createElement('button');
   playBtn.type = 'button';
   playBtn.className = 'stage-btn stage-play-btn';
-  playBtn.title = '재생 / 일시정지 (Space)';
+  playBtn.title = T.playPauseTitle;
+  playBtn.setAttribute('aria-label', T.playPauseTitle);
   playBtn.innerHTML = `
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-play">
       <polygon points="4,2 14,8 4,14" />
@@ -58,10 +65,15 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   `;
   row.appendChild(playBtn);
 
-  // 3. Track and Scrubber Slider
+  // 3. Track, Scrubber Slider, Ticks, and Violation Markers
   const trackWrap = document.createElement('div');
   trackWrap.className = 'stage-track-wrap';
   row.appendChild(trackWrap);
+
+  // Ticks layer
+  const ticksContainer = document.createElement('div');
+  ticksContainer.className = 'stage-ticks';
+  trackWrap.appendChild(ticksContainer);
 
   const slider = document.createElement('input');
   slider.type = 'range';
@@ -70,6 +82,9 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   slider.max = String(currentMax);
   slider.value = String(currentStage);
   slider.disabled = currentMax === 0;
+  slider.setAttribute('aria-valuemin', '0');
+  slider.setAttribute('aria-valuemax', String(currentMax));
+  slider.setAttribute('aria-valuenow', String(currentStage));
   trackWrap.appendChild(slider);
 
   const marksContainer = document.createElement('div');
@@ -80,7 +95,8 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   const lastBtn = document.createElement('button');
   lastBtn.type = 'button';
   lastBtn.className = 'stage-btn stage-last-btn';
-  lastBtn.title = '최종 단계 (End)';
+  lastBtn.title = T.lastTitle;
+  lastBtn.setAttribute('aria-label', T.lastTitle);
   lastBtn.innerHTML = `
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
       <polygon points="3,3 11,8 3,13" />
@@ -89,7 +105,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   `;
   row.appendChild(lastBtn);
 
-  // 5. Label ("단계 N / M")
+  // 5. Stage Label ("Stage N / M")
   const label = document.createElement('div');
   label.className = 'stage-label';
   bar.appendChild(label);
@@ -98,11 +114,28 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
 
   function updateLabel() {
     if (currentMax === 0) {
-      label.textContent = '계획 없음';
+      label.textContent = T.noPlan;
     } else if (currentStage === 0) {
-      label.textContent = `치료 전 · 총 ${currentMax}단계`;
+      label.textContent = currentMonths
+        ? T.beforeTreatmentWithMonths(currentMax, currentMonths)
+        : T.beforeTreatment(currentMax);
     } else {
-      label.textContent = `단계 ${currentStage} / ${currentMax}`;
+      label.textContent = currentMonths
+        ? T.stageLabelWithMonths(currentStage, currentMax, currentMonths)
+        : T.stageLabel(currentStage, currentMax);
+    }
+  }
+
+  function renderTicks() {
+    ticksContainer.innerHTML = '';
+    if (currentMax <= 0 || currentMax > 40) return;
+
+    for (let k = 0; k <= currentMax; k++) {
+      const pct = calculateTickPosition(k, currentMax);
+      const tick = document.createElement('span');
+      tick.className = 'stage-tick';
+      tick.style.left = `${pct.toFixed(2)}%`;
+      ticksContainer.appendChild(tick);
     }
   }
 
@@ -123,9 +156,10 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
       dot.style.left = `${pct.toFixed(2)}%`;
 
       const details = [];
-      if (s.collision) details.push(`충돌 ${s.collision}건`);
-      if (s.move_limit) details.push(`이동한계 초과 ${s.move_limit}건`);
-      dot.title = `단계 ${k}: ${details.join(', ')}`;
+      if (s.collision) details.push(T.collisionCount(s.collision));
+      if (s.move_limit) details.push(T.moveLimitCount(s.move_limit));
+      dot.title = T.stageViolationTitle(k, details);
+      dot.setAttribute('aria-label', T.stageViolationTitle(k, details));
 
       dot.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -140,6 +174,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   function updateSliderFill() {
     const pct = calculateTickPosition(currentStage, currentMax);
     slider.style.setProperty('--track-fill', `${pct.toFixed(1)}%`);
+    slider.setAttribute('aria-valuenow', String(currentStage));
   }
 
   function goToStage(n, notify = true) {
@@ -157,6 +192,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
     if (currentMax <= 0) return;
     isPlaying = true;
     playBtn.classList.add('playing');
+    playBtn.setAttribute('aria-pressed', 'true');
     playBtn.innerHTML = `
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-pause">
         <rect x="3" y="2" width="3.5" height="12" rx="1" />
@@ -177,6 +213,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   function pause() {
     isPlaying = false;
     playBtn.classList.remove('playing');
+    playBtn.setAttribute('aria-pressed', 'false');
     playBtn.innerHTML = `
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-play">
         <polygon points="4,2 14,8 4,14" />
@@ -254,6 +291,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
   // Initial render
   updateSliderFill();
   updateLabel();
+  renderTicks();
   renderMarks();
 
   function setStage(n) {
@@ -264,18 +302,25 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
     currentMax = Math.max(0, Number(n) || 0);
     slider.max = String(currentMax);
     slider.disabled = currentMax === 0;
+    slider.setAttribute('aria-valuemax', String(currentMax));
     if (currentStage > currentMax) {
       currentStage = currentMax;
     }
     slider.value = String(currentStage);
     updateSliderFill();
     updateLabel();
+    renderTicks();
     renderMarks();
   }
 
   function setViolations(list) {
     currentViolations = list || [];
     renderMarks();
+  }
+
+  function setMonths(m) {
+    currentMonths = m ?? null;
+    updateLabel();
   }
 
   function destroy() {
@@ -291,6 +336,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
     setStage,
     setMax,
     setViolations,
+    setMonths,
     getStage: () => currentStage,
     getMax: () => currentMax,
     play,

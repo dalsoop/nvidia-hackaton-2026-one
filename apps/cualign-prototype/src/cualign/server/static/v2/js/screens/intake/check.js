@@ -167,7 +167,7 @@ export function formatRotationSummary(rotations) {
     return CHECK_VOCAB.noRotationNeeded;
   }
   return rotations
-    .map((r) => `${r.fdi}번 ${r.deg > 0 ? '+' : ''}${r.deg}°`)
+    .map((r) => `${CHECK_VOCAB.toothNumber(r.fdi)} ${r.deg > 0 ? '+' : ''}${r.deg}°`)
     .join(', ');
 }
 
@@ -176,7 +176,7 @@ export function formatVerticalSummary(verticals) {
     return CHECK_VOCAB.noVerticalNeeded;
   }
   return verticals
-    .map((v) => `${v.fdi}번 ${v.mm > 0 ? CHECK_VOCAB.occlusalSide : CHECK_VOCAB.gingivalSide} ${Math.abs(v.mm)}mm`)
+    .map((v) => `${CHECK_VOCAB.toothNumber(v.fdi)} ${v.mm > 0 ? CHECK_VOCAB.occlusalSide : CHECK_VOCAB.gingivalSide} ${Math.abs(v.mm)}mm`)
     .join(', ');
 }
 
@@ -185,7 +185,7 @@ export function formatOrientationSummary(orientation) {
     return CHECK_VOCAB.unspecified;
   }
   const basis = formatBasis(orientation.basis);
-  const rot = orientation.rotation_deg ? ` · ${orientation.rotation_deg}° 회전` : '';
+  const rot = orientation.rotation_deg ? CHECK_VOCAB.rotationSuffix(orientation.rotation_deg) : '';
   const renum = orientation.renumbered ? CHECK_VOCAB.renumberedSuffix : '';
   return `${basis}${rot}${renum}`;
 }
@@ -377,7 +377,7 @@ export function mount(root, params, ctx) {
     // Error Alert Banner
     if (errorMessage) {
       body.appendChild(h('div', { class: 'check-box check-box-error' },
-        h('b', null, '오류: '),
+        h('b', null, CHECK_VOCAB.errorPrefix),
         errorMessage
       ));
     }

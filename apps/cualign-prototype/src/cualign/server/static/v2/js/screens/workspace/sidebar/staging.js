@@ -6,12 +6,7 @@ import { T } from '../../../domain/vocab.js';
 import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { preferredPlan } from '../../../domain/status.js';
 
-export const STRATEGY_KO = Object.freeze({
-  expansion: '확장',
-  ipr: 'IPR',
-  extraction: '발치',
-  expansion_ipr: '확장 · IPR'
-});
+export const STRATEGY_KO = SIDEBAR_VOCAB.staging.strategies;
 
 /**
  * Returns FDI tooth numbers for the staging table columns in standard dental order:
@@ -153,7 +148,7 @@ export function renderStaging(container, ctx) {
 
   const panelRoot = h('div', { class: 'sidebar-staging-panel' });
 
-  // 1. Plan summary bar ("계획 요약 줄")
+  // 1. Plan summary bar
   const summaryBar = renderPlanSummaryBar(currentPlan);
   panelRoot.appendChild(summaryBar);
 
@@ -181,7 +176,7 @@ export function renderStaging(container, ctx) {
       h('th', { class: 'staging-th-stage' }, SIDEBAR_VOCAB.staging.stageCol),
       ...fdiColumns.map(fdi => h('th', {
         class: 'staging-th-tooth',
-        title: `치아 FDI ${fdi}`
+        title: SIDEBAR_VOCAB.staging.toothFdiTitle(fdi)
       }, String(fdi)))
     ])
   ]);
@@ -226,22 +221,22 @@ export function renderStaging(container, ctx) {
 
       // Movement indicator
       if (move.kind === 'locked') {
-        cellContent.push(h('span', { class: 'cell-locked-icon', title: '고정 치아' }, '🔒'));
+        cellContent.push(h('span', { class: 'cell-locked-icon', title: SIDEBAR_VOCAB.staging.lockedTitle }, '🔒'));
       } else if (move.kind === 'extracted') {
-        cellContent.push(h('span', { class: 'cell-extracted-mark', title: '발치 치아' }, '✕'));
+        cellContent.push(h('span', { class: 'cell-extracted-mark', title: SIDEBAR_VOCAB.staging.extractedTitle }, '✕'));
       } else {
         const moveCls = `cell-move-${move.kind}`;
         const titleText = move.rotDeg > 0.1
-          ? `회전 ${move.rotDeg.toFixed(1)}°`
-          : `이동 ${(move.linearMm * 10).toFixed(1)}mm/10`;
+          ? SIDEBAR_VOCAB.staging.rotTitle(move.rotDeg)
+          : SIDEBAR_VOCAB.staging.transTitle(move.linearMm);
         cellContent.push(h('span', { class: `cell-dot ${moveCls}`, title: titleText }));
       }
 
-      // Collision ring indicator ("충돌 고리")
+      // Collision ring indicator
       if (isCollision) {
         cellContent.push(h('span', {
           class: 'collision-ring',
-          title: `단계 ${s} 치아 FDI ${fdi} 충돌 발생`
+          title: SIDEBAR_VOCAB.staging.collisionTitle(s, fdi)
         }));
       }
 
@@ -307,11 +302,11 @@ function renderPlanSummaryBar(plan) {
   const barEl = h('div', { class: 'staging-summary-bar' });
 
   if (!plan) {
-    barEl.appendChild(h('span', { class: 'summary-label' }, '계획 없음'));
+    barEl.appendChild(h('span', { class: 'summary-label' }, SIDEBAR_VOCAB.staging.noPlanSummary));
     return barEl;
   }
 
-  const stratName = STRATEGY_KO[plan.strategy] || plan.strategy || '계획';
+  const stratName = STRATEGY_KO[plan.strategy] || plan.strategy || SIDEBAR_VOCAB.staging.defaultPlanLabel;
   const nStages = plan.stages?.length ?? plan.info?.n_stages ?? 0;
   const months = plan.info?.months != null ? plan.info.months : (nStages ? (nStages / 1.5).toFixed(1) : 0);
   const violationsCount = plan.violations?.length || 0;

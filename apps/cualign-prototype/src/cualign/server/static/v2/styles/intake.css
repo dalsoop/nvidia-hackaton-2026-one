@@ -474,7 +474,7 @@
   font-family: var(--font-family-mono);
   font-size: 11px;
   padding: 1px 6px;
-  background: rgba(229, 32, 32, 0.15);
+  background: var(--color-danger-bg);
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-xs);
   color: var(--color-danger-light);
@@ -483,7 +483,7 @@
 .upload-error-guide {
   font-size: 12px;
   color: var(--color-text-secondary);
-  border-top: 1px solid rgba(229, 32, 32, 0.3);
+  border-top: 1px solid var(--color-border-subtle);
   padding-top: var(--space-6);
   margin-top: var(--space-2);
 }

@@ -306,7 +306,7 @@ export function renderConditions(container, ctx) {
   bodyEl.appendChild(formEl);
   panelRoot.appendChild(bodyEl);
 
-  // Footer: 46px "이 조건으로 계산" button
+  // Footer: 46px recalculate button
   const recalcBtn = h('button', {
     type: 'button',
     class: 'btn-calculate-conditions',
@@ -360,7 +360,7 @@ export function renderConditions(container, ctx) {
     try {
       const res = await ctx.api.rulePlan(payload);
 
-      // Fetch fresh plans list: "plans 새로 받기"
+      // Fetch fresh plans list
       const plansRes = await ctx.api.listPlans(caseId);
       const updatedPlans = plansRes?.plans || plansRes || [];
 
@@ -372,7 +372,7 @@ export function renderConditions(container, ctx) {
         stage: 0
       });
     } catch (err) {
-      errorBox.textContent = `계산 실패: ${err.message || T.errors.requestFailed}`;
+      errorBox.textContent = SIDEBAR_VOCAB.conditions.calculateFailed(err.message || T.errors.requestFailed);
       errorBox.hidden = false;
     } finally {
       recalcBtn.disabled = false;

@@ -1,16 +1,10 @@
-// Camera viewpoints: occlusal (교합면), frontal (정면), right (우측), left (좌측)
+// Camera viewpoints: occlusal, frontal, right, left
 
 import * as THREE from 'three';
 import { calculateViewCamera } from './math.js';
+import { VIEWER_T } from '../domain/vocab/viewer.js';
 
-export const VIEW_NAMES_KO = {
-  occlusal: '교합면',
-  frontal: '정면',
-  right: '우측',
-  left: '좌측',
-  back: '설측',
-  base: '바닥'
-};
+export const VIEW_NAMES_KO = VIEWER_T.views;
 
 /**
  * Creates the viewpoint manager.
@@ -19,9 +13,10 @@ export const VIEW_NAMES_KO = {
  * @param {THREE.PerspectiveCamera} param0.camera
  * @param {object} param0.controls
  * @param {THREE.Group} param0.group
+ * @param {(kind: string, label: string) => void} [param0.onViewChange]
  * @returns {object}
  */
-export function createViewsManager({ camera, controls, group }) {
+export function createViewsManager({ camera, controls, group, onViewChange = null }) {
   let currentView = 'occlusal';
 
   function setView(kind = 'occlusal') {
@@ -44,6 +39,7 @@ export function createViewsManager({ camera, controls, group }) {
     controls.update();
 
     currentView = kind;
+    onViewChange?.(kind, VIEW_NAMES_KO[kind] || kind);
   }
 
   function getCurrentView() {

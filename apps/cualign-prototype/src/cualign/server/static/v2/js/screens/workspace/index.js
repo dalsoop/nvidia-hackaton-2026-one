@@ -1,7 +1,6 @@
-// Workspace screen orchestrator (J6 contract)
-
 import { clear, h } from '../../ui/dom.js';
 import { T } from '../../domain/vocab.js';
+import { WORKSPACE_VOCAB } from '../../domain/vocab/workspace.js';
 import { createViewer } from '../../viewer/index.js';
 import { createStageBar } from '../../viewer/stage-bar.js';
 import { mountAgent } from '../../agent/panel.js';
@@ -33,13 +32,13 @@ export function mount(root, params, ctx) {
 
   if (!caseId) {
     const emptyNotice = h('div', { class: 'screen-workspace-empty' }, [
-      h('h2', null, '케이스가 선택되지 않았습니다.'),
-      h('p', null, '케이스 목록에서 계획할 케이스를 먼저 선택해주세요.'),
+      h('h2', null, WORKSPACE_VOCAB.noCaseSelected),
+      h('p', null, WORKSPACE_VOCAB.selectCaseDesc),
       h('button', {
         type: 'button',
         class: 'btn btn-primary',
         onClick: () => ctx.navigate('#/cases')
-      }, '케이스 목록으로 가기')
+      }, WORKSPACE_VOCAB.goToCasesButton)
     ]);
     root.appendChild(emptyNotice);
     return () => clear(root);
@@ -48,7 +47,7 @@ export function mount(root, params, ctx) {
   // Loading state
   const loadingEl = h('div', { class: 'screen-workspace-loading' }, [
     h('div', { class: 'workspace-spinner' }),
-    h('div', { class: 'workspace-loading-text' }, `${caseId} 케이스를 여는 중...`)
+    h('div', { class: 'workspace-loading-text' }, WORKSPACE_VOCAB.loadingCase(caseId))
   ]);
   root.appendChild(loadingEl);
 
@@ -78,7 +77,7 @@ export function mount(root, params, ctx) {
 
     // Failure case or 0 plans: Render PlanStart failure screen
     if (activateError || plans.length === 0) {
-      renderPlanStart(activateError?.message || '이 케이스에 생성된 계획이 없습니다.');
+      renderPlanStart(activateError?.message || WORKSPACE_VOCAB.emptyPlansMessage);
       return;
     }
 
@@ -96,13 +95,13 @@ export function mount(root, params, ctx) {
       h('span', { class: 'plan-start-badge-warn' }, '!')
     ]);
 
-    const titleEl = h('h2', { class: 'plan-start-title' }, '계획 생성 필요');
+    const titleEl = h('h2', { class: 'plan-start-title' }, WORKSPACE_VOCAB.planStartTitle);
     const descEl = h('p', { class: 'plan-start-desc' },
-      '케이스 초기 계획을 생성하지 못했거나 저장된 계획이 없습니다.'
+      WORKSPACE_VOCAB.planStartDesc
     );
 
     const errorBox = h('div', { class: 'plan-start-error-box' }, [
-      h('span', { class: 'plan-start-error-label' }, '오류 원인:'),
+      h('span', { class: 'plan-start-error-label' }, WORKSPACE_VOCAB.errorCause),
       h('span', { class: 'plan-start-error-msg' }, errorMessage)
     ]);
 
@@ -111,20 +110,20 @@ export function mount(root, params, ctx) {
       class: 'btn btn-primary plan-start-recalc-btn',
       onClick: async () => {
         retryBtn.disabled = true;
-        retryBtn.textContent = '계산 중...';
+        retryBtn.textContent = WORKSPACE_VOCAB.calculating;
         try {
           await ctx.api.rulePlan({ case_id: caseId });
           await loadWorkspace();
         } catch (err) {
           retryBtn.disabled = false;
-          retryBtn.textContent = '이 조건으로 다시 계산';
+          retryBtn.textContent = WORKSPACE_VOCAB.recalculateWithConditions;
           const msgEl = card.querySelector('.plan-start-error-msg');
           if (msgEl) {
-            msgEl.textContent = `계산 실패: ${err.message || T.errors.requestFailed}`;
+            msgEl.textContent = WORKSPACE_VOCAB.calculationFailed(err.message || T.errors.requestFailed);
           }
         }
       }
-    }, '이 조건으로 다시 계산');
+    }, WORKSPACE_VOCAB.recalculateWithConditions);
 
     card.appendChild(iconEl);
     card.appendChild(titleEl);
