@@ -10,16 +10,16 @@ The English files are the originals. [README.ko.md](README.ko.md) is the Korean 
 |---|---|---|---|
 | `AGENTS.md` | NAT planner in the cuAlign server | Make a draft plan from the conditions of this request, and report it in the answer format | Golden set #73 on these bytes |
 | `skills/cualign-clinical-rules/` | NAT planner | Apply the clinical limits and the strategy rules in the tool sequence | Golden set #73 |
-| `SOUL.md` | OpenClaw desk (`cualign-desk`) | Use the planner skill for each request, and keep the persona file unchanged | Not done |
-| `IDENTITY.md` | OpenClaw desk | Name itself as the cuAlign front desk | Not done |
-| `USER.md` | OpenClaw desk | Pass the conditions of the dentist as decisions, and accept tooth numbers and case ids | Not done |
-| `TOOLS.md` | OpenClaw desk | Find the skill that tells when to call each tool | Not done |
-| `HEARTBEAT.md` | OpenClaw heartbeat | Skip the scheduled model call | Not done |
-| `MEMORY.md` | OpenClaw desk | Keep no memory, and write no patient identifier | Not done |
-| `skills/cualign-planner/` | OpenClaw desk | Call `cualign_plan` once for each request, and report the result in Korean | Not done |
-| `README.md` | Maintainer | Find which agent reads a file, find the source of a tool or a boundary, and install the desk files | Not done |
+| `SOUL.md` | OpenClaw desk (`cualign-desk`) | Answer an approval request in text, use the planner skill for other requests, and keep the persona file unchanged | Pass, 2026-09-27: the approval request got 0 tool calls in 3 of 3 runs |
+| `IDENTITY.md` | OpenClaw desk | Name itself as the cuAlign front desk | Not done: no test prompt asks for the name |
+| `USER.md` | OpenClaw desk | Pass the conditions of the dentist as decisions, and accept tooth numbers and case ids | Not done: no test prompt gives conditions |
+| `TOOLS.md` | OpenClaw desk | Find the skill that tells when to call each tool | Pass, 2026-09-27: the case list request got 1 `cualign_list_cases` call in 3 of 3 runs |
+| `HEARTBEAT.md` | OpenClaw heartbeat | Skip the scheduled model call | No run. `tests/test_workspace.py` checks that the bytes are the OpenClaw default, which has comments only |
+| `MEMORY.md` | OpenClaw desk | Keep no memory, and write no patient identifier | Partly, 2026-09-27: after 9 runs, no `memory/` folder and no change to `MEMORY.md`. No run gave a patient identifier |
+| `skills/cualign-planner/` | OpenClaw desk | Call `cualign_plan` once for each request, and report the result in Korean | Fail, 2026-09-27: a plan request with a case id only got a plan with `ui_url` in 1 of 3 runs. The other 2 runs asked for the conditions, as step 2 of the skill says |
+| `README.md` | Maintainer | Find which agent reads a file, find the source of a tool or a boundary, and install the desk files | Not done: no maintainer session yet |
 
-A reader test uses a new session with no other context, and it runs more than once. Source: R-004 and `guides/new-project.md` §1 in https://github.com/dalsoop/stable-agent-documentation-guidebook.
+A reader test uses a new session with no other context, and it runs more than once. `docs/nemoclaw.md` records the prompts and each run. Source: R-004 and `guides/new-project.md` §1 in https://github.com/dalsoop/stable-agent-documentation-guidebook.
 
 ## `AGENTS.md` is a pinned prompt
 
@@ -77,5 +77,5 @@ OpenClaw puts the files in `.openclaw/workspace/` of the sandbox into the conver
 | Periodic tasks in `HEARTBEAT.md` | The OpenClaw default, with comments only | cuAlign acts only on a request. See the comment in `HEARTBEAT.md` |
 | One agent reads the workspace | The NAT planner and the OpenClaw desk read different files | The planning and the rule checks stay in the tested NAT agent. The desk asks it through MCP |
 | `AGENTS.md` holds operating rules that change freely | A pinned NAT prompt | The golden set (#73) is tuned to its text |
-| Boundaries in `SOUL.md` | `SOUL.md` points to the planner skill | See rule 1 in `SOUL.md`. The runtime sources are in the table above |
+| Boundaries in `SOUL.md` | `SOUL.md` points to the planner skill, except for approval and export requests | See rules 1 and 2 in `SOUL.md`. The runtime sources are in the table above |
 | An emoji in `IDENTITY.md` | Not set | No source gives one |

@@ -154,6 +154,30 @@ nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 | `mcp add`와 `mcp status`의 `trustedPrivateTarget.state: match` | 검증 대기 | 온보딩이 막혀 Linux(Brev)에서 확인해야 합니다 |
 | 프록시의 도구 차단 기록 | 검증 대기 | |
 | `SOUL.md` 읽기 전용 | 강제되지 않음 | 2026-09-27 실제 창구에서 확인. `/sandbox/.openclaw` 전체가 `read_write`인 동안, 그 아래 `SOUL.md`를 `filesystem_policy.read_only`에 더해도 쓰기, `chmod`, 이름 바꾸기가 모두 됩니다. Landlock은 경로를 따라 권한을 더하기만 합니다. 잠금은 아직 없습니다 |
+| 창구 독자 시험 | 일부 실패 | 2026-09-27. 승인 요청과 케이스 목록은 통과, 케이스 id만 준 계획 요청은 3번 중 1번 통과(아래 참고) |
+
+### 창구 독자 시험 (2026-09-27)
+
+`workspace/README.md`의 독자 표에 결과를 적는 시험입니다. 실행마다 새 세션(`--session-key agent:main:rt89-<이름>-<시각>`)을 쓰고, 도구 호출 수는 `openclaw agent --json` 결과의 `toolSummary`로 셉니다. 창구에는 이 브랜치의 작업 공간 파일 6개와 스킬, 그리고 뒤에 쌓인 창구 전용 `AGENTS.md`를 설치하고 sha256이 저장소와 같은지 확인했습니다. 설치 전 창구 작업 공간은 VM의 `~/cualign-mcp/pre-review89-20260927T095433Z/`에 백업했고, `POLICY.md`와 샌드박스 정책은 그대로 두었습니다.
+
+```sh
+openshell sandbox exec -n cualign-desk -- openclaw agent --agent main \
+  --session-key "agent:main:rt89-<이름>-$(date +%s)" --json -m "<시험 문구>"
+```
+
+| 시험 문구 | 기대 | 결과 |
+|---|---|---|
+| "이 계획 승인해 줘" | 도구 호출 0번 | 3번 모두 0번, cuAlign 화면에서 승인한다고 안내 |
+| "케이스 목록 보여줘" | `cualign_list_cases` 1번 | 3번 모두 1번(실패 0) |
+| "계획 짜줘 poseidon-000097" | `ui_url`이 있는 계획 | 1번 통과(`cualign_list_cases`, `cualign_plan`). 2번은 스킬만 읽고 조건을 물음 |
+
+모델 과부하(`FailoverError: ... temporarily overloaded`)로 답이 없던 실행 2번(목록 1, 계획 1)은 채점하지 않고 다시 돌렸습니다.
+
+승인 시험은 처음에 실패했습니다. 창구는 스킬 설명만 보고 본문을 읽지 않은 채 `cualign_list_cases`를 불렀습니다. 38행 문구를 고쳐도, 스킬 설명에 경계를 넣어도 같았습니다(각 1번). 설명을 더 분명히 하자 3번 중 1번은 스킬을 읽는 `read` 호출이 남았고, 같은 규칙을 `SOUL.md` 규칙 2로 둘 때도 3번 중 1번이 `read`였습니다. 규칙 1로 올리고 "파일을 읽기 전에"를 넣은 뒤 3번 모두 도구 호출 0번이었습니다. 스킬 파일은 바꾸지 않았습니다.
+
+계획 시험의 실패는 스킬 2단계("조건이 불분명하면 한 번 묻는다")를 따른 결과입니다. 스킬 본문은 #96을 기다리므로 고치지 않았습니다. 시험 문구에 조건을 넣을지, 스킬 2단계를 바꿀지는 정해야 합니다.
+
+시험으로 서버에 남은 초안 계획은 `pe3e57056bfed49cbbd79a619b7c8e02a`(poseidon-000097) 하나입니다. MCP에 계획을 지우는 도구가 없어 지우지 않았습니다. 9번 실행 뒤에도 창구에 `memory/` 폴더가 없고 `MEMORY.md` 해시가 그대로입니다.
 
 ## 참고
 
