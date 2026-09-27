@@ -1,6 +1,6 @@
 """Upload filenames accept FDI stems too (#113): the dentist reads and writes FDI, the app still stores and plans
-in Universal. 11..16 collide with the legacy Universal stems already on disk (see api._scan_file_name) and stay
-Universal; 17·18 and 21..28 do not collide and are read as FDI."""
+in Universal. A batch is FDI when any stem is one only FDI has (17·18, 21..28); otherwise Universal
+(see api._scan_file_name)."""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,19 +13,19 @@ from cualign.server.api import _scan_file_name
 FDI_OF = {2: 17, 3: 16, 4: 15, 5: 14, 6: 13, 7: 12, 8: 11, 9: 21, 10: 22, 11: 23, 12: 24, 13: 25, 14: 26, 15: 27}
 
 
-def test_scan_file_name_accepts_fdi_stems_where_they_do_not_collide():
-    assert _scan_file_name("17.stl") == ("2.stl", "tooth")     # FDI upper right tail (no legacy stem 17)
-    assert _scan_file_name("18.stl") == ("1.stl", "tooth")
-    assert _scan_file_name("21.stl") == ("9.stl", "tooth")     # FDI upper left (quadrant 2, no legacy stem >16)
-    assert _scan_file_name("27.stl") == ("15.stl", "tooth")
-    assert _scan_file_name("36.stl") == (None, "lower")        # FDI lower arch, not supported
-    assert _scan_file_name("41.stl") == (None, "lower")
-    # 11..16 already name a legacy Universal tooth on disk; they stay Universal, not FDI
-    assert _scan_file_name("11.stl") == ("11.stl", "tooth")
-    assert _scan_file_name("2.stl") == ("2.stl", "tooth")
+def test_scan_file_name_reads_the_batch_as_fdi_or_universal():
+    from cualign.server.api import _batch_is_fdi
+    fdi_arch = [f"{n}.stl" for n in (17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27)]
+    assert _batch_is_fdi(fdi_arch) and not _batch_is_fdi([f"{n}.stl" for n in range(2, 16)])
+    stored = [_scan_file_name(n, fdi=True)[0] for n in fdi_arch]
+    assert stored == [f"{n}.stl" for n in range(2, 16)]            # FDI 17…11 · 21…27 → Universal 2…15, no duplicates
+    assert _scan_file_name("18.stl", fdi=True) == ("1.stl", "tooth") and _scan_file_name("28.stl", fdi=True) == ("16.stl", "tooth")
+    assert _scan_file_name("36.stl", fdi=True) == (None, "lower")     # FDI lower arch, not supported
+    assert _scan_file_name("11.stl") == ("11.stl", "tooth")            # Universal batch: 11 is the app's 11
+    assert _scan_file_name("20.stl") == (None, "lower")                # Universal lower
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "OUT_DIR", tmp_path)
     monkeypatch.setattr(store, "OUT_DIR", tmp_path)
