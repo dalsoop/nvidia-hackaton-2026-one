@@ -271,11 +271,12 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
                      lock=frozenset(), close: bool = False,
                      close_sides: tuple[bool, bool] = (True, True),
                      removed=(), closable: tuple[bool, bool] = (True, True), centre: float | None = None
-                     ) -> tuple[list, bool, tuple[float, float], float]:
+                     ) -> tuple[list, bool, tuple[float, float], float, dict]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
     Returns (arc position per active tooth, None for the anchors; whether the span fit; room left in front of each
-    first molar; extraction space left open). Along the arch, each span crown moves only as far as needed so that
+    first molar; extraction space left open; slack per neighbour pair: how far beyond its required spacing the pair
+    stands - 0 where the crowns are laid contact to contact). Along the arch, each span crown moves only as far as needed so that
     neighbours sit at least contact width apart and the span fits between the first molars' mesial contacts — an
     aligned arch stays put, a crowded one opens where it overlaps (a bounded isotonic fit). Locked span teeth stay: the
     fit runs between them. Across the arch, every crown is brought onto the target arch (the caller places it there).
@@ -336,7 +337,9 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
     room = (float(t[0] - lo), float(top - t[-1]))
     if close and not fixed:
         open_mm += sum(max(r, 0.0) for r, ok in zip(room, closable) if not ok)
-    return [pos.get(i) for i in active], fits, room, open_mm
+    slack = {(a, b): float(pos[b] - pos[a] - g) for (a, b), g in zip(zip(span, span[1:]), gaps)}
+    slack[(3, span[0])], slack[(span[-1], 14)] = room
+    return [pos.get(i) for i in active], fits, room, open_mm, slack
 
 
 def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y,
@@ -422,14 +425,14 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
         target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra, extraction)
         expandable = strategy in ("expansion", "expansion_ipr") and info["expansion_mm_per_side"] < MAX_EXPANSION_PER_SIDE
         adjust = {}
-        for a, b in pairs:
+        for (a, b), slack in pairs.items():
             if a in lock and b in lock:
                 continue
             ov = case._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b)) - case.pair_baseline(a, b)
             if ov > TARGET_OVERLAP_MM3:
                 adjust[(a, b)] = SHAPE_STEP_MM
                 pushed.add((a, b))
-            elif (a, b) not in pushed:
+            elif (a, b) not in pushed and slack <= GAP_TOL_MM:    # laid contact to contact, yet the crowns stand apart
                 gap = _target_gap(case, a, b, target)
                 if gap > CLEARANCE + GAP_TOL_MM:
                     adjust[(a, b)] = CLEARANCE - gap
@@ -460,7 +463,8 @@ def _target_gap(case: Case, a: int, b: int, target: dict) -> float:
 
 
 def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict, extraction=()):
-    """One layout of propose_target: (target, info, neighbour pairs laid out, whether the layout fit)."""
+    """One layout of propose_target: (target, info, {neighbour pair laid out: slack beyond its spacing}, whether the
+    layout fit)."""
     ids = case.ids
     # the same width the space is measured with (at the contacts): the target lays crowns contact to contact, so an
     # arch that is already aligned stays where it is instead of being stretched by the flaring crown corners (#59)
@@ -486,7 +490,10 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             else _ipr_reductions(ids, ipr_exclude, ipr_limit_mm)
     if strategy in ("expansion", "expansion_ipr"):
         # Expand only as much as needed (up to the 2 mm/side limit).
-        shape = sum(extra.values())
+        # room the crowns' shapes need beyond their contact widths; contacts pulled closer than the widths (negative
+        # extra) are not credited - the crowding and the expansion stay as the dentist's measure (checked against the
+        # labelled scans), the packing only decides where the crowns sit
+        shape = sum(max(v, 0.0) for v in extra.values())
         need = max(crowd + shape, 0.0) if strategy == "expansion" else \
             max(crowd + shape - sum(v for i, v in red.items() if in_scope(i)), 0.0)
         offset, exp_gain = _span_expansion_for(case, need) if anchored else _expansion_for(arch, need)
@@ -504,9 +511,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             gain += width[i]
             active.remove(i)
         notes.append(f"처방대로 {label(rm)} 발치")
-    # the clinical deficit; shape room that does not fit shows as collision, room the crowns' shapes give back
-    # (neighbours pulled closer than their contact widths, negative `extra`) counts as space found
-    deficit = round(max(crowd + min(sum(extra.values()), 0.0) - gain, 0.0), 2)
+    deficit = round(max(crowd - gain, 0.0), 2)       # the clinical deficit; shape room that does not fit shows as collision
 
     # Order along the arch by current arc-length coordinate (on the offset curve for expansion).
     s_cur = {i: arch.s_of(case.anchor[i], offset) for i in active}
@@ -517,7 +522,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     if anchored:
         sides = (any(i < 9 for i in extraction), any(i >= 9 for i in extraction))
         closable = (not lock & {2, 3}, not lock & {14, 15})
-        s_new, fits, room, open_mm = _anchored_layout(
+        s_new, fits, room, open_mm, slack = _anchored_layout(
             case, active, width, s_cur, offset, extra, lock, close=strategy == "extraction", close_sides=sides,
             removed=tuple(extraction) if strategy == "extraction" else (), closable=closable,
             centre=_span_model(case).midline_s(offset))
@@ -525,6 +530,10 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             # the molars close whatever room is left on their side (unless one of them is locked): the layout leaves it
             # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
             closing = tuple(0.0 if lock & blk else max(r, 0.0) for r, blk in zip(room, ({2, 3}, {14, 15})))
+            for pr, c in zip(((3, s) for s in [k for k in active if k in SPAN][:1]), closing[:1]):
+                slack[pr] = max(slack[pr] - c, 0.0)          # the molar closes the room in front of it
+            last = [k for k in active if k in SPAN][-1]
+            slack[(last, 14)] = max(slack[(last, 14)] - closing[1], 0.0)
             if any(c > 0.05 for c in closing):
                 notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 ({label(3)} 쪽 {closing[0]:.1f}mm, "
                              f"{label(14)} 쪽 {closing[1]:.1f}mm)")
@@ -593,7 +602,8 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             "vertical_mm": {i: round(v, 2) for i, v in sorted(lift.items())},
             "shape_room_mm": round(sum(extra.values()), 2)}
     laid = [i for i in active if i in SPAN or i in (3, 14)] if anchored else active
-    return target, info, list(zip(laid, laid[1:])), fits
+    pairs = {(a, b): (slack.get((a, b), 0.0) if anchored else 0.0) for a, b in zip(laid, laid[1:])}
+    return target, info, pairs, fits
 
 
 def _corrections(case: Case, active: list[int], lock) -> tuple[dict[int, float], dict[int, float]]:
