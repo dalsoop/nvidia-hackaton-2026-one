@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("nat.runtime.loader")
+pytestmark = pytest.mark.slow   # each run builds the NAT workflow several times: 1~2 minutes
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import cualign.agent.register  # noqa: E402,F401  applies nim_stream_patch the way the NAT plugin does

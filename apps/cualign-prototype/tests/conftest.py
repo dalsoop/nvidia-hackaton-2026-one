@@ -1,4 +1,20 @@
+import os
+
 import pytest
+
+
+def pytest_addoption(parser):
+    parser.addoption("--slow", action="store_true", default=False, help="slow 표시가 붙은 시험도 돌린다 (CI 에서는 항상 돈다)")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Locally the slow tests (about 4 of 10 minutes) are skipped unless --slow is given; on CI they always run."""
+    if config.getoption("--slow") or os.environ.get("CI"):
+        return
+    skip = pytest.mark.skip(reason="slow: --slow 또는 CI 에서만 돈다")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture(autouse=True)

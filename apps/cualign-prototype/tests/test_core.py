@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from cualign.core import Case, compare_strategies, plan_stages, propose_target, validate
+from cualign.core.constraints import Constraints
 from cualign.core.limits import MAX_LINEAR_PER_ALIGNER, STRATEGIES, stage_cap_from_months
 from cualign.core.synth import PRESETS
 
@@ -31,7 +32,7 @@ def test_collision_engine_is_live():
 
 def test_stage_step_never_exceeds_limit(moderate):
     for s in STRATEGIES:
-        target, _ = propose_target(moderate, s)
+        target, _ = propose_target(moderate, s, extraction=(5, 12) if s == "extraction" else ())
         stages, _ = plan_stages(moderate, target)
         viol = validate(moderate, stages)
         assert not [v for v in viol if v["type"] == "move_limit"]
@@ -42,10 +43,13 @@ def test_stage_step_never_exceeds_limit(moderate):
 
 def test_strategy_ladder_on_moderate_case(moderate):
     rows = {r["strategy"]: r for r in compare_strategies(moderate)}
+    assert "extraction" not in rows              # no prescribed teeth: the app does not plan an extraction (#56)
     assert not rows["expansion"]["passed"] and "space_deficit" in rows["expansion"]["by_type"]
     assert not rows["ipr"]["passed"]
     assert rows["expansion_ipr"]["passed"]
-    assert rows["extraction"]["passed"] and rows["extraction"]["removed"] == [5, 12]
+    ext = compare_strategies(moderate, constraints=Constraints(extraction=(5, 12)))
+    assert [r["strategy"] for r in ext] == ["extraction"]           # prescribed: only the extraction plan
+    assert ext[0]["passed"] and ext[0]["removed"] == [5, 12]
 
 
 def test_extraction_forbidden_on_severe_fails_honestly():
@@ -57,7 +61,7 @@ def test_extraction_forbidden_on_severe_fails_honestly():
 
 def test_stage_cap_violation():
     c = Case.synthetic("extraction")
-    target, info = propose_target(c, "extraction")
+    target, info = propose_target(c, "extraction", extraction=(5, 12))
     stages, _ = plan_stages(c, target, order="sequential")
     viol = validate(c, stages, stage_cap=stage_cap_from_months(3))
     assert any(v["type"] == "stage_cap" for v in viol)

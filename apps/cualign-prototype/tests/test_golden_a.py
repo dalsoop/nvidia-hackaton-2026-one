@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow   # module fixture runs the whole set once: 15~30 s
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -146,9 +148,8 @@ def test_expect_matches_reference_parser():
         st = ReferenceAgent().st
         for u in s.turns:
             _parse(u, st)
-        refuses = False if st["known_extraction"] and st["allow_extraction"] else (True if st["known_extraction"] else None)
-        if sid == "A06":   # 발치안·비발치안 비교 요청: extraction wanted, parser sees no refusal
-            refuses = False
+        # refused = non-extraction stated; prescribed teeth = not refused; extraction without teeth (A06) = neither (#56)
+        refuses = (not st["extraction"]) if st["known_extraction"] else None
         cap = stage_cap_from_months(st["months"]) if st["months"] else None
         assert (refuses, cap, sorted(st["lock"])) == (s.expect["refuses_extraction"], s.expect["stage_cap"],
                                                        sorted(s.expect["lock"])), sid

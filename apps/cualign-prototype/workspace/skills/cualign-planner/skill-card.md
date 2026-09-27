@@ -1,6 +1,6 @@
-<!-- Drafted on 2026-09-26 in the format of the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0), following skills/cualign-clinical-rules/skill-card.md, from SKILL.md, docs/nemoclaw.md and src/cualign/server/mcp_server.py. Not yet reviewed by the cuAlign team and not yet scanned with SkillSpector. -->
+<!-- Drafted on 2026-09-26 in the format of the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0), following workspace/skills/cualign-clinical-rules/skill-card.md, from SKILL.md, docs/nemoclaw.md and src/cualign/server/mcp_server.py. Not yet reviewed by the cuAlign team and not yet scanned with SkillSpector. -->
 ## Description: <br>
-Front-desk skill for an OpenClaw agent in a NemoClaw sandbox: it asks the cuAlign MCP server for clear-aligner (투명교정) staging plans and reports them to a Korean-speaking dentist as drafts, without computing, approving or exporting anything itself. <br>
+Front-desk skill for an OpenClaw agent in a NemoClaw sandbox. It asks the cuAlign MCP server for clear-aligner staging plans. It reports them to a Korean-speaking dentist as drafts. It does not compute, approve or export anything itself. <br>
 
 This skill is for research and development only. <br>
 
@@ -9,7 +9,7 @@ This skill is not owned or developed by NVIDIA. This skill has been developed an
 
 ### License/Terms of Use: <br>
 ## Use Case: <br>
-A dentist talks to OpenClaw; the skill picks the case, settles the conditions with at most one question, calls `cualign_plan` once, and reports the strategy, stage count, months, rule result, the reviewer memo verbatim and the cuAlign UI link. Planning and rule checks stay with cuAlign's NAT agent. Approval and STL export stay with the dentist in the cuAlign UI, and the NemoClaw sandbox policy denies those two MCP tools. <br>
+A dentist talks to OpenClaw. The skill picks the case and settles the conditions with at most one question. It calls `cualign_plan` once. It reports the strategy, stage count, months, rule result, the reviewer memo verbatim and the cuAlign UI link. Planning and rule checks stay with cuAlign's NAT agent. Approval and STL export stay with the dentist in the cuAlign UI, and the NemoClaw sandbox policy denies those two MCP tools. <br>
 
 ### Deployment Geography for Use: <br>
 Republic of Korea (Korean-speaking dentists; the UI and the hackathon submission are in Korean) <br>
@@ -22,14 +22,14 @@ Do not include secrets in prompts/logs/output; use least-privilege credentials; 
 
 ## Known Risks and Mitigations: <br>
 Risk: The agent could present a draft as final or try to approve or export a plan. <br>
-Mitigation: The skill forbids it, the MCP server's approve tool never approves and its export tool requires the dentist's approval, and `nemoclaw <sandbox> mcp add --deny-tool` blocks both tools at the OpenShell MCP proxy. <br>
+Mitigation: The skill forbids it. The MCP server's approve tool never approves, and its export tool requires the dentist's approval. `nemoclaw <sandbox> mcp add --deny-tool` blocks both tools at the OpenShell MCP proxy. <br>
 Risk: Review before execution as proposals could introduce incorrect or misleading guidance into skills. <br>
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [NemoClaw: Add an MCP Server](https://github.com/NVIDIA/NemoClaw/blob/main/docs/manage-sandboxes/add-mcp-server.mdx) <br>
-- [docs/nemoclaw.md (architecture, policy and setup)](../../docs/nemoclaw.md) <br>
-- [skills/cualign-clinical-rules (the rules the cuAlign agent applies)](../../skills/cualign-clinical-rules/SKILL.md) <br>
+- [docs/nemoclaw.md (architecture, policy and setup)](../../../docs/nemoclaw.md) <br>
+- [workspace/skills/cualign-clinical-rules (the rules the cuAlign agent applies)](../cualign-clinical-rules/SKILL.md) <br>
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis] <br>
@@ -38,10 +38,10 @@ Mitigation: Review and scan skill before deployment. <br>
 **Other Properties Related to Output:** [Draft-only; no patient identifiers or scan files pass through the skill] <br>
 
 ## Evaluation Tasks: <br>
-Offline tests of the MCP server it calls (tests/test_mcp_server.py, and the real-worker test in tests/test_rails_middleware.py). The skill itself has not been run in OpenClaw yet (docs/nemoclaw.md, 검증 대기). <br>
+Offline tests of the MCP server it calls (tests/test_mcp_server.py, and the real-worker test in tests/test_rails_middleware.py). On 2026-09-27, the skill at commit 4f7bbd2 was installed on a NemoClaw desk on Brev (Linux). This is the version before the English rewrite. The list, plan and approval requests ran once each there ("Brev 배포 확인" in docs/nemoclaw.md). <br>
 
 ## Evaluation Results: <br>
-Not yet evaluated. <br>
+The 4f7bbd2 version passed all three requests on 2026-09-27. The English rewrite (c21744d) and later versions did not run on the desk yet. Run the three requests again on the desk for these versions. <br>
 
 ## Testing Completed: <br>
 **[ ] Agent Red-Teaming** <br>

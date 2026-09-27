@@ -76,10 +76,20 @@ NVIDIA 구성별 코드와 실행 근거는 [NVIDIA 활용](NVIDIA_STACK.md)을 
 
 ### 현재 계획 계약 (2026-09-25)
 
-`core/constraints.py`의 Constraints는 비발치 여부, 고정 치아, IPR 제외 치아,
-IPR 면당 한도(0~0.25mm, PoC 상한), 단계 상한, 이동 순서를 저장한다.
+`core/constraints.py`의 Constraints는 발치 처방(발치할 치아 목록 `extraction`, Universal 번호, []는 비발치),
+고정 치아, IPR 제외 치아, IPR 면당 한도(0~0.25mm, PoC 상한), 단계 상한, 이동 순서를 저장한다.
 비교·수정·단계 생성·검증이 같은 값을 사용한다. 패치의 생략 필드는 유지하며,
 치아 목록 []는 해제, stage_cap:null은 상한 해제다. 고정 치아의 발치도 거부한다.
+
+발치 치아는 의사의 처방이다(#56). 앱은 발치 치아를 고르지 않는다.
+- 처방이 있으면 그 치아를 빼는 발치안만 만든다. 비발치 전략은 처방을 따르지 않으므로 만들지 않는다.
+- 처방이 없으면 발치안을 만들지 않는다.
+- 계획이 처방과 다른 치아를 빼거나 처방 치아를 빼지 않으면 `extraction_mismatch` 위반이다.
+- 지원 범위는 소구치(4·5·12·13)이고 양쪽·한쪽 모두 된다. 한쪽이면 그쪽 대구치만 앞으로 옮겨 남는 공간을 닫는다.
+- 예전 입력 `allow_extraction`: false는 목록을 비우고, 이미 처방이 있으면 true는 그대로 둔다.
+  처방 없이 true만 오면 "발치할 치아 번호가 필요합니다"(`ExtractionTeethNeeded`)로 거절한다.
+  API·대화 요청은 400, 에이전트 도구는 거절된 조건과 안내를 담은 정상 결과로 돌려준다.
+- 출력(JSON)에는 읽는 쪽을 위해 `allow_extraction`을 계산값으로 함께 싣는다.
 
 웹 요청의 `cualign` 필드에 request_id·case_id·base_plan_id·조건 패치를 전달한다.
 서버가 케이스·부모를 검사하고 요청 컨텍스트를 NAT 하위 작업에 전달한다.
@@ -129,6 +139,7 @@ NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 설정된
 
 현재 입력 범위 레일은 차단 판정 시 에이전트를 실행하지 않는다. content safety 입력은 기본 경고 모드다.
 출력은 스트림이든 아니든 출력 판정이 날 때까지 쥐고, 막히면 답 전체를 거절문으로 바꾼다. 그 턴의 `plan_selected` 는 내보내지 않는다(계획은 저장된 채 남는다).
+쥔 답의 규칙 상태는 레일이 꺼져 있어도 확인한다(#91). 턴이 선택한 계획이 규칙 검증에 실패했는데 답의 첫머리(첫 목록 줄 앞)에 «규칙 위반은 없습니다» 같은 구절이 있으면, 그 구절을 계획의 실제 상태(«규칙 위반: 충돌 3건.»)로 바꿔 내보낸다. 목록 줄(조건·검토)과 전략 비교 턴의 답은 바꾸지 않는다. 비교 답은 여러 계획을 다루므로 구절이 어느 계획에 관한 것인지 서버가 가릴 수 없다. 선택한 계획은 요청의 `PlanRun` 에서 읽으므로, UI 대화(`/chat/stream`, MCP `cualign_plan` 포함)와 골든셋 실행기에서만 확인한다.
 에이전트가 예외로 끝나면 오류 메시지에는 예외 종류만 싣는다. NAT 는 모든 경로에서 예외 문구(`str(e)`)를 응답에 싣는데, ReAct 파싱 실패 문구에는 모델 원문이 들어 있고 출력 판정을 거치지 않는다. 전체 예외는 서버 ERROR 로그에 남는다.
 검사 오류·타임아웃은 ERROR 로그를 남기고 진행한다. 진행 표시(`intermediate_data`)는 쥐지 않으므로 `general.front_end.step_adaptor` 를 함수 시작·끝(`FUNCTION_START`·`FUNCTION_END`)으로 줄이고, `worker.py` 가 워크플로 자신의 시작·끝 단계(시작은 요청 원문을 되돌려 보낸다)를 빼고 도구 끝 단계를 결과 없이 다시 만든다. 남는 것은 도구 이름·모델이 고른 인자·«완료» 표시다. 도구 결과·모델 글은 나가지 않는다. NAT 1.9.0 의 ReAct 에이전트는 `LLM_*`·`TOOL_*` 이벤트를 내지 않는다.
 미들웨어는 키 설정과 활성화 옵션에 따라 꺼질 수 있고(시작 때 ERROR 로그), 에이전트 호출을 대상으로 한다.
@@ -167,7 +178,7 @@ PoC 체크아웃에서 실행:
 
 ```sh
 uv sync --frozen --extra dev
-uv run pytest -q -p no:warnings
+uv run pytest -q -p no:warnings          # slow 시험 제외, 병렬. 전부 돌리려면 --slow (CI 는 항상 전부)
 uv run nat validate --config_file configs/workflow.yml
 uv run cualign plan "발치 없이 12개월 안에" --case moderate
 uv run cualign serve

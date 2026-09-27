@@ -34,7 +34,13 @@ def _plan_from_file(data: dict) -> dict:
     rotations = data.get("rotations") or []
     data["stages"] = [_Stage(st, rotations[i] if i < len(rotations) else None) for i, st in enumerate(data.get("stages") or [])]
     if isinstance(data.get("constraints"), dict):
-        data["constraints"] = Constraints.model_validate(data["constraints"])
+        removed = (data.get("target") or {}).get("removed") or (data.get("info") or {}).get("removed") or ()
+        legacy = "extraction" not in data["constraints"]
+        data["constraints"] = Constraints.from_saved(data["constraints"], removed)   # files from before #56 too
+        if legacy and data.get("approval"):
+            # approved under conditions without the extraction teeth: the approval does not carry over (#98 review);
+            # shown as not approved, so the screen asks for a new approval instead of offering an export it refuses
+            data["approval"] = None
     data["_from_disk"] = True
     return data
 
@@ -53,7 +59,7 @@ class Store:
         # real scans with the dentist's prescription first (the start screen shows these); the synthetic presets stay
         # loadable by name for the agent, the tests and the CLI, but the screen does not offer them (#46)
         rows = [{"case_id": s.case_id, "kind": "sample", "title": s.title, "prescription": s.prescription,
-                 "request": s.request, "note": s.note, "available": s.available,
+                 "summary": s.summary, "badges": list(s.badges), "request": s.request, "note": s.note, "available": s.available,
                  "constraints": s.initial_constraints().model_dump(mode="json")} for s in samples.SAMPLES.values()]
         rows += [{"case_id": k, "kind": "synthetic", "crowding_mm": v["crowding_mm"]} for k, v in PRESETS.items()]
         env = os.environ.get("CUALIGN_CASE_DIR")
@@ -103,7 +109,8 @@ class Store:
                 raise ValueError("parent plan must exist in the same case")
             constraints = record["constraints"]
             if isinstance(constraints, dict):
-                return Constraints.model_validate(constraints)
+                removed = (record.get("target") or {}).get("removed") or (record.get("info") or {}).get("removed") or ()
+                return Constraints.from_saved(constraints, removed)
             return constraints
         return self.case_constraints.get(case_id, Constraints())
 

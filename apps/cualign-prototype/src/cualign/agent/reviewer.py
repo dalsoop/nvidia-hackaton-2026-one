@@ -80,6 +80,9 @@ FIELD_NOTES = {
     "space_deficit_mm": f"space still missing after the strategy; the plan fails the rule above {L.SPACE_DEFICIT_TOLERANCE_MM} mm",
     "expansion_mm_per_side": f"arch expansion per side; the limit is {L.MAX_EXPANSION_PER_SIDE} mm",
     "ipr_mm_per_surface": f"IPR per tooth surface; the limit is {L.IPR_PER_SURFACE} mm",
+    "extraction": "teeth the dentist prescribed to extract (Universal numbers); the plan removes exactly these, "
+                  "the app never chooses them; empty means non-extraction",
+    "removed": "teeth this plan removes (must equal the prescribed extraction)",
 }
 
 

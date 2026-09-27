@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from nat.utils.io.yaml_tools import yaml_load
 
 from .judge import Spec, load_specs
 from .trace import ToolCall, Trace, Turn, is_overload_crash, normalize_tool_name
@@ -58,8 +59,11 @@ WORKFLOW = ROOT / "configs" / "workflow.yml"
 
 # ---------------------------------------------------------------------------------------------- config
 def build_config(llm: str = "nim_super", reviewer_llm: dict | None = None, all_llms: dict | None = None) -> dict:
-    """workflow.yml with the planner model selected, optionally the reviewer (or every LLM) replaced."""
-    cfg = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    """workflow.yml with the planner model selected, optionally the reviewer (or every LLM) replaced.
+
+    Loaded the way NAT loads it, so `file://` references (the planner instructions in workspace/AGENTS.md) are
+    already inlined when the result is written to a temporary config elsewhere."""
+    cfg = yaml_load(WORKFLOW)
     cfg.pop("general", None)   # front end (FastAPI worker, CORS) is not used in-process
     if all_llms is not None:
         cfg["llms"] = {name: dict(all_llms) for name in cfg["llms"]}
@@ -172,12 +176,13 @@ def ui_greeting(case_id: str) -> str:
     from cualign.core.store import STORE
     cid, case = STORE.load_case(case_id)
     return (f"케이스 {cid} (상악 {len(case.ids)}개 치아, 총생 {_js_number(planner.crowding_mm(case))} mm) 를 불러왔습니다. "
-            "계획을 시작하려면 제약을 알려 주세요. 발치는 허용되나요? 기간 상한이 있으면 함께 알려 주세요.")
+            "계획을 시작하려면 제약을 알려 주세요. 발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). "
+            "기간 상한이 있으면 함께 알려 주세요.")
 
 
 def form_patch(c) -> dict:
     """static/app.js readConstraints(): every form field is sent, an empty stage cap as clear_stage_cap."""
-    return {"allow_extraction": c.allow_extraction, "lock": list(c.lock), "ipr_exclude": list(c.ipr_exclude),
+    return {"extraction": list(c.extraction), "lock": list(c.lock), "ipr_exclude": list(c.ipr_exclude),
             "ipr_limit_mm": c.ipr_limit_mm, "stage_cap": c.stage_cap, "clear_stage_cap": c.stage_cap is None,
             "order": c.order}
 

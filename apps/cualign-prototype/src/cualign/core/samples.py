@@ -30,6 +30,8 @@ class Sample:
     title: str                   # one line: what the dentist found
     prescription: str            # the dentist's prescription, FDI numbers
     request: str                 # the prescription as a sentence to send the agent (the first chip)
+    summary: str = ""            # the prescription in plain words, for the card (#90)
+    badges: tuple[str, ...] = () # short facts on the card: crowding, extraction or not, strategy
     constraints: dict = field(default_factory=dict)
     note: str = ""               # where the app's constraints differ from the prescription
     ipr_total_mm: float = 0.0    # IPR the app computes with these constraints (checked against the core)
@@ -47,28 +49,34 @@ class Sample:
 
 
 SAMPLES: dict[str, Sample] = {s.case_id: s for s in (
-    Sample("poseidon-000097", "공간 부족 — 발치 케이스",
+    Sample("poseidon-000097", "심한 덧니, 발치 필요",
            "제1소구치 14·24 발치 (FDI · 앱 번호 5·12)",
            "처방은 제1소구치 14·24(앱 번호 5·12) 발치입니다. 이 처방으로 단계 계획을 짜 주세요.",
-           {"allow_extraction": True}),
-    Sample("poseidon-000131", "경도 부족 — 앞니 IPR 케이스",
-           "비발치 · IPR 11-21·11-12·21-22 각 0.4mm (FDI · 앱 번호 8-9·7-8·9-10)",
-           "처방은 비발치, IPR 11-21·11-12·21-22(앱 번호 8-9·7-8·9-10) 접촉면에 각 0.4mm입니다. "
-           "이 처방으로 단계 계획을 짜 주세요.",
-           # IPR on 12..22 (Universal 7..10) only, at the most the core allows
-           {"allow_extraction": False, "ipr_exclude": [2, 3, 4, 5, 6, 11, 12, 13, 14, 15], "ipr_limit_mm": 0.25},
-           note="앱의 IPR은 치아 단위로 접촉면당 최대 0.25mm라서, 12~22번에 IPR을 허용해 총 1.0mm로 계산합니다"
-                "(처방 1.2mm, 13-12·22-23 접촉면에도 일부 들어감).",
-           ipr_total_mm=1.0),
-    Sample("poseidon-000001", "공간 부족 — IPR과 악궁 확장 케이스",
+           summary="작은어금니 두 개(14·24)를 빼서 자리를 만들고 정렬",
+           badges=("총생 7.9 mm", "발치"),
+           constraints={"extraction": [5, 12]}),
+    Sample("poseidon-000001", "중간 덧니, IPR 필요",
            "비발치 · 14-15·24-25부터 앞쪽으로 IPR 총 3.6mm + 악궁 확장 (FDI · 앱 번호 4-5·12-13부터)",
            "처방은 비발치, 14-15·24-25(앱 번호 4-5·12-13) 접촉면부터 앞쪽으로 IPR 총 3.6mm와 악궁 확장입니다. "
            "이 처방으로 단계 계획을 짜 주세요.",
+           summary="어금니 앞쪽 치아 사이를 갈고(총 3.6 mm) 치열 폭을 넓혀 정렬",
+           badges=("총생 4.2 mm", "비발치", "IPR + 확장"),
            # IPR from the premolars forward, not on the molars, at the most the core allows
-           {"allow_extraction": False, "ipr_exclude": [2, 3, 14, 15], "ipr_limit_mm": 0.25},
+           constraints={"extraction": [], "ipr_exclude": [2, 3, 14, 15], "ipr_limit_mm": 0.25},
            note="앱의 IPR은 치아 단위로 접촉면당 최대 0.25mm라서, 대구치를 뺀 치아에 IPR을 허용해 총 2.5mm로 "
                 "계산합니다(처방 3.6mm).",
            ipr_total_mm=2.5),
+    Sample("poseidon-000131", "가벼운 덧니, IPR 필요",
+           "비발치 · IPR 11-21·11-12·21-22 각 0.4mm (FDI · 앱 번호 8-9·7-8·9-10)",
+           "처방은 비발치, IPR 11-21·11-12·21-22(앱 번호 8-9·7-8·9-10) 접촉면에 각 0.4mm입니다. "
+           "이 처방으로 단계 계획을 짜 주세요.",
+           summary="앞니 사이를 조금씩(0.4 mm) 갈아 자리를 만들고 정렬",
+           badges=("총생 1.6 mm", "비발치", "IPR"),
+           # IPR on 12..22 (Universal 7..10) only, at the most the core allows
+           constraints={"extraction": [], "ipr_exclude": [2, 3, 4, 5, 6, 11, 12, 13, 14, 15], "ipr_limit_mm": 0.25},
+           note="앱의 IPR은 치아 단위로 접촉면당 최대 0.25mm라서, 12~22번에 IPR을 허용해 총 1.0mm로 계산합니다"
+                "(처방 1.2mm, 13-12·22-23 접촉면에도 일부 들어감).",
+           ipr_total_mm=1.0),
 )}
 
 
