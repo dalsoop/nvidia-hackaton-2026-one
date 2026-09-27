@@ -775,6 +775,8 @@ async function openCheck(caseId, check) {
   $("mirrorBtn").hidden = o?.side !== "reversed";
   $("startPlan").disabled = !check.ready;
   $("caseName").textContent = (state.patient ? state.patient.alias + " · " : "") + sid + " · 입력 확인 중";
+  // the card on the panel top is this scan's now, not the sample that was open before
+  $("caseThumb").hidden = true; $("caseKind").hidden = true; $("caseSub").textContent = ""; $("caseSub").title = ""; $("caseBadges").replaceChildren();
   showScreen("check");
 }
 
@@ -972,15 +974,21 @@ async function refreshPlans(selectId) {
   // how many plans are new since the last refresh of this case: a turn that made several (a comparison) gets a plan card
   const known = state.planRowsCase === caseId ? state.planRows : null;
   state.newPlans = known ? plans.filter((p) => !(p.plan_id in known)).length : 0;
+  // opening a case: what is already stored (except the preview this open made) is a past session's work (#105)
+  if (!known) state.oldPlans = new Set(plans.map((p) => p.plan_id).filter((id) => id !== preferredPlanId(plans)));
   state.planRows = Object.fromEntries(plans.map((p) => [p.plan_id, p]));
   state.planRowsCase = caseId;
+  const old = plans.filter((p) => state.oldPlans?.has(p.plan_id));
+  const past = old.length ? document.createElement("optgroup") : null;
+  if (past) { past.label = `지난 계획 ${old.length}개`; }
   for (const p of plans) {
     const o = document.createElement("option");
     o.value = p.plan_id;
     o.textContent = `${STRATEGY_KO[p.strategy] ?? p.strategy} · ${p.n_stages}단계 · ${p.passed ? "통과" : "위반"}`;
     o.title = p.plan_id;
-    sel.appendChild(o);
+    (state.oldPlans?.has(p.plan_id) ? past : sel).appendChild(o);
   }
+  if (past) sel.appendChild(past);
   const id = selectId ?? state.plan?.plan_id ?? preferredPlanId(plans);
   if (id) { sel.value = id; await loadPlan(id); }
 }
