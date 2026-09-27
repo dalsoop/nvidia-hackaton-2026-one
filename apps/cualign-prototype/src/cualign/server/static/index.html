@@ -316,6 +316,8 @@
         <fieldset id="constraints" class="constraints">
           <label>발치 치아 <input id="cExtract" placeholder="빈칸이면 비발치 · 예: 14, 24"></label>
           <label>고정 치아 <input id="cLock" placeholder="예: 25, 26"></label>
+          <!-- IPR per contact (#57): FDI pairs and mm per contact; empty = no prescription, the even rule below applies -->
+          <label>IPR 처방 · 접촉면 mm <input id="cSurf" placeholder="빈칸이면 처방 없음 · 예: 12-11 0.4, 11-21 0.4"></label>
           <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 11, 12, 21, 22"></label>
           <label>IPR 한도 · 면당 mm <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25" placeholder="0.25 이하"></label>
           <label>단계 상한 <input id="cCap" type="number" min="1" step="1" placeholder="빈칸이면 없음"></label>

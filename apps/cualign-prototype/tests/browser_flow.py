@@ -550,7 +550,8 @@ async def main():
             async def replay_route(route):
                 req = route.request.post_data_json; seen.append(req["step"])
                 rec = {"recorded": True, "recorded_at": "2026-09-28T10:00:00", "answer_md": f"녹화된 {req['step']} 답입니다 (가짜).", "plan_selected": None, "plans": []}
-                if req["step"] == "setup": rec["constraints"] = {"extraction": [], "lock": [2], "ipr_exclude": [], "ipr_limit_mm": 0.2, "stage_cap": None, "order": "simultaneous"}
+                if req["step"] == "setup": rec["constraints"] = {"extraction": [], "lock": [2], "ipr_exclude": [], "ipr_limit_mm": 0.2, "stage_cap": None, "order": "simultaneous",
+                                                                  "ipr_surfaces": [[7, 8, 0.4], [8, 9, 0.4], [9, 10, 0.4]]}   # 000131's prescription (#57): 12-11 · 11-21 · 21-22
                 elif req["step"] == "target": rec.update(target_id="t-fake", summary={"crowding_mm": 4.2, "space_mm": 4.4, "strategy": "expansion_ipr", "extraction": [], "ipr": []})
                 elif req["step"] in ("stages", "cap"): rec["plan_selected"] = {"plan_id": before_skip, "parent_plan_id": None, "review": {"status": "skipped"}}
                 await route.fulfill(status=200, content_type="application/json", body=json.dumps(rec))
@@ -563,13 +564,18 @@ async def main():
             await skip_turn(1)
             assert await page.evaluate("window.__cualign.state.setup.lock") == [2] and await page.locator("#cLock").input_value() == "17"      # Universal 2 = FDI 17
             assert await page.locator("body").evaluate("b => b.classList.contains('step-setup')") and await page.locator('#flow button[data-step="stages"]').is_disabled()
+            # the per-contact prescription (#57): the 조건 tab shows it in FDI, the 3D marks exactly those three contacts,
+            # and the patch carries it back in FDI
+            assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"
+            assert await page.locator(".ipr-mark").count() == 3
+            assert await page.evaluate("window.__cualign.readConstraints().ipr_surfaces") == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]]
             await next_chip("목표 배열 만들기").click()
             await skip_turn(2)
             assert await page.locator("body").evaluate("b => b.classList.contains('step-target')") and await page.evaluate("window.__cualign.state.targetId") == "t-fake"
             assert await next_chip("비발치안과 비교").count() == 1      # 000131 is a non-extraction case
             await next_chip("단계 만들기").click()
             await skip_turn(3)
-            assert await page.locator("body").evaluate("b => b.classList.contains('step-stages')") and await on_screen() == before_skip
+            await page.wait_for_function(f"document.body.classList.contains('step-stages') && {plan_on_screen} === '{before_skip}' && !window.__cualign.state.loading", timeout=60000)   # the plan (and its cut, #22) load after the recorded bubble
             await page.locator("#chatInput").fill("8개월 안에 끝나게 다시 짜줘."); await page.locator("#sendBtn").click()
             await skip_turn(4)
             await page.locator("#chatInput").fill("확장안이랑 IPR안 둘 다 만들어서 비교해줘."); await page.locator("#sendBtn").click()

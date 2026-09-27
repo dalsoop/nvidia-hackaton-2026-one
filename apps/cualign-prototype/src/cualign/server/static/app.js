@@ -444,11 +444,15 @@ function renderFlow() {
 }
 // what the 3D marks in 셋업: the agent's constraints (step_done setup), or the plan's target when looking back at a plan
 function setupSource() {
-  if (state.setup) return { removed: (state.setup.extraction ?? []).map(String), excl: new Set((state.setup.ipr_exclude ?? []).map(String)),
-                            per: state.setup.ipr_limit_mm ?? 0, expansion: 0 };
+  // the IPR contacts (#57): the agent's prescription as it read it, or what the plan's target strips
+  if (state.setup) return { removed: (state.setup.extraction ?? []).map(String), surfaces: state.setup.ipr_surfaces ?? [], expansion: 0 };
   const t = state.plan?.target;
-  return t ? { removed: (t.removed ?? []).map(String), excl: new Set((t.ipr_exclude ?? []).map(String)), per: t.ipr_mm_per_surface ?? 0,
+  return t ? { removed: (t.removed ?? []).map(String), surfaces: surfacesOf(t, state.plan.info),
                expansion: state.plan.info?.expansion_mm_per_side ?? 0 } : null;
+}
+// one mark per IPR contact whose two crowns are on screen (#57): [a, b, mm] Universal → [id, id, mm] strings
+function contactsOnScreen(surfaces, removed = new Set()) {
+  return (surfaces ?? []).map(([a, b, mm]) => [String(a), String(b), +mm]).filter(([a, b]) => state.teeth[a] && state.teeth[b] && !removed.has(a) && !removed.has(b));
 }
 // 셋업 marks over the 3D: a yellow dot at each IPR contact (the same contacts the mm labels use), arrows on the
 // last crowns when the arch widens. Only in the 셋업 state.
@@ -457,13 +461,11 @@ function renderSetupMarks() {
   state.setupMarks = [];
   const src = setupSource();
   if (state.step !== "setup" || !src) return;
-  const per = src.per, excl = src.excl, removed = new Set(src.removed);
+  const removed = new Set(src.removed);
   const order = state.archOrder.filter((id) => state.teeth[id] && !removed.has(id));
   const put = (el, pos) => { const o = new CSS2DObject(el); o.position.copy(pos); group.add(o); state.setupMarks.push(o); };
-  if (per) for (let k = 0; k + 1 < order.length; k++) {
-    const a = order[k], b = order[k + 1];
-    if (excl.has(a) && excl.has(b)) continue;
-    const el = document.createElement("div"); el.className = "ipr-mark"; el.title = "IPR 접촉면";
+  for (const [a, b, mm] of contactsOnScreen(src.surfaces, removed)) {
+    const el = document.createElement("div"); el.className = "ipr-mark"; el.title = `IPR 접촉면 ${fdi(a)}-${fdi(b)} ${mm} mm`;
     const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
     put(el, p);
   }
@@ -481,16 +483,9 @@ $("flow").addEventListener("click", (e) => { const s = e.target.closest("button:
 function clearLabels() { for (const l of state.labels) l.parent?.remove(l); state.labels = []; }
 function buildIprLabels() {
   clearLabels();
-  const t = viewPlan()?.target;
-  const per = t?.ipr_mm_per_surface ?? 0;
-  if (!per) return;
-  const excl = new Set((t.ipr_exclude ?? []).map(String));
-  const removed = new Set((t.removed ?? []).map(String));
-  const order = state.archOrder.filter((id) => state.teeth[id] && !removed.has(id));
-  for (let k = 0; k + 1 < order.length; k++) {
-    const a = order[k], b = order[k + 1];
-    const mm = per * 0.5 * ((excl.has(a) ? 0 : 1) + (excl.has(b) ? 0 : 1));
-    if (!mm) continue;
+  const v = viewPlan(), t = v?.target;
+  // the contacts the target strips, mm per contact (#57); no guessing from the even rule any more
+  for (const [a, b, mm] of contactsOnScreen(surfacesOf(t, v?.info), new Set((t?.removed ?? []).map(String)))) {
     const el = document.createElement("div");
     el.className = "ipr-label";
     el.textContent = mm.toFixed(2);
@@ -750,6 +745,19 @@ async function api(path, opts) {
 
 // FDI valid range on this upper-arch-only app (Universal 2..15, third molars excluded): quadrant 1 11..17, quadrant 2 21..27.
 const isFdiTooth = (f) => (f >= 11 && f <= 17) || (f >= 21 && f <= 27);
+// IPR per contact (#57): constraints/plans carry Universal [a, b, mm]; the dentist reads and types FDI 「12-11 0.4」
+const surfacesKo = (s) => (s ?? []).map(([a, b, mm]) => `${fdi(a)}-${fdi(b)} ${+mm}`).join(", ");
+function parseSurfaces(raw) {   // 「12-11 0.4, 11-21 0.4」 → [[12, 11, 0.4], …] (FDI, as the patch takes it); "" → []
+  return raw.split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+    const m = s.match(/^(\d{2})\s*[-–~]\s*(\d{2})\s+([\d.]+)\s*(?:mm)?$/i);
+    if (!m || !isFdiTooth(+m[1]) || !isFdiTooth(+m[2]) || !(+m[3] > 0)) throw new Error("IPR 처방은 「12-11 0.4, 11-21 0.4」 처럼 접촉면(FDI 두 치아)과 mm 로 적어 주세요.");
+    return [+m[1], +m[2], +m[3]];
+  });
+}
+// the same list whichever numbering and order it came in, for comparing (Universal, a < b, sorted)
+const normSurfaces = (s, fromFdi = false) => (s ?? []).map(([a, b, mm]) => { if (fromFdi) { a = universal(a); b = universal(b); } return [Math.min(a, b), Math.max(a, b), +mm]; }).sort((x, y) => x[0] - y[0]);
+// the contacts a target/plan strips: target.ipr_surfaces (info.ipr_surfaces on older plans), Universal
+const surfacesOf = (t, info) => t?.ipr_surfaces ?? info?.ipr_surfaces ?? [];
 function readConstraints() {
   const teeth = (id) => {
     const raw = $(id).value.trim();
@@ -761,8 +769,13 @@ function readConstraints() {
   if (!Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("IPR은 면당 0~0.25mm입니다.");
   if (cap !== null && (!Number.isInteger(cap) || cap < 1)) throw new Error("단계 상한은 양의 정수입니다.");
   // extraction: the prescribed teeth (#56); the app never picks them, an empty field is non-extraction
-  return { extraction: teeth("cExtract"), lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
+  const out = { extraction: teeth("cExtract"), lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
     ipr_limit_mm: ipr, stage_cap: cap, clear_stage_cap: cap === null, order: $("cOrder").value };
+  // IPR per contact (#57), FDI in the patch — this field only. Sent when there is one or one is being cleared; a server
+  // before core #143 rejects the key (ConstraintPatch forbids extras), so an untouched empty field sends nothing
+  const surf = parseSurfaces($("cSurf").value);
+  if (surf.length || state.plan?.constraints?.ipr_surfaces?.length || state.setup?.ipr_surfaces?.length) out.ipr_surfaces = surf;
+  return out;
 }
 // 기간(개월) ↔ 단계 상한: the same formula as the server's limits.py (30.4 days a month, 7 days an aligner)
 const capOfMonths = (m) => Math.round((m * 30.4) / 7);
@@ -770,6 +783,7 @@ const monthsOfCap = (cap) => Math.round(((cap * 7) / 30.4) * 10) / 10;
 function fillConstraints(c) {
   $("cExtract").value = (c.extraction || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cLock").value = (c.lock || []).map(fdi).sort((a,b) => a-b).join(", ");
+  $("cSurf").value = surfacesKo(c.ipr_surfaces);
   $("cExclude").value = (c.ipr_exclude || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cIpr").value = c.ipr_limit_mm;
   $("cCap").value = c.stage_cap ?? "";
@@ -783,8 +797,12 @@ function condWords() {
   const ext = nums("cExtract"), lock = nums("cLock"), excl = nums("cExclude"), parts = [];
   parts.push(ext.length ? "발치 " + ext.join("·") + "번" : "비발치");   // the form already reads FDI (#113)
   if (lock.length) parts.push("고정 " + lock.join("·") + "번");
-  if (excl.length) parts.push("IPR 제외 " + excl.join("·") + "번");
-  parts.push("면당 " + ($("cIpr").value || "0") + " mm");
+  const surf = $("cSurf").value.split(",").map((s) => s.trim()).filter(Boolean);   // a prescription replaces the even rule (#57), as the server's conditions_ko does
+  if (surf.length) parts.push("IPR 처방 " + surf.map((s) => s + "mm").join(" · "));
+  else {
+    if (excl.length) parts.push("IPR 제외 " + excl.join("·") + "번");
+    parts.push("면당 " + ($("cIpr").value || "0") + " mm");
+  }
   parts.push($("cCap").value ? "상한 " + $("cCap").value + "장" : "단계 상한 없음");
   parts.push("이동 " + ($("cOrder").options[$("cOrder").selectedIndex]?.textContent ?? ""));
   return parts;
@@ -814,7 +832,9 @@ function constraintsDirty() {
   try {
     const c = readConstraints();
     delete c.clear_stage_cap;
-    return Object.keys(c).some(k => JSON.stringify(c[k]) !== JSON.stringify(state.plan.constraints[k]));
+    const surfChanged = JSON.stringify(normSurfaces(c.ipr_surfaces, true)) !== JSON.stringify(normSurfaces(state.plan.constraints.ipr_surfaces));
+    delete c.ipr_surfaces;
+    return surfChanged || Object.keys(c).some(k => JSON.stringify(c[k]) !== JSON.stringify(state.plan.constraints[k]));
   } catch { return true; }
 }
 function updateActions() {
@@ -1288,6 +1308,9 @@ function renderCaseDetail(c) {
   // IPR happens between two teeth: a blue line on each contact whose both crowns are allowed. Extraction prescriptions
   // make room by the extraction, not by IPR, so they draw none.
   const iprOn = !extract.size && (cons?.ipr_limit_mm ?? 0) > 0;
+  // a prescription names the contacts (#57, Universal pairs); without one the even rule applies to every allowed contact
+  const rx = new Set((cons?.ipr_surfaces ?? []).map(([a, b]) => Math.min(a, b) + "-" + Math.max(a, b)));
+  const iprAt = (u) => rx.size ? rx.has(u + "-" + (u + 1)) : iprOn && !iprOff.has(u) && !iprOff.has(u + 1);
   // 14 crowns on an arch, FDI 17…11 · 21…27 (Universal 2…15 from the patient's right)
   const svg = $("dArch"); svg.innerHTML = "";
   const ns = "http://www.w3.org/2000/svg";
@@ -1295,7 +1318,7 @@ function renderCaseDetail(c) {
   let iprCount = 0;
   for (let k = 0; k < 14; k++) {
     const u = k + 2, [x, y] = at(k);
-    if (iprOn && k < 13 && !iprOff.has(u) && !iprOff.has(u + 1)) {
+    if (k < 13 && iprAt(u)) {
       const [x2, y2] = at(k + 1), mx = (x + x2) / 2, my = (y + y2) / 2, nx = -(y2 - y), ny = x2 - x, n = Math.hypot(nx, ny);
       const line = document.createElementNS(ns, "line");   // across the contact, perpendicular to the arch
       line.setAttribute("x1", mx + (nx / n) * 9); line.setAttribute("y1", my + (ny / n) * 9);
@@ -1366,7 +1389,8 @@ function renderRail() {
 
 function sameConstraints(a, b) {
   const keys = ["extraction", "lock", "ipr_exclude", "ipr_limit_mm", "stage_cap", "order"];
-  return !!a && !!b && keys.every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
+  return !!a && !!b && keys.every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null))
+    && JSON.stringify(normSurfaces(a.ipr_surfaces)) === JSON.stringify(normSurfaces(b.ipr_surfaces));
 }
 
 // With extraction teeth prescribed only the extraction plan is made (#56): an expansion/IPR comparison is not offered.
@@ -1593,7 +1617,7 @@ function renderResult(plan) {
 function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
-                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: (t.ipr_mm_per_surface ?? 0) > 0,
+                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
                  ipr_face: Object.keys(state.cutSets[cutKeyNow()] ?? {}).length > 0 };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
@@ -1656,7 +1680,7 @@ function renderStagePane(plan) {
   }
 }
 const RULE_KO = { collision: "충돌", move_limit: "장당 이동 한계", stage_cap: "장수 상한", space_deficit: "공간 부족",
-  extraction_mismatch: "발치 처방 불일치", extraction_space_open: "발치 공간 미폐쇄" };
+  extraction_mismatch: "발치 처방 불일치", extraction_space_open: "발치 공간 미폐쇄", ipr_unprescribed: "처방에 없는 IPR" };
 function renderRulesPane(plan) {
   const cards = $("ruleCards"), groups = $("violGroups");
   cards.innerHTML = ""; groups.innerHTML = "";
@@ -1676,6 +1700,11 @@ function renderRulesPane(plan) {
     ["장수 상한", "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
     ["공간 부족", "처방 안에서 확보할 공간", sp.length ? ["위반", "fail", `${sp[0].mm} mm 부족 (허용 ${sp[0].limit})`] : ["통과", "pass", `부족 ${plan.target?.space_deficit_mm ?? 0} mm`]],
   ];
+  if (plan.constraints?.ipr_surfaces?.length) {   // IPR prescribed per contact (#57): only those contacts, only that much
+    const unp = by("ipr_unprescribed");
+    rules.push(["처방에 없는 IPR", "처방한 접촉면에만 처방한 양만큼", unp.length ? ["위반", "fail", surfacesKo(unp[0].surfaces).replace(/, /g, " · ")]
+      : ["통과", "pass", `처방 ${plan.constraints.ipr_surfaces.length}면`]]);
+  }
   for (const v of viol.filter((x) => x.type.startsWith("extraction")))
     rules.push([RULE_KO[v.type], "발치 처방과 계획이 맞는지", ["위반", "fail", v.type === "extraction_mismatch"
       ? `처방 ${fdiList(v.prescribed) || "없음"} · 뺀 치아 ${fdiList(v.removed) || "없음"}` : `닫지 못한 공간 ${v.mm} mm`]]);
@@ -2546,4 +2575,4 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
   } else { history.replaceState(null, "", "#start"); renderRail(); }   // the rail lights 「환자」 on the very first paint too
   } finally { document.documentElement.classList.remove("booting"); }   // the address's screen is on: show it (#15)
 })();
-window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView, cutKeyNow };   // test hook (scratch browser checks)
+window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView, cutKeyNow, readConstraints };   // test hook (scratch browser checks)
