@@ -1,0 +1,609 @@
+/* Intake and upload screen styles for cuAlign UI v2 */
+
+.screen-intake {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+/* Left Patient List Panel: 280px */
+.intake-panel-list {
+  width: var(--width-panel-list);
+  flex-shrink: 0;
+  height: 100%;
+  background: var(--color-surface-base);
+  border-right: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.intake-list-header {
+  padding: var(--space-16) var(--space-20);
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* New Patient Form */
+.intake-patient-form {
+  padding: var(--space-16) var(--space-20);
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  background: var(--color-surface-raised);
+}
+
+.intake-form-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.intake-input {
+  height: var(--btn-height-default);
+  padding: 0 var(--space-10);
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.intake-input:focus {
+  border-color: var(--color-accent);
+}
+
+.intake-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.intake-form-error {
+  font-size: 12px;
+  color: var(--color-danger);
+  line-height: 1.3;
+}
+
+.intake-submit-btn {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+/* Patient Items */
+.intake-patient-items {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.intake-patient-empty {
+  padding: var(--space-20);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.intake-patient-card {
+  width: 100%;
+  padding: var(--space-12) var(--space-14);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.intake-patient-card:hover {
+  background: var(--color-surface-raised);
+}
+
+.intake-patient-card-active {
+  background: var(--color-surface-raised);
+  border-color: var(--color-accent);
+}
+
+.intake-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.intake-card-alias {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.intake-card-id {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--color-accent-light);
+  background: var(--color-accent-bg);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+}
+
+.intake-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.intake-card-meta {
+  color: var(--color-text-secondary);
+}
+
+/* Main Section */
+.intake-main-panel {
+  flex-grow: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-28) var(--space-36);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-28);
+}
+
+.intake-empty-view {
+  padding: 60px 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.intake-empty-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.intake-empty-desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  max-width: 480px;
+}
+
+/* Patient Header */
+.intake-patient-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: var(--space-20);
+  border-bottom: 1px solid var(--color-border-subtle);
+  gap: var(--space-16);
+  flex-wrap: wrap;
+}
+
+.intake-patient-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.intake-patient-alias {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.intake-patient-meta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.intake-delete-patient-btn {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.intake-delete-patient-btn:hover {
+  background: var(--color-danger-bg);
+}
+
+/* Inline Confirmation Box (In-screen, browser confirm forbidden) */
+.intake-inline-confirm-box {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-xs);
+  color: var(--color-danger-light);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.intake-inline-confirm-text {
+  font-weight: 500;
+}
+
+.btn.small {
+  height: 28px;
+  padding: 0 var(--space-8);
+  font-size: 12px;
+}
+
+/* Scans Section */
+.intake-scans-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.intake-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.intake-section-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.intake-section-badge {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.intake-scans-empty {
+  padding: var(--space-20);
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.intake-scans-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.intake-scan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-12) var(--space-16);
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
+  gap: var(--space-16);
+}
+
+.intake-scan-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.intake-scan-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.intake-scan-id {
+  font-size: 14px;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-primary);
+}
+
+.intake-scan-meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.intake-scan-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-shrink: 0;
+}
+
+.intake-check-btn {
+  color: var(--color-text-primary);
+}
+
+.intake-check-btn:hover {
+  background: var(--color-surface-raised);
+}
+
+.intake-scan-del-btn {
+  color: var(--color-danger);
+}
+
+.intake-scan-del-btn:hover {
+  background: var(--color-danger-bg);
+}
+
+/* Upload Container */
+.upload-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  padding: var(--space-24);
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.upload-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.upload-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.upload-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Dropzone */
+.upload-dropzone {
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  padding: var(--space-36) var(--space-20);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  transition: all 0.2s ease;
+  outline: none;
+  color: var(--color-text-secondary);
+}
+
+.upload-dropzone:hover,
+.upload-dropzone:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--color-accent-bg);
+  color: var(--color-accent-light);
+}
+
+.upload-dropzone-dragover {
+  border-color: var(--color-accent) !important;
+  background: var(--color-accent-bg) !important;
+  color: var(--color-accent) !important;
+  transform: scale(0.995);
+}
+
+.upload-dropzone-primary-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.upload-dropzone-secondary-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.upload-dropzone-limit-text {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* Error Card (UploadErrors design) */
+.upload-error-card {
+  padding: var(--space-14) var(--space-16);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  color: var(--color-danger-light);
+}
+
+.upload-error-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.upload-error-title {
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.upload-error-message {
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.upload-error-guide {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border-top: 1px solid rgba(229, 32, 32, 0.3);
+  padding-top: var(--space-6);
+  margin-top: var(--space-2);
+}
+
+/* Summary Card */
+.upload-summary-card {
+  padding: var(--space-14) var(--space-16);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.upload-summary-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.upload-summary-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.upload-summary-size {
+  font-size: 12px;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+}
+
+.upload-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.upload-tooth-chip {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  padding: var(--space-2) var(--space-8);
+  background: var(--color-surface-base);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-primary);
+}
+
+.upload-tooth-chip-gum {
+  border-color: var(--color-accent-dim);
+  color: var(--color-accent-light);
+}
+
+/* Upload Action Button Row */
+.upload-btn-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.upload-submit-btn {
+  height: var(--btn-height-primary);
+  padding: 0 var(--space-24);
+  font-size: 15px;
+}
+
+.upload-reset-btn {
+  height: var(--btn-height-primary);
+}
+
+/* Universal <-> FDI Table */
+.upload-table-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  margin-top: var(--space-12);
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: var(--space-16);
+}
+
+.upload-table-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+
+.upload-table-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.upload-table-note {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.upload-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.upload-table th,
+.upload-table td {
+  padding: var(--space-8) var(--space-10);
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: left;
+}
+
+.upload-table th {
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+}
+
+.upload-table tr:hover {
+  background: var(--color-surface-raised);
+}
+
+.upload-tr-selected {
+  background: var(--color-accent-bg) !important;
+}
+
+.upload-cell-mono {
+  font-family: var(--font-family-mono);
+}
+
+.upload-cell-fdi {
+  color: var(--color-accent-light);
+  font-weight: 700;
+}
+
+.font-bold {
+  font-weight: 700;
+}

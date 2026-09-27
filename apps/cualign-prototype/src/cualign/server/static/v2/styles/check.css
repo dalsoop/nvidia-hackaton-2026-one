@@ -1,0 +1,299 @@
+/* Scan Input Check Screen Styles (J4 Contract) */
+
+.screen-check {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+/* Left Inspection Panel (Strictly 380px) */
+.check-panel {
+  width: var(--width-panel-work); /* 380px */
+  flex-shrink: 0;
+  height: 100%;
+  background: var(--color-surface-base);
+  border-right: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Header */
+.check-header {
+  padding: var(--space-20) var(--space-20) var(--space-14);
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  flex-shrink: 0;
+}
+
+.check-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.check-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1.3;
+}
+
+.check-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+/* Scrollable Body */
+.check-body {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-20);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.check-loading {
+  padding: var(--space-24) 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* Info / Alert Boxes */
+.check-box {
+  padding: var(--space-12) var(--space-14);
+  border-radius: var(--radius-xs);
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.check-box p {
+  margin: 0;
+}
+
+.check-box-warning {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning-light);
+}
+
+.check-box-warning b {
+  color: var(--color-warning);
+  font-size: 13px;
+}
+
+.check-box-notice {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+}
+
+.check-box-notice b {
+  color: var(--color-text-primary);
+}
+
+.check-box-danger {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger-light);
+}
+
+.check-box-danger b {
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.check-box-error {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger-light);
+  font-weight: 500;
+}
+
+.check-unsupported-list {
+  margin: 0;
+  padding-left: var(--space-16);
+  font-size: 12px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Summary DL */
+.check-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  row-gap: var(--space-8);
+  column-gap: var(--space-12);
+  font-size: 12.5px;
+  line-height: 1.45;
+  padding-bottom: var(--space-10);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.check-dt {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.check-dd {
+  margin: 0;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.check-dd-bad {
+  color: var(--color-danger-light);
+  font-weight: 700;
+}
+
+/* Section Title */
+.check-section-title {
+  margin: 0 0 var(--space-4) 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* FDI Tooth Width Table */
+.check-table-wrap {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+}
+
+.check-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.check-table th {
+  background: var(--color-surface-base);
+  color: var(--color-text-secondary);
+  padding: 6px var(--space-12);
+  text-align: left;
+  font-weight: 700;
+  border-bottom: 1px solid var(--color-border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.check-table td {
+  padding: 6px var(--space-12);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+}
+
+.check-table tr:last-child td {
+  border-bottom: none;
+}
+
+.check-td-tooth {
+  font-weight: 700;
+  color: var(--color-accent-light);
+}
+
+.check-td-width {
+  font-family: var(--font-family-mono);
+}
+
+/* Hint */
+.check-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+/* Footer (Bottom Actions) */
+.check-footer {
+  padding: var(--space-16) var(--space-20) var(--space-20);
+  border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  flex-shrink: 0;
+}
+
+/* Primary Button strictly 46px */
+.check-btn-primary {
+  width: 100%;
+  height: var(--btn-height-primary); /* 46px */
+  font-size: 14.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.check-btn-primary.disabled,
+.check-btn-primary:disabled {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Action Buttons inside body */
+.check-btn-mirror {
+  margin-top: var(--space-4);
+  width: 100%;
+  height: 32px;
+  font-size: 12px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning-light);
+}
+
+.check-btn-mirror:hover {
+  background: var(--color-surface-lock);
+}
+
+/* Delete Button */
+.check-btn-delete {
+  width: 100%;
+  height: var(--btn-height-default); /* 36px */
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger-light);
+}
+
+.check-btn-delete:hover {
+  background: var(--color-danger-bg);
+}
+
+/* Middle 3D Viewer Container */
+.check-viewer-container {
+  flex-grow: 1;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+  background: var(--color-bg);
+  overflow: hidden;
+}
