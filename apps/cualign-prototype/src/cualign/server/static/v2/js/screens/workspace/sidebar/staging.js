@@ -1,18 +1,19 @@
-// Staging table for workspace right sidebar (J8 contract)
+// Staging chart and panel for workspace right sidebar (S1 contract)
 
 import { clear, h } from '../../../ui/dom.js';
 import { fdiToUniversal, universalToFdi } from '../../../domain/teeth.js';
-import { T } from '../../../domain/vocab.js';
 import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
-import { planStageIndex, selectViewingPlan, violationCount } from './plan-state.js';
+import { buildStagingModel, STANDARD_FDI_TEETH, MOVE_TYPE_HEX } from '../../../domain/staging-model.js';
+import { planStageIndex, selectViewingPlan, planId } from './plan-state.js';
 
 export const STRATEGY_KO = SIDEBAR_VOCAB.staging.strategies;
 
+/**
+ * Return FDI columns present in plan or standard FDI arch teeth.
+ */
 export function getFdiColumnsForPlan(plan = null) {
-  const standardFdi = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27];
-
   if (!plan || !plan.stages || !plan.stages[0]) {
-    return standardFdi;
+    return [...STANDARD_FDI_TEETH];
   }
 
   const presentUniversal = new Set();
@@ -29,11 +30,9 @@ export function getFdiColumnsForPlan(plan = null) {
 
   const presentFdi = [...presentUniversal].map(u => universalToFdi(u)).filter(n => n !== null);
   if (presentFdi.length === 0) {
-    return standardFdi;
+    return [...STANDARD_FDI_TEETH];
   }
 
-  // Dental order sorting:
-  // Q1 (18..11 descending) -> Q2 (21..28 ascending)
   return presentFdi.sort((a, b) => {
     const qA = Math.floor(a / 10);
     const qB = Math.floor(b / 10);
@@ -43,6 +42,9 @@ export function getFdiColumnsForPlan(plan = null) {
   });
 }
 
+/**
+ * Legacy helper for tooth movement info (backward compatibility).
+ */
 export function getToothMovementInfo(plan, stageIdx, uTooth) {
   if (!plan || stageIdx <= 0) {
     return { kind: 'idle', linearMm: 0, rotDeg: 0 };
@@ -88,6 +90,9 @@ export function getToothMovementInfo(plan, stageIdx, uTooth) {
   return { kind: 'idle', linearMm, rotDeg };
 }
 
+/**
+ * Check if tooth has collision in a stage.
+ */
 export function hasToothCollision(plan, stageIdx, uTooth) {
   if (!plan || !Array.isArray(plan.violations) || stageIdx <= 0) {
     return false;
@@ -102,27 +107,18 @@ export function hasToothCollision(plan, stageIdx, uTooth) {
 }
 
 /**
- * Render the staging table panel.
+ * Render the design canvas staging chart panel.
  *
  * @param {HTMLElement} container - Target container
  * @param {Object} ctx - App context
  */
 export function renderStaging(container, ctx) {
-  // Save previous scroll positions if table already rendered
-  const prevWrap = container.querySelector('.staging-table-wrap');
-  const prevScrollTop = prevWrap ? prevWrap.scrollTop : null;
-  const prevScrollLeft = prevWrap ? prevWrap.scrollLeft : null;
-
   clear(container);
 
   const state = ctx.store.get();
   const currentPlan = selectViewingPlan(state);
 
   const panelRoot = h('div', { class: 'sidebar-staging-panel' });
-
-  // 1. Plan summary bar
-  const summaryBar = renderPlanSummaryBar(currentPlan);
-  panelRoot.appendChild(summaryBar);
 
   if (!currentPlan || !currentPlan.stages || currentPlan.stages.length === 0) {
     const emptyNotice = h('div', { class: 'sidebar-empty-state' }, [
@@ -133,163 +129,206 @@ export function renderStaging(container, ctx) {
     return;
   }
 
-  // 2. Staging Table (FDI columns x Stage rows)
-  const fdiColumns = getFdiColumnsForPlan(currentPlan);
-  const nStages = currentPlan.stages.length;
-  const currentStage = planStageIndex(state);
+  const model = buildStagingModel(currentPlan);
+  const currentStage = Math.max(0, Math.min(model.nStages, planStageIndex(state)));
 
-  const tableWrap = h('div', { class: 'staging-table-wrap' });
-  const tableEl = h('table', { class: 'staging-table' });
+  // Resolve plan title (e.g. "계획 3" or plan_id prefix)
+  const plans = state.plans || [];
+  const planIdx = plans.findIndex(p => planId(p) === planId(currentPlan));
+  const planTitle = planIdx !== -1 ? `계획 ${planIdx + 1}` : (currentPlan.plan_id ? `계획 ${currentPlan.plan_id.slice(0, 8)}` : '계획');
 
-  // Table Header (FDI teeth)
-  const theadEl = h('thead', null, [
-    h('tr', null, [
-      h('th', { class: 'staging-th-stage' }, SIDEBAR_VOCAB.staging.stageCol),
-      ...fdiColumns.map(fdi => h('th', {
-        class: 'staging-th-tooth',
-        title: SIDEBAR_VOCAB.staging.toothFdiTitle(fdi)
-      }, String(fdi)))
-    ])
-  ]);
-  tableEl.appendChild(theadEl);
+  // 1. Summary Card (요약 줄 + 이동 내역 한 줄)
+  const summarySec = h('div', { class: 'staging-summary-sec' });
+  const summaryRow = h('div', { class: 'staging-summary-row' });
 
-  // Table Body
-  const tbodyEl = h('tbody', null);
+  summaryRow.appendChild(h('b', null, planTitle));
 
-  // Stage rows: 0 (Initial) through nStages
+  if (model.summary?.strategy) {
+    summaryRow.appendChild(h('span', null, [
+      '전략 ',
+      h('b', null, model.summary.strategy)
+    ]));
+  }
+
+  summaryRow.appendChild(h('span', null, [
+    '총 ',
+    h('b', null, model.summary?.totalStagesText || `${model.nStages}장`)
+  ]));
+
+  if (model.summary?.maxMovePerStageText) {
+    summaryRow.appendChild(h('span', null, [
+      '장당 ',
+      h('b', null, model.summary.maxMovePerStageText)
+    ]));
+  }
+
+  if (model.summary?.crowdingSecuredText) {
+    summaryRow.appendChild(h('span', null, [
+      '총생 ',
+      h('b', null, `${model.summary.crowdingMm} mm`),
+      ' → 확보 ',
+      h('b', null, `${model.summary.securedMm} mm`)
+    ]));
+  }
+
+  summarySec.appendChild(summaryRow);
+
+  if (model.moveHistoryText) {
+    const historyRow = h('div', { class: 'staging-history-row' }, model.moveHistoryText);
+    summarySec.appendChild(historyRow);
+  }
+
+  panelRoot.appendChild(summarySec);
+
+  // 2. Chart Body
+  const chartBody = h('div', { class: 'staging-chart-body' });
+  const chartCanvas = h('div', { class: 'staging-chart-canvas' });
+
+  const { rowHeight, topOffset, leftOffset, colWidth, nStages, colLabels } = model;
+
+  // A. FDI Column Labels
+  colLabels.forEach((fdi, idx) => {
+    const colLeft = leftOffset + idx * colWidth;
+    const labelEl = h('div', {
+      class: 'staging-col-label',
+      style: `left: ${colLeft}px`,
+      title: SIDEBAR_VOCAB.staging.toothFdiTitle(fdi)
+    }, String(fdi));
+    chartCanvas.appendChild(labelEl);
+  });
+
+  // B. Horizontal Grid Lines (0..nStages)
   for (let s = 0; s <= nStages; s++) {
-    const isCurrent = s === currentStage;
-    const stageLabel = s === 0 ? SIDEBAR_VOCAB.staging.initialStage : `${s}`;
+    const lineY = topOffset + s * rowHeight;
+    const gridLine = h('div', {
+      class: 'staging-grid-line',
+      style: `top: ${lineY}px`
+    });
+    chartCanvas.appendChild(gridLine);
+  }
 
-    const trEl = h('tr', {
-      class: `staging-row ${isCurrent ? 'current-stage' : ''}`,
-      dataset: { stage: s },
+  // C. Current Stage Highlight Band & Line
+  const currentBandTop = topOffset + currentStage * rowHeight - rowHeight / 2;
+  const currentBand = h('div', {
+    class: 'staging-current-band',
+    style: `top: ${currentBandTop}px; height: ${rowHeight}px`
+  });
+  chartCanvas.appendChild(currentBand);
+
+  const currentLineTop = topOffset + currentStage * rowHeight - 1;
+  const currentLine = h('div', {
+    class: 'staging-current-line',
+    style: `top: ${currentLineTop}px`
+  });
+  chartCanvas.appendChild(currentLine);
+
+  // D. Stage Row Labels (0..nStages) and Interactive Click Areas
+  for (let s = 0; s <= nStages; s++) {
+    const labelTop = topOffset + s * rowHeight - 7;
+    const isCurrent = s === currentStage;
+
+    if (!isCurrent) {
+      const rowLabel = h('div', {
+        class: 'staging-row-label',
+        style: `top: ${labelTop}px`,
+        onClick: () => {
+          ctx.store.set({ stageIndex: s });
+        }
+      }, String(s));
+      chartCanvas.appendChild(rowLabel);
+    }
+
+    // Interactive hit box for clicking row to change stage
+    const rowHitTop = topOffset + s * rowHeight - rowHeight / 2;
+    const rowHit = h('div', {
+      class: 'staging-interactive-row',
+      style: `top: ${rowHitTop}px; height: ${rowHeight}px`,
       onClick: () => {
         ctx.store.set({ stageIndex: s });
       }
-    }, [
-      h('td', { class: 'staging-td-stage' }, stageLabel)
-    ]);
-
-    for (const fdi of fdiColumns) {
-      const u = fdiToUniversal(fdi);
-      if (u === null) {
-        trEl.appendChild(h('td', { class: 'staging-cell staging-cell-empty' }, '—'));
-        continue;
-      }
-
-      if (s === 0) {
-        trEl.appendChild(h('td', { class: 'staging-cell staging-cell-initial' }, [
-          h('span', { class: 'cell-dot cell-idle' })
-        ]));
-        continue;
-      }
-
-      const move = getToothMovementInfo(currentPlan, s, u);
-      const isCollision = hasToothCollision(currentPlan, s, u);
-
-      const cellContent = [];
-
-      // Movement indicator
-      if (move.kind === 'locked') {
-        cellContent.push(h('span', { class: 'cell-locked-icon', title: SIDEBAR_VOCAB.staging.lockedTitle }, '🔒'));
-      } else if (move.kind === 'extracted') {
-        cellContent.push(h('span', { class: 'cell-extracted-mark', title: SIDEBAR_VOCAB.staging.extractedTitle }, '✕'));
-      } else {
-        const moveCls = `cell-move-${move.kind}`;
-        const titleText = move.rotDeg > 0.1
-          ? SIDEBAR_VOCAB.staging.rotTitle(move.rotDeg)
-          : SIDEBAR_VOCAB.staging.transTitle(move.linearMm);
-        cellContent.push(h('span', { class: `cell-dot ${moveCls}`, title: titleText }));
-      }
-
-      // Collision ring indicator
-      if (isCollision) {
-        cellContent.push(h('span', {
-          class: 'collision-ring',
-          title: SIDEBAR_VOCAB.staging.collisionTitle(s, fdi)
-        }));
-      }
-
-      const tdEl = h('td', {
-        class: `staging-cell ${isCollision ? 'has-collision' : ''} ${move.kind !== 'idle' ? 'is-active-move' : ''}`
-      }, cellContent);
-
-      trEl.appendChild(tdEl);
-    }
-
-    tbodyEl.appendChild(trEl);
+    });
+    chartCanvas.appendChild(rowHit);
   }
 
-  tableEl.appendChild(tbodyEl);
-  tableWrap.appendChild(tableEl);
-  panelRoot.appendChild(tableWrap);
+  // E. Current Stage Green Badge
+  const currentBadgeTop = topOffset + currentStage * rowHeight - 7.5;
+  const currentBadge = h('div', {
+    class: 'staging-current-badge',
+    style: `top: ${currentBadgeTop}px`,
+    title: `현재 ${currentStage}단계`,
+    onClick: () => {
+      ctx.store.set({ stageIndex: currentStage });
+    }
+  }, String(currentStage));
+  chartCanvas.appendChild(currentBadge);
 
-  // Table legend at bottom
-  const legendEl = h('div', { class: 'staging-legend' }, [
-    h('div', { class: 'legend-item' }, [
-      h('span', { class: 'cell-dot cell-move-trans' }),
-      h('span', null, SIDEBAR_VOCAB.staging.legendTrans)
+  // F. Vertical Movement Bars
+  for (const bar of model.bars) {
+    const barEl = h('div', {
+      class: 'staging-bar',
+      style: `left: ${bar.x}px; top: ${bar.y}px; width: ${bar.width}px; height: ${bar.height}px; background: ${bar.color}`,
+      title: `${bar.fdi}번 치아 (${bar.moveType}): ${bar.startStage}–${bar.endStage}단계`
+    });
+    chartCanvas.appendChild(barEl);
+  }
+
+  // G. Terminal Dots
+  for (const dot of model.dots) {
+    const dotEl = h('div', {
+      class: 'staging-dot',
+      style: `left: ${dot.x}px; top: ${dot.y}px; width: ${dot.size}px; height: ${dot.size}px`
+    });
+    chartCanvas.appendChild(dotEl);
+  }
+
+  // H. Collision Links (Red line connecting adjacent teeth)
+  for (const link of model.links) {
+    const linkEl = h('div', {
+      class: 'staging-link',
+      style: `left: ${link.x}px; top: ${link.y}px; width: ${link.width}px; height: ${link.height}px`,
+      title: `${link.pair.join('·')} 치아 충돌 (${link.stage}단계)`
+    });
+    chartCanvas.appendChild(linkEl);
+  }
+
+  // I. Collision Rings (Red ring on collision teeth)
+  for (const ring of model.rings) {
+    const ringEl = h('div', {
+      class: 'staging-ring',
+      style: `left: ${ring.x}px; top: ${ring.y}px; width: ${ring.size}px; height: ${ring.size}px`,
+      title: `${ring.fdi}번 충돌 (${ring.stage}단계)`
+    });
+    chartCanvas.appendChild(ringEl);
+  }
+
+  chartBody.appendChild(chartCanvas);
+
+  // 3. Legend at Bottom
+  const legend = h('div', { class: 'staging-legend' }, [
+    h('span', { class: 'staging-legend-item' }, [
+      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.complex}` }),
+      SIDEBAR_VOCAB.staging.legendComplex
     ]),
-    h('div', { class: 'legend-item' }, [
-      h('span', { class: 'cell-dot cell-move-rot' }),
-      h('span', null, SIDEBAR_VOCAB.staging.legendRot)
+    h('span', { class: 'staging-legend-item' }, [
+      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.buccolingual}` }),
+      SIDEBAR_VOCAB.staging.legendBuccolingual
     ]),
-    h('div', { class: 'legend-item' }, [
-      h('span', { class: 'cell-dot cell-move-vert' }),
-      h('span', null, SIDEBAR_VOCAB.staging.legendVert)
+    h('span', { class: 'staging-legend-item' }, [
+      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.extrusion}` }),
+      SIDEBAR_VOCAB.staging.legendExtrusion
     ]),
-    h('div', { class: 'legend-item' }, [
-      h('span', { class: 'collision-ring legend-ring' }),
-      h('span', null, SIDEBAR_VOCAB.staging.legendCollision)
+    h('span', { class: 'staging-legend-item' }, [
+      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.rotation}` }),
+      SIDEBAR_VOCAB.staging.legendRot
     ]),
-    h('div', { class: 'legend-item' }, [
-      h('span', { class: 'cell-locked-icon' }, '🔒'),
-      h('span', null, SIDEBAR_VOCAB.staging.legendLocked)
-    ]),
-    h('div', { class: 'legend-item' }, [
-      h('span', { class: 'cell-extracted-mark' }, '✕'),
-      h('span', null, SIDEBAR_VOCAB.staging.legendExtracted)
+    h('span', { class: 'staging-legend-item' }, [
+      h('span', { class: 'staging-legend-collision' }),
+      SIDEBAR_VOCAB.staging.legendCollision
     ])
   ]);
-  panelRoot.appendChild(legendEl);
+
+  chartBody.appendChild(legend);
+  panelRoot.appendChild(chartBody);
 
   container.appendChild(panelRoot);
-
-  // Restore scroll position
-  if (prevScrollTop != null && prevWrap) {
-    const newWrap = container.querySelector('.staging-table-wrap');
-    if (newWrap) {
-      newWrap.scrollTop = prevScrollTop;
-      newWrap.scrollLeft = prevScrollLeft;
-    }
-  }
-}
-
-/**
- * Render the top summary row of the plan.
- */
-function renderPlanSummaryBar(plan) {
-  const barEl = h('div', { class: 'staging-summary-bar' });
-
-  if (!plan) {
-    barEl.appendChild(h('span', { class: 'summary-label' }, SIDEBAR_VOCAB.staging.noPlanSummary));
-    return barEl;
-  }
-
-  const stratName = STRATEGY_KO[plan.strategy] || plan.strategy || SIDEBAR_VOCAB.staging.defaultPlanLabel;
-  const nStages = plan.stages?.length ?? plan.info?.n_stages ?? 0;
-  const months = plan.info?.months != null ? plan.info.months : (nStages ? (nStages / 1.5).toFixed(1) : 0);
-  const violationsCount = violationCount(plan);
-
-  barEl.appendChild(h('span', { class: 'summary-pill summary-pill-strategy' }, stratName));
-  barEl.appendChild(h('span', { class: 'summary-pill' }, T.stagesCount(nStages)));
-  barEl.appendChild(h('span', { class: 'summary-pill' }, T.monthsCount(months)));
-
-  const violPill = h('span', {
-    class: `summary-pill ${violationsCount > 0 ? 'summary-pill-danger' : 'summary-pill-success'}`
-  }, violationsCount > 0 ? T.violations(violationsCount) : T.workspace.passed);
-  barEl.appendChild(violPill);
-
-  return barEl;
 }
