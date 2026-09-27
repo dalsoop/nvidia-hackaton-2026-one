@@ -63,6 +63,18 @@ export function mount(root, params, ctx) {
     const kindCounts = countByKind(allCases);
     const selectedCase = getSelectedCase();
 
+    if (selectedCase && ctx.store) {
+      const state = ctx.store.get();
+      if (state.caseDisplayId !== selectedCase.displayId || state.currentScan !== selectedCase.scan) {
+        ctx.store.set({
+          caseId: selectedCase.case_id,
+          caseDisplayId: selectedCase.displayId,
+          caseTitle: selectedCase.displayTitle,
+          currentScan: selectedCase.scan
+        });
+      }
+    }
+
     if (selectedCase) {
       screenEl.classList.remove('cases-detail-closed');
     } else {
@@ -118,7 +130,7 @@ export function mount(root, params, ctx) {
       onClose: () => {
         selectedCaseId = null;
         if (ctx.store) {
-          ctx.store.set({ caseId: null });
+          ctx.store.set({ caseId: null, caseDisplayId: null, caseTitle: null, currentScan: null });
         }
         if (ctx.navigate) {
           ctx.navigate('#/cases');

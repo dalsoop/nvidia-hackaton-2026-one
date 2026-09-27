@@ -10,10 +10,15 @@ import {
 import {
   caseStatus,
   preferredPlan,
-  canApprove
+  canApprove,
+  isPatientCase,
+  isScanConfirmed,
+  parsePatientCaseId,
+  sampleCaseNumber
 } from '../../src/cualign/server/static/v2/js/domain/status.js';
 
 import { T } from '../../src/cualign/server/static/v2/js/domain/vocab.js';
+import { matchRoutePattern } from '../../src/cualign/server/static/v2/js/shell/router.js';
 
 test('Teeth numbering: UPPER_UNIVERSAL contains 16 maxillary teeth', () => {
   assert.equal(UPPER_UNIVERSAL.length, 16);
@@ -112,7 +117,7 @@ test('Status: canApprove conditions', () => {
     plan_id: 'p1',
     violations: 0,
     review: { status: 'passed' },
-    is_stale: false
+    input_stale: false
   };
   assert.equal(canApprove(validPlan), true);
 
@@ -120,17 +125,40 @@ test('Status: canApprove conditions', () => {
     plan_id: 'p2',
     violations: 0,
     review: { status: 'skipped' },
-    is_stale: false
+    input_stale: false
   };
   assert.equal(canApprove(skippedReviewPlan), true);
 
   assert.equal(canApprove({ ...validPlan, violations: 1 }), false);
   assert.equal(canApprove({ ...validPlan, review: { status: 'failed' } }), false);
   assert.equal(canApprove({ ...validPlan, review: { status: 'pending' } }), false);
-  assert.equal(canApprove({ ...validPlan, is_stale: true }), false);
   assert.equal(canApprove({ ...validPlan, input_stale: true }), false);
-  assert.equal(canApprove({ ...validPlan, stale_scan: true }), false);
   assert.equal(canApprove(null), false);
+});
+
+test('Case identity: patient IDs, confirmation, and sample display numbers', () => {
+  assert.deepEqual(parsePatientCaseId('P42-S7'), { pid: 'P42', sid: 'S7' });
+  assert.equal(parsePatientCaseId('sample-000131'), null);
+  assert.equal(isPatientCase('P42-S7'), true);
+  assert.equal(isPatientCase('custom-case', [{ scans: [{ case_id: 'custom-case' }] }]), true);
+  assert.equal(isPatientCase('sample-000131'), false);
+
+  assert.equal(isScanConfirmed({ revision: 2, confirmed_revision: 2 }), true);
+  assert.equal(isScanConfirmed({ revision: 2, confirmed_revision: 1 }), false);
+  assert.equal(isScanConfirmed({ confirmed: true }), true);
+
+  assert.equal(sampleCaseNumber({ case_id: 'sample-000131', title: 'Moderate' }), '000131');
+  assert.equal(sampleCaseNumber({ case_id: 'x', sample_number: 'A-17' }), 'A-17');
+});
+
+test('Router: new patient and case detail routes preserve parameters', () => {
+  const routes = [
+    { pattern: '#/cases' },
+    { pattern: '#/cases/:caseId' },
+    { pattern: '#/patients/:pid' }
+  ];
+  assert.deepEqual(matchRoutePattern(routes, '#/patients/new').params, { pid: 'new' });
+  assert.deepEqual(matchRoutePattern(routes, '#/cases/sample-42').params, { caseId: 'sample-42' });
 });
 
 test('Vocab: formatting functions produce expected Korean text', () => {

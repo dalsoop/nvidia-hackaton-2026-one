@@ -6,10 +6,8 @@ import { UPPER_UNIVERSAL, universalToFdi } from '../../domain/teeth.js';
 import { ApiError } from '../../api/endpoints.js';
 import {
   TOOTH_NAMES,
-  INTAKE_ERROR_DETAILS,
   INTAKE_TEXTS,
-  UPLOAD_MESSAGES,
-  matchErrorCode
+  UPLOAD_MESSAGES
 } from '../../domain/vocab/intake.js';
 
 export const MAX_FILE_BYTES = 60 * 1024 * 1024;       // 60 MB: per-file STL limit
@@ -194,20 +192,6 @@ export function formatBytes(bytes) {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-export function resolveErrorCode(code, message) {
-  if (code && code !== UPLOAD_ERROR_CODES.SERVER_ERROR) return code;
-  if (!message) return UPLOAD_ERROR_CODES.SERVER_ERROR;
-  const matched = matchErrorCode(message);
-  if (matched && UPLOAD_ERROR_CODES[matched]) {
-    return UPLOAD_ERROR_CODES[matched];
-  }
-  return UPLOAD_ERROR_CODES.SERVER_ERROR;
-}
-
-export function getErrorDetails(code) {
-  return INTAKE_ERROR_DETAILS[code] || INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.SERVER_ERROR];
-}
-
 export function renderUpload(container, {
   patient,
   ctx,
@@ -320,22 +304,13 @@ export function renderUpload(container, {
 
     // If there is a validation error or server error, render UploadErrors view
     const errorMsg = serverError ? serverError.message : (currentValidation && !currentValidation.valid ? currentValidation.error : null);
-    const rawCode = serverError ? UPLOAD_ERROR_CODES.SERVER_ERROR : (currentValidation && !currentValidation.valid ? currentValidation.code : null);
-    const errorCode = resolveErrorCode(rawCode, errorMsg);
-
     if (errorMsg) {
-      const details = getErrorDetails(errorCode);
       const offending = currentValidation?.offendingFiles || [];
       const errorCard = h('div', { class: 'upload-error-card', role: 'alert' },
-        h('div', { class: 'upload-error-header' },
-          h('span', { class: 'badge badge-violation upload-error-badge' }, details.badge),
-          h('strong', { class: 'upload-error-title' }, details.title)
-        ),
         h('div', { class: 'upload-error-message' }, errorMsg),
         offending.length > 0 ? h('div', { class: 'upload-error-chips' },
           ...offending.map((f) => h('span', { class: 'upload-error-file-chip' }, f))
-        ) : null,
-        h('div', { class: 'upload-error-guide' }, details.guide)
+        ) : null
       );
       statusContainerEl.appendChild(errorCard);
     }

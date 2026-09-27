@@ -57,10 +57,50 @@ export function canApprove(plan) {
   if (revStatus !== 'passed' && revStatus !== 'skipped') {
     return false;
   }
-  if (plan.input_stale || plan.is_stale || plan.stale_scan || plan.stale) {
+  if (plan.input_stale) {
     return false;
   }
   return true;
+}
+
+const PATIENT_CASE_RE = /^(P\d+)-(S\d+)$/;
+
+export function parsePatientCaseId(caseId) {
+  const match = String(caseId || '').match(PATIENT_CASE_RE);
+  return match ? { pid: match[1], sid: match[2] } : null;
+}
+
+export function isPatientCase(caseId, patients = []) {
+  if (parsePatientCaseId(caseId)) {
+    return true;
+  }
+  return patients.some((patient) =>
+    (patient?.scans || []).some((scan) => scan?.case_id === caseId)
+  );
+}
+
+export function isScanConfirmed(scan) {
+  if (!scan) {
+    return false;
+  }
+  if (typeof scan.confirmed === 'boolean') {
+    return scan.confirmed;
+  }
+  return scan.confirmed_revision !== null &&
+    scan.confirmed_revision !== undefined &&
+    scan.confirmed_revision === (scan.revision ?? 1);
+}
+
+export function sampleCaseNumber(value) {
+  if (value && typeof value === 'object') {
+    const explicit = value.sample_number ?? value.number;
+    if (explicit !== null && explicit !== undefined && String(explicit).trim()) {
+      return String(explicit).trim();
+    }
+    value = value.case_id;
+  }
+  const match = String(value || '').match(/(\d+)(?!.*\d)/);
+  return match ? match[1] : String(value || '');
 }
 
 export function caseStatus({ scan = null, plans = [] } = {}) {

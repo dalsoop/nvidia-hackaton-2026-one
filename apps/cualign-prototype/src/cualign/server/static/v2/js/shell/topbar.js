@@ -2,6 +2,7 @@
 
 import { clear, h } from '../ui/dom.js';
 import { T } from '../domain/vocab.js';
+import { isPatientCase, sampleCaseNumber } from '../domain/status.js';
 
 export function renderTopbar(el, ctx = {}) {
   clear(el);
@@ -17,16 +18,19 @@ export function renderTopbar(el, ctx = {}) {
   const state = ctx.store ? ctx.store.get() : {};
 
   if (state.caseId) {
+    const fallbackLabel = isPatientCase(state.caseId, state.patients)
+      ? state.caseId
+      : sampleCaseNumber(state.caseId);
     const caseBtn = h('a', {
       class: 'topbar-case-btn',
       href: `#/workspace/${encodeURIComponent(state.caseId)}`
-    }, state.caseId);
+    }, state.caseDisplayId || state.caseTitle || fallbackLabel);
     actions.push(caseBtn);
   }
 
   const newPatientBtn = h('a', {
     class: 'btn',
-    href: '#/patients'
+    href: '#/patients/new'
   }, T.topbar.newPatient);
   actions.push(newPatientBtn);
 

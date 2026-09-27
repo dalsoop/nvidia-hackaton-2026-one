@@ -4,13 +4,13 @@ import { createStore } from './state/store.js';
 import * as api from './api/endpoints.js';
 import { renderTopbar } from './shell/topbar.js';
 import { renderRail } from './shell/rail.js';
+import { matchRoutePattern } from './shell/router.js';
+import { isPatientCase, isScanConfirmed } from './domain/status.js';
 
 import * as casesScreen from './screens/cases/index.js';
 import * as patientScreen from './screens/intake/patient.js';
 import * as checkScreen from './screens/intake/check.js';
 import * as workspaceScreen from './screens/workspace/index.js';
-
-const PATIENT_CASE_RE = /^P\d+-S\d+$/;
 
 export const ROUTES = [
   { pattern: '#/cases', screen: casesScreen, nav: { active: 'cases', kind: 'none' } },
@@ -25,42 +25,13 @@ function resolveKind(navConfig, caseId) {
     return navConfig.kind;
   }
   if (caseId) {
-    return PATIENT_CASE_RE.test(caseId) ? 'patient' : 'sample';
+    return isPatientCase(caseId) ? 'patient' : 'sample';
   }
   return 'none';
 }
 
-function matchRoute(hash) {
-  const normalized = hash && hash.startsWith('#/') ? hash : '#/cases';
-  const pathParts = normalized.split('/');
-
-  for (const route of ROUTES) {
-    const routeParts = route.pattern.split('/');
-    if (pathParts.length !== routeParts.length) {
-      continue;
-    }
-    const params = {};
-    let matched = true;
-
-    for (let i = 0; i < routeParts.length; i++) {
-      if (routeParts[i].startsWith(':')) {
-        const paramName = routeParts[i].slice(1);
-        params[paramName] = decodeURIComponent(pathParts[i]);
-      } else if (routeParts[i] !== pathParts[i]) {
-        matched = false;
-        break;
-      }
-    }
-
-    if (matched) {
-      return { route, params };
-    }
-  }
-
-  return {
-    route: ROUTES[0],
-    params: {}
-  };
+export function matchRoute(hash) {
+  return matchRoutePattern(ROUTES, hash);
 }
 
 export function initApp() {
@@ -86,14 +57,16 @@ export function initApp() {
   function renderShell() {
     const state = store.get();
     const caseId = currentParams.caseId || state.caseId;
-    const kind = resolveKind(currentNavConfig, caseId);
+    const kind = currentNavConfig.kind || (caseId
+      ? (isPatientCase(caseId, state.patients) ? 'patient' : 'sample')
+      : resolveKind(currentNavConfig, caseId));
 
     renderTopbar(topbarEl, ctx);
     renderRail(railEl, {
       active: currentNavConfig.active || 'cases',
       kind,
-      confirmed: Boolean(state.confirmed),
-      stage: state.stage || 'none',
+      confirmed: isScanConfirmed(state.currentScan),
+      stage: state.railStage || 'none',
       caseId
     });
   }
@@ -112,7 +85,19 @@ export function initApp() {
     currentParams = params;
 
     if (params.caseId && params.caseId !== store.get().caseId) {
-      store.set({ caseId: params.caseId });
+      store.set({
+        caseId: params.caseId,
+        caseDisplayId: null,
+        caseTitle: null,
+        currentScan: null
+      });
+    } else if (!params.caseId && (route.nav.active === 'intake' || route.nav.active === 'cases')) {
+      store.set({
+        caseId: null,
+        caseDisplayId: null,
+        caseTitle: null,
+        currentScan: null
+      });
     } else {
       renderShell();
     }

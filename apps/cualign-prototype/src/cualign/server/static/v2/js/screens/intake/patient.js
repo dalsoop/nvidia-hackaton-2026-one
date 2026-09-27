@@ -11,13 +11,17 @@ function fmtDate(iso) {
   return String(iso).slice(0, 16).replace('T', ' ');
 }
 
+export function isNewPatientRoute(pid) {
+  return pid === 'new';
+}
+
 export function mount(root, params, ctx) {
   clear(root);
 
   let isMounted = true;
   let allPatients = [];
   let currentPatient = null;
-  let selectedPid = params?.pid || null;
+  let selectedPid = isNewPatientRoute(params?.pid) ? null : (params?.pid || null);
   let isDeletingPatient = false;
   let deletingScanId = null;
   let patientError = null;
@@ -166,8 +170,9 @@ export function mount(root, params, ctx) {
 
     if (!currentPatient) {
       const noPatientEl = h('div', { class: 'intake-empty-view' },
-        h('h2', { class: 'intake-empty-title' }, INTAKE_TEXTS.emptySelectionTitle),
-        h('p', { class: 'intake-empty-desc' }, INTAKE_TEXTS.emptySelectionDesc)
+        allPatients.length === 0
+          ? h('p', { class: 'intake-empty-title' }, INTAKE_TEXTS.noPatients)
+          : null
       );
       mainPanelEl.appendChild(noPatientEl);
       return;
@@ -411,7 +416,7 @@ export function mount(root, params, ctx) {
       const targetPid = preferredPid || selectedPid;
       if (targetPid) {
         await loadCurrentPatient(targetPid);
-      } else if (allPatients.length > 0) {
+      } else if (allPatients.length > 0 && !isNewPatientRoute(params?.pid)) {
         selectedPid = allPatients[0].patient_id;
         if (ctx.navigate) {
           ctx.navigate(`#/patients/${encodeURIComponent(selectedPid)}`);
@@ -451,7 +456,12 @@ export function mount(root, params, ctx) {
     }
   }
 
-  loadPatientsData(params?.pid);
+  if (isNewPatientRoute(params?.pid)) {
+    renderListPanel();
+    renderMainPanel();
+  } else {
+    loadPatientsData(params?.pid);
+  }
 
   return () => {
     isMounted = false;

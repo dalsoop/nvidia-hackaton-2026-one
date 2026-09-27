@@ -15,11 +15,12 @@ async function request(url, options = {}) {
   try {
     res = await fetch(url, options);
   } catch (err) {
-    throw new ApiError(0, err.message || T.errors.network);
+    if (err?.name === 'AbortError') throw err;
+    throw new ApiError(0, T.errors.network);
   }
 
   if (!res.ok) {
-    let message = res.statusText || T.errors.requestFailed;
+    let message = T.errors.requestFailed;
     const text = await res.text();
     if (text) {
       try {
@@ -175,11 +176,12 @@ export async function chatStream(body, signal = null) {
       signal
     });
   } catch (err) {
-    throw new ApiError(0, err.message || T.errors.streamFailed);
+    if (err?.name === 'AbortError') throw err;
+    throw new ApiError(0, T.errors.streamFailed);
   }
 
   if (!res.ok) {
-    let message = res.statusText || T.errors.streamFailed;
+    let message = T.errors.streamFailed;
     const text = await res.text();
     if (text) {
       try {

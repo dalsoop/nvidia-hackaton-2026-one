@@ -8,15 +8,19 @@ import {
   scanFileName,
   validateScanFiles,
   formatBytes,
-  resolveErrorCode,
-  getErrorDetails,
   TOOTH_NAMES
 } from '../../src/cualign/server/static/v2/js/screens/intake/upload.js';
 import {
   TOOTH_NAMES as VOCAB_TOOTH_NAMES,
-  INTAKE_ERROR_DETAILS,
   INTAKE_TEXTS
 } from '../../src/cualign/server/static/v2/js/domain/vocab/intake.js';
+import { isNewPatientRoute } from '../../src/cualign/server/static/v2/js/screens/intake/patient.js';
+
+test('Patient route: new opens a local form state', () => {
+  assert.equal(isNewPatientRoute('new'), true);
+  assert.equal(isNewPatientRoute('P42'), false);
+  assert.equal(isNewPatientRoute(null), false);
+});
 
 test('Scan file name parser: Universal, gingiva, lower, and other files', () => {
   // Maxillary upper teeth (1..16)
@@ -198,47 +202,6 @@ test('Upload constants and formatBytes helper', () => {
   assert.equal(formatBytes(50 * 1024 * 1024), '50.0 MB');
 });
 
-test('Upload error details and server error code resolution', () => {
-  // 1. Lower arch
-  const lowerDetails = getErrorDetails(UPLOAD_ERROR_CODES.LOWER_ARCH);
-  assert.equal(lowerDetails.badge, '하악 불가');
-  assert.equal(lowerDetails.title, '하악 치아 번호 감지');
-  assert.match(lowerDetails.guide, /상악\(Universal 1~16\) 스캔 계획만 지원/);
-
-  // 2. Duplicate tooth
-  const dupDetails = getErrorDetails(UPLOAD_ERROR_CODES.DUPLICATE_TOOTH);
-  assert.equal(dupDetails.badge, '중복 파일');
-  assert.equal(dupDetails.title, '중복 치아 번호 감지');
-
-  // 3. Size exceeded
-  const sizeDetails = getErrorDetails(UPLOAD_ERROR_CODES.SIZE_EXCEEDED);
-  assert.equal(sizeDetails.badge, '용량 초과');
-  assert.equal(sizeDetails.title, '파일 크기 한도 초과');
-
-  // 4. Monolithic scan
-  const monoDetails = getErrorDetails(UPLOAD_ERROR_CODES.MONOLITHIC_SCAN);
-  assert.equal(monoDetails.badge, '미분리 스캔');
-  assert.equal(monoDetails.title, '한 덩어리 악궁 스캔 감지');
-
-  // 5. No teeth
-  const noTeethDetails = getErrorDetails(UPLOAD_ERROR_CODES.NO_TEETH);
-  assert.equal(noTeethDetails.badge, '치아 없음');
-  assert.equal(noTeethDetails.title, '상악 치아 파일 누락');
-
-  // Server error fallback
-  const serverDetails = getErrorDetails(UPLOAD_ERROR_CODES.SERVER_ERROR);
-  assert.equal(serverDetails.badge, '서버 오류');
-  assert.equal(serverDetails.title, '스캔 올리기 실패');
-
-  // resolveErrorCode mapping from server error messages
-  assert.equal(resolveErrorCode(null, '18.stl: 하악(Universal 17~32) 번호입니다.'), UPLOAD_ERROR_CODES.LOWER_ARCH);
-  assert.equal(resolveErrorCode(null, '2.stl: 같은 번호의 파일이 두 개 있습니다.'), UPLOAD_ERROR_CODES.DUPLICATE_TOOTH);
-  assert.equal(resolveErrorCode(null, '파일이 너무 큽니다(파일당 60MB, 한 번에 400MB까지).'), UPLOAD_ERROR_CODES.SIZE_EXCEEDED);
-  assert.equal(resolveErrorCode(null, 'upper.stl: 한 덩어리 악궁 스캔으로 보입니다.'), UPLOAD_ERROR_CODES.MONOLITHIC_SCAN);
-  assert.equal(resolveErrorCode(null, '치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요.'), UPLOAD_ERROR_CODES.NO_TEETH);
-  assert.equal(resolveErrorCode(null, '네트워크 연결 실패'), UPLOAD_ERROR_CODES.SERVER_ERROR);
-});
-
 test('Intake domain vocabulary and tooth names', () => {
   assert.equal(TOOTH_NAMES[1], '우측 제3대구치 (사랑니)');
   assert.equal(VOCAB_TOOTH_NAMES[1], '우측 제3대구치 (사랑니)');
@@ -250,10 +213,4 @@ test('Intake domain vocabulary and tooth names', () => {
   assert.equal(INTAKE_TEXTS.newPatientTitle, '새 환자 등록');
   assert.equal(INTAKE_TEXTS.confirmDeleteScan('1'), '스캔 1를 삭제하시겠습니까?');
   assert.equal(INTAKE_TEXTS.confirmDeletePatient('환자 A', 'P1'), '환자 환자 A (P1)와 모든 스캔을 삭제하시겠습니까? 되돌릴 수 없습니다.');
-
-  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.LOWER_ARCH]);
-  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.DUPLICATE_TOOTH]);
-  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.SIZE_EXCEEDED]);
-  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.MONOLITHIC_SCAN]);
-  assert.ok(INTAKE_ERROR_DETAILS[UPLOAD_ERROR_CODES.NO_TEETH]);
 });

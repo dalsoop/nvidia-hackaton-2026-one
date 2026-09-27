@@ -55,8 +55,8 @@ test('Cases data: transformCasesData handles patient scans as individual cases',
   assert.equal(s1.kind, 'patient');
   assert.equal(s1.status, 'scan_check');
   assert.equal(s1.displayId, '3월 상담 A · S1');
-  assert.equal(s1.displayTitle, 'P0001-S1 · 가명 환자 메모');
-  assert.equal(s1.prescription, TCases.defaultConditions);
+  assert.equal(s1.displayTitle, '가명 환자 메모');
+  assert.equal(s1.prescription, '');
   assert.equal(s1.scan.confirmed, false);
 
   const s2 = result.find((c) => c.case_id === 'P0001-S2');
@@ -64,7 +64,7 @@ test('Cases data: transformCasesData handles patient scans as individual cases',
   assert.equal(s2.kind, 'patient');
   assert.equal(s2.status, 'needs_plan');
   assert.equal(s2.displayId, '3월 상담 A · S2');
-  assert.equal(s2.displayTitle, `P0001-S2 · 가명 환자 메모 · ${TCases.confirmed}`);
+  assert.equal(s2.displayTitle, `가명 환자 메모 · ${TCases.confirmed}`);
   assert.equal(s2.scan.confirmed, true);
 });
 
@@ -98,6 +98,8 @@ test('Cases data: transformCasesData computes sample status correctly', () => {
   assert.equal(result.find((c) => c.case_id === 'sample-1').status, 'ready');
   assert.equal(result.find((c) => c.case_id === 'sample-2').status, 'violation');
   assert.equal(result.find((c) => c.case_id === 'sample-3').status, 'approved');
+  assert.equal(result.find((c) => c.case_id === 'sample-1').displayId, '1');
+  assert.equal(result.find((c) => c.case_id === 'sample-1').displayTitle, '샘플 1');
 });
 
 test('Cases data: formatConstraintTags maps server Constraints schema faithfully', () => {

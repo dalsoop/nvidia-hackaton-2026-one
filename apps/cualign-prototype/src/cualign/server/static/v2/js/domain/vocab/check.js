@@ -7,19 +7,17 @@ export const CHECK_VOCAB = {
   versionSuffix: (rev) => `상악 (버전 ${rev})`,
   loading: '스캔 점검 결과를 불러오는 중…',
   fetchError: '스캔 점검 정보를 불러오지 못했습니다.',
+  meshFailed: '3D 스캔을 불러오지 못했습니다.',
 
   // Orientation warnings and notes
   reversedTitle: '치아 번호가 좌우 반대로 보입니다.',
-  reversedDesc: '2번(우측)이 화면 왼쪽, 15번(좌측)이 화면 오른쪽에 와야 합니다. 번호를 뒤집으려면 아래 버튼을 누르세요.',
   mirrorButton: '좌우 번호 뒤집기',
   mirrorFailed: '좌우 번호 뒤집기에 실패했습니다.',
 
   orientationNoticeTitle: '주의: 방향 근거 없음',
-  orientationDefaultNote: '방향 근거가 없어 입력 방향 그대로 둡니다. 3D에서 치아 방향을 확인하세요.',
 
   // Unsupported scan danger box
   unsupportedTitle: '계획할 수 없는 스캔',
-  unsupportedDesc: '이 스캔은 현재 자동 계획 기준을 충족하지 못해 계획을 진행할 수 없습니다.',
   unsupportedDefaultReason: '스캔 점검 기준을 충족하지 못했습니다.',
 
   // Inspection terms
@@ -65,7 +63,6 @@ export const CHECK_VOCAB = {
   crowdingMm: (mm) => `${mm} mm`,
   teethCountWithFdi: (count, list) => `${count}개 · FDI: ${list || '없음'}`,
 
-  hint3D: '오른쪽 3D에서 치아 번호(FDI 칩)와 위치를 확인하세요.',
 
   // Primary action & Delete buttons
   btnStartPlan: '번호 확인 — 계획 시작',

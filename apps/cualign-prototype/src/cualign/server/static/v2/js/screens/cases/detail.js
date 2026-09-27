@@ -114,13 +114,13 @@ function buildCheckCards(checkData) {
 function buildPrescriptionSection(selectedCase) {
   const isSample = selectedCase.kind === 'sample';
   const heading = isSample ? TCases.colPrescription : TCases.conditions;
-  const text = selectedCase.prescription || TCases.defaultConditions;
+  const text = isSample ? selectedCase.prescription : '';
   const note = selectedCase.note;
   const tags = formatConstraintTags(selectedCase.constraints);
 
   return h('div', { class: 'cases-detail-section' },
     h('div', { class: 'cases-detail-section-title' }, heading),
-    h('div', { class: 'cases-detail-rx-main' }, text),
+    text ? h('div', { class: 'cases-detail-rx-main' }, text) : null,
     note ? h('div', { class: 'cases-detail-rx-note' }, note) : null,
     tags.length > 0
       ? h('div', { class: 'cases-detail-tags' },

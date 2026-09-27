@@ -1,6 +1,6 @@
 // Pure data transformation, grouping, filtering, and formatting for cases screen
 
-import { caseStatus, preferredPlan } from '../../domain/status.js';
+import { caseStatus, isScanConfirmed, preferredPlan, sampleCaseNumber } from '../../domain/status.js';
 import { universalToFdi } from '../../domain/teeth.js';
 import { T as TCommon } from '../../domain/vocab.js';
 import { TCases } from '../../domain/vocab/cases.js';
@@ -52,17 +52,13 @@ export function transformCasesData({ casesData, patientsData, plansData }) {
     const scans = Array.isArray(patient?.scans) ? patient.scans : [];
     for (const scan of scans) {
       const caseId = scan.case_id || `${patient.patient_id}-${scan.scan_id}`;
-      const isConfirmed = Boolean(
-        scan.confirmed_revision !== null &&
-        scan.confirmed_revision !== undefined &&
-        scan.confirmed_revision === (scan.revision ?? 1)
-      );
+      const isConfirmed = isScanConfirmed(scan);
       const scanObj = { ...scan, confirmed: isConfirmed };
       const plans = plansByCase.get(caseId) || [];
       const status = caseStatus({ scan: scanObj, plans });
       const pref = preferredPlan(plans);
 
-      const titleParts = [caseId];
+      const titleParts = [];
       if (patient.memo) {
         titleParts.push(patient.memo);
       }
@@ -81,7 +77,7 @@ export function transformCasesData({ casesData, patientsData, plansData }) {
         scan_id: scan.scan_id,
         displayId,
         displayTitle,
-        prescription: TCases.defaultConditions,
+        prescription: '',
         note: patient.memo || '',
         constraints: scan.constraints || null,
         scan: scanObj,
@@ -110,7 +106,7 @@ export function transformCasesData({ casesData, patientsData, plansData }) {
       patient_alias: null,
       patient_memo: '',
       scan_id: null,
-      displayId: caseId,
+      displayId: sampleCaseNumber(c),
       displayTitle: c.title || caseId,
       prescription: c.prescription || '',
       note: c.note || '',

@@ -19,39 +19,6 @@ export const TOOTH_NAMES = Object.freeze({
   16: '좌측 제3대구치 (사랑니)'
 });
 
-export const INTAKE_ERROR_DETAILS = Object.freeze({
-  LOWER_ARCH: {
-    title: '하악 치아 번호 감지',
-    badge: '하악 불가',
-    guide: '현재 cuAlign은 상악(Universal 1~16) 스캔 계획만 지원합니다. 하악 치아(Universal 17~32) 파일을 제외하고 올려주세요.'
-  },
-  DUPLICATE_TOOTH: {
-    title: '중복 치아 번호 감지',
-    badge: '중복 파일',
-    guide: '동일한 번호의 치아 STL 파일이 중복 선택되었습니다. 하나의 파일만 남기고 다시 선택해주세요.'
-  },
-  SIZE_EXCEEDED: {
-    title: '파일 크기 한도 초과',
-    badge: '용량 초과',
-    guide: '개별 파일은 60MB 이하, 전체 스캔 합계는 400MB 이하여야 합니다. 메시 해상도를 줄이거나 필요 없는 파일을 정리해주세요.'
-  },
-  MONOLITHIC_SCAN: {
-    title: '한 덩어리 악궁 스캔 감지',
-    badge: '미분리 스캔',
-    guide: '치아가 개별 STL로 분리되지 않은 악궁 전체 메시입니다. 2.stl~15.stl로 분리된 치아 파일을 올려주세요.'
-  },
-  NO_TEETH: {
-    title: '상악 치아 파일 누락',
-    badge: '치아 없음',
-    guide: '계획을 위해서는 2.stl~15.stl 중 최소 1개 이상의 상악 치아 STL이 필요합니다. 잇몸 파일(gingiva.stl)만으로는 계획할 수 없습니다.'
-  },
-  SERVER_ERROR: {
-    title: '스캔 올리기 실패',
-    badge: '서버 오류',
-    guide: '스캔 데이터를 서버에서 처리하는 중 오류가 발생했습니다. 파일 손상 여부를 확인하세요.'
-  }
-});
-
 export const INTAKE_TEXTS = Object.freeze({
   patientListTitle: '환자 목록',
   patient: '환자',
@@ -61,8 +28,6 @@ export const INTAKE_TEXTS = Object.freeze({
   aliasRequired: '별칭을 입력하세요.',
   submitNewPatient: '새 환자 등록',
   noPatients: '등록된 환자가 없습니다.',
-  emptySelectionTitle: '환자를 선택하거나 새로 등록하세요',
-  emptySelectionDesc: '왼쪽 목록에서 환자를 선택하면 스캔 내역을 확인하고 새 상악 스캔을 올릴 수 있습니다.',
   deletePatientBtn: '환자 삭제',
   deletePatientTitle: '환자 삭제',
   confirmDeletePatient: (alias, pid) => `환자 ${alias} (${pid})와 모든 스캔을 삭제하시겠습니까? 되돌릴 수 없습니다.`,
@@ -120,13 +85,3 @@ export const UPLOAD_MESSAGES = Object.freeze({
   monolithicScan: (files) => `${files}: 한 덩어리 악궁 스캔으로 보입니다. 지금은 치아별로 나뉜 파일(2.stl … 15.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.`,
   noTeeth: '치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요. 잇몸 파일만으로는 계획할 수 없습니다.'
 });
-
-export function matchErrorCode(message) {
-  if (!message) return null;
-  if (message.includes('하악') || message.includes('Universal 17')) return 'LOWER_ARCH';
-  if (message.includes('같은 번호') || message.includes('중복')) return 'DUPLICATE_TOOTH';
-  if (message.includes('너무 큽니다') || message.includes('한 번에') || message.includes('413')) return 'SIZE_EXCEEDED';
-  if (message.includes('한 덩어리 악궁 스캔')) return 'MONOLITHIC_SCAN';
-  if (message.includes('치아별 STL') || message.includes('잇몸 파일만으로')) return 'NO_TEETH';
-  return null;
-}

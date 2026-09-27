@@ -226,11 +226,12 @@ test('Check: widths and rotations sorted by FDI tooth number', () => {
   assert.equal(state.verticals[1].mm, -1.2);
 });
 
-test('Check: parsePatientAndScanId splits caseId correctly', () => {
+test('Check: parsePatientAndScanId only accepts patient case IDs', () => {
   assert.deepEqual(parsePatientAndScanId('P0001-S1'), { pid: 'P0001', sid: 'S1' });
-  assert.deepEqual(parsePatientAndScanId('P123-S45-rev2'), { pid: 'P123', sid: 'S45-rev2' });
-  assert.deepEqual(parsePatientAndScanId('upload-12345'), { pid: 'upload', sid: '12345' });
-  assert.deepEqual(parsePatientAndScanId('solo'), { pid: 'solo', sid: '' });
+  assert.deepEqual(parsePatientAndScanId('P123-S45'), { pid: 'P123', sid: 'S45' });
+  assert.deepEqual(parsePatientAndScanId('P123-S45-rev2'), { pid: '', sid: '' });
+  assert.deepEqual(parsePatientAndScanId('sample-000131'), { pid: '', sid: '' });
+  assert.deepEqual(parsePatientAndScanId('solo'), { pid: '', sid: '' });
   assert.deepEqual(parsePatientAndScanId(''), { pid: '', sid: '' });
   assert.deepEqual(parsePatientAndScanId(null), { pid: '', sid: '' });
 });

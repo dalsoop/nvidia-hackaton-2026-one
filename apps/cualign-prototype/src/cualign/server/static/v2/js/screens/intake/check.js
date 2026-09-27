@@ -4,6 +4,7 @@
 
 import { clear, h } from '../../ui/dom.js';
 import { universalToFdi } from '../../domain/teeth.js';
+import { parsePatientCaseId } from '../../domain/status.js';
 import { T } from '../../domain/vocab.js';
 import { CHECK_VOCAB } from '../../domain/vocab/check.js';
 
@@ -149,13 +150,7 @@ export function deriveCheckState(check) {
 }
 
 export function parsePatientAndScanId(caseId) {
-  if (!caseId) return { pid: '', sid: '' };
-  const str = String(caseId).trim();
-  const parts = str.split('-');
-  if (parts.length >= 2) {
-    return { pid: parts[0], sid: parts.slice(1).join('-') };
-  }
-  return { pid: parts[0], sid: '' };
+  return parsePatientCaseId(caseId) || { pid: '', sid: '' };
 }
 
 export function formatBasis(basis) {
@@ -203,6 +198,7 @@ export function mount(root, params, ctx) {
 
   const caseId = decodeURIComponent(params.caseId || '');
   const { pid, sid } = parsePatientAndScanId(caseId);
+  const isPatientCase = Boolean(pid && sid);
 
   // Screen container: Left 380px panel + Center 3D viewer
   const container = h('div', { class: 'screen-check' });
@@ -217,13 +213,9 @@ export function mount(root, params, ctx) {
   let viewer = null;
   async function ensureViewer() {
     if (!viewer && !isUnmounted) {
-      try {
-        const viewerModule = await import('../../viewer/index.js');
-        if (!isUnmounted && viewerModule && typeof viewerModule.createViewer === 'function') {
-          viewer = viewerModule.createViewer(viewerContainer);
-        }
-      } catch (err) {
-        console.warn('createViewer failed:', err);
+      const viewerModule = await import('../../viewer/index.js');
+      if (!isUnmounted && viewerModule && typeof viewerModule.createViewer === 'function') {
+        viewer = viewerModule.createViewer(viewerContainer);
       }
     }
     return viewer;
@@ -240,34 +232,34 @@ export function mount(root, params, ctx) {
 
   async function loadData() {
     try {
-      panel.innerHTML = '';
+      clear(panel);
       panel.appendChild(h('div', { class: 'check-loading' }, CHECK_VOCAB.loading));
 
-      const [checkData, meshData] = await Promise.all([
+      const [checkData] = await Promise.all([
         ctx.api.caseCheck(caseId),
-        ctx.api.caseMesh(caseId).catch((err) => {
-          console.warn('Mesh fetch error:', err);
-          return null;
-        }),
         ensureViewer()
       ]);
 
       if (isUnmounted) return;
 
       activeCheck = checkData;
+      if (ctx.store) {
+        ctx.store.set({ caseId, currentScan: checkData });
+      }
 
-      if (viewer && meshData) {
-        viewer.loadCase(meshData);
-        const fdiLabels = (checkData.teeth || []).map((u) => {
-          const fdi = universalToFdi(u);
-          return {
-            tooth: u,
-            fdi,
-            label: String(fdi ?? u)
-          };
-        });
-        viewer.setLabels(fdiLabels);
-        viewer.setLayers({ numbers: true });
+      try {
+        const meshData = await ctx.api.caseMesh(caseId);
+        if (viewer && meshData) {
+          viewer.loadCase(meshData);
+          const fdiLabels = (checkData.teeth || []).map((u) => {
+            const fdi = universalToFdi(u);
+            return { tooth: u, fdi, label: String(fdi ?? u) };
+          });
+          viewer.setLabels(fdiLabels);
+          viewer.setLayers({ numbers: true });
+        }
+      } catch (err) {
+        errorMessage = err?.message || CHECK_VOCAB.meshFailed;
       }
 
       renderPanel();
@@ -283,12 +275,15 @@ export function mount(root, params, ctx) {
     if (btn) btn.disabled = true;
 
     try {
-      if (pid && sid) {
+      if (isPatientCase) {
         await ctx.api.confirmScan(pid, sid, state.revision);
       }
       await ctx.api.activateCase(caseId);
       if (ctx.store) {
-        ctx.store.set({ caseId, confirmed: true });
+        ctx.store.set({
+          caseId,
+          currentScan: isPatientCase ? { ...activeCheck, confirmed: true } : null
+        });
       }
       ctx.navigate(`#/workspace/${encodeURIComponent(caseId)}`);
     } catch (err) {
@@ -304,7 +299,7 @@ export function mount(root, params, ctx) {
     if (btn) btn.disabled = true;
 
     try {
-      if (pid && sid) {
+      if (isPatientCase) {
         const updatedCheck = await ctx.api.mirrorScan(pid, sid);
         activeCheck = updatedCheck;
 
@@ -321,7 +316,7 @@ export function mount(root, params, ctx) {
             viewer.setLayers({ numbers: true });
           }
         } catch (meshErr) {
-          console.warn('Mesh reload failed after mirror:', meshErr);
+          setErrorMessage(meshErr?.message || CHECK_VOCAB.meshFailed);
         }
 
         renderPanel();
@@ -341,7 +336,7 @@ export function mount(root, params, ctx) {
     }
 
     try {
-      if (pid && sid) {
+      if (isPatientCase) {
         await ctx.api.deleteScan(pid, sid);
         ctx.navigate(`#/patients/${encodeURIComponent(pid)}`);
       } else {
@@ -360,10 +355,7 @@ export function mount(root, params, ctx) {
     // Header
     const header = h('div', { class: 'check-header' },
       h('div', { class: 'check-header-top' },
-        h('h1', { class: 'check-title' }, CHECK_VOCAB.title),
-        h('span', {
-          class: `badge ${state.isSupported ? 'badge-ready' : 'badge-violation'}`
-        }, state.isSupported ? CHECK_VOCAB.supportedBadge : CHECK_VOCAB.unsupportedBadge)
+        h('h1', { class: 'check-title' }, CHECK_VOCAB.title)
       ),
       h('div', { class: 'check-subtitle' },
         `${pid ? pid + ' · ' : ''}${sid || caseId} · ${CHECK_VOCAB.versionSuffix(state.revision)}`
@@ -383,7 +375,7 @@ export function mount(root, params, ctx) {
     }
 
     // Orientation: side === 'reversed' warning
-    if (state.isReversed) {
+    if (state.isReversed && isPatientCase) {
       const mirrorBtn = h('button', {
         type: 'button',
         class: 'btn btn-ghost check-btn-mirror',
@@ -392,7 +384,6 @@ export function mount(root, params, ctx) {
 
       body.appendChild(h('div', { class: 'check-box check-box-warning' },
         h('b', null, CHECK_VOCAB.reversedTitle),
-        h('p', null, CHECK_VOCAB.reversedDesc),
         mirrorBtn
       ));
     }
@@ -401,7 +392,7 @@ export function mount(root, params, ctx) {
     if (state.hasOrientationNotice) {
       body.appendChild(h('div', { class: 'check-box check-box-notice' },
         h('b', null, CHECK_VOCAB.orientationNoticeTitle),
-        h('p', null, state.orientationNote || CHECK_VOCAB.orientationDefaultNote)
+        state.orientationNote ? h('p', null, state.orientationNote) : null
       ));
     }
 
@@ -412,7 +403,6 @@ export function mount(root, params, ctx) {
       );
       body.appendChild(h('div', { class: 'check-box check-box-danger' },
         h('b', null, CHECK_VOCAB.unsupportedTitle),
-        h('p', null, CHECK_VOCAB.unsupportedDesc),
         list
       ));
     }
@@ -471,8 +461,6 @@ export function mount(root, params, ctx) {
       body.appendChild(table);
     }
 
-    body.appendChild(h('p', { class: 'check-hint' }, CHECK_VOCAB.hint3D));
-
     panel.appendChild(body);
 
     // Footer
@@ -487,7 +475,7 @@ export function mount(root, params, ctx) {
 
     footer.appendChild(primaryBtn);
 
-    if (state.showDelete) {
+    if (state.showDelete && isPatientCase) {
       const deleteBtn = h('button', {
         type: 'button',
         class: 'btn btn-danger check-btn-delete',

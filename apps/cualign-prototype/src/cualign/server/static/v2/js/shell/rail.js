@@ -2,6 +2,7 @@
 
 import { clear, h } from '../ui/dom.js';
 import { T } from '../domain/vocab.js';
+import { parsePatientCaseId } from '../domain/status.js';
 
 function createSvg(width, height, pathD, strokeWidth = '1.7') {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -60,7 +61,8 @@ export function renderRail(el, { active = 'cases', kind = 'none', confirmed = fa
   const isPatient = kind === 'patient';
   const wsHref = caseId ? `#/workspace/${encodeURIComponent(caseId)}` : '#/workspace';
   const checkHref = caseId ? `#/check/${encodeURIComponent(caseId)}` : '#/check';
-  const intakeHref = caseId ? `#/patients/${encodeURIComponent(caseId.split('-')[0])}` : '#/patients';
+  const patientCase = parsePatientCaseId(caseId);
+  const intakeHref = patientCase ? `#/patients/${encodeURIComponent(patientCase.pid)}` : '#/patients/new';
 
   const allSteps = [
     { id: 'cases', label: T.rail.steps.cases, href: '#/cases', path: 'M4 6h16M4 12h16M4 18h10' },
