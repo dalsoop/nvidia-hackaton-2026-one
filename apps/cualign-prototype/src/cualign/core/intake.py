@@ -111,7 +111,10 @@ def orient_scan(folder: str | Path) -> dict:
     lo, hi = (cen[0] - c0) @ M.T, (cen[-1] - c0) @ M.T
     side = "reversed" if lo[0] > hi[0] else "ok"
     angle = float(np.degrees(np.arccos(np.clip((np.trace(M) - 1) / 2, -1, 1))))
-    return {"basis": basis, "side": side, "rotation_deg": round(angle, 1), "transform": np.round(T, 6).tolist()}
+    out = {"basis": basis, "side": side, "rotation_deg": round(angle, 1), "transform": np.round(T, 6).tolist()}
+    if basis == "none":   # no gum and no cut rims to vote on: the input's +z stays up (v2 board 09-c wording, #112)
+        out["note"] = f"치아 {len(ids)}개 — 방향을 정할 수 없어 입력 방향 그대로 둠"
+    return out
 
 
 def mirror_numbers(folder: str | Path) -> list[int]:
