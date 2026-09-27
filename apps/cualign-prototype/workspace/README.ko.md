@@ -1,0 +1,66 @@
+<!-- source: README.md sha256: 012afd0852b19c7f317451d6d0e442768631a3f52efc4d788ad29385f7cf0b64 -->
+# cuAlign 에이전트 워크스페이스
+
+cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구성은 NVIDIA DLI NemoClaw 과정 03b(OpenClaw)의 `.openclaw/workspace/` 규약을 따릅니다. 이 폴더를 읽는 에이전트는 둘이고, 에이전트마다 읽는 파일이 다릅니다.
+
+원본은 영어 파일입니다. 이 문서는 [README.md](README.md)의 한국어 번역이며, 둘이 다르면 영어 원본이 맞습니다.
+
+## 독자
+
+| 문서 | 독자 | 독자 과제 | 독자 시험 |
+|---|---|---|---|
+| `AGENTS.md` | cuAlign 서버 안의 NAT 계획 에이전트 | 이번 요청의 조건으로 계획 초안을 만들고 정해진 답변 형식으로 보고한다 | 이 바이트로 골든셋 #73 |
+| `skills/cualign-clinical-rules/` | NAT 계획 에이전트 | 도구 순서 안에서 임상 한계와 전략 규칙을 적용한다 | 골든셋 #73 |
+| `SOUL.md` | OpenClaw 창구(`cualign-desk`) | 요청마다 창구 스킬을 따르고, 페르소나 파일을 바꾸지 않는다 | 아직 안 함 |
+| `IDENTITY.md` | OpenClaw 창구 | 자기를 cuAlign 창구라고 소개한다 | 아직 안 함 |
+| `USER.md` | OpenClaw 창구 | 의사의 조건을 결정으로 넘기고, 치아 번호와 케이스 id를 받아들인다 | 아직 안 함 |
+| `TOOLS.md` | OpenClaw 창구, 관리자 | 도구를 설명하는 파일을 찾는다 | 아직 안 함 |
+| `HEARTBEAT.md` | OpenClaw 하트비트 | 예약된 모델 호출을 건너뛴다 | 아직 안 함 |
+| `MEMORY.md` | OpenClaw 창구 | 기억을 남기지 않고, 환자 식별 정보를 쓰지 않는다 | 아직 안 함 |
+| `skills/cualign-planner/` | OpenClaw 창구 | 요청마다 `cualign_plan`을 한 번 부르고 결과를 한국어로 보고한다 | 아직 안 함 |
+| `README.md` | 관리자 | 어느 에이전트가 어느 파일을 읽는지 찾고, 창구 파일을 설치한다 | 아직 안 함 |
+
+독자 시험은 다른 맥락이 없는 새 세션에서 여러 번 돌립니다. 근거는 https://github.com/dalsoop/stable-agent-documentation-guidebook 의 R-004와 `guides/new-project.md` §1입니다.
+
+## `AGENTS.md`는 고정된 프롬프트입니다
+
+`AGENTS.md`는 NAT 계획 에이전트의 프롬프트이고, 바이트가 고정되어 있습니다. 저장소 맥락 파일의 템플릿이 아닙니다. 코딩 에이전트의 맥락 파일은 저장소 루트의 `AGENTS.md`입니다.
+
+- `configs/workflow.yml`이 `additional_instructions: file://../workspace/AGENTS.md`로 이 파일을 읽습니다.
+- `tests/test_workspace.py`가 이 파일의 sha256을 옮기기 전 문구와 비교합니다. 골든셋(#73)이 이 문구에 맞춰져 있습니다.
+- Simplified Technical English로 다시 쓰는 일은 골든셋을 다시 돌리는 작업(#96)과 함께 합니다.
+
+## 연결
+
+- **스킬:** `src/cualign/core/skills.py`가 `workspace/skills/<이름>/SKILL.md`를 읽습니다. `load_skill` 도구와 서버 문맥 미리 싣기에 씁니다.
+- **스킬 허용 목록:** 에이전트마다 쓸 수 있는 스킬 목록이 있습니다. 규칙은 OpenClaw `tools/skills.md`의 "Agent allowlists"와 같습니다.
+
+  | 에이전트 | 스킬 | 설정 위치 |
+  |---|---|---|
+  | NAT 계획 에이전트 | `cualign-clinical-rules` | `configs/workflow.yml`의 `function_groups.cualign.skills` |
+  | OpenClaw 창구(`cualign-desk`) | `cualign-planner` | OpenClaw 설정의 `agents.list[].skills` |
+
+  계획 에이전트는 목록 밖 스킬을 `load_skill`로 요청하면 거절합니다. 미리 싣는 스킬이 목록 밖이면 서버가 시작하지 않습니다. 허용 목록은 보안 경계가 아닙니다. 도구와 네트워크는 Guardrails와 OpenShell이 막습니다.
+- **이미지:** `Dockerfile`과 `Dockerfile.openshell`이 `workspace/`를 `/app/workspace`로 복사합니다.
+
+## OpenClaw 샌드박스에 설치하기
+
+OpenClaw는 샌드박스의 `.openclaw/workspace/`에 있는 파일을 대화 문맥에 넣습니다. `docs/nemoclaw.md`의 창구 샌드박스 `cualign-desk`에 다음을 합니다.
+
+1. 스킬 설치: `nemoclaw cualign-desk skill install workspace/skills/cualign-planner` (`docs/nemoclaw.md` §4).
+2. `SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`를 샌드박스의 `.openclaw/workspace/`에 복사합니다. 복사는 샌드박스 밖 운영자 터미널에서 합니다.
+3. `SOUL.md`는 샌드박스 사용자에게 읽기 전용으로 둡니다. 과정 04a가 페르소나 변조(persona tamper)를 위험으로 꼽습니다.
+4. `AGENTS.md`와 `skills/cualign-clinical-rules`는 창구에 넣지 않습니다. NAT 계획 에이전트의 것이고, 창구에는 `cualign__` 도구가 없습니다.
+
+2단계와 3단계는 아직 실제 샌드박스에서 확인하지 않았습니다. `docs/nemoclaw.md`의 상태도 같습니다.
+
+## 과정 규약과 다른 점
+
+| 과정 규약 | 여기 | 이유 |
+|---|---|---|
+| `memory/`에 날마다 기록하고 `MEMORY.md`로 정리 | 기억을 쓰지 않고 `memory/` 폴더도 없음 | 조건과 계획 이력은 서버가 가집니다. 진료 대화에는 환자 정보가 섞일 수 있습니다 |
+| `HEARTBEAT.md`에 주기 작업 목록 | 주석만 있는 OpenClaw 기본 파일 | cuAlign은 요청이 있을 때만 움직입니다. 주석만 있으면 OpenClaw가 하트비트 호출을 건너뜁니다 |
+| 에이전트 하나가 워크스페이스를 읽음 | NAT 계획 에이전트와 OpenClaw 창구가 서로 다른 파일을 읽음 | 계획과 규칙 검사는 검증된 NAT 에이전트에 남기고, 창구는 MCP로 맡깁니다 |
+| `AGENTS.md`는 자유롭게 고치는 운영 규칙 | 고정된 NAT 프롬프트 | 골든셋(#73)이 이 문구에 맞춰져 있습니다 |
+| 경계는 `SOUL.md`에 적음 | `SOUL.md`는 스킬과 런타임 파일을 가리킴 | 경계를 복사하면 원본과 어긋납니다. 경계는 Guardrails와 OpenShell이 강제합니다 |
+| `IDENTITY.md`의 이모지 | 정하지 않음 | 근거 자료에 없습니다 |

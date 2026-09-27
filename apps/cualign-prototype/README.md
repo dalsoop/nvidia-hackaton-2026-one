@@ -17,7 +17,7 @@
 | [TRD](docs/TRD.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
 | [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
 | [NVIDIA 활용](docs/NVIDIA_STACK.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |
-| [에이전트 워크스페이스](workspace/README.md) | 에이전트 정의(SOUL·AGENTS 등)의 한 곳 모음, 파일별 옛 위치, OpenClaw 샌드박스 설치법 |
+| [에이전트 워크스페이스](workspace/README.md) | 에이전트 정의(SOUL·AGENTS 등)의 한 곳 모음, 파일별 독자와 독자 과제, OpenClaw 샌드박스 설치법 |
 | [재현 검증](docs/VERIFICATION.md) | 현재 통과한 검사와 아직 확인하지 않은 항목 |
 | [개발 시작 안내](docs/DEVELOPMENT.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
 | [알려진 문제](docs/KNOWN_ISSUES.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |

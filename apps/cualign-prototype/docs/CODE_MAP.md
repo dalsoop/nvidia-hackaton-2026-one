@@ -111,7 +111,7 @@
 | `openshell/server-policy.yaml` | 서버 전체 샌드박스 정책(쓰기 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만) |
 | `docs/openshell.md` | 정책 검증 수준, 서버 샌드박스 실행 절차와 기록 |
 | `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차 |
-| `workspace/` | 에이전트 정의의 유일한 원천(OpenClaw 워크스페이스 규약). 파일별 역할·옛 위치는 `workspace/README.md` |
+| `workspace/` | 에이전트 정의의 유일한 원천(OpenClaw 워크스페이스 규약). 파일별 독자·독자 과제는 `workspace/README.md` |
 | `workspace/skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
 | `workspace/skills/cualign-planner/SKILL.md` | OpenClaw 창구 스킬(NemoClaw) |
 | `workspace/skills/skillspector-report-static.md`, `workspace/skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |

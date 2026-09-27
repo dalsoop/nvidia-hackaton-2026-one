@@ -48,7 +48,8 @@ def test_agents_md_carries_the_core_rules():
 
 
 def test_convention_files_and_no_memory_folder():
-    for name in ("SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md", "README.md"):
+    for name in ("SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md", "README.md",
+                 "README.ko.md"):
         assert (WS / name).is_file(), name
     assert not (WS / "memory").exists()   # memory is off (MEMORY.md says why)
 
@@ -65,9 +66,10 @@ def _sentences(text: str) -> list[str]:
 
 def test_english_workspace_files_follow_ste():
     # DESIGN.md §11 of the stable-agent-documentation-guidebook: English originals have no Hangul, and Vale counts
-    # words as \S*\w\S* tokens. Context files keep 20 words or fewer. AGENTS.md and the skill bodies
+    # words as \S*\w\S* tokens. Context files keep 20 words or fewer, the README 25. AGENTS.md and the skill bodies
     # are out of scope: their bytes are tied to the golden set (#73, #96).
-    for name, limit in (("SOUL.md", 20), ("IDENTITY.md", 20), ("USER.md", 20), ("TOOLS.md", 20), ("MEMORY.md", 20)):
+    for name, limit in (("SOUL.md", 20), ("IDENTITY.md", 20), ("USER.md", 20), ("TOOLS.md", 20), ("MEMORY.md", 20),
+                        ("README.md", 25)):
         text = (WS / name).read_text(encoding="utf-8")
         assert not HANGUL.search(text), name
         assert "\u2014" not in text, name
@@ -104,6 +106,16 @@ def test_tools_md_names_tools_and_points_to_their_source():
 def test_heartbeat_md_is_the_openclaw_default():
     # openclaw 2026.7.1 src/agents/templates/HEARTBEAT.md: comments only, so OpenClaw skips the heartbeat model call.
     assert hashlib.sha256((WS / "HEARTBEAT.md").read_bytes()).hexdigest() == OPENCLAW_HEARTBEAT_SHA256
+
+
+def test_readme_translation_records_the_hash_of_its_original():
+    ko = (WS / "README.ko.md").read_text(encoding="utf-8")
+    first = ko.splitlines()[0]
+    want = hashlib.sha256((WS / "README.md").read_bytes()).hexdigest()
+    assert first == f"<!-- source: README.md sha256: {want} -->"
+    assert "\u2014" not in ko   # fluent-korean: no em dash
+    readme = (WS / "README.md").read_text(encoding="utf-8")
+    assert "It is not a template for a repository context file." in readme
 
 
 def test_skills_live_only_in_workspace():
