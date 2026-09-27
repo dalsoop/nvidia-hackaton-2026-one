@@ -92,6 +92,28 @@ def _patient_json(pid: str) -> dict:
     return p
 
 
+_GUM_FILLED: dict[tuple, dict] = {}   # (case_id, gum vertex count, gum face count) -> {"gum_filled", "gum_fill"}
+
+
+def gum_filled_view(case_id: str, case, gum: dict) -> dict:
+    """`gum_filled` (same {v, f} shape as `gum`, the tooth trench covered, see core/gum_fill.py) and `gum_fill` (what was
+    done). Computed once per case and gum (a re-uploaded scan changes the counts) and kept in memory."""
+    key = (case_id, len(gum["v"]), len(gum["f"]))
+    if key not in _GUM_FILLED:
+        import numpy as np
+        import trimesh
+        from cualign.core import gum_fill
+        source = "scan" if case.gum_scan is not None else "procedural"
+        mesh = trimesh.Trimesh(np.asarray(gum["v"], float), np.asarray(gum["f"]), process=False)
+        try:
+            filled, meta = gum_fill.fill_sockets(mesh, case.anchor, [case.mesh[i] for i in case.ids])
+        except Exception as e:   # noqa: BLE001 - the viewer keeps the plain gum rather than losing the case
+            filled, meta = mesh, {"filled": False, "sockets": [], "error": str(e)}
+        _GUM_FILLED[key] = {"gum_filled": gum if filled is mesh else gum_fill.to_json(filled),
+                            "gum_fill": {"source": source, **meta}}
+    return _GUM_FILLED[key]
+
+
 def _summary(pid):
     p = STORE.plan_json(pid)
     return {"plan_id": pid, "case_id": p["case_id"], "parent_plan_id": p["parent_plan_id"],
@@ -274,10 +296,22 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str):
         try:
-            _, case = STORE.load_case(case_id)
+            cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
-        return case.viewer_json()
+        data = case.viewer_json()
+        data.update(gum_filled_view(cid, case, data["gum"]))
+        return data
+
+    @app.get("/api/cases/{case_id}/gum")
+    async def case_gum(case_id: str):
+        """The gum alone: the scan (or procedural ridge) as `gum` and the trench-covered copy as `gum_filled`."""
+        try:
+            cid, case = STORE.load_case(case_id)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        gum = case.viewer_json()["gum"]
+        return {"gum": gum, **gum_filled_view(cid, case, gum)}
 
     @app.post("/api/cases/upload")
     async def upload_case(files: list[UploadFile]):

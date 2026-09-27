@@ -13,7 +13,7 @@ Each step records what happened and a pass flag; the script never stops early un
 
 Never prints the API key. Writes out/nim-live/e2e.json (events, tool args, answers) and prints the verdict.
 Costs real NVIDIA usage: three planning conversations (several model calls each) plus rails and a followup call.
-Run: uv run --frozen python -X utf8 tests/nim_e2e_live_check.py [sample_case_id]   (default poseidon-000001)
+Run: uv run --frozen python -X utf8 tests/nim_e2e_live_check.py [sample_case_id]   (default poseidon-000097, the demo case)
 """
 import asyncio
 import json
@@ -129,8 +129,15 @@ async def main(case_id):
             rec["compare_args"] = tool_args(ev, "compare_strategies")
             lines = [ln for ln in rec["answer"].splitlines() if re.search(r"(확장|IPR)\s*(전략|안|:)", ln)]
             rec["plan_lines"] = lines
-            rec["pass"] = "cualign__compare_strategies" in rec["tools"] and rec["korean"] and len(lines) >= 2 \
-                and not rec["universal_numbers"] and not rec["internal_terms"] and rec["plan_error"] is None
+            if sample.constraints.get("extraction"):
+                # an extraction prescription (000097) allows only the extraction plan (#56): the right answer to a
+                # comparison of non-extraction strategies is a Korean question back, no tool, no plan
+                rec["note"] = "extraction prescribed: comparison refused with a question, by design"
+                rec["pass"] = rec["tools"] == [] and rec["korean"] and "?" in rec["answer"] and rec["plan_error"] is None \
+                    and not rec["universal_numbers"] and not rec["internal_terms"]
+            else:
+                rec["pass"] = "cualign__compare_strategies" in rec["tools"] and rec["korean"] and len(lines) >= 2 \
+                    and not rec["universal_numbers"] and not rec["internal_terms"] and rec["plan_error"] is None
             steps["5_compare"] = rec
             selected = rec["plan_selected"] or selected
             # 6. 검토
@@ -157,10 +164,11 @@ async def main(case_id):
                 if after.status_code == 200:
                     with zipfile.ZipFile(BytesIO(after.content)) as z:   # tooth files only (print_models/ holds the gingiva models)
                         n_stl = len([n for n in z.namelist() if n.endswith(".stl") and not n.startswith("print_models/")])
+                kept = opened["n_teeth"] - len((d.get("target") or {}).get("removed") or [])   # extracted crowns are not exported
                 step.update({"after_approval": after.status_code, "stl_files": n_stl, "n_stages": d["info"]["n_stages"],
-                             "n_teeth": opened["n_teeth"],
+                             "n_teeth": opened["n_teeth"], "teeth_exported": kept,
                              "pass": before.status_code == 409 and appr.status_code == 200 and after.status_code == 200
-                             and n_stl == d["info"]["n_stages"] * opened["n_teeth"]})
+                             and n_stl == d["info"]["n_stages"] * kept})
             else:
                 step.update({"refusal": appr.json().get("detail") if appr.status_code == 409 else None,
                              "pass": before.status_code == 409 and appr.status_code == 409,
@@ -181,4 +189,4 @@ async def main(case_id):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "poseidon-000001"))
+    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "poseidon-000097"))
