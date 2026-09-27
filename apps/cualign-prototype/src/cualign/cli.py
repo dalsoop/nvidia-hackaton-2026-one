@@ -85,7 +85,10 @@ def cmd_serve(args):
         print("[warn] NVIDIA_API_KEY not set — the agent will fail; /ui and the rule-based fallback still work")
     cmd = [sys.executable, "-m", "nat.cli.main", "serve", "--config_file", str(ROOT / "configs" / "workflow.yml"),
            "--host", args.host, "--port", str(args.port)]
-    os.execv(sys.executable, cmd)
+    if os.name != "nt":
+        os.execv(sys.executable, cmd)
+    # os.execv on Windows starts a new process and ends this one, so serve returned at once and left the server behind (#83)
+    raise SystemExit(subprocess.call(cmd))
 
 
 def main(argv=None) -> int:

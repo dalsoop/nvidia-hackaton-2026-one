@@ -36,6 +36,19 @@ functions:
     timeout_seconds: 20
     total_seconds: 40
     description: "선택한 plan_id의 검토 메모. 최대 2회/40초, 실패 상태를 반환하며 재호출은 저장된 결과를 반환."
+    # The review model's system message (agent/reviewer.py DEFAULT_INSTRUCTIONS when absent). The memo is copied into
+    # the planner's 검토 line, so field names written here end up in the dentist's answer (golden set G-plain-answer).
+    instructions: |
+      You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: strategy,
+      rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number means what
+      field_notes says: never call a total movement a per-aligner value or a tooth-width sum a space shortage.
+      Write every figure with its Korean name and never with the field name: per_stage_mm -> 단계당 이동량,
+      space_deficit_mm -> 공간 부족, expansion_mm_per_side -> 양측 확장(한쪽당), ipr_mm_per_surface -> IPR 면당,
+      max_move_mm -> 총 이동량(최대), n_stages -> 단계 수, months -> 기간. Strategies in Korean (확장, IPR, 확장 + IPR,
+      발치) and move order in Korean (동시, 앞니 먼저, 순차): no English enum values (expansion_ipr, anterior_first), no
+      JSON keys or code words (lock, ipr_exclude, violations, passed, true/false). Locked teeth and IPR exclusions as
+      tooth numbers or 없음. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval.
+      End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다.
 
 llms:
   nim_super:
@@ -50,6 +63,9 @@ llms:
     temperature: 0.0
     max_tokens: 1024
     num_retries: 1  # NAT attempts, including the first. Outer reviewer owns retries.
+    chat_template_kwargs:
+      enable_thinking: false  # 2026-09-27: with thinking on, the review reasons ~900 tokens first; when max_tokens cuts
+                              # that, the NIM returns the cut reasoning as content and it was stored as the memo.
   nim_lightning:
     _type: nim
     model_name: nvidia/nemotron-3.5-lightning-30b-a3b

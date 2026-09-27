@@ -13,7 +13,9 @@ from cualign.core import store as store_module
 
 @pytest.mark.parametrize("failure,error", [("", "empty_response"), (RuntimeError("503 overloaded"), "upstream_503"),
                                           (Exception("[429] Too Many Requests"), "upstream_429"),
-                                          ("Thought: unfinished", "invalid_response")])
+                                          ("Thought: unfinished", "invalid_response"),
+                                          (SimpleNamespace(content="We need to produce a short Korean review memo",
+                                                           response_metadata={"finish_reason": "length"}), "invalid_response")])
 def test_review_budget_and_cached_failure(tmp_path, monkeypatch, failure, error):
     monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
     s = store_module.Store()
@@ -25,7 +27,7 @@ def test_review_budget_and_cached_failure(tmp_path, monkeypatch, failure, error)
             self.calls += 1
             if isinstance(failure, Exception):
                 raise failure
-            return SimpleNamespace(content=failure)
+            return failure if isinstance(failure, SimpleNamespace) else SimpleNamespace(content=failure)
     async def run():
         fake = Fake()
         context = PlanRun("review-run", "moderate", None, Constraints(), selected_plan_id=pid)
@@ -158,6 +160,43 @@ def test_worker_manual_review_uses_workflow_reviewer(tmp_path, monkeypatch):
 def test_upstream_error_labels(exc, label):
     from cualign.agent.reviewer import upstream_error
     assert upstream_error(exc) == label
+
+
+def test_reviewer_instructions_come_from_the_workflow_config(tmp_path, monkeypatch):
+    """The review model's system message is workflow.yml `functions.reviewer.instructions` (the wording rules live
+    there); without the key it is the old built-in text. 2026-09-27 golden set A: memos written with field names
+    (per_stage_mm, space_deficit_mm) were copied into the dentist's answer (G-plain-answer)."""
+    import yaml
+    from pathlib import Path
+    from cualign.agent import reviewer
+    from nat.builder.function import LambdaFunction
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    s = store_module.STORE
+    svc = PlanningService(s)
+    pid = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+    class Capture:
+        messages = None
+        async def ainvoke(self, messages):
+            Capture.messages = messages
+            return SimpleNamespace(content="검토 메모 초안")
+    class Builder:
+        async def get_llm(self, name, wrapper_type):
+            return Capture()
+    async def run(cfg):
+        async with reviewer.bounded_reviewer(cfg, Builder()) as info:
+            fn = LambdaFunction.from_info(config=cfg, info=info)
+            assert (await fn.ainvoke(reviewer.ReviewInput(plan_id=pid)))["status"] == "passed"
+        return Capture.messages[0]["content"]
+    wf = yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "workflow.yml").read_text(encoding="utf-8"))
+    configured = wf["functions"]["reviewer"]["instructions"]
+    assert "단계당 이동량" in configured and "never with the field name" in configured   # the rule this test exists for
+    # 2026-09-27 golden set A: with thinking on, the review reasoned past max_tokens and the cut reasoning came back as
+    # the memo (8 of 15 runs). The memo is a transcription of computed fields; it needs no reasoning channel.
+    assert wf["llms"][wf["functions"]["reviewer"]["llm_name"]]["chat_template_kwargs"]["enable_thinking"] is False
+    assert asyncio.run(run(reviewer.BoundedReviewerConfig(llm_name="nim_review", instructions=configured))) == configured
+    s.plans[pid]["review"]["status"] = "not_requested"   # a stored review is returned as-is; ask again
+    assert asyncio.run(run(reviewer.BoundedReviewerConfig(llm_name="nim_review"))) == reviewer.DEFAULT_INSTRUCTIONS
+    assert "field_notes" in reviewer.DEFAULT_INSTRUCTIONS and "단계당 이동량" not in reviewer.DEFAULT_INSTRUCTIONS
 
 
 def test_reviewer_gets_what_each_number_means(tmp_path, monkeypatch):

@@ -12,8 +12,8 @@ from cualign.core import skills as S
 
 ROOT = Path(__file__).resolve().parents[1]
 WS = ROOT / "workspace"
-# sha256 of workflow.additional_instructions as inlined in configs/workflow.yml at 4554a4c (5332 chars).
-INSTRUCTIONS_SHA256 = "965e3ba26f986150d6644f5345a2f6090e32078229f25e64f3e8a4a9dcde1a64"
+# sha256 of workflow.additional_instructions as inlined in configs/workflow.yml at 4808146 (5585 chars).
+INSTRUCTIONS_SHA256 = "9d74b31b783e54dc3597e914da226a91dd6cdec81c5909be76bf0b7a8c53b65b"
 
 
 def _instructions() -> str:
@@ -23,13 +23,13 @@ def _instructions() -> str:
 def test_nat_reads_the_instructions_from_workspace_agents_md():
     raw = (ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8")
     assert "additional_instructions: file://../workspace/AGENTS.md" in raw
-    assert "You are cuAlign" not in raw   # no inline copy left behind
+    assert "You are cuAlign, a staging-plan DRAFT assistant" not in raw   # no inline copy of the planner's instructions
     assert _instructions() == (WS / "AGENTS.md").read_text(encoding="utf-8")
 
 
 def test_instructions_are_byte_identical_to_the_pre_move_snapshot():
     text = _instructions()
-    assert len(text) == 5332
+    assert len(text) == 5585
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == INSTRUCTIONS_SHA256
     assert hashlib.sha256((WS / "AGENTS.md").read_bytes()).hexdigest() == INSTRUCTIONS_SHA256
 

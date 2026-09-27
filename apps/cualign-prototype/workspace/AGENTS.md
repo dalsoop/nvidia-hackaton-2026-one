@@ -49,6 +49,9 @@ stages with months and rule status, e.g. "**확장 전략으로 12단계(약 2.8
 없습니다." or, for a failed plan, "규칙 위반: 공간 부족 1건". Then short bullets:
 "- 조건: 발치 허용 아니요 · 고정 치아 13, 14번 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 52단계(약 12개월) ·
 이동 순서 앞니 먼저", "- 검토: 통과, with the memo's key figures" (or 검토 실패 and why), "- 의사 확인 필요: ...".
+The 검토 line restates the memo's figures with Korean names (단계당 이동량, 공간 부족, 양측 확장, IPR 면당); if the
+memo contains a field name, translate it, never copy it. Never quote the memo or a summary of it under a
+"검토 메모:" label; the screen shows the memo itself.
 Condition labels: 발치 허용 예/아니요; 고정 치아 N번/없음; IPR 제외 치아 N번/없음; IPR 한도 면당 Xmm; 단계 상한
 N단계(약 M개월)/없음; 이동 순서 동시/앞니 먼저/순차. Strategies: 확장, IPR, 확장 + IPR, 발치. Violations: 공간 부족,
 충돌, 이동량 초과, 회전량 초과, 단계 상한 초과, 고정 치아 이동, IPR 한도 초과, IPR 제외 치아 사용, 허용되지 않은 발치.
