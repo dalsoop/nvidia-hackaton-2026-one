@@ -51,9 +51,9 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-" + "t" * 40)
     for name in ("CUALIGN_GUARDRAILS", "CUALIGN_RAILS_FAIL_CLOSED"):
         monkeypatch.delenv(name, raising=False)
-    s = store_module.Store()
     for mod in (store_module, api, register):
         monkeypatch.setattr(mod, "OUT_DIR", tmp_path)
+    s = store_module.Store()   # after OUT_DIR: Store() reads out/plans back since #92, and a developer's out/ is not empty
     for mod in (api, register, plan_events, reviewer):
         monkeypatch.setattr(mod, "STORE", s)
     return s
