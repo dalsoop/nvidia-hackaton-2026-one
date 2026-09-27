@@ -1217,6 +1217,9 @@ function renderCaseDetail(c) {
   // IPR happens between two teeth: a blue line on each contact whose both crowns are allowed. Extraction prescriptions
   // make room by the extraction, not by IPR, so they draw none.
   const iprOn = !extract.size && (cons?.ipr_limit_mm ?? 0) > 0;
+  // a prescription names the contacts (#57, Universal pairs); without one the even rule applies to every allowed contact
+  const rx = new Set((cons?.ipr_surfaces ?? []).map(([a, b]) => Math.min(a, b) + "-" + Math.max(a, b)));
+  const iprAt = (u) => rx.size ? rx.has(u + "-" + (u + 1)) : iprOn && !iprOff.has(u) && !iprOff.has(u + 1);
   // 14 crowns on an arch, FDI 17…11 · 21…27 (Universal 2…15 from the patient's right)
   const svg = $("dArch"); svg.innerHTML = "";
   const ns = "http://www.w3.org/2000/svg";
@@ -1224,7 +1227,7 @@ function renderCaseDetail(c) {
   let iprCount = 0;
   for (let k = 0; k < 14; k++) {
     const u = k + 2, [x, y] = at(k);
-    if (iprOn && k < 13 && !iprOff.has(u) && !iprOff.has(u + 1)) {
+    if (k < 13 && iprAt(u)) {
       const [x2, y2] = at(k + 1), mx = (x + x2) / 2, my = (y + y2) / 2, nx = -(y2 - y), ny = x2 - x, n = Math.hypot(nx, ny);
       const line = document.createElementNS(ns, "line");   // across the contact, perpendicular to the arch
       line.setAttribute("x1", mx + (nx / n) * 9); line.setAttribute("y1", my + (ny / n) * 9);

@@ -43,8 +43,8 @@ def test_a_sample_opens_with_its_prescription():
     assert st.constraints_for(cid).allow_extraction
     _, _ = st.load_case("poseidon-000131")
     c = st.constraints_for("poseidon-000131")
-    assert not c.allow_extraction and c.ipr_limit_mm == 0.25
-    assert set(range(2, 16)) - set(c.ipr_exclude) == {7, 8, 9, 10}        # FDI 12..22
+    assert not c.allow_extraction and not c.ipr_exclude
+    assert c.ipr_surfaces == ((7, 8, 0.4), (8, 9, 0.4), (9, 10, 0.4))     # FDI 12-11, 11-21, 21-22 (#57)
     c.check_case(case.ids)
     # the dentist's later change is kept: the prescription is only the starting value
     st.case_constraints["poseidon-000097"] = st.constraints_for("poseidon-000097").patched({"allow_extraction": False})
@@ -84,15 +84,18 @@ def test_a_missing_sample_is_reported_not_crashed(monkeypatch, tmp_path):
         Store().load_case("poseidon-000001")
 
 
-def test_the_note_states_the_ipr_the_core_computes():
-    # the prescription is not exactly expressible (per-tooth IPR, 0.25 mm per contact at most): the note gives the
-    # app's total, and it must be the core's
-    for s in samples.SAMPLES.values():
-        c = s.initial_constraints()
-        got = planner._ipr_gain(list(range(2, 16)), set(c.ipr_exclude), c.ipr_limit_mm) if c.ipr_exclude else 0.0
-        assert got == pytest.approx(s.ipr_total_mm), s.case_id
-        if got:
-            assert f"총 {got:.1f}mm" in s.note, s.case_id
+def test_the_core_strips_exactly_the_prescribed_contacts():
+    # #57: the prescription is per contact; the plan strips those contacts and no others, for the prescribed total
+    from cualign.core.store import Store
+    for cid, total, n in (("poseidon-000131", 1.2, 3), ("poseidon-000001", 3.6, 9)):
+        st = Store()
+        _, case = st.load_case(cid)
+        c = st.constraints_for(cid)
+        assert len(c.ipr_surfaces) == n and sum(mm for _, _, mm in c.ipr_surfaces) == pytest.approx(total)
+        _, info = planner.propose_target(case, "ipr", constraints=c)
+        assert info["ipr_surfaces"] == [[a, b, mm] for a, b, mm in c.ipr_surfaces]
+        assert info["space_gain_mm"] == pytest.approx(total, abs=0.01)
+        assert not samples.get(cid).note
 
 
 def test_prescriptions_are_fdi_only():

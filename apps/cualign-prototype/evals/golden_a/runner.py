@@ -182,9 +182,10 @@ def ui_greeting(case_id: str) -> str:
 
 def form_patch(c) -> dict:
     """static/app.js readConstraints(): every form field is sent, an empty stage cap as clear_stage_cap."""
+    from cualign.core.fdi import to_fdi
     return {"extraction": list(c.extraction), "lock": list(c.lock), "ipr_exclude": list(c.ipr_exclude),
-            "ipr_limit_mm": c.ipr_limit_mm, "stage_cap": c.stage_cap, "clear_stage_cap": c.stage_cap is None,
-            "order": c.order}
+            "ipr_limit_mm": c.ipr_limit_mm, "ipr_surfaces": [[to_fdi(a), to_fdi(b), mm] for a, b, mm in c.ipr_surfaces],
+            "stage_cap": c.stage_cap, "clear_stage_cap": c.stage_cap is None, "order": c.order}
 
 
 # ---------------------------------------------------------------------------------------------- run

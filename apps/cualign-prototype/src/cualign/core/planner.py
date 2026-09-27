@@ -271,7 +271,8 @@ def _isotonic(y: list[float]) -> list[float]:
 def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float, extra: dict,
                      lock=frozenset(), close: bool = False,
                      close_sides: tuple[bool, bool] = (True, True),
-                     removed=(), closable: tuple[bool, bool] = (True, True), centre: float | None = None
+                     removed=(), closable: tuple[bool, bool] = (True, True), centre: float | None = None,
+                     end_room: tuple[float, float] = (0.0, 0.0)
                      ) -> tuple[list, bool, tuple[float, float], float, dict]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
@@ -288,7 +289,8 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
     the span becomes one contiguous chain, and the room left is for the molars to close. `centre`: arc position the
     chain's middle (the central incisors' contact) is put on when both molars can close - the midline, so the
     finished arch is symmetric and the two molars close different amounts only as far as the dentition is asymmetric
-    now (000097: 16 stands 2.5 mm further back than 26)."""
+    now (000097: 16 stands 2.5 mm further back than 26). `end_room`: mm the span gains at each first molar's mesial
+    contact (IPR prescribed on that contact strips the molar's half too, #57)."""
     model = _span_model(case)
     sa, sb = model.ends(offset)
     sa0, sb0 = model.ends(0.0)
@@ -297,8 +299,8 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
     span = [i for i in active if i in SPAN]
     fixed = [m for m, i in enumerate(span) if i in lock]
     gaps = [k * ((width[a] + width[b]) / 2 + CLEARANCE + extra.get((a, b), 0.0)) for a, b in zip(span, span[1:])]
-    lo = sa + k * (width[span[0]] / 2 + CLEARANCE + extra.get((3, span[0]), 0.0))
-    hi = sb - k * (width[span[-1]] / 2 + CLEARANCE + extra.get((span[-1], 14), 0.0))
+    lo = sa + k * (width[span[0]] / 2 + CLEARANCE + extra.get((3, span[0]), 0.0) - end_room[0])
+    hi = sb - k * (width[span[-1]] / 2 + CLEARANCE + extra.get((span[-1], 14), 0.0) - end_room[1])
     fits = True
     if not fixed and sum(gaps) > hi - lo and sum(gaps) > 0:   # does not fit: squeeze every gap alike
         gaps = [g * max(hi - lo, 0.0) / sum(gaps) for g in gaps]
@@ -396,7 +398,7 @@ def cut_case(case: Case, info: dict | None) -> Case:
 
 def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[int] = frozenset(),
                    lock: set[int] | frozenset[int] = frozenset(), constraints: Constraints | None = None,
-                   extraction: tuple[int, ...] = ()):
+                   extraction: tuple[int, ...] = (), ipr_surfaces: tuple = ()):
     """Return ({tooth: displacement(3,) | None}, info). None = extracted.
 
     The extraction strategy removes exactly the prescribed teeth (constraints.extraction, or `extraction` without
@@ -413,6 +415,7 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
             raise ValueError("extraction is forbidden by confirmed constraints")
         ipr_exclude, lock = set(constraints.ipr_exclude), set(constraints.lock)
         extraction = tuple(constraints.extraction)
+        ipr_surfaces = tuple(constraints.ipr_surfaces)
     if strategy == "extraction":
         extraction = tuple(sorted(set(extraction)))
         if not extraction:
@@ -439,7 +442,7 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
     pushed: set[tuple[int, int]] = set()
     path_rounds: dict[tuple[int, int], int] = {}
     for _ in range(SHAPE_ROUNDS + PATH_ROOM_MAX):
-        target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra, extraction)
+        target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra, extraction, ipr_surfaces)
         expandable = strategy in ("expansion", "expansion_ipr") and info["expansion_mm_per_side"] < MAX_EXPANSION_PER_SIDE
         adjust = {}
         cut = cut_case(case, info)        # measured on the crowns with the IPR cut, as the validator measures (#62)
@@ -480,7 +483,8 @@ def _target_gap(case: Case, a: int, b: int, target: dict) -> float:
     return float(cKDTree(mb.vertices).query(ma.vertices)[0].min())
 
 
-def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict, extraction=()):
+def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict, extraction=(),
+           ipr_surfaces=()):
     """One layout of propose_target: (target, info, {neighbour pair laid out: slack beyond its spacing}, whether the
     layout fit)."""
     ids = case.ids
@@ -501,11 +505,24 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     arch = _span_model(case).base if anchored else case.arch
     in_scope = (lambda i: i in SPAN) if anchored else (lambda i: True)
     red = {}
-    if strategy in ("ipr", "expansion_ipr"):
+    end_room = (0.0, 0.0)
+    surfaces = []                     # [a, b, mm] the IPR is cut from (ipr_cut.py): the prescription, or the uniform rule
+    if strategy in ("ipr", "expansion_ipr") and ipr_surfaces:
+        # the dentist's per-contact prescription (#57): those contacts only, half of each amount off each tooth
+        surfaces = [[a, b, mm] for a, b, mm in ipr_surfaces]
+        for a, b, mm in ipr_surfaces:
+            for t in (a, b):
+                red[t] = red.get(t, 0.0) + mm / 2
+        if anchored:   # the molars keep their width in the layout; their stripped mesial half lengthens the span
+            end_room = (red.pop(3, 0.0), red.pop(14, 0.0))
+            gain += sum(end_room)
+    elif strategy in ("ipr", "expansion_ipr"):
         # anchored: IPR on the span teeth only, both surfaces of each (the 3|4 and 13|14 contacts included) — stripping
         # a molar does not make room inside the span
         red = {i: ipr_limit_mm for i in ids if i in SPAN and i not in ipr_exclude} if anchored \
             else _ipr_reductions(ids, ipr_exclude, ipr_limit_mm)
+        surfaces = [[a, b, round(ipr_limit_mm / 2 * ((a in red) + (b in red)), 4)]
+                    for a, b in case.neighbors() if (a in red or b in red)] if red and ipr_limit_mm > 0 else []
     if strategy in ("expansion", "expansion_ipr"):
         # Expand only as much as needed (up to the 2 mm/side limit).
         # room the crowns' shapes need beyond their contact widths; contacts pulled closer than the widths (negative
@@ -521,8 +538,13 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         for i, r in red.items():
             width[i] -= r
         gain += sum(v for i, v in red.items() if in_scope(i))
-        surf = sum(round(r / (ipr_limit_mm * 0.5)) for r in red.values()) if ipr_limit_mm else 0
-        notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {label(sorted(ipr_exclude))})" if ipr_exclude else ""))
+        if ipr_surfaces:
+            from .constraints import surfaces_ko
+            notes.append(f"IPR 처방대로 접촉면 {len(surfaces)}면 총 {sum(mm for _, _, mm in surfaces):.1f}mm "
+                         f"({surfaces_ko(ipr_surfaces)})")
+        else:
+            surf = sum(round(r / (ipr_limit_mm * 0.5)) for r in red.values()) if ipr_limit_mm else 0
+            notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {label(sorted(ipr_exclude))})" if ipr_exclude else ""))
     if strategy == "extraction":
         rm = list(extraction)            # as prescribed (checked in propose_target)
         for i in rm:
@@ -543,7 +565,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         s_new, fits, room, open_mm, slack = _anchored_layout(
             case, active, width, s_cur, offset, extra, lock, close=strategy == "extraction", close_sides=sides,
             removed=tuple(extraction) if strategy == "extraction" else (), closable=closable,
-            centre=_span_model(case).midline_s(offset))
+            centre=_span_model(case).midline_s(offset), end_room=end_room)
         if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
             # the molars close whatever room is left on their side (unless one of them is locked): the layout leaves it
             # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
@@ -613,12 +635,13 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             "notes": notes, "removed": [i for i in ids if target[i] is None], "locked": sorted(lock),
             "extraction": list(extraction) if strategy == "extraction" else [],
             "open_space_mm": round(open_mm, 2),
-            "ipr_mm_per_surface": ipr_limit_mm if strategy in ("ipr", "expansion_ipr") else 0.0,
-            "ipr_applied_teeth": sorted(red) if ipr_limit_mm > 0 else [],
+            # per tooth surface: the prescription's largest half-amount, else the uniform per-contact amount
+            "ipr_mm_per_surface": (max(mm / 2 for _, _, mm in surfaces) if ipr_surfaces else ipr_limit_mm)
+            if strategy in ("ipr", "expansion_ipr") and surfaces else 0.0,
+            # teeth stripped: the prescription's (a molar's mesial half included), else those the uniform rule narrows
+            "ipr_applied_teeth": sorted({t for a, b, _ in surfaces for t in (a, b)}) if ipr_surfaces else sorted(red),
             # contact surfaces the IPR is cut from (ipr_cut.py): [a, b, mm at that contact], half from each tooth
-            # that gets IPR - the list a per-contact prescription (#57) will supply
-            "ipr_surfaces": [[a, b, round(ipr_limit_mm / 2 * ((a in red) + (b in red)), 4)]
-                             for a, b in case.neighbors() if (a in red or b in red)] if red and ipr_limit_mm > 0 else [],
+            "ipr_surfaces": surfaces,
             "ipr_exclude": sorted(ipr_exclude), "expansion_mm_per_side": round(float(offset), 2),
             "rotation_deg": {i: y for i, y in sorted(target.yaw.items())},
             "vertical_mm": {i: round(v, 2) for i, v in sorted(lift.items())},
@@ -773,6 +796,15 @@ def validate(case: Case, stages: list[dict], stage_cap: int | None = None,
         excluded = set(info.get("ipr_applied_teeth", [])) & set(constraints.ipr_exclude)
         if excluded:
             viol.append({"stage": None, "type": "ipr_excluded", "teeth": sorted(excluded)})
+        if constraints.ipr_surfaces and info.get("ipr_surfaces"):
+            # IPR only where and as much as prescribed (#57): a contact the prescription does not name, or another
+            # amount on one it names, is a violation
+            want = {(a, b): mm for a, b, mm in constraints.ipr_surfaces}
+            wrong = [[int(a), int(b), float(mm)] for a, b, mm in info["ipr_surfaces"]
+                     if (int(a), int(b)) not in want or abs(float(mm) - want[(int(a), int(b))]) > 1e-6]
+            if wrong:
+                viol.append({"stage": None, "type": "ipr_unprescribed", "surfaces": wrong,
+                             "teeth": sorted({t for a, b, _ in wrong for t in (a, b)})})
         if info.get("open_space_mm", 0.0) > SPACE_DEFICIT_TOLERANCE_MM:
             # extraction space that no molar can close (a locked molar or locked teeth around it): not a finished plan
             viol.append({"stage": None, "type": "extraction_space_open", "mm": info["open_space_mm"],
@@ -843,14 +875,20 @@ def export_print_models(case: Case, stages: list[dict], zip_path: str, case_id: 
 
 
 def strategies_for(allowed, constraints: Constraints | None) -> list[str]:
-    """The strategies a prescription allows (#56): with extraction teeth prescribed, only extraction (the other
-    strategies would not extract them); without, every allowed strategy but extraction (the app does not pick teeth).
-    A prescription whose strategy the caller excluded is an error, not a silent other plan."""
+    """The strategies a prescription allows (#56, #57): with extraction teeth prescribed, only extraction (the other
+    strategies would not extract them); with IPR contacts prescribed, the IPR strategies (ipr, expansion_ipr); without
+    either, every allowed strategy but extraction (the app does not pick teeth). A prescription whose strategy the
+    caller excluded is an error, not a silent other plan."""
     allowed = list(dict.fromkeys(allowed))
     if constraints is not None and constraints.extraction:
         if "extraction" not in allowed:
             raise ValueError("처방은 발치인데 요청한 전략에 발치가 없습니다.")
         return ["extraction"]
+    if constraints is not None and constraints.ipr_surfaces:     # IPR prescribed per contact (#57): the plans that do it
+        out = [s for s in allowed if s in ("ipr", "expansion_ipr")]
+        if not out:
+            raise ValueError("처방은 IPR 인데 요청한 전략에 IPR 이 없습니다.")
+        return out
     return [s for s in allowed if s != "extraction"]
 
 
