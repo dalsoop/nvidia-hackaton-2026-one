@@ -369,9 +369,9 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
         if not extraction:
             raise ValueError("발치 처방(발치할 치아 번호)이 없어 발치안을 만들 수 없습니다.")
         if set(extraction) - set(case.ids):
-            raise ValueError(f"처방된 발치 치아가 케이스에 없습니다: {sorted(set(extraction) - set(case.ids))}")
+            raise ValueError(f"처방된 발치 치아가 케이스에 없습니다: {label(sorted(set(extraction) - set(case.ids)))}")
         if set(extraction) - set(PREMOLARS):
-            raise ValueError(f"소구치(4, 5, 12, 13) 발치만 계획할 수 있습니다: {sorted(set(extraction) - set(PREMOLARS))}")
+            raise ValueError(f"소구치({label(sorted(PREMOLARS))}) 발치만 계획할 수 있습니다: {label(sorted(set(extraction) - set(PREMOLARS)))}")
         if set(extraction) & set(lock):
             raise ValueError("locked teeth cannot be extracted")
     ipr_limit_mm = constraints.ipr_limit_mm if constraints else IPR_PER_SURFACE
