@@ -19,7 +19,6 @@
 | `src/cualign/core/case.py` | 치아별 메시 로딩, 케이스 구성, 이웃 치아 겹침 계산 |
 | `src/cualign/core/arch.py` | 치열궁 곡선과 위치·길이 계산 |
 | `src/cualign/core/limits.py` | 계산 한계값, 전략·치아 집합, 장수·기간 환산 |
-| `src/cualign/core/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터 |
 | `src/cualign/core/synth.py` | 환자 데이터 없이 재현하는 합성 케이스 생성. 테스트·에이전트 평가·CLI용이며 첫 화면에는 내놓지 않음 |
 | `src/cualign/core/samples.py` | 첫 화면 샘플 3건(Poseidon3D 실제 상악 스캔)과 치과의사 처방. 처방을 케이스의 초기 계획 조건으로 넣음 |
 | `src/cualign/core/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`). `scripts/import_poseidon.py`로 만들었고 패키지에 포함 |
@@ -54,6 +53,7 @@
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
 | `src/cualign/server/mcp_server.py` | NemoClaw용 MCP 서버(`/mcp`): 토큰 확인, `cualign_plan`은 서버 안에서 `/chat/stream`으로 요청해 UI와 같은 경로를 탐, 승인 도구는 승인하지 않고 내보내기 도구는 의사 승인을 요구 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
+| `src/cualign/server/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터. NeMo Guardrails 기능이 아닌 하네스 검사라 `core/`가 아니라 여기 둠(#79) |
 | `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공. 레일이 꺼져 있어도, 선택한 계획이 규칙 검증에 실패했는데 답의 첫머리가 위반이 없다고 하면 그 구절을 실제 규칙 상태로 바꿈(비교 턴 제외, #91) |
 | `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
 | `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |

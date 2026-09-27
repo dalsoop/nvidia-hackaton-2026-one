@@ -19,7 +19,7 @@ result, and drops the workflow's own start and end (the start would echo the req
 A workflow exception reaches the client with its type only: NAT sends str(e) on every route, and a ReAct parse failure
 puts the model's raw text in it, past the output rail. The whole exception goes to the server log.
 
-Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
+Regex rails (cualign.server.rail_patterns) run before the rail models, only while the rails are on:
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
   * a prescriptive sentence in the answer blocks it without asking the output rail model.
 The reviewer's memo goes to the plan card, not the answer, so reviewer.MEMO_CHECK gives it the same output check.
@@ -55,7 +55,7 @@ from cualign.agent import nim_stream_patch
 from cualign.agent.context import CURRENT_RUN
 from cualign.agent.overload import is_overload_error
 from cualign.keys import nvidia_key_available
-from cualign.core.rail_patterns import PII, PRESCRIPTIVE
+from cualign.server.rail_patterns import PII, PRESCRIPTIVE
 from cualign.core.store import STORE
 from cualign.server.rails import ROOT
 
