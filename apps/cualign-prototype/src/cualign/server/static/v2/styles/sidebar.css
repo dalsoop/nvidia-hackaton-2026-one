@@ -219,70 +219,71 @@
   color: var(--color-text-primary);
 }
 
-.staging-grid-line,
-.staging-current-band,
-.staging-current-line {
+/* One row per stage: the row box is centred on the stage line, so line, label,
+   highlight and click area share a single position. */
+.staging-rows {
+  position: absolute;
+  top: var(--staging-rows-top);
+  left: 0;
+  width: var(--staging-canvas-w);
+  display: flex;
+  flex-direction: column;
+  z-index: 2;
+}
+
+.staging-row {
+  position: relative;
+  height: var(--staging-row-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.staging-row::before {
+  content: '';
   position: absolute;
   left: var(--staging-plot-left);
-  width: calc(var(--staging-canvas-w) - var(--staging-plot-left));
+  right: 0;
+  top: 50%;
+  height: var(--line-1);
+  background: var(--color-staging-grid);
   pointer-events: none;
 }
 
-.staging-grid-line {
-  height: var(--line-1);
-  background: var(--color-staging-grid);
+.staging-row.is-current {
+  background: linear-gradient(to right, transparent var(--staging-plot-left), var(--color-staging-band) var(--staging-plot-left));
 }
 
-.staging-current-band {
-  background: var(--color-staging-band);
-  transition: top 0.12s ease, height 0.12s ease;
-}
-
-.staging-current-line {
+.staging-row.is-current::before {
   height: var(--line-2);
+  margin-top: calc(var(--line-2) / -2);
   background: var(--color-accent);
-  transition: top 0.12s ease;
 }
 
 .staging-row-label {
-  position: absolute;
-  left: 0;
   width: var(--space-22);
   text-align: right;
   font-size: var(--font-size-10);
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
-  cursor: pointer;
 }
 
-.staging-row-label:hover {
+.staging-row:hover .staging-row-label {
   color: var(--color-text-primary);
   font-weight: 700;
 }
 
-.staging-current-badge {
-  position: absolute;
-  left: var(--space-2);
+.staging-row.is-current .staging-row-label {
+  margin-left: var(--space-2);
   width: var(--space-24);
   height: var(--space-16);
+  display: grid;
+  place-items: center;
   background: var(--color-accent);
   color: var(--color-text-inverse);
   border-radius: var(--radius-xs);
-  font-size: var(--font-size-10);
   font-weight: 700;
-  display: grid;
-  place-items: center;
-  transition: top 0.12s ease;
-  cursor: pointer;
-  z-index: 4;
-}
-
-.staging-interactive-row {
-  position: absolute;
-  left: 0;
-  width: var(--staging-canvas-w);
-  cursor: pointer;
-  z-index: 2;
 }
 
 .staging-bar {

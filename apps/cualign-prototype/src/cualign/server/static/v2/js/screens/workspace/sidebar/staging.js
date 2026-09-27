@@ -201,70 +201,24 @@ export function renderStaging(container, ctx) {
     chartCanvas.appendChild(labelEl);
   });
 
-  // B. Horizontal Grid Lines (0..nStages)
+  // B. Stage rows (0..nStages). One element per stage owns its grid line, label, current-stage
+  // highlight and click area. Rows are laid out in flow and centred on the model's stage y
+  // (topOffset + s * rowHeight), so they cannot drift from the bars, dots and rings drawn below.
+  chartCanvas.style.setProperty('--staging-row-h', `${rowHeight}px`);
+  chartCanvas.style.setProperty('--staging-rows-top', `${topOffset - rowHeight / 2}px`);
+  const rowsEl = h('div', { class: 'staging-rows' });
   for (let s = 0; s <= nStages; s++) {
-    const lineY = topOffset + s * rowHeight;
-    const gridLine = h('div', {
-      class: 'staging-grid-line',
-      style: `top: ${lineY}px`
-    });
-    chartCanvas.appendChild(gridLine);
-  }
-
-  // C. Current Stage Highlight Band & Line
-  const currentBandTop = topOffset + currentStage * rowHeight - rowHeight / 2;
-  const currentBand = h('div', {
-    class: 'staging-current-band',
-    style: `top: ${currentBandTop}px; height: ${rowHeight}px`
-  });
-  chartCanvas.appendChild(currentBand);
-
-  const currentLineTop = topOffset + currentStage * rowHeight - 1;
-  const currentLine = h('div', {
-    class: 'staging-current-line',
-    style: `top: ${currentLineTop}px`
-  });
-  chartCanvas.appendChild(currentLine);
-
-  // D. Stage Row Labels (0..nStages) and Interactive Click Areas
-  for (let s = 0; s <= nStages; s++) {
-    const labelTop = topOffset + s * rowHeight - 7;
     const isCurrent = s === currentStage;
-
-    if (!isCurrent) {
-      const rowLabel = h('div', {
-        class: 'staging-row-label',
-        style: `top: ${labelTop}px`,
-        onClick: () => {
-          ctx.store.set({ stageIndex: s });
-        }
-      }, String(s));
-      chartCanvas.appendChild(rowLabel);
-    }
-
-    // Interactive hit box for clicking row to change stage
-    const rowHitTop = topOffset + s * rowHeight - rowHeight / 2;
-    const rowHit = h('div', {
-      class: 'staging-interactive-row',
-      style: `top: ${rowHitTop}px; height: ${rowHeight}px`,
+    const row = h('div', {
+      class: isCurrent ? 'staging-row is-current' : 'staging-row',
+      title: isCurrent ? SIDEBAR_VOCAB.staging.currentStageTitle(s) : null,
       onClick: () => {
         ctx.store.set({ stageIndex: s });
       }
-    });
-    chartCanvas.appendChild(rowHit);
+    }, h('span', { class: 'staging-row-label' }, String(s)));
+    rowsEl.appendChild(row);
   }
-
-  // E. Current Stage Green Badge
-  const currentBadgeTop = topOffset + currentStage * rowHeight - 7.5;
-  const currentBadge = h('div', {
-    class: 'staging-current-badge',
-    style: `top: ${currentBadgeTop}px`,
-    title: SIDEBAR_VOCAB.staging.currentStageTitle(currentStage),
-    onClick: () => {
-      ctx.store.set({ stageIndex: currentStage });
-    }
-  }, String(currentStage));
-  chartCanvas.appendChild(currentBadge);
+  chartCanvas.appendChild(rowsEl);
 
   // F. Vertical Movement Bars
   for (const bar of model.bars) {

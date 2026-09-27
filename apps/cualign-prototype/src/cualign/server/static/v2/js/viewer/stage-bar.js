@@ -93,7 +93,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
       const pct = calculateTickPosition(k, currentMax);
       const tick = document.createElement('span');
       tick.className = 'stage-tick';
-      tick.style.left = `${pct.toFixed(2)}%`;
+      tick.style.setProperty('--pos', String(pct / 100));
       ticksContainer.appendChild(tick);
     }
   }
@@ -112,7 +112,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
       const dot = document.createElement('button');
       dot.type = 'button';
       dot.className = `stage-violation-dot ${s.collision ? 'has-collision' : 'has-movelimit'}`;
-      dot.style.left = `${pct.toFixed(2)}%`;
+      dot.style.setProperty('--pos', String(pct / 100));
 
       const details = [];
       if (s.collision) details.push(T.collisionCount(s.collision));
@@ -133,7 +133,7 @@ export function createStageBar(container, { max = 0, value = 0, violations = [],
 
   function updateSliderFill() {
     const pct = calculateTickPosition(currentStage, currentMax);
-    slider.style.setProperty('--track-fill', `${pct.toFixed(1)}%`);
+    slider.style.setProperty('--pos', String(pct / 100));
     slider.setAttribute('aria-valuenow', String(currentStage));
   }
 

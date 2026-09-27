@@ -387,6 +387,8 @@
 /* Track wrap with slider and violation markers */
 .stage-track-wrap {
   position: relative;
+  /* thumb centre travels from thumb/2 to 100% - thumb/2; ticks, marks and fill follow it */
+  --stage-thumb: var(--space-16);
   flex: 1;
   display: flex;
   align-items: center;
@@ -401,8 +403,8 @@
   background: linear-gradient(
     to right,
     var(--color-accent) 0%,
-    var(--color-accent) var(--track-fill, 0%),
-    var(--color-surface-lock) var(--track-fill, 0%),
+    var(--color-accent) calc(var(--stage-thumb) / 2 + (100% - var(--stage-thumb)) * var(--pos, 0)),
+    var(--color-surface-lock) calc(var(--stage-thumb) / 2 + (100% - var(--stage-thumb)) * var(--pos, 0)),
     var(--color-surface-lock) 100%
   );
   border-radius: var(--radius-xs);
@@ -422,6 +424,7 @@
   appearance: none;
   width: var(--space-16);
   height: var(--space-16);
+  box-sizing: border-box;
   background-color: var(--color-text-primary);
   border: var(--line-2) solid var(--color-accent);
   border-radius: var(--radius-full);
@@ -432,6 +435,7 @@
 .stage-slider::-moz-range-thumb {
   width: var(--space-16);
   height: var(--space-16);
+  box-sizing: border-box;
   background-color: var(--color-text-primary);
   border: var(--line-2) solid var(--color-accent);
   border-radius: var(--radius-full);
@@ -452,6 +456,7 @@
 
 .stage-tick {
   position: absolute;
+  left: calc(var(--stage-thumb) / 2 + (100% - var(--stage-thumb)) * var(--pos, 0));
   top: 50%;
   transform: translate(-50%, -50%);
   width: var(--space-2);
@@ -470,6 +475,7 @@
 
 .stage-violation-dot {
   position: absolute;
+  left: calc(var(--stage-thumb) / 2 + (100% - var(--stage-thumb)) * var(--pos, 0));
   top: 50%;
   transform: translate(-50%, -50%);
   width: var(--space-8);

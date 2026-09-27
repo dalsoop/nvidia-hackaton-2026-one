@@ -341,7 +341,7 @@ async def assert_workspace_contracts(
         "계획 3의 단계 막대 max는 getPlan 단계 수(카드의 n_stages)와 같아야 한다",
         {"slider_max": slider_max, "card": stages_badge},
     )
-    stage_rows = await page.locator(".sidebar-staging-panel .staging-interactive-row").count()
+    stage_rows = await page.locator(".sidebar-staging-panel .staging-row").count()
     stage_bars = await page.locator(".sidebar-staging-panel .staging-bar").count()
     checks.check(
         stage_bars > 0,
@@ -707,7 +707,7 @@ async def assert_webgl_disabled_workspace(
             target_stage = min(2, slider_max)
             await slider.fill(str(target_stage))
             await page.wait_for_timeout(100)
-            current_badge = await page.locator(".staging-current-badge").inner_text()
+            current_badge = await page.locator(".staging-row.is-current .staging-row-label").inner_text()
             checks.check(
                 current_badge.strip() == str(target_stage),
                 "F1 WebGL",
