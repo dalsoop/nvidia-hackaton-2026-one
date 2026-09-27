@@ -9,6 +9,7 @@ import {
   formatVerticalSummary,
   formatOrientationSummary
 } from '../../src/cualign/server/static/v2/js/screens/intake/check.js';
+import { CHECK_VOCAB } from '../../src/cualign/server/static/v2/js/domain/vocab/check.js';
 
 test('Check: normal supported scan produces ready state and confirm action', () => {
   const check = {
@@ -405,6 +406,65 @@ test('Check: confirmation 409 error extracts detail and sets failure message', (
 
   // Fallback 409 without custom message
   const generic409 = { status: 409, message: '' };
-  const fallbackMsg = generic409.message || (generic409.status === 409 ? '확인 충돌(409): 지원하지 않는 스캔이거나 개정판 충돌이 발생했습니다.' : '계획 시작에 실패했습니다.');
+  const fallbackMsg = generic409.message || (generic409.status === 409 ? CHECK_VOCAB.conflict409 : CHECK_VOCAB.planStartFailed);
   assert.match(fallbackMsg, /409/);
+});
+
+test('Check: mirrorScan flow reverses teeth and updates check state', async () => {
+  const calls = [];
+  const fakeApi = {
+    mirrorScan: async (p, s) => {
+      calls.push({ fn: 'mirrorScan', p, s });
+      return {
+        case_id: `${p}-${s}`,
+        teeth: [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+        orientation: {
+          side: 'ok',
+          basis: 'palate',
+          renumbered: true
+        },
+        ready: true,
+        unsupported: []
+      };
+    }
+  };
+
+  const updatedCheck = await fakeApi.mirrorScan('P001', 'S01');
+  const updatedState = deriveCheckState(updatedCheck);
+
+  assert.deepEqual(calls, [{ fn: 'mirrorScan', p: 'P001', s: 'S01' }]);
+  assert.equal(updatedState.isReversed, false);
+  assert.equal(updatedState.orientation.renumbered, true);
+  assert.equal(formatOrientationSummary(updatedState.orientation), '구개(입천장) 기준 · 번호 좌우 뒤집음');
+});
+
+test('Check: deleteScan flow removes scan and returns to patient page', async () => {
+  const calls = [];
+  const fakeApi = {
+    deleteScan: async (p, s) => {
+      calls.push({ fn: 'deleteScan', p, s });
+      return { ok: true };
+    }
+  };
+
+  await fakeApi.deleteScan('P002', 'S01');
+  assert.deepEqual(calls, [{ fn: 'deleteScan', p: 'P002', s: 'S01' }]);
+});
+
+test('Check: CHECK_VOCAB dictionary completeness', () => {
+  assert.equal(CHECK_VOCAB.title, '입력 확인');
+  assert.equal(CHECK_VOCAB.supportedBadge, '계획 가능');
+  assert.equal(CHECK_VOCAB.unsupportedBadge, '지원 불가');
+  assert.equal(CHECK_VOCAB.btnStartPlan, '번호 확인 — 계획 시작');
+  assert.equal(CHECK_VOCAB.btnUnsupported, '계획할 수 없는 스캔');
+  assert.equal(CHECK_VOCAB.btnDelete, '스캔 삭제');
+  assert.equal(CHECK_VOCAB.mirrorButton, '좌우 번호 뒤집기');
+  assert.equal(CHECK_VOCAB.terms.teeth, '치아');
+  assert.equal(CHECK_VOCAB.terms.missing, '누락');
+  assert.equal(CHECK_VOCAB.terms.outside, '범위 밖');
+  assert.equal(CHECK_VOCAB.terms.crowding, '총생');
+  assert.equal(CHECK_VOCAB.terms.rotation, '회전 보정 대상');
+  assert.equal(CHECK_VOCAB.terms.vertical, '높이 보정 대상');
+  assert.equal(CHECK_VOCAB.terms.gingiva, '잇몸 스캔');
+  assert.equal(CHECK_VOCAB.terms.orientation, '방향 정렬');
 });

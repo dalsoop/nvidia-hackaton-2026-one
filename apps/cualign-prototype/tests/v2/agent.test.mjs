@@ -12,6 +12,7 @@ import {
 import { executeChatStream, executeRulePlan } from '../../src/cualign/server/static/v2/js/agent/stream.js';
 import { createStore } from '../../src/cualign/server/static/v2/js/state/store.js';
 import { STRINGS } from '../../src/cualign/server/static/v2/js/agent/strings.js';
+import { T_AGENT } from '../../src/cualign/server/static/v2/js/domain/vocab/agent.js';
 
 test('Agent strings: verify Korean strings match design specifications', () => {
   assert.equal(STRINGS.send, '전송');
@@ -673,5 +674,71 @@ test('executeRulePlan: throws error when caseId is missing', async () => {
     /No active case selected/
   );
 });
+
+test('T_AGENT: vocab dictionary provides accurate Korean terms and tool labels', () => {
+  assert.equal(T_AGENT.title, '에이전트');
+  assert.equal(T_AGENT.send, '전송');
+  assert.equal(T_AGENT.ruleCalc, '규칙으로 계산');
+  assert.equal(T_AGENT.resend, '다시 보내기');
+  assert.equal(T_AGENT.requestFailed, '계획 요청 실패');
+  assert.equal(T_AGENT.overloadNotice, 'NVIDIA API가 일시적으로 과부하 상태입니다. 다시 시도해 주세요.');
+  assert.equal(T_AGENT.makingPlan(5), '계획 5을 만드는 중');
+  assert.equal(T_AGENT.tools.load_case, '케이스 불러오기');
+  assert.equal(T_AGENT.tools.set_constraints, '처방 반영');
+  assert.equal(T_AGENT.tools.propose_target, '목표 배열 제안');
+  assert.equal(T_AGENT.tools.plan_stages, '단계 계획');
+  assert.equal(T_AGENT.tools.validate, '규칙 검사');
+  assert.equal(T_AGENT.tools.export_stl, '출력 파일 생성');
+});
+
+test('executeRulePlan: selects best_failed when chosen is not available', async () => {
+  const store = createStore({
+    caseId: 'case-rule-fail',
+    viewingPlanId: 'p-prev',
+    constraints: {},
+    plans: [{ plan_id: 'p-prev' }]
+  });
+
+  const mockApi = {
+    async rulePlan() {
+      return {
+        case_id: 'case-rule-fail',
+        chosen: null,
+        best_failed: { plan_id: 'p-failed-best', passed: false },
+        tried: [{ plan_id: 'p-failed-best' }]
+      };
+    },
+    async listPlans() {
+      return [{ plan_id: 'p-prev' }, { plan_id: 'p-failed-best' }];
+    }
+  };
+
+  const res = await executeRulePlan({
+    ctx: { store, api: mockApi }
+  });
+
+  assert.equal(res.chosen, null);
+  assert.equal(res.best_failed.plan_id, 'p-failed-best');
+  assert.equal(store.get().viewingPlanId, 'p-failed-best');
+  assert.equal(store.get().plans.length, 2);
+});
+
+test('executeChatStream: throws error when caseId is null', async () => {
+  const store = createStore({
+    caseId: null,
+    viewingPlanId: null
+  });
+
+  await assert.rejects(
+    async () => {
+      await executeChatStream({
+        ctx: { store, api: {} },
+        text: 'hello'
+      });
+    },
+    /No active case selected/
+  );
+});
+
 
 

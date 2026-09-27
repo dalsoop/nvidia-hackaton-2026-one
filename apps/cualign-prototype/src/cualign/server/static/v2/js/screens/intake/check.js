@@ -5,6 +5,7 @@
 import { clear, h } from '../../ui/dom.js';
 import { universalToFdi } from '../../domain/teeth.js';
 import { T } from '../../domain/vocab.js';
+import { CHECK_VOCAB } from '../../domain/vocab/check.js';
 
 /**
  * Pure function: derives screen and UI state from caseCheck API payload.
@@ -38,7 +39,7 @@ export function deriveCheckState(check) {
       rotations: [],
       verticals: [],
       primaryAction: {
-        label: '계획할 수 없는 스캔',
+        label: CHECK_VOCAB.btnUnsupported,
         disabled: true,
         type: 'unsupported'
       },
@@ -55,7 +56,7 @@ export function deriveCheckState(check) {
 
   const isSupported = unsupportedReasons.length === 0 && check.ready !== false;
   if (!isSupported && unsupportedReasons.length === 0) {
-    unsupportedReasons = ['스캔 점검 기준을 충족하지 못했습니다.'];
+    unsupportedReasons = [CHECK_VOCAB.unsupportedDefaultReason];
   }
   const ready = Boolean(check.ready !== false && isSupported);
 
@@ -116,8 +117,8 @@ export function deriveCheckState(check) {
     .sort((a, b) => (a.fdi ?? 0) - (b.fdi ?? 0));
 
   const primaryAction = isSupported
-    ? { label: '번호 확인 — 계획 시작', disabled: false, type: 'confirm' }
-    : { label: '계획할 수 없는 스캔', disabled: true, type: 'unsupported' };
+    ? { label: CHECK_VOCAB.btnStartPlan, disabled: false, type: 'confirm' }
+    : { label: CHECK_VOCAB.btnUnsupported, disabled: true, type: 'unsupported' };
 
   return {
     caseId: check.case_id || '',
@@ -158,19 +159,12 @@ export function parsePatientAndScanId(caseId) {
 }
 
 export function formatBasis(basis) {
-  const map = {
-    gingiva: '잇몸 기준',
-    cervical: '치관 아래 경계 기준',
-    occlusal: '교합면 기준',
-    palate: '구개(입천장) 기준',
-    none: '근거 없음'
-  };
-  return map[basis] || basis || '미지정';
+  return CHECK_VOCAB.bases[basis] || basis || CHECK_VOCAB.unspecified;
 }
 
 export function formatRotationSummary(rotations) {
   if (!Array.isArray(rotations) || rotations.length === 0) {
-    return '보정할 회전 없음';
+    return CHECK_VOCAB.noRotationNeeded;
   }
   return rotations
     .map((r) => `${r.fdi}번 ${r.deg > 0 ? '+' : ''}${r.deg}°`)
@@ -179,20 +173,20 @@ export function formatRotationSummary(rotations) {
 
 export function formatVerticalSummary(verticals) {
   if (!Array.isArray(verticals) || verticals.length === 0) {
-    return '보정할 차이 없음';
+    return CHECK_VOCAB.noVerticalNeeded;
   }
   return verticals
-    .map((v) => `${v.fdi}번 ${v.mm > 0 ? '교합면 쪽' : '잇몸 쪽'} ${Math.abs(v.mm)}mm`)
+    .map((v) => `${v.fdi}번 ${v.mm > 0 ? CHECK_VOCAB.occlusalSide : CHECK_VOCAB.gingivalSide} ${Math.abs(v.mm)}mm`)
     .join(', ');
 }
 
 export function formatOrientationSummary(orientation) {
   if (!orientation || typeof orientation !== 'object') {
-    return '미지정';
+    return CHECK_VOCAB.unspecified;
   }
   const basis = formatBasis(orientation.basis);
   const rot = orientation.rotation_deg ? ` · ${orientation.rotation_deg}° 회전` : '';
-  const renum = orientation.renumbered ? ' · 번호 좌우 뒤집음' : '';
+  const renum = orientation.renumbered ? CHECK_VOCAB.renumberedSuffix : '';
   return `${basis}${rot}${renum}`;
 }
 
@@ -247,7 +241,7 @@ export function mount(root, params, ctx) {
   async function loadData() {
     try {
       panel.innerHTML = '';
-      panel.appendChild(h('div', { class: 'check-loading' }, '스캔 점검 결과를 불러오는 중…'));
+      panel.appendChild(h('div', { class: 'check-loading' }, CHECK_VOCAB.loading));
 
       const [checkData, meshData] = await Promise.all([
         ctx.api.caseCheck(caseId),
@@ -279,7 +273,7 @@ export function mount(root, params, ctx) {
       renderPanel();
     } catch (err) {
       if (isUnmounted) return;
-      setErrorMessage(err?.message || '스캔 점검 정보를 불러오지 못했습니다.');
+      setErrorMessage(err?.message || CHECK_VOCAB.fetchError);
     }
   }
 
@@ -299,7 +293,7 @@ export function mount(root, params, ctx) {
       ctx.navigate(`#/workspace/${encodeURIComponent(caseId)}`);
     } catch (err) {
       if (btn) btn.disabled = false;
-      const message = err?.message || (err?.status === 409 ? '확인 충돌(409): 지원하지 않는 스캔이거나 개정판 충돌이 발생했습니다.' : '계획 시작에 실패했습니다.');
+      const message = err?.message || (err?.status === 409 ? CHECK_VOCAB.conflict409 : CHECK_VOCAB.planStartFailed);
       setErrorMessage(message);
     }
   }
@@ -334,14 +328,14 @@ export function mount(root, params, ctx) {
       }
     } catch (err) {
       if (btn) btn.disabled = false;
-      setErrorMessage(err?.message || '좌우 번호 뒤집기에 실패했습니다.');
+      setErrorMessage(err?.message || CHECK_VOCAB.mirrorFailed);
     }
   }
 
   async function handleDelete() {
     setErrorMessage('');
     if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm('이 스캔과 파일을 삭제하시겠습니까? 되돌릴 수 없습니다.')) {
+      if (!window.confirm(CHECK_VOCAB.confirmDeletePrompt)) {
         return;
       }
     }
@@ -354,7 +348,7 @@ export function mount(root, params, ctx) {
         ctx.navigate('#/cases');
       }
     } catch (err) {
-      setErrorMessage(err?.message || '스캔 삭제에 실패했습니다.');
+      setErrorMessage(err?.message || CHECK_VOCAB.deleteFailed);
     }
   }
 
@@ -366,13 +360,13 @@ export function mount(root, params, ctx) {
     // Header
     const header = h('div', { class: 'check-header' },
       h('div', { class: 'check-header-top' },
-        h('h1', { class: 'check-title' }, '입력 확인'),
+        h('h1', { class: 'check-title' }, CHECK_VOCAB.title),
         h('span', {
           class: `badge ${state.isSupported ? 'badge-ready' : 'badge-violation'}`
-        }, state.isSupported ? '계획 가능' : '지원 불가')
+        }, state.isSupported ? CHECK_VOCAB.supportedBadge : CHECK_VOCAB.unsupportedBadge)
       ),
       h('div', { class: 'check-subtitle' },
-        `${pid ? pid + ' · ' : ''}${sid || caseId} · 상악 (버전 ${state.revision})`
+        `${pid ? pid + ' · ' : ''}${sid || caseId} · ${CHECK_VOCAB.versionSuffix(state.revision)}`
       )
     );
     panel.appendChild(header);
@@ -394,11 +388,11 @@ export function mount(root, params, ctx) {
         type: 'button',
         class: 'btn btn-ghost check-btn-mirror',
         onClick: handleMirror
-      }, '좌우 번호 뒤집기');
+      }, CHECK_VOCAB.mirrorButton);
 
       body.appendChild(h('div', { class: 'check-box check-box-warning' },
-        h('b', null, '치아 번호가 좌우 반대로 보입니다.'),
-        h('p', null, '2번(우측)이 화면 왼쪽, 15번(좌측)이 화면 오른쪽에 와야 합니다. 번호를 뒤집으려면 아래 버튼을 누르세요.'),
+        h('b', null, CHECK_VOCAB.reversedTitle),
+        h('p', null, CHECK_VOCAB.reversedDesc),
         mirrorBtn
       ));
     }
@@ -406,8 +400,8 @@ export function mount(root, params, ctx) {
     // Orientation: basis === 'none' caution notice
     if (state.hasOrientationNotice) {
       body.appendChild(h('div', { class: 'check-box check-box-notice' },
-        h('b', null, '주의: 방향 근거 없음'),
-        h('p', null, state.orientationNote || '방향 근거가 없어 입력 방향 그대로 둡니다. 3D에서 치아 방향을 확인하세요.')
+        h('b', null, CHECK_VOCAB.orientationNoticeTitle),
+        h('p', null, state.orientationNote || CHECK_VOCAB.orientationDefaultNote)
       ));
     }
 
@@ -417,8 +411,8 @@ export function mount(root, params, ctx) {
         ...state.unsupportedReasons.map((why) => h('li', null, why))
       );
       body.appendChild(h('div', { class: 'check-box check-box-danger' },
-        h('b', null, '계획할 수 없는 스캔'),
-        h('p', null, '이 스캔은 현재 자동 계획 기준을 충족하지 못해 계획을 진행할 수 없습니다.'),
+        h('b', null, CHECK_VOCAB.unsupportedTitle),
+        h('p', null, CHECK_VOCAB.unsupportedDesc),
         list
       ));
     }
@@ -432,34 +426,34 @@ export function mount(root, params, ctx) {
     }
 
     const fdiToothList = state.fdiTeeth.map((t) => t.fdi).filter(Boolean).join(', ');
-    addRow('치아', `${state.teeth.length}개 · FDI: ${fdiToothList || '없음'}`);
+    addRow(CHECK_VOCAB.terms.teeth, CHECK_VOCAB.teethCountWithFdi(state.teeth.length, fdiToothList));
 
     const fdiMissingList = state.fdiMissing.map((t) => t.fdi).filter(Boolean).join(', ');
-    addRow('누락', fdiMissingList || '없음', state.missing.length > 0);
+    addRow(CHECK_VOCAB.terms.missing, fdiMissingList || CHECK_VOCAB.emptyNone, state.missing.length > 0);
 
     const fdiOutsideList = state.fdiOutside.map((t) => t.fdi).filter(Boolean).join(', ');
-    addRow('범위 밖', fdiOutsideList || '없음');
+    addRow(CHECK_VOCAB.terms.outside, fdiOutsideList || CHECK_VOCAB.emptyNone);
 
-    addRow('총생', `${state.crowding_mm} mm`);
+    addRow(CHECK_VOCAB.terms.crowding, CHECK_VOCAB.crowdingMm(state.crowding_mm));
 
-    addRow('회전 보정 대상', formatRotationSummary(state.rotations));
+    addRow(CHECK_VOCAB.terms.rotation, formatRotationSummary(state.rotations));
 
-    addRow('높이 보정 대상', formatVerticalSummary(state.verticals));
+    addRow(CHECK_VOCAB.terms.vertical, formatVerticalSummary(state.verticals));
 
-    addRow('잇몸 스캔', state.scannedGingiva ? '스캔 잇몸' : '표시용 생성 잇몸');
+    addRow(CHECK_VOCAB.terms.gingiva, state.scannedGingiva ? CHECK_VOCAB.scannedGingiva : CHECK_VOCAB.generatedGingiva);
 
-    addRow('방향 정렬', formatOrientationSummary(state.orientation), state.hasOrientationNotice);
+    addRow(CHECK_VOCAB.terms.orientation, formatOrientationSummary(state.orientation), state.hasOrientationNotice);
 
     body.appendChild(dl);
 
     // Tooth Width Table (FDI)
     if (state.widths.length > 0) {
-      body.appendChild(h('h3', { class: 'check-section-title' }, '치아 폭 표 (FDI)'));
+      body.appendChild(h('h3', { class: 'check-section-title' }, CHECK_VOCAB.widthTableTitle));
 
       const tableRows = state.widths.map((w) =>
         h('tr', null,
-          h('td', { class: 'check-td-tooth' }, `${w.fdi}번`),
-          h('td', { class: 'check-td-width' }, `${w.width_mm} mm`)
+          h('td', { class: 'check-td-tooth' }, CHECK_VOCAB.toothNumber(w.fdi)),
+          h('td', { class: 'check-td-width' }, CHECK_VOCAB.widthMm(w.width_mm))
         )
       );
 
@@ -467,8 +461,8 @@ export function mount(root, params, ctx) {
         h('table', { class: 'check-table' },
           h('thead', null,
             h('tr', null,
-              h('th', null, 'FDI 치아'),
-              h('th', null, '접촉 폭')
+              h('th', null, CHECK_VOCAB.tableHeaderTooth),
+              h('th', null, CHECK_VOCAB.tableHeaderWidth)
             )
           ),
           h('tbody', null, ...tableRows)
@@ -477,9 +471,7 @@ export function mount(root, params, ctx) {
       body.appendChild(table);
     }
 
-    body.appendChild(h('p', { class: 'check-hint' },
-      '오른쪽 3D에서 치아 번호(FDI 칩)와 위치를 확인하세요.'
-    ));
+    body.appendChild(h('p', { class: 'check-hint' }, CHECK_VOCAB.hint3D));
 
     panel.appendChild(body);
 
@@ -500,7 +492,7 @@ export function mount(root, params, ctx) {
         type: 'button',
         class: 'btn btn-danger check-btn-delete',
         onClick: handleDelete
-      }, '스캔 삭제');
+      }, CHECK_VOCAB.btnDelete);
       footer.appendChild(deleteBtn);
     }
 
