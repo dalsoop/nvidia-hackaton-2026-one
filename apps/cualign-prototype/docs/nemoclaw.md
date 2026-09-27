@@ -128,6 +128,8 @@ nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 
 창구 쪽에서는 도구 이름에 `cualign__` 접두사가 붙습니다(예: `cualign__cualign_plan`). `--deny-tool`과 프록시 로그에는 서버의 도구 이름이 그대로 쓰입니다.
 
+작업 공간 파일은 `workspace/README.md`의 설치 절차대로 넣습니다. 창구 전용 `workspace/desk/AGENTS.md`는 `/sandbox/.openclaw/workspace/AGENTS.md`로 넣어 NemoClaw 기본 `AGENTS.md`를 바꿉니다.
+
 #### 창구의 MCP 요청 시간 제한
 
 `cualign_plan` 한 번은 63~156초 걸립니다. 기본 제한에서는 첫 호출이 `MCP error -32001: Request timed out`으로 끊겼고, 창구가 계획을 한 번 더 불렀습니다(세션 `lead-plan-1790518144`). 그래서 창구의 제한을 120초로 올립니다.

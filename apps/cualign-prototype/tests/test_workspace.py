@@ -48,7 +48,7 @@ def test_agents_md_carries_the_core_rules():
 
 def test_convention_files_and_no_memory_folder():
     for name in ("SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md", "README.md",
-                 "README.ko.md"):
+                 "README.ko.md", "desk/AGENTS.md"):
         assert (WS / name).is_file(), name
     assert not (WS / "memory").exists()   # memory is off (MEMORY.md says why)
 
@@ -68,7 +68,7 @@ def test_english_workspace_files_follow_ste():
     # words as \S*\w\S* tokens. Context files keep 20 words or fewer, the README 25. AGENTS.md and the skill bodies
     # are out of scope: their bytes are tied to the golden set (#73, #96).
     for name, limit in (("SOUL.md", 20), ("IDENTITY.md", 20), ("USER.md", 20), ("TOOLS.md", 20), ("MEMORY.md", 20),
-                        ("README.md", 25)):
+                        ("desk/AGENTS.md", 20), ("README.md", 25)):
         text = (WS / name).read_text(encoding="utf-8")
         assert not HANGUL.search(text), name
         assert "\u2014" not in text, name
@@ -77,7 +77,7 @@ def test_english_workspace_files_follow_ste():
 
 
 def test_rules_have_a_reason_and_do_not_copy_the_planner():
-    for name in ("SOUL.md", "USER.md", "MEMORY.md"):
+    for name in ("SOUL.md", "USER.md", "MEMORY.md", "desk/AGENTS.md"):
         text = (WS / name).read_text(encoding="utf-8")
         rules = [line for line in text.splitlines() if re.match(r"\d+\. \*\*", line)]
         assert rules, name
@@ -88,7 +88,7 @@ def test_rules_have_a_reason_and_do_not_copy_the_planner():
     assert "skills/cualign-planner/SKILL.md" in (WS / "SOUL.md").read_text(encoding="utf-8")
 
 
-DESK_FILES = ("SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md", "MEMORY.md")
+DESK_FILES = ("SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md", "MEMORY.md", "desk/AGENTS.md")
 
 
 def test_desk_files_point_only_to_files_in_the_desk_workspace():
@@ -109,11 +109,23 @@ def test_readme_lists_the_sources_outside_the_desk_for_the_maintainer():
                  "openshell/policy.yaml", "openshell/server-policy.yaml", "docs/nemoclaw.md"):
         assert path in readme and (ROOT / path).is_file(), path
     assert "--deny-tool" in readme
-    # Install step 3 points to the SOUL.md lock status; the record must be there.
+    # Install step 4 points to the SOUL.md lock status; the record must be there.
     assert "records if the sandbox can lock the file" in readme
     assert "| `SOUL.md` 읽기 전용 | 강제되지 않음 |" in (ROOT / "docs" / "nemoclaw.md").read_text(encoding="utf-8")
     for name in ("SOUL.md", "TOOLS.md"):   # the runtime and tool sources are listed once, in the README
         assert "--deny-tool" not in (WS / name).read_text(encoding="utf-8"), name
+
+
+def test_desk_agents_md_holds_only_the_desk_operating_rules():
+    # Issue #96: no identity sentence. The desk follows SOUL.md, IDENTITY.md and the planner skill. The install copies
+    # the file to AGENTS.md in the desk workspace, in place of the NemoClaw default that writes memory/ notes.
+    text = re.sub(r"<!--.*?-->", "", (WS / "desk" / "AGENTS.md").read_text(encoding="utf-8"), flags=re.S)
+    assert "You are" not in text
+    for ref in ("`SOUL.md`", "`IDENTITY.md`", "`skills/cualign-planner/SKILL.md`", "`MEMORY.md`", "`HEARTBEAT.md`"):
+        assert ref in text, ref
+    assert "memory/" not in text   # no daily notes (MEMORY.md says why)
+    readme = (WS / "README.md").read_text(encoding="utf-8")
+    assert "Copy `desk/AGENTS.md` to `/sandbox/.openclaw/workspace/AGENTS.md`." in readme
 
 
 def test_vendored_openclaw_templates_match_their_record():

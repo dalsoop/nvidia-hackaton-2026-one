@@ -16,6 +16,7 @@ The English files are the originals. [README.ko.md](README.ko.md) is the Korean 
 | `TOOLS.md` | OpenClaw desk | Find the skill that tells when to call each tool | Pass, 2026-09-27: the case list request got 1 `cualign_list_cases` call in 3 of 3 runs |
 | `HEARTBEAT.md` | OpenClaw heartbeat | Skip the scheduled model call | No run. `tests/test_workspace.py` checks that the bytes are the OpenClaw default, which has comments only |
 | `MEMORY.md` | OpenClaw desk | Keep no memory, and write no patient identifier | Partly, 2026-09-27: after 15 runs, no `memory/` folder and no change to `MEMORY.md`. No run gave a patient identifier |
+| `desk/AGENTS.md` | OpenClaw desk, installed as `AGENTS.md` | Follow the other desk files and the skill, keep conditions in the session, and act only on a message | Not done: not installed yet, because the Brev instance is stopped |
 | `skills/cualign-planner/` | OpenClaw desk | Call `cualign_plan` once for each request, and report the result in Korean | Pass, 2026-09-27: the plan request got 1 `cualign_plan` call with `ui_url` in 3 of 3 runs. One question for the conditions, then that call after the reply, also passes |
 | `README.md` | Maintainer | Find which agent reads a file, find the source of a tool or a boundary, and install the desk files | Not done: no maintainer session yet |
 
@@ -23,7 +24,7 @@ A reader test uses a new session with no other context, and it runs more than on
 
 ## `AGENTS.md` is a pinned prompt
 
-`AGENTS.md` is the NAT planner prompt, and its bytes are pinned. It is not a template for a repository context file. The context file for coding agents is the repository root `AGENTS.md`.
+`AGENTS.md` is the NAT planner prompt, and its bytes are pinned. It is not a template for a repository context file. The context file for coding agents is the repository root `AGENTS.md`. `desk/AGENTS.md` is a different file: the operating rules of the OpenClaw desk.
 
 - `configs/workflow.yml` reads it with `additional_instructions: file://../workspace/AGENTS.md`.
 - `tests/test_workspace.py` checks its sha256 against the text before the move. The golden set (#73) is tuned to this text.
@@ -42,7 +43,7 @@ A reader test uses a new session with no other context, and it runs more than on
 
   The planner refuses a `load_skill` request for a skill outside its list. The server does not start when the preloaded skill is outside the list. The allowlist is not a security boundary. Guardrails and OpenShell block tools and network access.
 - **Images:** `Dockerfile` and `Dockerfile.openshell` copy `workspace/` to `/app/workspace`.
-- **OpenClaw templates:** `HEARTBEAT.md` is a copy of an OpenClaw template. `nemoclaw/openclaw-2026.7.1/README.md` records the version and the hashes.
+- **OpenClaw templates:** `HEARTBEAT.md` is a copy of an OpenClaw template. The OpenClaw `AGENTS.md` template is the upstream reference for `desk/AGENTS.md`. `nemoclaw/openclaw-2026.7.1/README.md` records the version and the hashes.
 
 ## Sources for the maintainer
 
@@ -64,8 +65,9 @@ OpenClaw puts the files in `.openclaw/workspace/` of the sandbox into the conver
 
 1. Install the skill: `nemoclaw cualign-desk skill install workspace/skills/cualign-planner` (`docs/nemoclaw.md` §4).
 2. Copy `SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md` and `MEMORY.md` to `.openclaw/workspace/` in the sandbox. Do the copy from the operator terminal, outside the sandbox.
-3. Change `SOUL.md` only in this repository, and copy it again. `docs/nemoclaw.md` records if the sandbox can lock the file.
-4. Keep `AGENTS.md` and `skills/cualign-clinical-rules` out of the desk. They belong to the NAT planner, and the desk has no `cualign__` tools.
+3. Copy `desk/AGENTS.md` to `/sandbox/.openclaw/workspace/AGENTS.md`. It replaces the NemoClaw default `AGENTS.md`.
+4. Change `SOUL.md` only in this repository, and copy it again. `docs/nemoclaw.md` records if the sandbox can lock the file.
+5. Keep the planner prompt `AGENTS.md` of this folder and `skills/cualign-clinical-rules` out of the desk. They belong to the NAT planner, and the desk has no `cualign__` tools.
 
 `docs/nemoclaw.md` records the verification status of these steps.
 
@@ -76,6 +78,6 @@ OpenClaw puts the files in `.openclaw/workspace/` of the sandbox into the conver
 | Daily notes in `memory/`, summary in `MEMORY.md` | No memory, no `memory/` folder | See `MEMORY.md` |
 | Periodic tasks in `HEARTBEAT.md` | The OpenClaw default, with comments only | cuAlign acts only on a request. See the comment in `HEARTBEAT.md` |
 | One agent reads the workspace | The NAT planner and the OpenClaw desk read different files | The planning and the rule checks stay in the tested NAT agent. The desk asks it through MCP |
-| `AGENTS.md` holds operating rules that change freely | A pinned NAT prompt | The golden set (#73) is tuned to its text |
+| `AGENTS.md` holds operating rules that change freely | `AGENTS.md` is a pinned NAT prompt. The desk rules are in `desk/AGENTS.md` | The golden set (#73) is tuned to the NAT prompt. The install copies `desk/AGENTS.md` to the desk as `AGENTS.md` |
 | Boundaries in `SOUL.md` | `SOUL.md` points to the planner skill, except for approval and export requests | See rules 1 and 2 in `SOUL.md`. The runtime sources are in the table above |
 | An emoji in `IDENTITY.md` | Not set | No source gives one |
