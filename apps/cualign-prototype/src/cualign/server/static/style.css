@@ -71,8 +71,8 @@ textarea { resize: vertical; }
 
 /* ---------- layout ---------- */
 .layout {
-  flex: 1; display: grid; grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 400px;
-  /* fixed columns: rail · agent panel · splitter · 3D · sidebar. A hidden panel leaves its column empty instead of shifting the rest */
+  flex: 1; display: grid; grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 6px var(--side-w, 400px);
+  /* fixed columns: rail · agent panel · splitter · 3D · splitter · sidebar (--side-w, #14). A hidden panel leaves its column empty instead of shifting the rest */
   gap: 0; padding: 0; min-height: 0;
 }
 /* drag handle between the agent panel and the 3D (#90) */
@@ -84,7 +84,7 @@ textarea { resize: vertical; }
 body.resizing { cursor: col-resize; user-select: none; }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .layout > * { grid-column: auto; } .splitter { display: none; } .side { border-left: 0; border-top: 1px solid var(--line); } }
 
-.rail { grid-column: 1; } .chat { grid-column: 2; } .splitter { grid-column: 3; } .viewer { grid-column: 4; } .side { grid-column: 5; }
+.rail { grid-column: 1; } .chat { grid-column: 2; } .splitter { grid-column: 3; } .viewer { grid-column: 4; } .side-splitter { grid-column: 5; } .side { grid-column: 6; }
 .chat, .viewer {
   background: var(--panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden;
 }
@@ -158,6 +158,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .decision button { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--green); cursor: pointer; }
 .decision button:hover { text-decoration: underline; }
 .decision.done { color: var(--muted); }
+.composer .send { width: 44px; padding: 0; flex: none; }
 .composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
@@ -206,9 +207,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* vertical icon bar at the right edge of the 3D (#90, #13 polish): four views, then 겹쳐 · 크게. Icons are grey PNG
    glyphs from static/icons (26px); the label appears to the left on hover/focus, from aria-label */
 .view-rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 4px; }
-.view-rail .btn { position: relative; width: 40px; height: 40px; padding: 0; }
-.view-rail .vic { width: 26px; height: 26px; display: block; }
-.view-rail .btn[aria-pressed="true"] .vic { filter: brightness(1.15); }
+.view-rail .btn { position: relative; width: 40px; height: 40px; padding: 0; background: none; border-color: transparent; color: var(--muted); }
+.view-rail .btn:hover { color: var(--text); background: var(--hover); border-color: transparent; }
+.view-rail .btn[aria-pressed="true"] { color: var(--green); border-color: transparent; background: none; }   /* the view on screen */
+/* the PNG glyph as a mask, so the icon takes the button's colour */
+.view-rail .vic { width: 26px; height: 26px; display: block; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .view-rail .btn::after { content: attr(aria-label); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; font-weight: 400; color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s; }
 .view-rail .btn:hover::after, .view-rail .btn:focus-visible::after { opacity: 1; }
 .rail-tools { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
@@ -227,7 +230,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .legend .before { background: transparent; border: 1px solid #ffffff; }
 .legend .picked { background: var(--green); }
 /* collapse the agent panel to see the 3D large */
-body.focus3d .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0; }
+body.focus3d .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0 0; }
 body.focus3d .chat, body.focus3d .splitter, body.focus3d .side { display: none; }
 /* waiting state: the 3D dims and a pill over it repeats the running step */
 #viewCanvas { transition: opacity 0.3s; }
@@ -235,6 +238,8 @@ body.streaming #viewCanvas { opacity: 0.45; }
 .work-note { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; white-space: nowrap; }
 .work-note i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1s steps(2) infinite; }
 body.streaming .work-note { display: flex; }
+.pick-hint { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 4; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; color: var(--muted); white-space: nowrap; pointer-events: none; }
+.pick-hint[hidden] { display: none; }
 .tip { position: absolute; z-index: 3; pointer-events: none; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; white-space: nowrap; }
 
 /* ---------- case gate (start point) ---------- */
@@ -254,12 +259,19 @@ body.streaming .work-note { display: flex; }
 .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 .stage-bar input[type=range] { width: 100%; accent-color: var(--green); }
 /* marks over the stage slider: stages with a collision (red) or a per-stage limit breach (amber) (#90) */
-.slider-wrap { flex: 1; position: relative; padding-top: 10px; }
-.stage-marks { position: absolute; left: 8px; right: 8px; top: 0; height: 8px; }
+.slider-wrap { flex: 1; position: relative; padding-top: 26px; }
+.stage-marks { position: absolute; left: 8px; right: 8px; top: 16px; height: 8px; }
 .stage-mark { position: absolute; top: 0; width: 6px; height: 8px; margin-left: -3px; border: 0; padding: 0; cursor: pointer; border-radius: 1px; }
 .stage-mark.collision { background: var(--red); }
 .stage-mark.move_limit { background: var(--amber); }
-.stage-label { min-width: 190px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* hover on a mark: 단계 k · 충돌 N건 */
+.stage-mark::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 5; }
+.stage-mark:hover::after, .stage-mark:focus-visible::after { opacity: 1; }
+/* the stage on screen, above the thumb */
+.stage-tip { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.ibtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.ibtn:hover { color: var(--text); }
+.stage-label { min-width: 110px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- result ---------- */
 /* the stage bar and the result panel appear with the first plan (#90) */
@@ -419,13 +431,13 @@ body.start .case-head, body.start .plans, body.start .plan-notice, body.start .t
 body.start .view-head, body.start .legend, body.start .stage-bar,
 body.start .sel-chips, body.start .view-rail { display: none; }
 /* before a case is open, and during the input check, the sidebar has nothing to say: the 3D takes its column */
-body.start .side, body.checking .side { display: none; }
-body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0; }
+body.start .side, body.checking .side, body.start .side-splitter, body.checking .side-splitter { display: none; }
+body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0 0; }
 body.start .intro { flex: 1; }
 body.no-case .composer { display: none; }   /* the panel is a chat; the input appears with a case (lockComposer) */
 body.no-case .chips { display: none; }   /* the example chips wait for a case too */
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
-body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0; }
+body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 body.start .splitter { pointer-events: none; }
 
 /* ---------- plans (#111): cards on the agent panel top, one per plan of this case ---------- */
@@ -449,6 +461,12 @@ body.start .splitter { pointer-events: none; }
 .pill.pass { background: var(--pass-surface); color: var(--pass-text); }
 .pill.ok { border-color: var(--green); background: var(--pass-surface); color: var(--pass-text); }
 .pill.warn { border-color: var(--amber); background: var(--amber-surface); color: var(--amber-text); }
+/* on a plan card the state is words, not a badge (#14): 규칙 통과 · 검토 전 / 위반 7건 · 검토 전 / 승인됨 */
+.plan-row .pill { border: 0; background: none; padding: 0; font-weight: 400; color: var(--muted); }
+.plan-row .pill.fail { color: var(--red-text); }
+.plan-row .pill.ok { color: var(--pass-text); }
+.plan-row .pill.warn { color: var(--amber-text); }
+.plan-review[hidden] { display: none; }
 .old-plans > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
 .old-plans > summary::before { content: "\25B8"; margin-right: 6px; }
 .old-plans[open] > summary::before { content: "\25BE"; }
@@ -504,6 +522,7 @@ body.start .splitter { pointer-events: none; }
 .stage-grid .c.coll { box-shadow: inset 0 0 0 2px var(--red); }
 .stage-grid .c.warn { box-shadow: inset 0 0 0 2px var(--amber); }
 .grid-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 16px 16px; font-size: 11px; color: var(--muted); }
+.grid-legend [hidden] { display: none; }
 .grid-legend .sw { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 1px; vertical-align: -1px; }
 .grid-legend .move { background: #2f6b9a; } .grid-legend .vert { background: #8a5cc7; } .grid-legend .rot { background: #c48a1a; } .grid-legend .mixed { background: #d6d0c4; } .grid-legend .coll { box-shadow: inset 0 0 0 2px var(--red); }
 /* rules: four cards, then the violations grouped by tooth pair */
@@ -513,6 +532,9 @@ body.start .splitter { pointer-events: none; }
 .rule .why { display: block; font-size: 12px; color: var(--faint); }
 .rule .st { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; color: var(--muted); text-align: right; }
 .rule .pill { font-size: 12px; padding: 2px 7px; }
+.rule.passed { border-color: transparent; background: var(--panel-2); }   /* a passed rule is quiet: a grey check, no box */
+.rule .mark.ok { display: inline-flex; color: var(--muted); }
+.rule .mark.na { font-size: 12px; color: var(--faint); }
 .viol-groups { padding: 0 20px 20px; display: flex; flex-direction: column; gap: 10px; }
 .viol-groups .empty { margin: 0; font-size: 12px; color: var(--muted); }
 .vg { border: 1px solid var(--red); background: var(--red-surface); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -535,7 +557,7 @@ body.start .splitter { pointer-events: none; }
 .cond-state.changed { color: var(--amber-text); }
 .cond-state:empty { display: none; }
 .pane-foot { margin-top: auto; padding: 16px 20px 20px; border-top: 1px solid var(--line); flex: none; }
-.pane-foot .btn { width: 100%; height: 46px; font-size: 15px; }
+.pane-foot .btn { width: 100%; height: 40px; font-size: 14px; }
 
 /* ---------- error and blocked states (#112) ---------- */
 .upload-status { font-size: 12px; color: var(--muted); }

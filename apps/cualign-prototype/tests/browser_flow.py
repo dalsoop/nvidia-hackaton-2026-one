@@ -125,7 +125,7 @@ async def main():
             assert await page.locator("#stlLink").get_attribute("href") is None
             parent_detail = store_module.STORE.plan_json(parent)
             assert parent_detail["passed"] and parent_detail["review"]["status"] == "skipped"
-            assert "아직 검토 전" in await page.locator("#reviewLine").inner_text()
+            assert "규칙 통과 · 검토 전" in await page.locator("#plans .plan-row.current .pill").inner_text()
             assert int(await page.locator("#stageSlider").get_attribute("max")) == parent_detail["info"]["n_stages"]
             await page.locator("#stageSlider").fill(str(parent_detail["info"]["n_stages"]))
             await page.locator("#stageSlider").dispatch_event("input")
@@ -201,7 +201,7 @@ async def main():
             selected = await on_screen()
             assert selected != "p999" and selected != child
             assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == child
-            assert "검토 실패" in await page.locator("#reviewLine").inner_text()
+            assert "검토 실패" in await page.locator("#plans .plan-row.current .pill").inner_text()
             assert await page.locator("#cLock").input_value() == "13"
             assert await page.locator("#cExclude").input_value() == "11, 12, 21, 22"      # Universal 7,8,9,10 in FDI (#113)
             assert await page.locator("#exportBtn").is_disabled()
@@ -221,7 +221,7 @@ async def main():
             await page.locator("#reviewBtn").click()
             await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'passed' && !document.querySelector('#sendBtn').disabled")
             assert await on_screen() == selected
-            assert "검토 완료" in await page.locator("#reviewLine").inner_text()
+            assert "검토 완료" in await page.locator("#plans .plan-row.current .pill").inner_text()
             assert await page.locator("#reviewBtn").is_hidden()
             if store_module.STORE.plan_json(selected)["passed"]:
                 assert await page.locator("#exportBtn").is_enabled()
