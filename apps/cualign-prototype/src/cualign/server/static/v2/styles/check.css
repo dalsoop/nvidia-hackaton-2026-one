@@ -11,7 +11,8 @@
 
 /* Left Inspection Panel (Strictly 380px) */
 .check-panel {
-  width: var(--width-panel-work); /* 380px */
+  width: 380px;
+  width: var(--width-panel-work, 380px);
   flex-shrink: 0;
   height: 100%;
   background: var(--color-surface-base);
@@ -242,7 +243,8 @@
 /* Primary Button strictly 46px */
 .check-btn-primary {
   width: 100%;
-  height: var(--btn-height-primary); /* 46px */
+  height: 46px;
+  height: var(--btn-height-primary, 46px); /* 46px */
   font-size: 14.5px;
   font-weight: 700;
   display: flex;

@@ -168,6 +168,34 @@ export function formatBasis(basis) {
   return map[basis] || basis || '미지정';
 }
 
+export function formatRotationSummary(rotations) {
+  if (!Array.isArray(rotations) || rotations.length === 0) {
+    return '보정할 회전 없음';
+  }
+  return rotations
+    .map((r) => `${r.fdi}번 ${r.deg > 0 ? '+' : ''}${r.deg}°`)
+    .join(', ');
+}
+
+export function formatVerticalSummary(verticals) {
+  if (!Array.isArray(verticals) || verticals.length === 0) {
+    return '보정할 차이 없음';
+  }
+  return verticals
+    .map((v) => `${v.fdi}번 ${v.mm > 0 ? '교합면 쪽' : '잇몸 쪽'} ${Math.abs(v.mm)}mm`)
+    .join(', ');
+}
+
+export function formatOrientationSummary(orientation) {
+  if (!orientation || typeof orientation !== 'object') {
+    return '미지정';
+  }
+  const basis = formatBasis(orientation.basis);
+  const rot = orientation.rotation_deg ? ` · ${orientation.rotation_deg}° 회전` : '';
+  const renum = orientation.renumbered ? ' · 번호 좌우 뒤집음' : '';
+  return `${basis}${rot}${renum}`;
+}
+
 /**
  * Mounts the scan check screen into root.
  *
@@ -251,7 +279,7 @@ export function mount(root, params, ctx) {
       renderPanel();
     } catch (err) {
       if (isUnmounted) return;
-      setErrorMessage(err.message || '스캔 점검 정보를 불러오지 못했습니다.');
+      setErrorMessage(err?.message || '스캔 점검 정보를 불러오지 못했습니다.');
     }
   }
 
@@ -271,7 +299,8 @@ export function mount(root, params, ctx) {
       ctx.navigate(`#/workspace/${encodeURIComponent(caseId)}`);
     } catch (err) {
       if (btn) btn.disabled = false;
-      setErrorMessage(err.message || '계획 시작에 실패했습니다.');
+      const message = err?.message || (err?.status === 409 ? '확인 충돌(409): 지원하지 않는 스캔이거나 개정판 충돌이 발생했습니다.' : '계획 시작에 실패했습니다.');
+      setErrorMessage(message);
     }
   }
 
@@ -305,7 +334,7 @@ export function mount(root, params, ctx) {
       }
     } catch (err) {
       if (btn) btn.disabled = false;
-      setErrorMessage(err.message || '좌우 번호 뒤집기에 실패했습니다.');
+      setErrorMessage(err?.message || '좌우 번호 뒤집기에 실패했습니다.');
     }
   }
 
@@ -325,7 +354,7 @@ export function mount(root, params, ctx) {
         ctx.navigate('#/cases');
       }
     } catch (err) {
-      setErrorMessage(err.message || '스캔 삭제에 실패했습니다.');
+      setErrorMessage(err?.message || '스캔 삭제에 실패했습니다.');
     }
   }
 
@@ -403,32 +432,23 @@ export function mount(root, params, ctx) {
     }
 
     const fdiToothList = state.fdiTeeth.map((t) => t.fdi).filter(Boolean).join(', ');
-    addRow('인식된 치아', `${state.teeth.length}개 · FDI: ${fdiToothList || '없음'}`);
+    addRow('치아', `${state.teeth.length}개 · FDI: ${fdiToothList || '없음'}`);
 
     const fdiMissingList = state.fdiMissing.map((t) => t.fdi).filter(Boolean).join(', ');
-    addRow('빠진 치아', fdiMissingList || '없음', state.missing.length > 0);
+    addRow('누락', fdiMissingList || '없음', state.missing.length > 0);
 
     const fdiOutsideList = state.fdiOutside.map((t) => t.fdi).filter(Boolean).join(', ');
-    addRow('스캔 범위 밖', fdiOutsideList || '없음');
+    addRow('범위 밖', fdiOutsideList || '없음');
 
-    addRow('총생 추정', `${state.crowding_mm} mm`);
+    addRow('총생', `${state.crowding_mm} mm`);
 
-    const rotText = state.rotations.length
-      ? state.rotations.map((r) => `${r.fdi}번 ${r.deg > 0 ? '+' : ''}${r.deg}°`).join(', ')
-      : '보정할 회전 없음';
-    addRow('회전 보정 대상', rotText);
+    addRow('회전 보정 대상', formatRotationSummary(state.rotations));
 
-    const vertText = state.verticals.length
-      ? state.verticals.map((v) => `${v.fdi}번 ${v.mm > 0 ? '교합면 쪽' : '잇몸 쪽'} ${Math.abs(v.mm)}mm`).join(', ')
-      : '보정할 차이 없음';
-    addRow('높이 보정 대상', vertText);
+    addRow('높이 보정 대상', formatVerticalSummary(state.verticals));
 
     addRow('잇몸 스캔', state.scannedGingiva ? '스캔 잇몸' : '표시용 생성 잇몸');
 
-    const orientText = `${formatBasis(state.orientation.basis)}${
-      state.orientation.rotation_deg ? ` · ${state.orientation.rotation_deg}° 회전` : ''
-    }${state.orientation.renumbered ? ' · 번호 좌우 뒤집음' : ''}`;
-    addRow('방향 정렬', orientText, state.hasOrientationNotice);
+    addRow('방향 정렬', formatOrientationSummary(state.orientation), state.hasOrientationNotice);
 
     body.appendChild(dl);
 

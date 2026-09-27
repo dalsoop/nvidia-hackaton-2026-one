@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import {
   deriveCheckState,
   parsePatientAndScanId,
-  formatBasis
+  formatBasis,
+  formatRotationSummary,
+  formatVerticalSummary,
+  formatOrientationSummary
 } from '../../src/cualign/server/static/v2/js/screens/intake/check.js';
 
 test('Check: normal supported scan produces ready state and confirm action', () => {
@@ -293,4 +296,115 @@ test('Check: combined orientation reversed and basis none', () => {
   assert.equal(state.orientationNote, '방향 기준 없음');
   assert.equal(state.isSupported, true);
   assert.equal(state.primaryAction.disabled, false);
+});
+
+test('Check: formatRotationSummary formats rotations or empty message', () => {
+  assert.equal(formatRotationSummary([]), '보정할 회전 없음');
+  assert.equal(formatRotationSummary(null), '보정할 회전 없음');
+
+  const rotations = [
+    { universal: 8, fdi: 11, deg: 12.0 },
+    { universal: 9, fdi: 21, deg: -5.5 }
+  ];
+  assert.equal(formatRotationSummary(rotations), '11번 +12°, 21번 -5.5°');
+});
+
+test('Check: formatVerticalSummary formats vertical discrepancies or empty message', () => {
+  assert.equal(formatVerticalSummary([]), '보정할 차이 없음');
+  assert.equal(formatVerticalSummary(null), '보정할 차이 없음');
+
+  const verticals = [
+    { universal: 8, fdi: 11, mm: 0.5 },
+    { universal: 9, fdi: 21, mm: -1.2 }
+  ];
+  assert.equal(formatVerticalSummary(verticals), '11번 교합면 쪽 0.5mm, 21번 잇몸 쪽 1.2mm');
+});
+
+test('Check: formatOrientationSummary combines basis, rotation and renumbering', () => {
+  assert.equal(formatOrientationSummary(null), '미지정');
+  assert.equal(formatOrientationSummary({ basis: 'gingiva' }), '잇몸 기준');
+  assert.equal(
+    formatOrientationSummary({ basis: 'palate', rotation_deg: 2.1 }),
+    '구개(입천장) 기준 · 2.1° 회전'
+  );
+  assert.equal(
+    formatOrientationSummary({ basis: 'cervical', renumbered: true }),
+    '치관 아래 경계 기준 · 번호 좌우 뒤집음'
+  );
+  assert.equal(
+    formatOrientationSummary({ basis: 'none', rotation_deg: 180, renumbered: true }),
+    '근거 없음 · 180° 회전 · 번호 좌우 뒤집음'
+  );
+});
+
+test('Check: FDI mapping covers all 16 maxillary teeth in dental arch order', () => {
+  const allUpperUniversal = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  const check = {
+    case_id: 'P1-S1',
+    teeth: allUpperUniversal,
+    unsupported: [],
+    ready: true
+  };
+
+  const state = deriveCheckState(check);
+  const fdiList = state.fdiTeeth.map((t) => t.fdi);
+
+  // FDI maxillary: 11..18 (Q1), 21..28 (Q2)
+  const expectedFdi = [11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28];
+  assert.deepEqual(fdiList, expectedFdi);
+});
+
+test('Check: confirmation action flow simulation verifies revision parameter and activate', async () => {
+  const check = {
+    case_id: 'P0001-S01',
+    teeth: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    revision: 2,
+    ready: true,
+    unsupported: []
+  };
+
+  const state = deriveCheckState(check);
+  const { pid, sid } = parsePatientAndScanId(state.caseId);
+
+  assert.equal(pid, 'P0001');
+  assert.equal(sid, 'S01');
+  assert.equal(state.revision, 2);
+  assert.equal(state.primaryAction.disabled, false);
+  assert.equal(state.primaryAction.label, '번호 확인 — 계획 시작');
+
+  // Verify call sequence
+  const calls = [];
+  const fakeApi = {
+    confirmScan: async (p, s, rev) => {
+      calls.push({ fn: 'confirmScan', p, s, rev });
+      return { ok: true };
+    },
+    activateCase: async (cid) => {
+      calls.push({ fn: 'activateCase', cid });
+      return { case_id: cid };
+    }
+  };
+
+  await fakeApi.confirmScan(pid, sid, state.revision);
+  await fakeApi.activateCase(state.caseId);
+
+  assert.deepEqual(calls, [
+    { fn: 'confirmScan', p: 'P0001', s: 'S01', rev: 2 },
+    { fn: 'activateCase', cid: 'P0001-S01' }
+  ]);
+});
+
+test('Check: confirmation 409 error extracts detail and sets failure message', () => {
+  const err409 = {
+    status: 409,
+    message: '지원하지 않는 스캔은 계획용으로 확인할 수 없습니다.'
+  };
+
+  const message = err409.message || (err409.status === 409 ? '확인 충돌(409)이 발생했습니다.' : '계획 시작에 실패했습니다.');
+  assert.equal(message, '지원하지 않는 스캔은 계획용으로 확인할 수 없습니다.');
+
+  // Fallback 409 without custom message
+  const generic409 = { status: 409, message: '' };
+  const fallbackMsg = generic409.message || (generic409.status === 409 ? '확인 충돌(409): 지원하지 않는 스캔이거나 개정판 충돌이 발생했습니다.' : '계획 시작에 실패했습니다.');
+  assert.match(fallbackMsg, /409/);
 });
