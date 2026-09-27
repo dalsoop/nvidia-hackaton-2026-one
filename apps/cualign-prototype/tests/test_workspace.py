@@ -15,8 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WS = ROOT / "workspace"
 # sha256 of workflow.additional_instructions as inlined in configs/workflow.yml at 4808146 (5585 chars).
 INSTRUCTIONS_SHA256 = "9d74b31b783e54dc3597e914da226a91dd6cdec81c5909be76bf0b7a8c53b65b"
-# sha256 of src/agents/templates/HEARTBEAT.md in the openclaw 2026.7.1 package of the NemoClaw desk image.
-OPENCLAW_HEARTBEAT_SHA256 = "ecce558615751a35aa173731e892ff3993f44bb4f5a1219c0a02994790c85528"
+OPENCLAW = ROOT / "nemoclaw" / "openclaw-2026.7.1"
 HANGUL = re.compile("[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]")
 
 
@@ -103,9 +102,18 @@ def test_tools_md_names_tools_and_points_to_their_source():
     assert "--deny-tool" in text and "null" not in text   # argument meanings stay in the docstrings and the skill
 
 
+def test_vendored_openclaw_templates_match_their_record():
+    # The OpenClaw version and the sha256 of each copy are recorded once, in nemoclaw/openclaw-2026.7.1/README.md.
+    rows = re.findall(r"^\| `(templates/[^`]+)` \| `[^`]+` \| `([0-9a-f]{64})` \|", (OPENCLAW / "README.md").read_text(encoding="utf-8"),
+                      flags=re.M)
+    assert {path for path, _ in rows} == {"templates/HEARTBEAT.md", "templates/AGENTS.md"}
+    for path, digest in rows:
+        assert hashlib.sha256((OPENCLAW / path).read_bytes()).hexdigest() == digest, path
+
+
 def test_heartbeat_md_is_the_openclaw_default():
-    # openclaw 2026.7.1 src/agents/templates/HEARTBEAT.md: comments only, so OpenClaw skips the heartbeat model call.
-    assert hashlib.sha256((WS / "HEARTBEAT.md").read_bytes()).hexdigest() == OPENCLAW_HEARTBEAT_SHA256
+    # Comments only, so OpenClaw skips the heartbeat model call.
+    assert (WS / "HEARTBEAT.md").read_bytes() == (OPENCLAW / "templates" / "HEARTBEAT.md").read_bytes()
 
 
 def test_readme_translation_records_the_hash_of_its_original():
