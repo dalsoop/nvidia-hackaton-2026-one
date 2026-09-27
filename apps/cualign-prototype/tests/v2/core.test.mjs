@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {
   UPPER_UNIVERSAL,
   universalToFdi,
-  fdiToUniversal
+  fdiToUniversal,
+  formatUniversalTeethAsFdi
 } from '../../src/cualign/server/static/v2/js/domain/teeth.js';
 
 import {
@@ -47,6 +48,13 @@ test('Teeth numbering: invalid inputs return null', () => {
   assert.equal(universalToFdi('invalid'), null);
   assert.equal(fdiToUniversal(99), null);
   assert.equal(fdiToUniversal(null), null);
+});
+
+test('Teeth numbering: server constraint lists are formatted once as FDI', () => {
+  assert.equal(formatUniversalTeethAsFdi([2, 3, 14, 15]), '17, 16, 26, 27');
+  assert.equal(formatUniversalTeethAsFdi(['5', 12]), '14, 24');
+  assert.equal(formatUniversalTeethAsFdi([]), '');
+  assert.equal(formatUniversalTeethAsFdi(null), '');
 });
 
 test('Status: caseStatus returns scan_check when scan is unconfirmed', () => {

@@ -62,6 +62,15 @@ export function universalToFdi(n) {
   return UNIVERSAL_TO_FDI_MAP[parsed] ?? null;
 }
 
+export function formatUniversalTeethAsFdi(teeth) {
+  if (!Array.isArray(teeth)) {
+    return '';
+  }
+  return teeth
+    .map((tooth) => universalToFdi(tooth) ?? tooth)
+    .join(', ');
+}
+
 export function fdiToUniversal(n) {
   const parsed = parseToothNumber(n);
   if (parsed === null) {

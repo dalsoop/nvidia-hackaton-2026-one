@@ -1,3 +1,5 @@
+import { formatUniversalTeethAsFdi } from '../teeth.js';
+
 const ORDER_LABELS = Object.freeze({
   simultaneous: '이동 동시',
   anterior_first: '앞니 먼저',
@@ -62,10 +64,10 @@ export const WORKSPACE_VOCAB = Object.freeze({
       tags.push(constraints.allow_extraction ? '발치 허용' : '비발치');
     }
     if (Array.isArray(constraints.lock) && constraints.lock.length) {
-      tags.push(`고정 ${constraints.lock.join(', ')}`);
+      tags.push(`고정 ${formatUniversalTeethAsFdi(constraints.lock)}`);
     }
     if (Array.isArray(constraints.ipr_exclude) && constraints.ipr_exclude.length) {
-      tags.push(`IPR 제외 ${constraints.ipr_exclude.join(', ')}`);
+      tags.push(`IPR 제외 ${formatUniversalTeethAsFdi(constraints.ipr_exclude)}`);
     }
     if (constraints.ipr_limit_mm != null) tags.push(`면당 ${constraints.ipr_limit_mm} mm`);
     tags.push(constraints.stage_cap == null ? '단계 상한 없음' : `단계 상한 ${constraints.stage_cap}`);

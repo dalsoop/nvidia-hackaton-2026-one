@@ -630,6 +630,96 @@ async def assert_responsive_contracts(
         screenshots.append(await screenshot(page, f"responsive_{width}x{height}.png"))
 
 
+async def assert_webgl_disabled_workspace(
+    playwright,
+    base_url: str,
+    checks: AcceptanceChecks,
+    screenshots: list[str],
+) -> None:
+    browser = await playwright.chromium.launch(
+        executable_path=get_chromium_executable(),
+        headless=True,
+        args=["--disable-3d-apis"],
+    )
+    try:
+        page = await browser.new_page(viewport={"width": 1920, "height": 1080})
+        telemetry = BrowserTelemetry(page)
+
+        telemetry.screen = "webgl-disabled-case-detail"
+        mark = telemetry.mark()
+        await open_route(
+            page,
+            base_url,
+            f"#/cases/{SAMPLE_CASE_000001}",
+            ".cases-detail-tags",
+        )
+        condition_tags = await page.locator(".cases-detail-tags").inner_text()
+        checks.check(
+            "IPR 제외 17, 16, 26, 27" in condition_tags,
+            "F1 constraints",
+            "서버 Universal 조건 칩은 FDI 치아 번호로 보여야 한다",
+            condition_tags,
+        )
+        checks.check(
+            "IPR 제외 2, 3, 14, 15" not in condition_tags,
+            "F1 constraints",
+            "조건 칩에 Universal 치아 번호가 노출되지 않아야 한다",
+            condition_tags,
+        )
+        telemetry.assert_clean(checks, mark, "webgl-disabled-case-detail")
+
+        telemetry.screen = "webgl-disabled-workspace"
+        mark = telemetry.mark()
+        await open_route(
+            page,
+            base_url,
+            f"#/workspace/{SAMPLE_CASE_000001}",
+            ".viewer-unavailable",
+        )
+        await page.locator(".plan-card").first.wait_for(state="visible", timeout=10_000)
+        fallback_text = await page.locator(".viewer-unavailable").inner_text()
+        checks.check(
+            "3D를 표시할 수 없습니다" in fallback_text
+            and "WebGL을 쓸 수 없습니다" in fallback_text,
+            "F1 WebGL",
+            "3D 영역 안에 WebGL 비활성 안내가 보여야 한다",
+            fallback_text,
+        )
+        checks.check(
+            await page.locator(".plan-card").count() > 0,
+            "F1 WebGL",
+            "WebGL 없이도 계획 카드가 보여야 한다",
+        )
+        checks.check(
+            await page.locator(".plan-start-error").count() == 0,
+            "F1 WebGL",
+            "WebGL 실패를 계획 생성 실패로 표시하지 않아야 한다",
+        )
+        checks.check(
+            await page.locator(".screen-workspace-layout .stage-bar").count() == 1,
+            "F1 WebGL",
+            "WebGL 없이도 단계 막대가 유지되어야 한다",
+        )
+
+        slider = page.locator(".stage-slider")
+        slider_max = int(await slider.get_attribute("max") or "0")
+        if slider_max > 0:
+            target_stage = min(2, slider_max)
+            await slider.fill(str(target_stage))
+            await page.wait_for_timeout(100)
+            current_badge = await page.locator(".staging-current-badge").inner_text()
+            checks.check(
+                current_badge.strip() == str(target_stage),
+                "F1 WebGL",
+                "3D 폴백 단계 막대는 오른쪽 단계 표와 연동되어야 한다",
+                current_badge,
+            )
+        telemetry.assert_clean(checks, mark, "webgl-disabled-workspace")
+        screenshots.append(await screenshot(page, "07_webgl_disabled_workspace.png"))
+    finally:
+        await browser.close()
+
+
 async def run_flow() -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     checks = AcceptanceChecks()
@@ -682,6 +772,12 @@ async def run_flow() -> dict:
                     screenshots,
                 )
                 await assert_responsive_contracts(page, base_url, checks, telemetry, screenshots)
+                await assert_webgl_disabled_workspace(
+                    playwright,
+                    base_url,
+                    checks,
+                    screenshots,
+                )
 
                 results["page_errors"] = telemetry.page_errors
                 results["http_4xx"] = telemetry.http_4xx

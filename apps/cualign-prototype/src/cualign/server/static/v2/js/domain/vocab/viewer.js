@@ -1,6 +1,10 @@
 // Centralized Korean vocabulary dictionary for 3D Viewer (J5)
 
 export const VIEWER_T = {
+  unavailable: {
+    title: '3D를 표시할 수 없습니다',
+    detail: '이 브라우저에서 WebGL을 쓸 수 없습니다'
+  },
   views: {
     occlusal: '교합면',
     frontal: '정면',

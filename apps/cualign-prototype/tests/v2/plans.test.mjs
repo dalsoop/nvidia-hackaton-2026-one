@@ -119,11 +119,11 @@ test('workspace vocabulary matches review, approval, and failure states', () => 
   assert.equal(W.noStages, '계획이 없어 단계가 없습니다.');
   assert.deepEqual(W.constraintTags({
     allow_extraction: false,
-    ipr_exclude: [17, 27],
+    ipr_exclude: [2, 3, 14, 15],
     ipr_limit_mm: 0.25,
     stage_cap: null,
     order: 'simultaneous'
-  }), ['비발치', 'IPR 제외 17, 27', '면당 0.25 mm', '단계 상한 없음', '이동 동시']);
+  }), ['비발치', 'IPR 제외 17, 16, 26, 27', '면당 0.25 mm', '단계 상한 없음', '이동 동시']);
 });
 
 test('date formatting is stable and preserves invalid values', () => {

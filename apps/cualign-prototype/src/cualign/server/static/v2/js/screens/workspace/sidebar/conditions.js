@@ -1,7 +1,7 @@
 // Conditions form & diff calculation for workspace right sidebar (J8 contract)
 
 import { clear, h } from '../../../ui/dom.js';
-import { universalToFdi } from '../../../domain/teeth.js';
+import { formatUniversalTeethAsFdi } from '../../../domain/teeth.js';
 import { T } from '../../../domain/vocab.js';
 import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { planId, resolveCreatedPlanId, selectViewingPlan } from './plan-state.js';
@@ -86,7 +86,7 @@ export function renderConditions(container, ctx) {
     id: 'cond_lock',
     class: 'form-input',
     placeholder: SIDEBAR_VOCAB.conditions.lockPlaceholder,
-    value: (currentConstraints.lock || []).map(universalToFdi).filter(Boolean).join(', ')
+    value: formatUniversalTeethAsFdi(currentConstraints.lock || [])
   });
   const lockGroup = h('div', { class: 'form-group' }, [
     h('label', { for: 'cond_lock', class: 'form-label' }, SIDEBAR_VOCAB.conditions.lock),
@@ -101,7 +101,7 @@ export function renderConditions(container, ctx) {
     id: 'cond_ipr_exclude',
     class: 'form-input',
     placeholder: SIDEBAR_VOCAB.conditions.iprExcludePlaceholder,
-    value: (currentConstraints.ipr_exclude || []).map(universalToFdi).filter(Boolean).join(', ')
+    value: formatUniversalTeethAsFdi(currentConstraints.ipr_exclude || [])
   });
   const exclGroup = h('div', { class: 'form-group' }, [
     h('label', { for: 'cond_ipr_exclude', class: 'form-label' }, SIDEBAR_VOCAB.conditions.iprExclude),

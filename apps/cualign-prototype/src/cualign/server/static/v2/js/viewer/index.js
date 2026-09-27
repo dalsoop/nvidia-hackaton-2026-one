@@ -7,9 +7,10 @@ import { createLayersManager } from './layers.js';
 import { createViewsManager, VIEW_NAMES_KO } from './views.js';
 import { createOverlayManager } from './overlay.js';
 import { createStageBar } from './stage-bar.js';
+import { createViewerFallback } from './fallback.js';
 import { VIEWER_T } from '../domain/vocab/viewer.js';
 
-export function createViewer(container, options = {}) {
+function createWebGLViewer(container, options = {}) {
   // Ensure container styling
   container.classList.add('viewer-container');
 
@@ -306,4 +307,13 @@ export function createViewer(container, options = {}) {
     clearSelection: () => overlayManager.clearSelection(),
     getStageBar: () => stageBar
   };
+}
+
+export function createViewer(container, options = {}) {
+  try {
+    return createWebGLViewer(container, options);
+  } catch (error) {
+    console.warn('WebGL viewer unavailable', error);
+    return createViewerFallback(container, options);
+  }
 }

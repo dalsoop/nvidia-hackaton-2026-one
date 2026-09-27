@@ -8,7 +8,7 @@ import {
   sampleCaseNumber,
   stripPrescriptionNote
 } from '../../domain/status.js';
-import { universalToFdi } from '../../domain/teeth.js';
+import { formatUniversalTeethAsFdi, universalToFdi } from '../../domain/teeth.js';
 import { T as TCommon } from '../../domain/vocab.js';
 import { TCases } from '../../domain/vocab/cases.js';
 
@@ -220,13 +220,11 @@ export function formatConstraintTags(constraints) {
   tags.push({ text: isExtraction ? TCases.extraction : TCases.nonExtraction, accent: false });
 
   if (Array.isArray(constraints.lock) && constraints.lock.length > 0) {
-    const fdiLocks = constraints.lock.map((u) => universalToFdi(u) || u);
-    tags.push({ text: TCases.lockTeeth(fdiLocks.join(', ')), accent: true });
+    tags.push({ text: TCases.lockTeeth(formatUniversalTeethAsFdi(constraints.lock)), accent: true });
   }
 
   if (Array.isArray(constraints.ipr_exclude) && constraints.ipr_exclude.length > 0) {
-    const fdiExcludes = constraints.ipr_exclude.map((u) => universalToFdi(u) || u);
-    tags.push({ text: TCases.iprExclude(fdiExcludes.join(', ')), accent: true });
+    tags.push({ text: TCases.iprExclude(formatUniversalTeethAsFdi(constraints.ipr_exclude)), accent: true });
   }
 
   if (typeof constraints.ipr_limit_mm === 'number') {
