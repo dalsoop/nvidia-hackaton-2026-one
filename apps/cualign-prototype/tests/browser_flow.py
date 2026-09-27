@@ -349,11 +349,30 @@ async def main():
             assert "14" in labels and "24" in labels, labels     # FDI for this sample's extraction (Universal 5·12)
             assert "5" not in labels, labels                     # never the bare Universal number
 
+            # A final answer with no Korean in it: the server swaps it for a notice and sends plan_error kind=no_answer.
+            # The notice shows as the server wrote it, with 다시 보내기 like an overload (server fix 2026-09-28).
+            await page.goto(url + "/ui/#case=poseidon-000131")
+            await page.wait_for_function("document.body.classList.contains('has-plan') && !document.querySelector('#sendBtn').disabled", timeout=120000)
+            async def no_answer_stream(route):
+                rid = route.request.post_data_json["cualign"]["request_id"]
+                nl = chr(10)
+                body = ('event: plan_error' + nl + 'data: {"request_id":"' + rid + '","case_id":"poseidon-000131","kind":"no_answer",'
+                        '"message":"모델이 답을 만들지 못했습니다 (가짜 안내문)."}' + nl + nl
+                        + 'data: {"value":"모델이 답을 만들지 못했습니다 (가짜 안내문)."}' + nl + nl)
+                await route.fulfill(status=200, content_type="text/event-stream", body=body)
+            await page.route("**/chat/stream", no_answer_stream)
+            await page.locator("#chatInput").fill("발치 없이 다시 짜줘")
+            await page.locator("#sendBtn").click()
+            await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            assert "가짜 안내문" in await page.locator(".msg.error").last.inner_text()
+            assert await page.locator("#resendBtn").is_visible()
+            await page.unroute("**/chat/stream")
+
             assert not errors, errors
             print("PASS: browser rule-based plan, export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "
                   "my scan: unsupported gap → 스캔 삭제, rejected upload card, unoriented scan, reversed numbering → mirror, "
-                  "no-plan failure card → 이 조건으로 다시 계산")
+                  "no-plan failure card → 이 조건으로 다시 계산, no_answer notice → 다시 보내기")
             await browser.close()
             browser = None
     finally:

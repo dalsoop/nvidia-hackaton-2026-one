@@ -1588,7 +1588,8 @@ async function send(text, constraints = null, { resend = false } = {}) {
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
       streamError = true; addStep("error", obj, "fallback");
-      if (obj.kind === "nim_overload" && obj.request_id === state.requestId) overload = obj;  // the server's sentence
+      // the server's own sentence, worth a 다시 보내기: NIM overload, or a final answer with no Korean in it (no_answer)
+      if ((obj.kind === "nim_overload" || obj.kind === "no_answer") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
     } else if (type === "intermediate_data") {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
@@ -1630,7 +1631,8 @@ async function send(text, constraints = null, { resend = false } = {}) {
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 현재 3D는 이전 계획입니다." : "";
     if (!Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
     addMsg("error", overload
-      ? overload.message + " 잠시 뒤 「다시 보내기」를 누르거나, 모델 없이 규칙 기반으로 계산할 수 있습니다."
+      ? overload.message + (overload.kind === "no_answer" ? " 「다시 보내기」를 누르거나, 모델 없이 규칙 기반으로 계산할 수 있습니다."
+                                                            : " 잠시 뒤 「다시 보내기」를 누르거나, 모델 없이 규칙 기반으로 계산할 수 있습니다.")
       : "계획을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 모델 없이 규칙 기반으로 계산할 수 있습니다.");
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
