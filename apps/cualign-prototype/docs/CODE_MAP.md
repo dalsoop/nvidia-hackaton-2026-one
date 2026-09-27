@@ -118,3 +118,162 @@
 | `docs/segmentation.md` | 선택적 분리 어댑터의 연결·미검증 상태 |
 | `CONTRIBUTING.md` | 개발 환경·검증·기여 안내 |
 | `SECURITY.md` | 보안 범위·데이터 취급 안내 |
+
+## 웹 UI v2 (`src/cualign/server/static/v2/`)
+
+2차 프로토타입 웹 인터페이스는 해시 기반 SPA 구조로 재설계되어 상단바(Topbar), 좌측 내비게이션(Rail), 주 화면(Screen)의 3분할 셸 위에 구축된다.
+
+### 폴더 구조
+
+- `index.html`: UI v2 엔트리포인트 HTML (셸 DOM 구성, importmap 정의, CSS 번들 링크)
+- `styles/`: 디자인 시스템 토큰 및 화면·컴포넌트별 CSS 스타일시트
+- `js/`: 애플리케이션 진입점 및 프론트엔드 모듈
+  - `main.js`: 해시 라우터 구동, 셸(상단바·레일) 렌더링, 케이스 컨텍스트 동기화, 화면 수명주기 관리
+  - `ui/`: 가상 DOM 없는 순수 DOM 생성 및 노드 조작 유틸리티 (`dom.js`)
+  - `shell/`: 글로벌 레이아웃 컴포넌트(상단바 `topbar.js`, 좌측 내비게이션 `rail.js`, 라우트 파서 `router.js`)
+  - `state/`: 중앙 반응형 상태 저장소(`store.js`) 및 URL 진입 복구용 컨텍스트 로더(`case-context.js`)
+  - `api/`: 백엔드 REST 및 SSE 엔드포인트 비동기 통신 클라이언트(`endpoints.js`)
+  - `domain/`: 치아 번호 체계 변환(`teeth.js`), 케이스/계획 상태 판정(`status.js`), 한글 공통 문구 사전(`vocab.js`, `vocab/*.js`)
+  - `screens/`: 화면 단위 페이지 모듈
+    - `cases/`: 케이스 목록 및 상태 필터링, 케이스 상세 서랍 패널
+    - `intake/`: 가명 환자 생성 및 목록, 치아별 상악 스캔 STL 업로드, 스캔 정렬 확인 화면
+    - `workspace/`: 치료 계획 작업대(계획 카드, 3D 뷰어, 에이전트 대화, 3탭 사이드바)
+  - `viewer/`: Three.js 기반 3D 치열/잇몸 뷰어, 카메라 프리셋, 치료 단계 제어 막대, 2D 오버레이 툴팁
+  - `agent/`: AI 어시스턴트 대화 패널, `/chat/stream` SSE 실시간 파싱 및 턴 관리
+
+### 모듈별 책임
+
+| 파일 | 목적·내용 |
+|---|---|
+| `index.html` | UI v2 셸 골격(상단바·레일·스크린 영역), Three.js importmap 로드, 스타일시트 링크 |
+| `styles/tokens.css` | 색상, 간격, 타이포그래피, 반응형 브레이크포인트 CSS 변수 정의 |
+| `styles/shell.css` | 셸 프레임워크(상단바, 좌측 레일, 메인 스크린) 기본 레이아웃 스타일 |
+| `styles/cases.css` | 케이스 목록 그리드, 필터 칩, 검색 바, 우측 상세 서랍 패널 스타일 |
+| `styles/intake.css` | 환자 목록, 신규 등록 폼, 치아별 스캔 드래그앤드롭 업로더 스타일 |
+| `styles/check.css` | 스캔 정렬 점검, 치아 번호 확인 및 좌우 뒤집기 안내 화면 스타일 |
+| `styles/workspace.css` | 작업대 3열 구조(좌측 계획·대화, 중앙 3D 뷰어, 우측 사이드바) 레이아웃 스타일 |
+| `styles/viewer.css` | 3D 뷰어 캔버스, 시점 전환 툴바, 하단 치료 단계 제어 막대(stage-bar) 스타일 |
+| `styles/agent.css` | AI 에이전트 대화 패널, 추론 과정 접기(thinking), 스트리밍 말풍선, 제안 카드 스타일 |
+| `styles/sidebar.css` | 우측 사이드바 3탭(단계별 이동량 매트릭스, 임상 규칙 검사 위반, 치료 조건 폼) 스타일 |
+| `js/main.js` | 해시 라우팅 디스패치, 셸 렌더링, 케이스 컨텍스트 복구, 화면 마운트/언마운트 조율 |
+| `js/ui/dom.js` | 안전한 DOM 요소 생성 함수 `h()` 및 컨테이너 비우기 `clear()` |
+| `js/shell/topbar.js` | 브랜드 표시, 현재 선택된 케이스/환자 라벨, 케이스 상태 배지 렌더링 |
+| `js/shell/rail.js` | 좌측 진행 레일 내비게이션(케이스 목록, 인테이크, 확인, 작업대 바로가기 및 잠금 제어) |
+| `js/shell/router.js` | 해시 URL 패턴 매칭(`matchRoutePattern`) 및 URL 파라미터 파싱 |
+| `js/state/store.js` | 중앙 반응형 상태 컨테이너(`createStore`: `get`, `set`, `subscribe`) |
+| `js/state/case-context.js` | URL 직접 진입 시 상단바 및 레일에 필요한 케이스/스캔 메타데이터 비동기 로딩 |
+| `js/api/endpoints.js` | 백엔드 REST API 및 `/chat/stream` SSE 통신 래퍼, `ApiError` 정규화 |
+| `js/domain/teeth.js` | FDI ↔ Universal 치아 번호 상호 변환 및 상악 기준 치아 목록 상수 |
+| `js/domain/status.js` | 케이스 단계 판정(`caseStatus`), 추천 계획 선정(`preferredPlan`), 승인 가능 여부 검사(`canApprove`) |
+| `js/domain/vocab.js` | 공통 한국어 UI 레이블 및 시스템 에러 메시지 사전 |
+| `js/domain/vocab/*.js` | 화면별(cases, intake, check, workspace, viewer, agent, sidebar) 한국어 문구 사전 |
+| `js/screens/cases/index.js` | 케이스 목록 화면 진입점, 목록 뷰와 상세 서랍 뷰의 결합 및 수명주기 관리 |
+| `js/screens/cases/data.js` | 케이스/환자/계획 데이터 정규화, 검색 필터링, 정렬, 상태별 집계 순수 함수 |
+| `js/screens/cases/list.js` | 케이스 카드 그리드 및 상태별 카운트 헤더 렌더링 |
+| `js/screens/cases/filters.js` | 케이스 상태 필터 칩 및 검색 입력창 이벤트 제어 |
+| `js/screens/cases/detail.js` | 선택된 케이스의 우측 상세 정보(환자 정보, 처방, 계획 요약, 작업대 이동) 렌더링 |
+| `js/screens/intake/patient.js` | 환자 인테이크 메인 화면 조율, 목록과 등록/상세 패널 라우팅 연계 |
+| `js/screens/intake/patient-list.js` | 좌측 환자 목록 패널 및 신규 환자 등록 인라인 폼 렌더링 |
+| `js/screens/intake/patient-detail.js` | 선택된 환자의 스캔 이력 목록, 스캔 삭제, 업로드 컴포넌트 렌더링 |
+| `js/screens/intake/upload.js` | 상악 치아별(2~15번) STL 파일 드래그앤드롭 업로드 인터페이스 |
+| `js/screens/intake/upload-rules.js` | 스캔 파일 크기·개수·확장자 유효성 검증 규칙 및 바이트 포맷팅 |
+| `js/screens/intake/check.js` | 업로드된 스캔의 정렬 상태·치아 번호 확인, 좌우 반전 스캔 미러링 및 최종 승인 뷰 |
+| `js/screens/intake/check-model.js` | 스캔 점검 상태 도출, 좌표계/회전/수직 요약 문자열 포맷팅 순수 로직 |
+| `js/screens/workspace/index.js` | 작업대 3열 레이아웃 통합 마운트, 3D 메시 로딩, 계획 선택 및 오류 폴백 처리 |
+| `js/screens/workspace/plans.js` | 케이스에 생성된 계획 목록 패널 관리, 계획 선택 및 상세 데이터 동기화 |
+| `js/screens/workspace/plan-card.js` | 개별 계획 카드(전략, 기간, 장수, 위반 배지, 승인/재계획/다운로드 액션) 렌더링 |
+| `js/screens/workspace/sidebar/index.js` | 우측 사이드바 3탭(단계별 이동, 규칙 검사, 치료 조건) 전환 및 컨테이너 관리 |
+| `js/screens/workspace/sidebar/staging.js` | 단계별 치아 이동량(근원심/협설/정출입/회전) 매트릭스 및 충돌 경고 표시 |
+| `js/screens/workspace/sidebar/checks.js` | 임상 규칙 검사 위반 항목 목록화 및 위험도·치아별 그룹화 렌더링 |
+| `js/screens/workspace/sidebar/conditions.js` | 치료 조건(한도, 발치 치아, IPR 허용) 폼 렌더링 및 조건 재계산 요청 |
+| `js/screens/workspace/sidebar/conditions-model.js` | 조건 변경 diff 추출 및 기본 제약값 모델 |
+| `js/screens/workspace/sidebar/plan-state.js` | 사이드바 렌더링을 위한 계획 ID 추출, 위반 수 계산, 활성 계획 보조 함수 |
+| `js/screens/workspace/sidebar/violations.js` | 임상 위반 데이터의 치아쌍/개별치아/유형별 그룹화 순수 로직 |
+| `js/viewer/index.js` | Three.js 캔버스 생성, 씬·오버레이·레이어 조율, 외부 제어 인터페이스(`createViewer`) 제공 |
+| `js/viewer/scene.js` | Three.js Scene, 카메라, OrbitControls, 조명, 렌더링 루프 관리 |
+| `js/viewer/teeth.js` | 치아별 STL 메시 로딩 및 단계별 피벗 기준 6자유도 변환 적용 |
+| `js/viewer/layers.js` | 잇몸 가시성, 반투명 모드, 치아별 하이라이트/히트맵 레이어 상태 제어 |
+| `js/viewer/views.js` | 전치부, 우측면, 좌측면, 교합면 등 정해진 시점으로 카메라 전환 애니메이션 |
+| `js/viewer/stage-bar.js` | 단계 슬라이더, 자동 재생/일시정지 제어, 위반 단계 시각화 컴포넌트 |
+| `js/viewer/stage-icons.js` | 단계 제어 바 내 재생/일시정지/초기화 SVG 아이콘 렌더링 |
+| `js/viewer/overlay.js` | 치아 번호 라벨 및 위반 콜아웃 화면 오버레이 레이어 조율 |
+| `js/viewer/overlay-dom.js` | 3D 월드 좌표를 2D 화면 DOM 좌표로 투영해 라벨 및 툴팁 렌더링 |
+| `js/viewer/math.js` | 치아 좌표 보간, IPR 접촉면 계산, 단계별 위반 추출, 투영 순수 연산 |
+| `js/agent/panel.js` | AI 어시스턴트 대화 패널 마운트, 메시지 스크롤 및 입력창 제어 |
+| `js/agent/stream.js` | `/chat/stream` SSE 통신 연결 수명주기, 오류 처리, 턴 상태 갱신 |
+| `js/agent/events.js` | SSE 스트림 이벤트 파싱 및 대화 턴 모델 변환 순수 함수 |
+| `js/agent/view.js` | 사용자 메시지, 에이전트 추론 과정(Collapsible), 스트리밍 텍스트, 계획 제안 카드 DOM 렌더링 |
+
+### 화면 라우트 표
+
+| 라우트 패턴 | 화면 모듈 | 내비게이션 active / kind | 설명 |
+|---|---|---|---|
+| `#/cases` | `screens/cases/index.js` | `cases` / `none` | 전체 케이스(샘플 3건 + 등록 환자 스캔) 목록 및 상태 필터 화면 |
+| `#/cases/:caseId` | `screens/cases/index.js` | `cases` / `none` | 케이스 목록 화면에서 특정 케이스의 우측 상세 정보 서랍이 열린 상태 |
+| `#/patients/:pid` | `screens/intake/patient.js` | `intake` / `patient` | 환자 관리 화면 (`:pid`가 `'new'`인 경우 신규 등록 폼, ID 지정 시 스캔 이력 및 업로드) |
+| `#/check/:caseId` | `screens/intake/check.js` | `check` / `patient` | 업로드된 스캔의 좌표계 정렬, 치아 번호 점검, 좌우 반전 확인 및 스캔 확정 |
+| `#/workspace/:caseId` | `screens/workspace/index.js` | `workspace` / (`sample` \| `patient`) | 치료 계획 작업대 (계획 카드 목록, 3D 치열 뷰어, 에이전트 대화창, 우측 사이드바) |
+
+### Store 상태 키
+
+중앙 `store.js` 및 화면 수명주기에서 관리하는 주요 상태 키:
+
+| 상태 키 | 타입 | 기본값 / 설명 |
+|---|---|---|
+| `cases` | `Array` | 케이스 목록 화면에 표시할 샘플 및 환자 케이스 항목 배열 |
+| `patients` | `Array` | 등록된 가명 환자 및 하위 스캔 목록 배열 |
+| `plans` | `Array` | 현재 케이스에 대해 계산된 치료 계획 요약 목록 |
+| `caseId` | `string \| null` | 현재 활성화된 케이스 식별자 (`poseidon-000001`, `P0001-S1` 등) |
+| `caseDisplayId` | `string \| null` | 상단바 및 레일에 표시되는 케이스 식별 라벨 |
+| `caseTitle` | `string \| null` | 케이스 또는 환자 메모/제목 |
+| `currentScan` | `object \| null` | 현재 환자 케이스의 스캔 메타데이터 및 확인 여부 (`confirmed`) |
+| `currentCase` | `object \| null` | 현재 샘플 케이스의 메타데이터(처방, 비고 등) |
+| `viewingPlanId` | `string \| null` | 현재 3D 뷰어와 사이드바에 표시 중인 계획 식별자 |
+| `viewingPlan` | `object \| null` | `getPlan`으로 상세 조회된 현재 활성 계획 객체(단계별 변환 매트릭스, 위반 목록, `input_stale`) |
+| `stageIndex` | `number` | 현재 3D 뷰어와 사이드바가 가리키는 치료 단계 인덱스 (`0..N`) |
+| `railStage` | `string` | 좌측 레일 내비게이션에 반영할 계획 상태 (`none`, `calculated`, `approved`, `stale`) |
+| `sidebarTab` | `string` | 우측 사이드바 활성 탭 (`stages`: 단계별 이동량, `checks`: 규칙 검사, `conditions`: 치료 조건) |
+| `layers` | `object` | 3D 뷰어 레이어 가시성 토글 (`gum`, `labels`, `violations`, `heat`) |
+| `chat` | `Array` | 에이전트 대화 메시지 턴 및 SSE 스트리밍 기록 배열 |
+
+### 서버 API 대응 표
+
+| 프론트엔드 함수 (`endpoints.js`) | HTTP 메소드 | 백엔드 엔드포인트 (`api.py` / `worker.py`) | 사용 화면 및 역할 |
+|---|---|---|---|
+| `listCases()` | `GET` | `/api/cases` | 케이스 목록(`cases`): 샘플 케이스 3건 메타데이터 및 초기 처방 조회 |
+| `activateCase(caseId)` | `POST` | `/api/cases/{case_id}/activate` | 작업대(`workspace`): 케이스 활성화 및 조건 조회 |
+| `caseMesh(caseId)` | `GET` | `/api/cases/{case_id}/mesh` | 작업대(`workspace`): 치아별 초기 3D 메시 로딩 |
+| `caseCheck(caseId)` | `GET` | `/api/cases/{case_id}/check` | 입력 확인(`check`), 작업대: 스캔 정렬 및 치아 지원 여부 검사 |
+| `uploadCase(files)` | `POST` | `/api/cases/upload` | 케이스 파일 업로드 (기존 v1 호환) |
+| `listPatients()` | `GET` | `/api/patients` | 케이스 목록, 인테이크: 등록된 가명 환자 목록 조회 |
+| `createPatient(alias, memo)` | `POST` | `/api/patients` | 인테이크(`patient`): 신규 가명 환자 생성 |
+| `getPatient(pid)` | `GET` | `/api/patients/{pid}` | 인테이크(`patient`), 메인 셸: 환자 상세 및 스캔 이력 조회 |
+| `deletePatient(pid)` | `DELETE` | `/api/patients/{pid}` | 인테이크(`patient`): 환자 및 연관 스캔/케이스 완전 삭제 |
+| `uploadScan(pid, files)` | `POST` | `/api/patients/{pid}/scans` | 인테이크(`patient-detail`): 상악 치아별(2~15번) STL 스캔 업로드 |
+| `confirmScan(pid, sid, revision)` | `POST` | `/api/patients/{pid}/scans/{sid}/confirm` | 입력 확인(`check`): 스캔 정렬 확인 및 확정 처리 |
+| `mirrorScan(pid, sid)` | `POST` | `/api/patients/{pid}/scans/{sid}/mirror` | 입력 확인(`check`): 좌우 반전 스캔 번호 뒤집기(미러링) |
+| `deleteScan(pid, sid)` | `DELETE` | `/api/patients/{pid}/scans/{sid}` | 인테이크(`patient-detail`): 특정 스캔 삭제 |
+| `listPlans(caseId)` | `GET` | `/api/plans?case_id={caseId}` | 작업대(`plans`): 케이스별 치료 계획 요약 목록 조회 |
+| `getPlan(id)` | `GET` | `/api/plans/{plan_id}` | 작업대(`workspace`): 계획 상세(단계별 좌표, 위반, staleness) 조회 |
+| `approvePlan(id)` | `POST` | `/api/plans/{plan_id}/approval` | 작업대(`plan-card`): 임상 계획 승인 확정 (`confirmed: true`) |
+| `revokeApproval(id)` | `DELETE` | `/api/plans/{plan_id}/approval` | 작업대(`plan-card`): 계획 승인 취소 |
+| `requestReview(id)` | `POST` | `/api/plans/{plan_id}/review` | 작업대(`plan-card`): NIM 임상 검토 에이전트 재검토 요청 |
+| `stlUrl(id)` | `GET` | `/api/plans/{plan_id}/stl.zip` | 작업대(`plan-card`): 승인된 계획의 단계별 모형 STL 압축 다운로드 |
+| `rulePlan(body)` | `POST` | `/api/plan` | 작업대, 에이전트: 규칙 기반 치료 계획 계산 (폴백/수동 생성) |
+| `chatStream(body, signal)` | `POST` | `/chat/stream` | 에이전트(`agent`): NIM 대화형 치료 계획 SSE 스트림 연결 |
+| `nextFollowup(messages)` | `POST` | `/api/followup` | 에이전트(`agent`): 대화 맥락에 따른 추천 후속 질문 조회 |
+
+### 테스트 위치
+
+| 테스트 파일 | 구분 | 테스트 대상 및 내용 |
+|---|---|---|
+| `tests/v2/core.test.mjs` | 단위 (Node) | 치아 번호 체계 변환(FDI ↔ Universal), 케이스 상태 및 승인 가능 여부 판정, 공통 문구 |
+| `tests/v2/cases.test.mjs` | 단위 (Node) | 케이스 목록 정규화, 상태/유형별 필터링, 정렬, 집계 통계 순수 로직 |
+| `tests/v2/upload.test.mjs` | 단위 (Node) | 스캔 파일 크기·개수·확장자 유효성 검사, 치아 번호 매핑, 신규 환자 라우트 판정 |
+| `tests/v2/check.test.mjs` | 단위 (Node) | 스캔 점검 상태 도출, 좌표계/회전/수직 정렬 요약 포맷팅, 확인 버튼 활성화 규칙 |
+| `tests/v2/viewer.test.mjs` | 단위 (Node) | 치아 3D 위치 보간 연산, 단계별 위반 추출, 틱 위치, 카메라 프리셋, 히트맵 연산 |
+| `tests/v2/plans.test.mjs` | 단위 (Node) | 치료 계획 정렬, 계획 카드 배지 상태, 레일 단계 판정, staleness 검사 |
+| `tests/v2/sidebar.test.mjs` | 단위 (Node) | 임상 위반 그룹화, 치료 조건 diff 연산, 단계별 치아 이동량 매트릭스 계산 |
+| `tests/v2/agent.test.mjs` | 단위 (Node) | SSE 스트림 이벤트 파서, 턴 상태 라이프사이클 전이, 대화 요청 페이로드 직렬화 |
+| `tests/browser_flow_v2.py` | E2E (Playwright) | UI v2 전체 브라우저 사용자 흐름: 케이스 목록 탐색 → 환자 등록 → 스캔 업로드 → 스캔 확인 → 작업대 계획 선택 및 승인 |
+
