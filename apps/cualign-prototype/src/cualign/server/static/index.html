@@ -22,9 +22,7 @@
   <!-- Lucide 아이콘 스프라이트 (lucide-static v1.48.0, ISC, https://lucide.dev): 쓰는 것만 심볼로 넣고 <use href="#i-…"> 로 쓴다.
        stroke 는 currentColor, 굵기·끝처리는 .ic 가 준다 — 오프라인·패키징에 외부 요청이 없다 -->
   <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <symbol id="i-list-checks" viewBox="0 0 24 24"><path d="M13 5h8"/> <path d="M13 12h8"/> <path d="M13 19h8"/> <path d="m3 17 2 2 4-4"/> <path d="m3 7 2 2 4-4"/></symbol>
     <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/> <path d="M16 3.128a4 4 0 0 1 0 7.744"/> <path d="M22 21v-2a4 4 0 0 0-3-3.87"/> <circle cx="9" cy="7" r="4"/></symbol>
-    <symbol id="i-scan-search" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/> <path d="M17 3h2a2 2 0 0 1 2 2v2"/> <path d="M21 17v2a2 2 0 0 1-2 2h-2"/> <path d="M7 21H5a2 2 0 0 1-2-2v-2"/> <circle cx="12" cy="12" r="3"/> <path d="m16 16-1.9-1.9"/></symbol>
     <symbol id="i-layout-panel-left" viewBox="0 0 24 24"><rect width="7" height="18" x="3" y="3" rx="1"/> <rect width="7" height="7" x="14" y="3" rx="1"/> <rect width="7" height="7" x="14" y="14" rx="1"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3"/> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/> <path d="m7 10 5 5 5-5"/></symbol>
     <symbol id="i-table-2" viewBox="0 0 24 24"><path d="M3 9h18"/> <path d="M9 3v18"/> <rect x="3" y="3" width="18" height="18" rx="2"/></symbol>
@@ -87,13 +85,12 @@
   </div>
 
   <main class="layout">
-    <!-- 작업 흐름 레일 (v2 설계 보드 11): 모든 화면 공통. 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled + 조건 -->
+    <!-- 작업 흐름 레일 (v2 설계 보드 11, #13 polish → 3개): 환자(시작 화면 = 샘플 카드 + 환자 목록; 「새 환자」로 #patients, 「입력 확인 열기」로 #check=)
+         · 디자인(작업대) · 내보내기(승인 전 흐리게). 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled(라벨만, 부제 없음). #patients·#check= 에서는 「환자」가 켜진다 -->
     <nav id="rail" class="rail" aria-label="작업 흐름">
-      <button type="button" data-go="start" title="케이스 목록"><svg class="ic" aria-hidden="true"><use href="#i-list-checks"></use></svg><span>케이스</span></button>
-      <button type="button" data-go="patients" title="환자·스캔 올리기"><svg class="ic" aria-hidden="true"><use href="#i-users"></use></svg><span>환자·스캔</span></button>
-      <button type="button" data-go="check" title="입력 확인"><svg class="ic" aria-hidden="true"><use href="#i-scan-search"></use></svg><span>입력 확인</span><small>스캔 올린 뒤</small></button>
-      <button type="button" data-go="case" title="작업대"><svg class="ic" aria-hidden="true"><use href="#i-layout-panel-left"></use></svg><span>작업대</span><small>케이스 연 뒤</small></button>
-      <button type="button" data-go="export" title="승인하고 STL 내보내기"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span><small>계획 후</small></button>
+      <button type="button" data-go="start" title="환자 · 샘플 케이스와 환자 목록"><svg class="ic" aria-hidden="true"><use href="#i-users"></use></svg><span>환자</span></button>
+      <button type="button" data-go="case" title="디자인 · 작업대"><svg class="ic" aria-hidden="true"><use href="#i-layout-panel-left"></use></svg><span>디자인</span></button>
+      <button type="button" data-go="export" title="승인하고 STL 내보내기"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span></button>
     </nav>
     <section class="chat">
       <div id="intro" class="intro">
@@ -102,8 +99,7 @@
         <button id="introPick" class="link-btn" type="button">케이스 고르기 →</button>
       </div>
       <div id="caseCard" class="case-head">
-        <img id="caseThumb" class="thumb" alt="" hidden />
-        <div class="case-text"><span class="case-line"><b id="caseName">—</b><span id="caseKind" class="tag" hidden>샘플</span></span><span id="caseSub"></span><span id="caseBadges" class="badges"></span></div>
+        <div class="case-text"><b id="caseName">—</b></div>
         <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">바꾸기</button>
         <div id="casePop" class="case-pop" hidden>
           <div id="popCases"></div>
@@ -112,7 +108,7 @@
       </div>
       <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 승인·STL은 3D 위 「내보내기」 하나 (#111) -->
       <section id="plans" class="plans" hidden>
-        <div class="plans-head"><h2>계획</h2><span id="planCount" class="count"></span></div>
+        <div class="plans-head"><h2>계획</h2></div>
         <!-- 계획이 하나도 없는 채 계산이 실패하면: 제목 + 서버 문구 그대로 + 조건 + 다시 계산 (#112, 보드 07) -->
         <div id="planFail" class="plan-fail" hidden>
           <b>계획을 만들지 못했습니다</b>
@@ -134,7 +130,7 @@
       <div id="transcript" class="transcript" aria-live="polite"></div>
       <div id="retryBar" class="retry-bar" hidden>
         <button id="resendBtn" class="btn primary small" type="button">다시 보내기</button>
-        <button id="retryFallback" class="btn ghost small" type="button" title="모델 없이 규칙 기반 루프만 돌립니다">규칙 기반으로 계산</button>
+        <button id="retryFallback" class="btn ghost small" type="button" title="모델 없이 화면의 조건으로 계산합니다">에이전트 없이 계산</button>
       </div>
       <p id="planNotice" class="plan-notice" aria-live="polite"></p>
       <div class="chips" id="chips"></div>
@@ -157,32 +153,30 @@
              상세는 누른 카드/행 바로 아래 펼친다(#clDetail 하나를 옮겨 붙임) · 더블클릭은 바로 열기 -->
         <div id="screenStart" class="start-pane">
           <div class="start-body">
-            <div class="cl-head"><h1>케이스 <span id="clCount" class="count"></span></h1>
+            <div class="cl-head"><h1>케이스</h1>
               <button id="toPatients" class="btn ghost small" type="button"><svg class="ic" aria-hidden="true"><use href="#i-user-plus"></use></svg>새 환자</button></div>
             <h2 class="start-sub">샘플 케이스</h2>
             <div id="sampleCards" class="cards sample-cards"></div>
             <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
-            <h2 class="start-sub">가명 환자</h2>
+            <h2 class="start-sub">환자 목록</h2>
             <div class="cl-table">
               <div class="cl-row cl-thead"><span>케이스</span><span>상태</span><span>대표 계획</span><span>위반</span><span>계획</span><span>처방</span></div>
               <div id="clRows"></div>
             </div>
             <!-- 상세: renderCaseList 가 선택한 카드/행 뒤로 옮긴다 -->
             <aside id="clDetail" class="cl-detail" hidden>
-              <div class="cl-dhead"><b id="dTitle"></b><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button></div>
-              <div id="dSub" class="muted"></div>
+              <div class="cl-dhead"><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button></div>
               <div class="cl-dbody">
                 <div>
-                  <div class="cl-label">치아 정보 · 상악 · FDI</div>
+                  <div class="cl-label">치아 배열</div>
                   <svg id="dArch" viewBox="0 0 320 150" role="img" aria-label="치아 배열"></svg>
                 </div>
                 <div>
-                  <div class="cl-label">스캔 확인</div>
                   <div id="dFacts" class="cl-facts"></div>
                   <div class="cl-label">처방</div>
                   <p id="dRx"></p>
                   <div id="dChips" class="badges"></div>
-                  <button id="dOpen" class="btn primary" type="button">작업대 열기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+                  <button id="dOpen" class="btn primary" type="button">디자인 시작하기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
                 </div>
               </div>
             </aside>
@@ -210,7 +204,8 @@
           </div>
           <span class="view-bar">
             <span class="view-actions export">
-              <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span></button>
+              <!-- 내보내기는 레일에서만 누른다 (#13 polish): 이 버튼은 숨긴 채 상태·팝오버의 기준으로 남는다. 레일 버튼이 이것을 click() 한다 -->
+              <button id="exportBtn" class="btn primary small" type="button" disabled hidden title="의사 승인으로 확정하고 단계별 STL을 내려받습니다">내보내기</button>
               <div id="exportPop" class="export-pop" hidden>
                 <p>이 초안을 의사 승인으로 확정하고 단계별 치아 STL(zip)을 내려받습니다. 조건·3D·검토 결과를 확인하셨나요?</p>
                 <p id="exportSkip" class="export-skip" hidden>검토 에이전트를 거치지 않은 계획입니다.</p>
@@ -224,27 +219,28 @@
             </span>
           </span>
         </div>
-        <!-- 오른쪽 세로 도구줄: 시점 여섯 개, 그 아래 겹쳐 보기·크게 보기 (#90) -->
-        <div class="view-rail">
-          <button class="btn ghost small" type="button" data-view="occlusal" title="교합면(위에서)">교합</button>
-          <button class="btn ghost small" type="button" data-view="frontal" title="정면">정면</button>
-          <button class="btn ghost small" type="button" data-view="left" title="환자 왼쪽">좌</button>
-          <button class="btn ghost small" type="button" data-view="right" title="환자 오른쪽">우</button>
+        <!-- 오른쪽 세로 아이콘 막대 (#90, #13 polish): 시점 넷 + 겹쳐 보기 + 크게. 아이콘은 static/icons/view-*.png(96px 회색 글리프, 26px 표시),
+             hover 라벨(aria-label → ::after)이 원본 스캔에서 무엇을 보는지 짚는다 -->
+        <div class="view-rail" aria-label="3D 보기">
+          <button class="btn ghost small" type="button" data-view="occlusal" aria-label="교합면 — 위에서 내려본 치열"><img class="vic" src="icons/view-occlusal.png" alt=""></button>
+          <button class="btn ghost small" type="button" data-view="frontal" aria-label="정면 — 환자 앞에서 본 앞니"><img class="vic" src="icons/view-front.png" alt=""></button>
+          <button class="btn ghost small" type="button" data-view="left" aria-label="좌측 — 환자 왼쪽 볼 쪽에서"><img class="vic" src="icons/view-left.png" alt=""></button>
+          <button class="btn ghost small" type="button" data-view="right" aria-label="우측 — 환자 오른쪽 볼 쪽에서"><img class="vic" src="icons/view-right.png" alt=""></button>
           <span class="rail-tools">
-            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="전후 겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다"><svg class="ic" aria-hidden="true"><use href="#i-layers"></use></svg><span>겹쳐</span></button>
-            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg><span>크게</span></button>
+            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다"><img class="vic" src="icons/view-overlay.png" alt=""></button>
+            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="크게 — 대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg></button>
           </span>
         </div>
-        <!-- view cube: click a face to look from that side (#90) -->
         <div id="tip" class="tip" hidden></div>
+        <!-- 범례는 지금 계획에 있는 것만 (#13 polish): renderLegend 가 data-key 로 켜고 끈다; 선택한 치아는 처음 누른 뒤부터 -->
         <div class="legend">
-          <span><i class="sw red"></i>충돌</span>
-          <span><i class="sw amber"></i>장당 이동 한계 초과</span>
-          <span><i class="sw blue"></i>고정</span>
-          <span><i class="sw ghost"></i>발치</span>
-          <span><i class="sw ipr"></i>IPR mm</span>
+          <span data-key="collision" hidden><i class="sw red"></i>충돌</span>
+          <span data-key="move_limit" hidden><i class="sw amber"></i>장당 이동 한계 초과</span>
+          <span data-key="locked" hidden><i class="sw blue"></i>고정</span>
+          <span data-key="removed" hidden><i class="sw ghost"></i>발치</span>
+          <span data-key="ipr" hidden><i class="sw ipr"></i>IPR mm</span>
           <span id="overlayLegend" hidden><i class="sw before"></i>치료 전 (겹쳐 보기)</span>
-          <span><i class="sw picked"></i>선택한 치아 <small>(눌러서 대화에 넘기기)</small></span>
+          <span id="pickedLegend" hidden><i class="sw picked"></i>선택한 치아 <small>(눌러서 대화에 넘기기)</small></span>
         </div>
       </div>
 
@@ -270,7 +266,6 @@
       <section id="paneStages" class="pane" role="tabpanel">
         <div class="pane-head">
           <div id="stageFacts" class="facts-line"></div>
-          <p id="stageNotes" class="sub"></p>
         </div>
         <div id="stageGrid" class="stage-grid" aria-label="단계 표"></div>
         <div class="grid-legend">
@@ -278,7 +273,7 @@
         </div>
       </section>
       <section id="paneRules" class="pane" role="tabpanel" hidden>
-        <div class="pane-head"><h2>규칙</h2><p id="rulesFor" class="sub"></p></div>
+        <div class="pane-head"><h2>규칙</h2><p id="rulesFor" class="sub"></p><p id="ruleNotes" class="sub"></p></div>
         <div id="ruleCards" class="rule-cards"></div>
         <h3 class="pane-sub">위반 묶음</h3>
         <div id="violGroups" class="viol-groups"></div>
@@ -296,7 +291,7 @@
         </fieldset>
         <p id="condState" class="cond-state" aria-live="polite"></p>
         <div class="pane-foot">
-          <button id="fallbackBtn" class="btn primary cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 계산</button>
+          <button id="fallbackBtn" class="btn primary cond-run" type="button" title="에이전트 없이 이 조건으로 계산합니다">이 조건으로 계산</button>
         </div>
       </section>
     </aside>

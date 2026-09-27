@@ -342,6 +342,7 @@ canvas.addEventListener("pointerup", (e) => {
   const id = toothAt(e);
   if (!id) return;
   if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+  state.pickedOnce = true; $("pickedLegend").hidden = false;
   renderSelection();
 });
 $("selChips").addEventListener("click", (e) => {
@@ -417,8 +418,7 @@ function toggle(btn, cls, on) {
 $("focusBtn").addEventListener("click", (e) => {
   const on = !document.body.classList.contains("focus3d");
   toggle(e.currentTarget, "focus3d", on);
-  e.currentTarget.textContent = on ? "대화" : "크게";
-  e.currentTarget.title = on ? "대화 패널을 다시 엽니다" : "대화 패널을 접고 3D를 크게 봅니다";
+  e.currentTarget.setAttribute("aria-label", on ? "대화 — 대화 패널을 다시 엽니다" : "크게 — 대화 패널을 접고 3D를 크게 봅니다");
 });
 $("overlayBtn").addEventListener("click", (e) => {
   state.overlay = !state.overlay;
@@ -516,6 +516,10 @@ function updateActions() {
   $("exportWhy").textContent = exportable || busy ? "" : !p ? "계획이 없습니다" : p.input_stale ? "이전 입력의 계획"
     : dirty ? "조건이 바뀜 · 새 계획 뒤 승인" : !p.passed ? `규칙 위반 ${(p.violations ?? []).length}건 · 조건을 바꿔 다시 계획`
     : "검토 실패 · 검토 다시 요청";
+  // the rail item is the only visible 내보내기 (#13 polish): dim until the plan can be approved, the reason in its tooltip
+  const railExport = document.querySelector('#rail button[data-go="export"]');
+  railExport.querySelector("span").textContent = state.stlBusy ? "만드는 중…" : p?.approval ? "STL 받기" : "내보내기";
+  railExport.title = $("exportWhy").textContent ? "내보내기 · " + $("exportWhy").textContent : p?.approval ? "단계별 STL(zip)을 내려받습니다" : "승인하고 STL 내보내기";
   $("exportSkip").hidden = !["skipped", "not_requested"].includes(p?.review?.status);
   $("revokeBtn").hidden = !p?.approval;
   $("revokeBtn").disabled = !allowed;
@@ -823,20 +827,14 @@ async function openCheck(caseId, check) {
   $("deleteScan").hidden = check.ready || !(state.patient && /^P\d{4,}-S\d+$/.test(caseId));
   $("deleteScanPop").hidden = true;
   $("caseName").textContent = (state.patient ? state.patient.alias + " · " : "") + sid + " · 입력 확인 중";
-  // the card on the panel top is this scan's now, not the sample that was open before
-  $("caseThumb").hidden = true; $("caseKind").hidden = true; $("caseSub").textContent = ""; $("caseSub").title = ""; $("caseBadges").replaceChildren();
   showScreen("check");
 }
 
-// The case card on the panel top: a sample shows its thumbnail, finding and prescription; a scan its alias.
+// The case head on the panel top: the title and 바꾸기 (#13 polish — the finding and prescription live in the 조건 tab).
 function renderCaseCard(caseId, info) {
-  const s = sampleOf(caseId), thumb = $("caseThumb");
-  thumb.hidden = !s; $("caseKind").hidden = !s;
-  if (s) thumb.src = `samples/${encodeURIComponent(caseId)}.png`;
+  const s = sampleOf(caseId);
   $("caseName").textContent = s ? s.title : caseTitle(caseId, info.crowding_mm);
-  $("caseSub").textContent = s ? s.summary : `총생 ${info.crowding_mm} mm`;
-  $("caseSub").title = s ? "처방 · " + s.prescription : "";
-  $("caseBadges").replaceChildren(...(s ? badgeTags(s.badges) : []));
+  $("caseName").title = s ? "처방 · " + s.prescription : "";
 }
 // the sample's short facts (총생 7.9 mm, 발치 …) as small outlined chips
 function badgeTags(badges) {
@@ -858,7 +856,7 @@ async function loadCases() {
 }
 
 // ---- case list (#109, v2 보드 02): every case with a state the server computed; filters by state and kind, a detail
-// panel for the chosen row, 「작업대 열기」 goes to the check (unconfirmed scan) or the workspace.
+// panel for the chosen row, 「디자인 시작하기」 goes to the check (unconfirmed scan) or the workspace.
 const CASE_STATUS = { scan_check: ["스캔 확인 필요", "amber"], plan_needed: ["계획 필요", "faint"], violation: ["위반 있음", "red"],
                       awaiting_approval: ["승인 대기", "green"], approved: ["승인됨", "green"] };
 const CASE_KIND = { sample: "샘플", patient: "가명 환자" };
@@ -875,21 +873,19 @@ function renderCaseList() {
   // the detail is one element that lives under the pressed card or row: take it out before the containers are rebuilt
   const detail = $("clDetail");
   document.querySelector(".start-body").append(detail);
-  $("clCount").textContent = rows.length || "";
   const statusOf = (c) => CASE_STATUS[c.status] ?? [c.status_ko ?? c.status, "faint"];
-  // sample cards (#46 → ③): occlusal thumbnail, title, plain-words finding, badges, status dot
+  // sample cards (#46 → ③, #13 polish): full-width occlusal thumbnail, title, plain-words finding, the short facts as
+  // one muted line. No status and no plan count: a sample always starts fresh
   const cards = $("sampleCards");
   cards.innerHTML = "";
   for (const c of samples) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "case-card" + (c.case_id === state.clSelected ? " on" : ""); b.dataset.id = c.case_id;
-    b.innerHTML = '<img class="thumb" alt=""><span class="cid"></span><span class="rx"></span><span class="badges"></span><span class="st"><i class="dot"></i><span></span></span>';
+    b.innerHTML = '<img class="thumb" alt=""><span class="cid"></span><span class="rx"></span><span class="meta"></span>';
     b.querySelector("img").src = `samples/${encodeURIComponent(c.case_id)}.png`; b.querySelector("img").alt = `${c.title} 교합면`;
     b.querySelector(".cid").textContent = c.title;
     b.querySelector(".rx").textContent = c.subtitle ?? "";
-    b.querySelector(".badges").replaceChildren(...badgeTags(c.badges));
-    const [label, dot] = statusOf(c);
-    b.querySelector(".st .dot").classList.add(dot); b.querySelector(".st span").textContent = label + (c.n_plans ? ` · 계획 ${c.n_plans}개` : "");
+    b.querySelector(".meta").textContent = (c.badges ?? []).join(" · ");
     b.title = c.prescription ? "처방 · " + c.prescription : "";
     cards.appendChild(b);
   }
@@ -927,9 +923,8 @@ function renderCaseList() {
 }
 
 function renderCaseDetail(c) {
-  $("dTitle").textContent = c.title; $("dSub").textContent = c.subtitle ?? "";
   const cons = state.cases.find((x) => x.case_id === c.case_id)?.constraints ?? null;
-  const extract = new Set(cons?.extraction ?? []);
+  const extract = new Set(cons?.extraction ?? []), iprOff = new Set((cons?.ipr_exclude ?? []).map(Number));
   // 14 crowns on an arch, FDI 17…11 · 21…27 (Universal 2…15 from the patient's right)
   const svg = $("dArch"); svg.innerHTML = "";
   const ns = "http://www.w3.org/2000/svg";
@@ -939,18 +934,32 @@ function renderCaseDetail(c) {
     if (extract.has(u)) circle.classList.add("extract");
     const t = document.createElementNS(ns, "text"); t.setAttribute("x", x); t.setAttribute("y", y); t.textContent = fdi(u);
     svg.append(circle, t);
+    // IPR-excluded teeth: a grey dot under the crown instead of a long chip (#13 polish)
+    if (iprOff.has(u)) { const d = document.createElementNS(ns, "circle"); d.setAttribute("cx", x); d.setAttribute("cy", y + 16); d.setAttribute("r", 3); d.classList.add("ipr-dot"); svg.append(d); }
   }
-  if (extract.size) { const l = document.createElementNS(ns, "text"); l.setAttribute("x", 160); l.setAttribute("y", 140); l.classList.add("legend"); l.textContent = "빨간 테두리 · 발치 대상"; svg.append(l); }
-  const facts = [["치아", c.n_teeth != null ? `${c.n_teeth}개` : "—"], ["총생", c.crowding_mm != null ? `${c.crowding_mm} mm` : (c.badges ?? []).find((b) => b.startsWith("총생"))?.slice(3) ?? "—"],
-                 ["계획", `${c.n_plans ?? 0}개`]];
-  if (c.kind === "patient") facts.push(["번호 확인", c.confirmed ? "확인됨" : "확인 전"]);
-  if (c.unsupported?.length) facts.push(["계획", "불가 · " + c.unsupported[0]]);
-  $("dFacts").replaceChildren(...facts.map(([k, v]) => { const d = document.createElement("div"); d.textContent = v; const s = document.createElement("small"); s.textContent = k; d.prepend(s); return d; }));
+  const keys = [extract.size && "빨간 테두리 · 발치 대상", iprOff.size && "회색 점 · IPR 제외"].filter(Boolean);
+  if (keys.length) { const l = document.createElementNS(ns, "text"); l.setAttribute("x", 160); l.setAttribute("y", 142); l.classList.add("key"); l.textContent = keys.join(" · "); svg.append(l); }
+  // the scan in one line: 치아 14개 · 총생 1.6 mm (+ 번호 확인 · 계획 불가 for a patient scan)
+  const facts = [c.n_teeth != null ? `치아 ${c.n_teeth}개` : null,
+                 c.crowding_mm != null ? `총생 ${c.crowding_mm} mm` : (c.badges ?? []).find((b) => b.startsWith("총생")) ?? null];
+  if (c.kind === "patient") facts.push(c.confirmed ? "번호 확인됨" : "번호 확인 전");
+  if (c.unsupported?.length) facts.push("계획 불가 · " + c.unsupported[0]);
+  $("dFacts").textContent = facts.filter(Boolean).join(" · ");
   $("dRx").textContent = c.prescription || "처방 없음 · 조건 기본값";
-  const chips = cons ? [extract.size ? "발치 " + fdiList([...extract]) : "비발치", cons.ipr_exclude?.length ? "IPR 제외 " + fdiList(cons.ipr_exclude) : "IPR 제외 없음",
-                        `면당 ${cons.ipr_limit_mm ?? 0.25} mm`, cons.stage_cap ? `단계 상한 ${cons.stage_cap}` : "단계 상한 없음", "이동 " + (ORDER_KO[cons.order] ?? cons.order ?? "동시")] : (c.badges ?? []);
+  // chips only for what differs from the prescription (a patient: from the defaults); 비발치 repeats the sentence, IPR
+  // exclusions are the grey dots above
+  const base = sampleOf(c.case_id)?.constraints ?? { extraction: [], lock: [], ipr_exclude: [], ipr_limit_mm: 0.25, stage_cap: null, order: "simultaneous" };
+  const differs = (k) => JSON.stringify(cons?.[k] ?? null) !== JSON.stringify(base[k] ?? null);
+  const chips = [];
+  if (cons) {
+    if (differs("extraction") && extract.size) chips.push("발치 " + fdiList([...extract]));
+    if (differs("lock") && cons.lock?.length) chips.push("고정 " + fdiList(cons.lock));
+    if (differs("ipr_limit_mm")) chips.push(`IPR 면당 ${cons.ipr_limit_mm} mm`);
+    if (differs("stage_cap") && cons.stage_cap) chips.push(`단계 상한 ${cons.stage_cap}`);
+    if (differs("order") && cons.order && cons.order !== "simultaneous") chips.push("이동 " + (ORDER_KO[cons.order] ?? cons.order));
+  }
   $("dChips").replaceChildren(...badgeTags(chips));
-  $("dOpen").textContent = c.kind === "patient" && !c.confirmed ? "입력 확인 열기" : "작업대 열기";
+  $("dOpen").textContent = c.kind === "patient" && !c.confirmed ? "입력 확인 열기" : "디자인 시작하기";
 }
 async function openFromList(c) {
   if (!c || state.streaming || state.loading) return;
@@ -968,7 +977,8 @@ async function openFromList(c) {
 function renderRail() {
   const start = document.body.classList.contains("start"), checking = document.body.classList.contains("checking");
   const patientsOpen = !$("caseGate").hidden;
-  const on = patientsOpen ? "patients" : start ? "start" : checking ? "check" : "case";
+  // three items (#13 polish): the patients modal and the input check belong to 「환자」; the routing by data-go stays
+  const on = patientsOpen || start || checking ? "start" : "case";
   for (const b of document.querySelectorAll("#rail button")) {
     const go = b.dataset.go;
     b.classList.toggle("on", go === on);
@@ -1060,10 +1070,10 @@ async function activateCase(caseId, { greet = true } = {}) {
     if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 — 오른쪽 「조건」 탭을 확인해 주세요.");
     // the case opens with a rule-based preview of the prescription (#92): the first question is how to refine it
     const q = sample
-      ? { question: "3D는 처방대로 규칙만으로 계산한 미리보기입니다(에이전트 검토 전). 단계를 넘겨 보고, 다음 중 하나로 이어가세요.",
-          options: [{ label: "에이전트에게 계획 맡기기", hint: "처방을 읽고 계획을 짜고, 검토 에이전트가 문제점을 짚습니다", message: sample.request },
-                    { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에. 입력창에 문장이 채워지니 고쳐서 보내세요", fill: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
-                    { label: "확장안과 IPR안 비교", hint: "두 전략을 나란히 계산해 차이를 보여 줍니다", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
+      ? { question: "처방대로 만든 미리보기입니다. 다음 중 하나로 이어가세요.",
+          options: [{ label: "에이전트에게 계획 맡기기", hint: "처방을 읽고 계획을 짜고 검토까지 합니다", message: sample.request },
+                    { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에 — 채워진 문장을 고쳐 보내세요", fill: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
+                    { label: "확장안과 IPR안 비교", hint: "두 전략을 나란히 계산해 비교합니다", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
       : { question: "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.",
           options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
                     { label: "발치 치아 정하기", fill: "14번과 24번 발치로 계획을 짜줘." },
@@ -1084,6 +1094,7 @@ function resetPlanPanel() {
   $("viewCanvas").dataset.planId = "";
   $("reviewMemo").textContent = "";
   $("reviewLine").textContent = "검토";
+  renderLegend(null);
   $("planNotice").textContent = "";
   $("stageSlider").disabled = true;
   $("stageMarks").innerHTML = "";
@@ -1145,7 +1156,7 @@ function renderPlanList() {
   if (rows.length) state.planError = null;
   renderPlanFail();
   $("plans").hidden = !rows.length && !state.planError;
-  $("planCount").textContent = rows.length || "";
+  const old = rows.filter((r) => state.oldPlans.has(r.plan_id)), now = rows.filter((r) => !state.oldPlans.has(r.plan_id));
   const make = (row) => {
     const div = document.createElement("div");
     const n = planNo(row.plan_id), months = row.months ?? row.info?.months, [pill, cls] = planPill(row);
@@ -1159,7 +1170,6 @@ function renderPlanList() {
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
     return div;
   };
-  const old = rows.filter((r) => state.oldPlans.has(r.plan_id)), now = rows.filter((r) => !state.oldPlans.has(r.plan_id));
   $("oldPlans").hidden = !old.length;
   $("oldPlansN").textContent = old.length;
   if (old.some((r) => r.plan_id === cur)) $("oldPlans").open = true;
@@ -1200,7 +1210,8 @@ async function loadPlan(planId) {
 
 
 // ------------------------------------------------------------------ plan on screen: cards, review line, sidebar (#111)
-const REVIEW_KO = { not_requested: "미실행", running: "검토 중", passed: "메모 생성 완료", failed: "검토 실패", skipped: "미실행 (규칙 폴백)" };
+const NOT_REVIEWED = "아직 검토 전 · 에이전트에게 맡기면 검토합니다";
+const REVIEW_KO = { not_requested: NOT_REVIEWED, running: "검토 중", passed: "검토 완료", failed: "검토 실패", skipped: NOT_REVIEWED };
 function renderResult(plan) {
   // the /api/plans row of this plan follows what the detail says (approval, review), so the card is right at once
   const row = state.planRows[plan.plan_id];
@@ -1208,13 +1219,22 @@ function renderResult(plan) {
   renderPlanList();
   const review = plan.review ?? {}, n = planNo(plan.plan_id);
   const line = $("reviewLine");
-  line.innerHTML = `<b></b> 검토 · `;
+  line.innerHTML = `<b></b> · `;
   line.querySelector("b").textContent = `계획 ${n}`;
   line.append(REVIEW_KO[review.status] || review.status || "—");
   const memo = splitNote((review.message ?? "") + (review.error ? " (" + review.error + ")" : ""));
   $("reviewMemo").innerHTML = esc(memo.body.trim()) + (memo.note ? `<small class="note">${esc(memo.note)}</small>` : "");
   if (plan.approval) $("reviewMemo").prepend(Object.assign(document.createElement("div"), { textContent: "승인됨 · " + fmtDate(plan.approval.approved_at) }));
   renderSide(plan);
+  renderLegend(plan);
+}
+// the 3D legend shows only what this plan has (#13 polish); 선택한 치아 appears once a tooth was picked
+function renderLegend(plan) {
+  const viol = plan?.violations ?? [], t = plan?.target ?? {};
+  const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
+                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: (t.ipr_mm_per_surface ?? 0) > 0 };
+  for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
+  $("pickedLegend").hidden = !state.pickedOnce;
 }
 
 // ---- the sidebar's three panes read the plan on screen; null empties them
@@ -1225,38 +1245,45 @@ function renderSide(plan) {
 }
 function renderStagePane(plan) {
   const facts = $("stageFacts"), grid = $("stageGrid");
-  facts.innerHTML = ""; $("stageNotes").textContent = ""; grid.innerHTML = "";
+  facts.innerHTML = ""; grid.innerHTML = "";
   if (!plan) return;
   const n = plan.stages?.length ?? 0, t = plan.target ?? {}, info = plan.info ?? {};
-  const cell = (k, v) => { const sp = document.createElement("span"); sp.append(k + " "); const b = document.createElement("b"); b.textContent = v; sp.append(b); return sp; };
-  const head = document.createElement("b"); head.textContent = `계획 ${planNo(plan.plan_id)}`;
-  facts.append(head, cell("전략", STRATEGY_KO[plan.strategy] ?? plan.strategy), cell("총", `${n}장`));
-  if (info.per_stage_mm != null) facts.append(cell("장당", `${info.per_stage_mm} mm`));
-  if (t.crowding_mm != null) facts.append(cell("총생", `${t.crowding_mm} mm → 확보 ${t.space_gain_mm ?? "—"} mm`));
-  // the planner's notes name Universal ids: 「치아 13 회전 …」 → FDI
-  $("stageNotes").textContent = (t.notes ?? []).map((s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)).join(" · ");
-  // the table: one row per stage, one column per tooth along the arch; a cell says what kind of move the stage adds
+  // two lines (#13 polish): 「확장 · 9단계 · 약 2.1개월」 / 「총생 1.6 mm → 확보 2.1 mm」; the movement notes are on the 규칙 tab
+  const l1 = document.createElement("span"); l1.className = "l1";
+  l1.textContent = [STRATEGY_KO[plan.strategy] ?? plan.strategy, `${n}단계`, info.months != null ? `약 ${info.months}개월` : null].filter(Boolean).join(" · ");
+  const l2 = document.createElement("span"); l2.className = "l2";
+  l2.textContent = t.crowding_mm != null ? `총생 ${t.crowding_mm} mm → 확보 ${t.space_gain_mm ?? "—"} mm` : "";
+  facts.append(l1, l2);
+  // the table: one row per stage, one column per tooth along the arch; a cell says what kind of move the stage adds.
+  // A tooth that never moves keeps its column, blank (#13 polish)
   const teeth = (state.archOrder.length ? state.archOrder : Object.keys(state.teeth)).map(String);
-  grid.style.gridTemplateColumns = `26px repeat(${teeth.length}, minmax(0, 1fr))`;
-  const hd = document.createElement("span"); hd.className = "hd"; grid.append(hd);
-  for (const id of teeth) { const h = document.createElement("span"); h.className = "hd"; h.textContent = fdi(id); grid.append(h); }
   const at = (k, id) => (k > 0 ? plan.stages[k - 1]?.[id] : null) ?? [0, 0, 0];
   const yaw = (k, id) => (k > 0 ? plan.rotations?.[k - 1]?.[id] : null) ?? 0;
   const bad = {};
   for (const v of plan.violations ?? []) if (v.stage != null) for (const id of v.teeth ?? []) (bad[v.stage] ??= {})[String(id)] = v.type;
+  const cells = {};   // [k][id] → { kinds, title }
+  const moving = new Set();
+  for (let k = 1; k <= n; k++) for (const id of teeth) {
+    const a = at(k - 1, id), b = at(k, id);
+    const dxy = Math.hypot(b[0] - a[0], b[1] - a[1]), dz = Math.abs(b[2] - a[2]), dr = Math.abs(yaw(k, id) - yaw(k - 1, id));
+    const kinds = [dxy > 0.02 && "move", dz > 0.02 && "vert", dr > 0.5 && "rot"].filter(Boolean);
+    const parts = [dxy > 0.02 && `수평 ${dxy.toFixed(2)}mm`, dz > 0.02 && `수직 ${(b[2] - a[2]).toFixed(2)}mm`, dr > 0.5 && `회전 ${(yaw(k, id) - yaw(k - 1, id)).toFixed(1)}°`].filter(Boolean);
+    (cells[k] ??= {})[id] = { kinds, title: `단계 ${k} · 치아 ${fdi(id)}` + (parts.length ? " · " + parts.join(" · ") : " · 이동 없음") + (bad[k]?.[id] ? " · " + RULE_KO[bad[k][id]] : "") };
+    if (kinds.length || bad[k]?.[id]) moving.add(id);
+  }
+  grid.style.gridTemplateColumns = `26px repeat(${teeth.length}, minmax(0, 1fr))`;
+  const hd = document.createElement("span"); hd.className = "hd"; grid.append(hd);
+  for (const id of teeth) { const h = document.createElement("span"); h.className = "hd" + (moving.has(id) ? "" : " nil"); h.textContent = fdi(id); grid.append(h); }
   for (let k = 0; k <= n; k++) {
     const row = document.createElement("div"); row.className = "row" + (k === state.stage ? " cur" : ""); row.dataset.stage = k;
     const kk = document.createElement("span"); kk.className = "k"; kk.textContent = k; row.append(kk);
     for (const id of teeth) {
-      const c = document.createElement("span"); c.className = "c";
-      if (k > 0) {
-        const a = at(k - 1, id), b = at(k, id);
-        const dxy = Math.hypot(b[0] - a[0], b[1] - a[1]), dz = Math.abs(b[2] - a[2]), dr = Math.abs(yaw(k, id) - yaw(k - 1, id));
-        const kinds = [dxy > 0.02 && "move", dz > 0.02 && "vert", dr > 0.5 && "rot"].filter(Boolean);
-        if (kinds.length > 1) c.classList.add("mixed"); else if (kinds.length) c.classList.add(kinds[0]);
+      const c = document.createElement("span"); c.className = "c" + (moving.has(id) ? "" : " nil");
+      const x = cells[k]?.[id];
+      if (x) {
+        if (x.kinds.length > 1) c.classList.add("mixed"); else if (x.kinds.length) c.classList.add(x.kinds[0]);
         if (bad[k]?.[id]) c.classList.add(bad[k][id] === "collision" ? "coll" : "warn");
-        const parts = [dxy > 0.02 && `수평 ${dxy.toFixed(2)}mm`, dz > 0.02 && `수직 ${(b[2] - a[2]).toFixed(2)}mm`, dr > 0.5 && `회전 ${(yaw(k, id) - yaw(k - 1, id)).toFixed(1)}°`].filter(Boolean);
-        c.title = `단계 ${k} · 치아 ${fdi(id)}` + (parts.length ? " · " + parts.join(" · ") : " · 이동 없음") + (bad[k]?.[id] ? " · " + RULE_KO[bad[k][id]] : "");
+        c.title = x.title;
       }
       row.append(c);
     }
@@ -1269,6 +1296,8 @@ function renderRulesPane(plan) {
   const cards = $("ruleCards"), groups = $("violGroups");
   cards.innerHTML = ""; groups.innerHTML = "";
   $("rulesFor").textContent = plan ? `계획 ${planNo(plan.plan_id)} · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · ${plan.stages?.length ?? 0}장` : "";
+  // the planner's movement notes (from the 단계 표 head, #13 polish); they name Universal ids: 「치아 13 회전 …」 → FDI
+  $("ruleNotes").textContent = plan ? (plan.target?.notes ?? []).map((s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)).join(" · ") : "";
   if (!plan) return;
   const viol = plan.violations ?? [], by = (t) => viol.filter((v) => v.type === t);
   const coll = by("collision"), mv = by("move_limit"), cap = by("stage_cap"), sp = by("space_deficit");
@@ -1650,9 +1679,9 @@ async function send(text, constraints = null, { resend = false } = {}) {
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 현재 3D는 이전 계획입니다." : "";
     if (!Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
     addMsg("error", overload
-      ? overload.message + (overload.kind === "no_answer" ? " 「다시 보내기」를 누르거나, 모델 없이 규칙 기반으로 계산할 수 있습니다."
-                                                            : " 잠시 뒤 「다시 보내기」를 누르거나, 모델 없이 규칙 기반으로 계산할 수 있습니다.")
-      : "계획을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 모델 없이 규칙 기반으로 계산할 수 있습니다.");
+      ? overload.message + (overload.kind === "no_answer" ? " 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다."
+                                                            : " 잠시 뒤 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다.")
+      : "계획을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 「에이전트 없이 계산」할 수 있습니다.");
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
@@ -1667,7 +1696,7 @@ async function runFallback() {
   let constraints;
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   setStreaming(true); updateActions();
-  addMsg("system", "규칙 기반 폴백 — 화면의 조건으로 계산합니다. 검토 에이전트는 실행하지 않습니다.");
+  addMsg("system", "에이전트 없이 계산 — 화면의 조건으로 계산합니다. 검토는 하지 않습니다.");
   $("planNotice").textContent = "조건을 반영해 새 계획 계산 중";
   state.trace = newTrace();
   try {
@@ -1678,7 +1707,7 @@ async function runFallback() {
     if (selected) { await refreshPlans(selected.plan_id); addDecision(prevPlanId, selected.plan_id); }
     if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
   } catch (e) {
-    addMsg("error", "폴백 실패: " + e.message);
+    addMsg("error", "계산 실패: " + e.message);
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 이전 결과를 유지합니다." : "";
     if (!Object.keys(state.planRows).length) { state.planError = e.message; renderPlanFail(); }
   } finally { setStreaming(false); updateActions(); }
@@ -1914,7 +1943,11 @@ $("retryFallback").addEventListener("click", () => { $("retryBar").hidden = true
 $("planFailRetry").addEventListener("click", () => { showTab("cond"); runFallback(); });
 $("exportBtn").addEventListener("click", () => {
   if (state.plan?.approval) { $("stlLink").click(); return; }
-  $("exportPop").hidden = !$("exportPop").hidden;
+  const pop = $("exportPop");
+  pop.hidden = !pop.hidden;
+  // the popover sits beside the rail item that opened it (the anchor button itself is hidden)
+  const r = document.querySelector('#rail button[data-go="export"]').getBoundingClientRect();
+  pop.style.top = `${Math.round(r.top)}px`; pop.style.left = `${Math.round(r.right + 8)}px`;
 });
 $("exportCancel").addEventListener("click", () => { $("exportPop").hidden = true; });
 $("exportGo").addEventListener("click", async () => {

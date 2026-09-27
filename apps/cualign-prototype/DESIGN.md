@@ -341,10 +341,10 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
   → 승인하고 내보내기 (단계별 프린트용 모형 STL)
 ```
 
-- **시작 상태** [목표, #46·#90]: 모달 없이 작업 화면에서 시작한다. 왼쪽 대화 패널 자리에 서비스가 무엇인지 한 문단으로 설명하고, 오른쪽 3D 자리에 샘플 케이스 카드를 둔다. 처방 폼·칩·범례·결과는 케이스를 연 뒤에 보인다. 케이스 카드마다 교합면 썸네일, 케이스 번호, 한 줄 설명, 진단 처방 요약. 작은 링크 "내 스캔 올리기". [현재] 그렇게 한다(#95). 소개는 악궁 라인아트 + 한 줄 + 「샘플 케이스 고르기」이고, 케이스를 열면 패널 맨 위에 케이스 카드(썸네일·소견·처방·바꾸기), 그 아래 이 케이스의 계획 카드 목록이 온다(#111). 조건은 오른쪽 사이드바의 「조건」 탭이다.
+- **시작 상태** [목표, #46·#90]: 모달 없이 작업 화면에서 시작한다. 왼쪽 대화 패널 자리에 서비스가 무엇인지 한 문단으로 설명하고, 오른쪽 3D 자리에 샘플 케이스 카드를 둔다. 처방 폼·칩·범례·결과는 케이스를 연 뒤에 보인다. 케이스 카드마다 교합면 썸네일, 케이스 번호, 한 줄 설명, 진단 처방 요약. 작은 링크 "내 스캔 올리기". [현재] 그렇게 한다(#95). 소개는 악궁 라인아트 + 한 줄 + 「샘플 케이스 고르기」이고, 케이스를 열면 패널 맨 위에 케이스 머리(제목·바꾸기 — 소견·처방은 「조건」 탭), 그 아래 이 케이스의 계획 카드 목록이 온다(#111, #13 polish). 조건은 오른쪽 사이드바의 「조건」 탭이다.
 - **입력 확인 화면은 없앤다** [목표, #53]: 3D 위 치아 번호와 `status-check` 라벨이 대신한다.
 - **목표 배열과 단계를 나눈다** [목표]: [현재] 에이전트 도구는 나뉘어 있지만(`propose_target`, `plan_stages`) 한 요청에서 이어서 부르고 화면은 계획만 보여준다.
-- **승인과 내보내기는 한 버튼** [목표, #53]: [현재] 「내보내기」 하나다. 팝오버에서 확정하면 승인 뒤 단계별 STL(zip)을 내려받고, 승인 취소는 계획 목록 아래 「계획 N 검토 · …」 접이식 줄 안에 있다(#90, #111).
+- **승인과 내보내기는 한 버튼** [목표, #53]: [현재] 「내보내기」 하나이고 왼쪽 레일에만 있다(승인 전 흐리게, 잠긴 이유는 툴팁). 팝오버에서 확정하면 승인 뒤 단계별 STL(zip)을 내려받고, 승인 취소는 계획 목록 아래 「계획 N · 아직 검토 전 …」 접이식 줄 안에 있다(#90, #111, #13 polish).
 
 ## 3D 레이어
 
@@ -396,19 +396,20 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | 영역 | id·클래스 |
 |---|---|
 | 상단 바 | `#homeBtn`(로고, 처음 화면) |
-| 화면 뼈대 | `.layout` 그리드 = 대화 `var(--chat-w, 380px)` · 경계 6px · 3D `1fr` · 사이드바 400px (980px 미만은 한 열) |
-| 시작 상태 | `body.start` · 왼쪽 `#intro` `#introPick` · 오른쪽 `#screenStart .start-body`: `#clCount` `#toPatients`(새 환자) · 샘플 `#sampleCards .case-card[data-id]`(`.thumb` `.cid` `.rx` `.badges` `.st .dot`, 선택 `.on`) · 가명 환자 표 `#clRows .case-row[data-id]`(비면 `.empty`) · 상세 `#clDetail`(누른 카드/행 바로 아래로 옮겨짐, 카드면 `.in-cards`; `#dTitle` `#dSub` `#dArch` `#dFacts` `#dRx` `#dChips` `#dOpen` `#dClose`) · 한 번 누름 = 펼침/접힘, 두 번 = 바로 열기 · 입력창은 잠김 |
-| 케이스 카드 | `#caseCard` `#caseThumb` `#caseName` `#caseKind` `#caseSub` `#caseBadges` `#caseBtn`(바꾸기) `#casePop` `#popCases .item[data-id]` `#popPatients` |
-| 계획 목록 | `#plans`(케이스에 계획이 있거나 계획 생성이 실패했으면 보임) `#planCount` · `#planFail`(계획 0개 + 실패: `#planFailMsg` 서버 문구 그대로 · `#planFailCond .tag` 조건 · `#planFailRetry` 이 조건으로 다시 계산 — 규칙 기반) · `#planList .plan-row[data-plan]`(`.n` 계획 N · `.what` 전략·장수·개월 · `.pill.fail/pass/ok/warn` 위반 n건/통과/승인됨/이전 스캔 기준 · 보는 계획은 `.current` + `.viewing`, 나머지는 `button[data-act=view]` 보기) · `#oldPlans`(접힌 지난 계획, `#oldPlansN` `#oldPlanList`) · `#planReview`(details) `#reviewLine` `#reviewMemo` `#reviewBtn`(검토 다시 요청) `#revokeBtn`(승인 취소) · 계획 id 는 카드 `title` 과 주소에만 |
-| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, 선택지에 `small` 힌트가 있으면 `.opts.stack`) · 「검토 질문」 블록 · `.decision [data-act=revert]`(새 안이 3D를 대체했다는 한 줄 + 되돌리기) · `.done`(내려받기 완료) · `#planNotice`(재계획 중·실패 한 줄, 입력창 위) · `#retryBar` `#resendBtn` `#retryFallback` |
+| 레일 | `#rail button[data-go=start|case|export]` = 환자 · 디자인 · 내보내기(3개, #13 polish). 켜진 것 `.on`(시작·`#patients`·`#check=` 는 환자, 그 밖은 디자인) · 갈 수 없으면 `disabled`(라벨만, 부제 없음) · 내보내기는 `#exportBtn` 상태를 따르고 `title` 에 잠긴 이유 · `.done`. `data-go=patients|check` 라우팅은 코드에 남아 있으나 레일 버튼은 없다 |
+| 화면 뼈대 | `.layout` 그리드 = 레일 64px · 대화 `var(--chat-w, 380px)` · 경계 6px(`.splitter`, 가운데 점 3개 손잡이, hover 초록) · 3D `1fr` · 사이드바 400px (980px 미만은 한 열) |
+| 시작 상태 | `body.start` · 왼쪽 `#intro` `#introPick` · 오른쪽 `#screenStart .start-body`(가운데 정렬, 최대 1100px): 「케이스」 제목 + `#toPatients`(새 환자) · 샘플 `#sampleCards .case-card[data-id]`(`.thumb` 카드 폭 썸네일 · `.cid` · `.rx` 소견 · `.meta` 「총생 7.9 mm · 발치」 한 줄, 상태·계획 수 없음, 선택 `.on` = 아래 초록 선) · 「환자 목록」 표 `#clRows .case-row[data-id]`(상태 점 유지, 비면 `.empty`) · 상세 `#clDetail`(누른 카드/행 바로 아래로 옮겨짐, 카드면 `.in-cards`; 머리 없이 `#dClose` 만 오른쪽 · `#dArch` 치아 배열(발치 빨간 테두리 · IPR 제외 `.ipr-dot` 회색 점) · `#dFacts` 「치아 14개 · 총생 1.6 mm」 한 줄 · `#dRx` 처방 문장 · `#dChips` 처방과 다른 조건만 · `#dOpen` 디자인 시작하기/입력 확인 열기) · 한 번 누름 = 펼침/접힘, 두 번 = 바로 열기 · 입력창은 잠김 |
+| 케이스 머리 | `#caseCard` `#caseName`(제목 한 줄, `title` 에 처방) `#caseBtn`(바꾸기) `#casePop` `#popCases .item[data-id]` `#popPatients` |
+| 계획 목록 | `#plans`(케이스에 계획이 있거나 계획 생성이 실패했으면 보임) (머리 옆 숫자 없음 — 지난 계획은 접힘 안에서만) · `#planFail`(계획 0개 + 실패: `#planFailMsg` 서버 문구 그대로 · `#planFailCond .tag` 조건 · `#planFailRetry` 이 조건으로 다시 계산 — 에이전트 없이) · `#planList .plan-row[data-plan]`(`.n` 계획 N · `.what` 전략·장수·개월 · `.pill.fail/pass/ok/warn` 위반 n건/통과/승인됨/이전 스캔 기준 · 보는 계획은 `.current` + `.viewing`, 나머지는 `button[data-act=view]` 보기) · `#oldPlans`(접힌 지난 계획, `#oldPlansN` `#oldPlanList`) · `#planReview`(details) `#reviewLine`(「계획 N · 아직 검토 전 · 에이전트에게 맡기면 검토합니다」/검토 중/검토 완료/검토 실패 — 화면에 「규칙 폴백」 용어 없음) `#reviewMemo` `#reviewBtn`(검토 다시 요청) `#revokeBtn`(승인 취소) · 계획 id 는 카드 `title` 과 주소에만 |
+| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, 선택지에 `small` 힌트가 있으면 `.opts.stack`) · 「검토 질문」 블록 · `.decision [data-act=revert]`(새 안이 3D를 대체했다는 한 줄 + 되돌리기) · `.done`(내려받기 완료) · `#planNotice`(재계획 중·실패 한 줄, 입력창 위) · `#retryBar` `#resendBtn` `#retryFallback`(에이전트 없이 계산, #75) |
 | 입력 | `#chips .chip[data-message]` · `#selChips` · `#chatForm` `#chatInput` `#sendBtn` |
-| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#checkBar`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
+| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#checkBar`) · 세로 아이콘 막대 `.view-rail button[data-view=occlusal|frontal|left|right]` `#overlayBtn` `#focusBtn`(아이콘 `img.vic` = `icons/view-*.png`, 크게는 Lucide maximize; 라벨은 `aria-label` → hover/focus 시 왼쪽 툴팁) · `.legend [data-key=collision|move_limit|locked|removed|ipr]`(지금 계획에 있는 것만) `#overlayLegend` `#pickedLegend`(치아를 처음 누른 뒤) |
 | 사이드바 | `#side` · 탭 `.side-tab[data-tab=stages|rules|cond]`(`#tabStages` `#tabRules` `#tabCond`, `aria-selected`) · 패널 `#paneStages` `#paneRules` `#paneCond` · 시작·입력 확인 상태와 `body.focus3d` 에서는 숨김 |
-| 단계 표 | `#stageFacts`(계획 N · 전략 · 총 장수 · 장당 mm · 총생→확보) `#stageNotes` · `#stageGrid .row[data-stage]`(현재 단계 `.cur`, 칸 `.c.move/vert/rot/mixed`, 위반 칸 `.coll/.warn`) · `.grid-legend` |
-| 규칙 | `#rulesFor` · `#ruleCards .rule`(충돌 · 장당 이동 한계 · 장수 상한 · 공간 부족, `.pill` 위반/통과/해당 없음) · `#violGroups .vg`(치아 쌍별 묶음, `.stages button[data-stage]` 로 단계 이동) |
-| 조건 | `#condFor` · `#condRx` `#condRxNote`(처방 원문) · `#constraints` `#cExtract` `#cLock` `#cExclude` `#cIpr` `#cCap` `#cOrder` · `#condState`(보고 있는 계획의 조건과 같음 / `.changed` 조건이 바뀜) · `#fallbackBtn`(이 조건으로 계산 — 규칙 기반) |
+| 단계 표 | `#stageFacts`(두 줄 `.l1` 「확장 · 9단계 · 약 2.1개월」 · `.l2` 「총생 1.6 mm → 확보 2.1 mm」) · `#stageGrid .row[data-stage]`(현재 단계 `.cur`, 칸 `.c.move/vert/rot/mixed`, 위반 칸 `.coll/.warn`, 이동 없는 치아 열은 `.nil` 빈 칸) · `.grid-legend` |
+| 규칙 | `#rulesFor` `#ruleNotes`(계획 이동 메모, 단계 표에서 옮김) · `#ruleCards .rule`(충돌 · 장당 이동 한계 · 장수 상한 · 공간 부족, `.pill` 위반/통과/해당 없음) · `#violGroups .vg`(치아 쌍별 묶음, `.stages button[data-stage]` 로 단계 이동) |
+| 조건 | `#condFor` · `#condRx` `#condRxNote`(처방 원문) · `#constraints` `#cExtract` `#cLock` `#cExclude` `#cIpr` `#cCap` `#cOrder` · `#condState`(보고 있는 계획의 조건과 같음 / `.changed` 조건이 바뀜) · `#fallbackBtn`(이 조건으로 계산 — 에이전트 없이) |
 | 입력 확인 | `body.checking` · `#checkBar`(막히면 `.fail`) `#checkTitle`(「계획할 수 없는 스캔입니다」·「방향을 정하지 못했습니다」, 그 밖엔 숨김) `#checkFacts`(`.warn` 방향 문구는 서버 `orientation.note` 그대로, 없으면 같은 문장) `#mirrorBtn` `#startPlan`(방향 불가면 「번호 확인 — 계획 시작」, 막힌 스캔이면 숨김) `#deleteScan` `#deleteScanPop` `#deleteScanGo` `#deleteScanCancel` `#otherScan` |
-| 내보내기 | `#exportBtn` `#exportWhy`(잠긴 이유) `#exportPop` `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
+| 내보내기 | 레일 `#rail button[data-go=export]` 가 보이는 버튼 · `#exportBtn`(숨긴 상태 기준, 레일이 click 한다) `#exportWhy`(숨김 — 레일 `title` 로 감) `#exportPop`(레일 옆에 고정 위치) `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
 | 단계 | `body.has-plan` · `.stage-bar` `#firstBtn` `#playBtn` `#stageMarks` `#stageSlider` `#lastBtn` `#stageLabel` |
 | 내 스캔 | `#caseGate` `#gateClose` `#screenPatients` `#patientForm` `#pAlias` `#pMemo` `#pScans` `#pScansName` `#patientCards` `#patientBody` `#scanList` `#dropZone` `#scanInput` `#uploadStatus`(진행 한 줄 · 거절되면 `.upload-fail` 안 `.files` 「올린 파일 · N개」 `.why` 서버 문구 그대로 `[data-act=repick]` 다시 고르기) `#deletePatient` |
 | 기타 상태 | `body.focus3d`(3D 크게) `body.leaving`(카드 선택 전환) `body.resizing`(경계 끌기) · 주소 `#start` `#case=<id>` `#patients` `#patient=<id>` `#check=<case>` |
@@ -422,4 +423,5 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 - 디자인 언어: VoltAgent/awesome-design-md의 NVIDIA 분석 `design-md/nvidia/DESIGN.md`(MIT), https://github.com/VoltAgent/awesome-design-md , 접근일 2026-09-26. 색 값·2px 모서리·모서리 사각형·위계 원칙을 가져와 어두운 작업 화면에 맞게 바꿨다.
 - 형식: Google Labs DESIGN.md 명세, https://github.com/google-labs-code/design.md , 접근일 2026-09-26.
 - 글꼴: Pretendard(SIL OFL 1.1), https://github.com/orioncactus/pretendard , 접근일 2026-09-26.
+- 3D 보기 아이콘 5개: `static/icons/view-{occlusal,front,left,right,overlay}.png` — 자체 제작(2026-09-28), 96px RGBA, 회색 #D9D9D9 글리프 + 투명 배경, 26px 표시.
 - 아이콘: Lucide(ISC), https://lucide.dev , lucide-static v1.48.0 에서 쓰는 아이콘만 `index.html` 맨 위 `<symbol id="i-…">` 스프라이트로 복사(외부 요청 없음), 접근일 2026-09-27. 크기 18~20px, `stroke: currentColor`.
