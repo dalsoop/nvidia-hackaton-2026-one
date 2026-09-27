@@ -69,7 +69,7 @@ async def record_case(client, url, case_id, log, out, only=None):
         return
     messages, results, base = [], {}, None
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    plan = [("setup", sample.request, dict(sample.constraints)), ("target", recorded.REQUESTS["target"], {}),
+    plan = [("setup", sample.request, {}), ("target", recorded.REQUESTS["target"], {}),   # the case opened with the prescription (Universal); the patch is FDI
             ("stages", recorded.REQUESTS["stages"], {}), ("cap", recorded.REQUESTS["cap"], {}), ("compare", recorded.REQUESTS["compare"], {})]
     if only:
         plan = plan[: max(i for i, (st, _, _) in enumerate(plan) if st in only) + 1]

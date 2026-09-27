@@ -73,3 +73,15 @@ def test_rule_plan_takes_universal_numbers_like_the_form(monkeypatch, tmp_path):
     assert all(t["constraints"]["extraction"] == [5, 12] for t in res["tried"])    # stored as the form sent it
     assert all(t["strategy"] == "extraction" for t in res["tried"])
     assert client.post("/api/plan", json={"case_id": "moderate", "extraction": [14, 24]}).status_code == 422   # FDI is not form input
+
+
+def test_rule_plan_takes_the_forms_ipr_prescription_once(monkeypatch, tmp_path):
+    """Step flow (13): the form's per-contact IPR prescription (FDI, #57) reached the rules converted twice and was
+    refused; it is converted once, in the request's own validation."""
+    client = _client(monkeypatch, tmp_path)
+    client.post("/api/cases/moderate/activate")
+    r = client.post("/api/plan", json={"case_id": "moderate", "extraction": [], "ipr_surfaces": [[12, 11, 0.4]]})
+    assert r.status_code == 200, r.text
+    tried = r.json()["tried"]
+    assert tried and all(t["constraints"]["ipr_surfaces"] == [[7, 8, 0.4]] for t in tried)   # FDI 12|11 = Universal 7|8
+    assert client.post("/api/cases/moderate/activate").json()["constraints"]["ipr_surfaces"] == [[7, 8, 0.4]]

@@ -88,6 +88,18 @@ def event(name, payload):
     return ("\n\nevent: " + name + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
 
 
+def setup_view(store, case_id: str, constraints) -> dict:
+    """What a finished setup step hands the screen (step_done setup and the setup replay): the conditions as
+    plan_context has them (Universal), with `ipr_surfaces` filled in — the prescription as given, else the contacts the
+    planner's uniform rule would cut (step flow (12): the setup view draws its IPR marks from this alone) — and the
+    FDI line for display."""
+    from cualign.core import planner
+    _, case = store.load_case(case_id)
+    data = constraints.model_dump(mode="json")
+    data["ipr_surfaces"] = planner.ipr_surfaces_for(case, constraints)
+    return {"constraints": data, "conditions_ko": constraints.describe_ko()}
+
+
 def step_done(run: PlanRun, store=None) -> dict | None:
     """The `step_done` event of a finished turn (None when the step did not get done), recording it in Store.flow:
     setup -> the conditions the turn set (Constraints JSON as in plan_context, plus conditions_ko for display);
@@ -98,8 +110,7 @@ def step_done(run: PlanRun, store=None) -> dict | None:
         return None
     if run.step == "setup":
         store.set_flow(run.case_id, "setup", constraints=run.constraints, target_id=None, plan_id=None)
-        return {"step": "setup", "constraints": run.constraints.model_dump(mode="json"),
-                "conditions_ko": run.constraints.describe_ko()}
+        return {"step": "setup", **setup_view(store, run.case_id, run.constraints)}
     if run.step == "target":
         tid = run.last_target_id
         if tid is None or tid not in store.targets:

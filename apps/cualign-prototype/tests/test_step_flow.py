@@ -87,7 +87,8 @@ def test_setup_turn_sets_conditions_and_stops(tmp_path, monkeypatch, store):
     assert done["step"] == "setup" and done["request_id"] == "r-setup" and done["case_id"] == "moderate"
     assert done["constraints"]["extraction"] == [5, 12] and done["constraints"]["stage_cap"] is None   # Universal, as plan_context
     assert done["conditions_ko"].startswith("발치 치아 14·24번") or "14" in done["conditions_ko"]
-    assert sse_event(text, "plan_context")["constraints"] == done["constraints"]
+    assert sse_event(text, "plan_context")["constraints"] == {**done["constraints"], "ipr_surfaces": []}   # (12): the event fills the uniform contacts
+    assert done["constraints"]["ipr_surfaces"] == []   # an extraction case: the IPR strategies are off, no contact to cut
     assert "plan_selected" not in text and "plan_error" not in text and "이대로 목표 배열을 만들까요?" in text
     # the overstep was refused as a normal result and nothing was computed
     assert _refusals(llm, "propose_target")
@@ -180,3 +181,22 @@ def test_target_summary_reads_the_planner_info():
     assert s["ipr"] == [[13, 12, 0.25], [12, 11, 0.25], [11, 21, 0.25]] and s["extraction"] == [] and s["space_mm"] == 3.9
     s = steps.target_summary({**info, "strategy": "extraction", "extraction": [5, 12], "ipr_mm_per_surface": 0.0})
     assert s["extraction"] == [14, 24] and s["ipr"] == []
+
+
+def test_setup_view_fills_the_ipr_surfaces_the_uniform_rule_would_cut(store):
+    """Step flow (12): without a prescribed contact list the setup event carries the contacts the planner's uniform
+    rule cuts (Universal [[a, b, mm]]), the same ones an IPR target reports; a prescription is passed as given."""
+    from cualign.core import planner
+    from cualign.server.plan_events import setup_view
+    cid, case = store.load_case("moderate")
+    c = store.constraints_for(cid)
+    view = setup_view(store, cid, c)
+    _, info = planner.propose_target(case, "ipr", constraints=c)
+    assert view["constraints"]["ipr_surfaces"] == info["ipr_surfaces"] and view["constraints"]["ipr_surfaces"]
+    assert all(b == a + 1 and mm > 0 for a, b, mm in view["constraints"]["ipr_surfaces"])
+    assert {k: v for k, v in view["constraints"].items() if k != "ipr_surfaces"} == {k: v for k, v in c.model_dump(mode="json").items() if k != "ipr_surfaces"}
+    excl = c.patched({"ipr_exclude": [8, 9]})
+    assert not [s for s in setup_view(store, cid, excl)["constraints"]["ipr_surfaces"] if s[0] == 8 and s[1] == 9]   # 8|9 excluded on both sides
+    given = c.patched({"ipr_surfaces": [[7, 8, 0.3], [8, 9, 0.3]]})
+    assert setup_view(store, cid, given)["constraints"]["ipr_surfaces"] == [[7, 8, 0.3], [8, 9, 0.3]]
+    assert view["conditions_ko"] == c.describe_ko()

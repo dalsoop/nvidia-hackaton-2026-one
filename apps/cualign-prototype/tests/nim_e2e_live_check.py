@@ -107,7 +107,7 @@ async def main(case_id):
             # 3. 에이전트 계획 — three turns, one step each: setup (conditions, asks back) -> target (the arrangement, asks
             # back) -> stages (the plan, selected and reviewed). Each turn must stop where its step says.
             messages = []
-            ctx = {"request_id": "e2e-3a", "case_id": case_id, "base_plan_id": None, "constraints": dict(sample.constraints)}
+            ctx = {"request_id": "e2e-3a", "case_id": case_id, "base_plan_id": None, "constraints": {}}   # the case opened with the prescription; the model reads the sentence
             messages, ev, rec = await turn(client, url, messages, sample.request, ctx, log, step="setup")
             done = pick(ev, "step_done")
             rec["step_done"] = done

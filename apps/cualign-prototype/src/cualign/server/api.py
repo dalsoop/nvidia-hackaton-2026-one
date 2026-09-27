@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from cualign.agent import steps
 from cualign.server import export_jobs
+from cualign.server.plan_events import setup_view
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, patients, planner, samples
 from cualign.core.constraints import ConstraintPatch, reason_ko
@@ -599,8 +600,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         if step == "setup":            # the recorded setup turn: its conditions become the case's, no plan
             STORE.case_constraints[cid] = constraints
             STORE.set_flow(cid, "setup", constraints=constraints, target_id=None, plan_id=None)
-            out["constraints"] = constraints.model_dump(mode="json")
-            out["conditions_ko"] = constraints.describe_ko()
+            out.update(setup_view(STORE, cid, constraints))   # constraints (ipr_surfaces filled in) + conditions_ko, as step_done setup
             return out
         if step == "target":           # the recorded target turn: the rule engine makes the target again, under the recorded strategy
             strategy = rec.get("strategy") or (planner.strategies_for(list(planner.STRATEGIES), constraints) or ["expansion"])[0]
@@ -637,8 +637,9 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
     @app.post("/api/plan")
     async def rule_plan(req: RulePlanRequest):
         try:
-            patch = req.model_dump(exclude={"case_id", "parent_plan_id"})
-            changes = ConstraintPatch.model_validate(patch).changes()
+            # the request is a ConstraintPatch already validated once (FDI -> Universal, #57): validating its dump again
+            # converted ipr_surfaces twice and refused the form's prescription (screen report 24, step flow (13))
+            changes = {k: v for k, v in req.changes().items() if k not in ("case_id", "parent_plan_id")}
             return rule_based_plan(req.case_id, changes=changes, parent_plan_id=req.parent_plan_id)
         except (KeyError, FileNotFoundError, ValueError) as e:
             raise HTTPException(400, reason_ko(e) if isinstance(e, ValueError) else str(e))
