@@ -86,11 +86,11 @@
 
   <main class="layout">
     <!-- 작업 흐름 레일 (v2 설계 보드 11, #13 polish → 3개): 환자(시작 화면 = 샘플 카드 + 환자 목록; 「새 환자」로 #patients, 「입력 확인 열기」로 #check=)
-         · 디자인(작업대) · 내보내기(승인 전 흐리게). 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled + 조건. #patients·#check= 에서는 「환자」가 켜진다 -->
+         · 디자인(작업대) · 내보내기(승인 전 흐리게). 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled(라벨만, 부제 없음). #patients·#check= 에서는 「환자」가 켜진다 -->
     <nav id="rail" class="rail" aria-label="작업 흐름">
       <button type="button" data-go="start" title="환자 · 샘플 케이스와 환자 목록"><svg class="ic" aria-hidden="true"><use href="#i-users"></use></svg><span>환자</span></button>
-      <button type="button" data-go="case" title="디자인 · 작업대"><svg class="ic" aria-hidden="true"><use href="#i-layout-panel-left"></use></svg><span>디자인</span><small>케이스 연 뒤</small></button>
-      <button type="button" data-go="export" title="승인하고 STL 내보내기"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span><small>계획 후</small></button>
+      <button type="button" data-go="case" title="디자인 · 작업대"><svg class="ic" aria-hidden="true"><use href="#i-layout-panel-left"></use></svg><span>디자인</span></button>
+      <button type="button" data-go="export" title="승인하고 STL 내보내기"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span></button>
     </nav>
     <section class="chat">
       <div id="intro" class="intro">
@@ -108,7 +108,7 @@
       </div>
       <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 승인·STL은 3D 위 「내보내기」 하나 (#111) -->
       <section id="plans" class="plans" hidden>
-        <div class="plans-head"><h2>계획</h2><span id="planCount" class="count"></span></div>
+        <div class="plans-head"><h2>계획</h2></div>
         <!-- 계획이 하나도 없는 채 계산이 실패하면: 제목 + 서버 문구 그대로 + 조건 + 다시 계산 (#112, 보드 07) -->
         <div id="planFail" class="plan-fail" hidden>
           <b>계획을 만들지 못했습니다</b>

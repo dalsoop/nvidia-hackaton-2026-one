@@ -1157,7 +1157,6 @@ function renderPlanList() {
   renderPlanFail();
   $("plans").hidden = !rows.length && !state.planError;
   const old = rows.filter((r) => state.oldPlans.has(r.plan_id)), now = rows.filter((r) => !state.oldPlans.has(r.plan_id));
-  $("planCount").textContent = now.length || "";   // the plans of this session; earlier ones count only in the fold (#13 polish)
   const make = (row) => {
     const div = document.createElement("div");
     const n = planNo(row.plan_id), months = row.months ?? row.info?.months, [pill, cls] = planPill(row);

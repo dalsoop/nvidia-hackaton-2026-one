@@ -351,12 +351,10 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 /* ---- rail (v2 보드 11) */
 .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
 .rail button { width: 56px; padding: 7px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font: inherit; font-size: 10.5px; line-height: 1.2; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
-.rail button small { font-size: 9px; color: var(--faint); }
 .rail button:hover { background: var(--hover); color: var(--text); }
 .rail button.on { color: var(--green); background: var(--panel-2); border-color: var(--green); font-weight: 700; }
 .rail button.done { color: var(--text); }
 .rail button:disabled { color: var(--faint); cursor: not-allowed; background: none; }
-.rail button:not(:disabled) small { display: none; }
 /* ---- case list (v2 보드 02) */
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; background: var(--text); vertical-align: middle; }
 .dot.amber { background: var(--amber); } .dot.faint { background: var(--faint); } .dot.red { background: var(--red); } .dot.green { background: var(--green); }
@@ -428,7 +426,6 @@ body.start .splitter { pointer-events: none; }
 .plans[hidden] { display: none; }
 .plans-head { display: flex; align-items: baseline; gap: 8px; }
 .plans-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
-.plans-head .count { font-size: 13px; color: var(--faint); }
 .plan-list { display: flex; flex-direction: column; gap: 8px; }
 /* many plans: the list scrolls; the conversation keeps its room */
 #planList { max-height: 32vh; overflow-y: auto; padding-right: 2px; }
