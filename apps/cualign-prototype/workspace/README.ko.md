@@ -1,4 +1,4 @@
-<!-- source: README.md sha256: 0c1c646577f5ec82cbd2505ea5f3ba42e96dd6f1d6cf75e3844d9760b0f58cc1 -->
+<!-- source: README.md sha256: da2094dd8f662e41e901e4b9e77ccf6f24a2b9dec73fa4a1305f92812b703300 -->
 # cuAlign 에이전트 워크스페이스
 
 cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구성은 NVIDIA DLI NemoClaw 과정 03b(OpenClaw)의 `.openclaw/workspace/` 규약을 따릅니다. 이 폴더를 읽는 에이전트는 둘이고, 에이전트마다 읽는 파일이 다릅니다.
@@ -29,7 +29,7 @@ cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구�
 - `configs/workflow.yml`이 `additional_instructions: file://../workspace/AGENTS.md`로 이 파일을 읽습니다.
 - `tests/test_workspace.py`가 이 파일의 sha256을 옮기기 전 문구와 비교합니다. 골든셋(#73)이 이 문구에 맞춰져 있습니다.
 - Simplified Technical English로 다시 쓰는 일은 골든셋을 다시 돌리는 작업(#96)과 함께 합니다.
-- 두 스킬 본문도 #96을 기다립니다. 영어 문장 안에 한국어가 있고 부정형 규칙이 있습니다. 계획 에이전트는 규칙 스킬을 문맥에 싣고 읽습니다.
+- 규칙 스킬의 본문(`skills/cualign-clinical-rules/SKILL.md`)도 #96을 기다립니다. 영어 문장 안에 한국어가 있고 부정형 규칙이 있습니다. 계획 에이전트가 이 스킬을 문맥에 싣고 읽으므로, 골든셋이 이 본문에 묶여 있습니다. 창구 스킬(`skills/cualign-planner/SKILL.md`)은 기다리지 않습니다. 이 스킬의 한국어는 인용한 용어와 출력 문구뿐입니다.
 
 ## 연결
 

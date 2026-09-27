@@ -28,7 +28,7 @@ A reader test uses a new session with no other context, and it runs more than on
 - `configs/workflow.yml` reads it with `additional_instructions: file://../workspace/AGENTS.md`.
 - `tests/test_workspace.py` checks its sha256 against the text before the move. The golden set (#73) is tuned to this text.
 - A rewrite in Simplified Technical English goes together with a new golden-set run (#96).
-- The two skill bodies also wait for #96. They have Korean text in English sentences and negative rules. The planner reads the clinical-rules skill in its context.
+- The clinical-rules skill body (`skills/cualign-clinical-rules/SKILL.md`) also waits for #96. It has Korean text in English sentences and negative rules. The planner reads this skill in its context, so the golden set is tied to it. The desk skill (`skills/cualign-planner/SKILL.md`) does not wait. Its only Korean text is quoted terms and output text.
 
 ## Connections
 
