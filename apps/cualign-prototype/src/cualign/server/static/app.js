@@ -585,7 +585,7 @@ function applyStage(k) {
   $("stageSlider").value = k;
   const tip = $("stageTip");
   const boundary = plan?.info?.phase_boundary ?? 0;   // sequencing (#144): which phase this aligner is in
-  tip.textContent = k === 0 ? "치료 전" : `단계 ${k}` + (!boundary ? "" : k === boundary ? " · 공간 폐쇄 시작" : k > boundary ? " · 공간 폐쇄" : " · 정렬");
+  tip.textContent = k === 0 ? "치료 전" : `단계 ${k}` + (!boundary ? "" : k === boundary ? " · 뒤따라 이동 시작" : k > boundary ? " · 뒤따라 이동" : " · 먼저 이동");
   tip.style.left = n ? `calc(8px + ${(k / n) * 100}% - ${(k / n) * 16}px)` : "8px";   // the thumb's centre: 8px inset each side
   markStage(k);
 }
@@ -1670,7 +1670,7 @@ function renderStagePane(plan) {
     if (boundary > 0 && k === boundary) {   // a thin rule with the two phases named, between the last aligning and the first closing aligner
       const ph = document.createElement("div"); ph.className = "phase"; ph.dataset.boundary = boundary;
       ph.innerHTML = '<span class="a"></span><i></i><span class="b"></span>';
-      ph.querySelector(".a").textContent = `정렬 1–${boundary - 1}`; ph.querySelector(".b").textContent = `공간 폐쇄 ${boundary}–${n}`;
+      ph.querySelector(".a").textContent = `먼저 이동 1–${boundary - 1}`; ph.querySelector(".b").textContent = `뒤따라 이동 ${boundary}–${n}`;
       grid.append(ph);
     }
     const row = document.createElement("div"); row.className = "row" + (k === state.stage ? " cur" : ""); row.dataset.stage = k;

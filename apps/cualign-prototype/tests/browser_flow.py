@@ -526,7 +526,7 @@ async def main():
             # each crown is that plan's cut geometry where it cuts, the scan's where it does not (확장 cuts nothing; since #143 the retry may pick IPR)
             assert await page.evaluate(f"Object.entries(window.__cualign.state.teeth).every(([id, m]) => m.geometry === (window.__cualign.state.cutSets['plan:{plan131}']?.[id]?.geo ?? m.userData.full))")
             # sequencing phases (#144, shaped here until the core ships it): info.phase_boundary splits the stage table with a
-            # labelled rule, a tooth in info.delays waits blank before its first aligner, the slider tip names the phase
+            # labelled rule (먼저 이동 / 뒤따라 이동), a tooth in info.delays waits blank before its first aligner, the slider tip names the phase
             async def phased_plan(route):
                 r = await route.fetch(); body = await r.json()
                 tooth = next(iter(body["stages"][0]))
@@ -538,11 +538,11 @@ async def main():
             await page.locator("#tabStages").click()
             assert await page.locator("#stageGrid .phase").count() == 1
             assert await page.evaluate("document.querySelector('#stageGrid .phase').previousElementSibling.dataset.stage === '2' && document.querySelector('#stageGrid .phase').nextElementSibling.dataset.stage === '3'")
-            assert "정렬 1–2" in await page.locator("#stageGrid .phase").inner_text() and "공간 폐쇄 3–" in await page.locator("#stageGrid .phase").inner_text()
+            assert "먼저 이동 1–2" in await page.locator("#stageGrid .phase").inner_text() and "뒤따라 이동 3–" in await page.locator("#stageGrid .phase").inner_text()
             wait_cells = await page.evaluate("[...document.querySelectorAll('#stageGrid .c.wait')].map((c) => c.parentElement.dataset.stage)")
             assert wait_cells == ["1", "2"], wait_cells
             await page.evaluate("document.querySelector('#stageSlider').value = 3; document.querySelector('#stageSlider').dispatchEvent(new Event('input'))")
-            assert await page.locator("#stageTip").inner_text() == "단계 3 · 공간 폐쇄 시작"
+            assert await page.locator("#stageTip").inner_text() == "단계 3 · 뒤따라 이동 시작"
             await page.unroute("**/api/plans/" + plan131)
             await page.evaluate(f"window.__cualign.loadPlan('{plan131}')")   # the plan as the server has it, for the steps below
             await page.wait_for_function("!(window.__cualign.state.plan?.info?.phase_boundary) && !window.__cualign.state.loading", timeout=60000)
