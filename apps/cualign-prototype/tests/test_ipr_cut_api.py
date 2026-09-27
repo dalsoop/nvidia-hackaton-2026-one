@@ -22,6 +22,7 @@ def test_mesh_has_cut_crowns_for_an_ipr_plan_and_none_without_a_plan(tmp_path, m
         data = client.get("/api/cases/poseidon-000131/mesh").json()
         assert data["plan_id"] is None and data["teeth_cut"] == {} and data["ipr_cut"] == {}     # no plan yet
         client.post("/api/cases/poseidon-000131/activate")
+        client.post("/api/plan", json={"case_id": "poseidon-000131"})   # step flow: opening plans nothing; the fallback does
         plans = client.get("/api/plans?case_id=poseidon-000131").json()["plans"]
         ipr = next(p for p in plans if p["strategy"] == "ipr")
         data = client.get(f"/api/cases/poseidon-000131/mesh?plan_id={ipr['plan_id']}").json()
@@ -39,5 +40,6 @@ def test_mesh_has_cut_crowns_for_an_ipr_plan_and_none_without_a_plan(tmp_path, m
 def test_extraction_plan_without_ipr_cuts_nothing(tmp_path, monkeypatch):
     with _client(tmp_path, monkeypatch) as client:
         client.post("/api/cases/poseidon-000097/activate")
+        client.post("/api/plan", json={"case_id": "poseidon-000097"})
         data = client.get("/api/cases/poseidon-000097/mesh").json()
         assert data["plan_id"] is not None and data["teeth_cut"] == {} and data["ipr_cut"] == {}

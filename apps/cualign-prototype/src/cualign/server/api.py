@@ -1,7 +1,6 @@
 """Artifact API. Approval is checked on every export, including cached files."""
 from __future__ import annotations
 import asyncio
-import os
 import re
 import uuid
 
@@ -13,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from cualign.agent import steps
+from cualign.server import export_jobs
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, patients, planner, samples
 from cualign.core.constraints import ConstraintPatch, reason_ko
@@ -117,14 +117,23 @@ def gum_filled_view(case_id: str, case, gum: dict) -> dict:
     return _GUM_FILLED[key]
 
 
-def ipr_cut_view(cid: str, case, plan_id: str | None = None) -> dict:
+def ipr_cut_view(cid: str, case, plan_id: str | None = None, target_id: str | None = None) -> dict:
     """`teeth_cut` / `ipr_cut` (see Case.cut_json) of the crowns with this case's IPR cut (#62), and `plan_id`: the plan
     whose IPR it is - `plan_id` if given, else the case's representative plan (approved, else latest). No plan, or a
-    plan without IPR: `plan_id` None / the plan, and both maps empty."""
-    rec = STORE.plans.get(plan_id) if plan_id else _representative_plan(STORE.plan_ids_for(cid))
+    plan without IPR: `plan_id` None / the plan, and both maps empty. With `target_id` (the step flow's target turn,
+    before any plan exists) the cut is the target's own; then `target_id` is in the response and `plan_id` is None."""
+    if target_id:
+        t = STORE.targets.get(target_id)
+        if t is None or t["case_id"] != cid:
+            return {"plan_id": None, "target_id": None, "teeth_cut": {}, "ipr_cut": {}}
+        return {"plan_id": None, "target_id": target_id, **planner.cut_case(case, t["info"]).cut_json()}
+    rec = STORE.plans.get(plan_id) if plan_id else _representative_plan(STORE.current_plan_ids_for(cid))
     if rec is None or rec["case_id"] != cid:
         return {"plan_id": None, "teeth_cut": {}, "ipr_cut": {}}
     return {"plan_id": rec["plan_id"], **planner.cut_case(case, rec["info"]).cut_json()}
+
+
+PREVIOUS_CALCULATION = "이전 계산의 계획입니다(계산 코어가 바뀌었습니다). 이 계획을 기준으로 이어갈 수 없으니 다시 계산해 주세요."
 
 
 def _summary(pid):
@@ -133,7 +142,8 @@ def _summary(pid):
             "strategy": p["strategy"], "n_stages": p["info"]["n_stages"], "months": p["info"]["months"],
             "passed": p["passed"], "violations": len(p["violations"]), "by_type": planner.summarize(p["violations"]),
             "constraints": p["constraints"], "review": p["review"], "approval": p["approval"],
-            "input_stale": p["input_stale"]}   # same rule as GET /api/plans/{id}: the scan was renumbered since
+            "input_stale": p["input_stale"],   # same rule as GET /api/plans/{id}: the scan was renumbered since
+            "previous_calculation": p["previous_calculation"]}   # computed by another core version: listed as «이전 계산» only (10)
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
@@ -213,19 +223,6 @@ def _case_status(confirmed: bool | None, rep: dict | None) -> str:
     return "awaiting_approval"
 
 
-def _build_stl_zip(case: Case, stages: list[dict], path: Path, case_id: str) -> dict:
-    """Stage STLs and print models into `path`, built under a temporary name and moved into place: two downloads of
-    the same plan at once build side by side, and neither serves the other's half-written zip."""
-    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        planner.export_zip(case, stages, str(tmp))
-        models = planner.export_print_models(case, stages, str(tmp), case_id)
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-    return models
-
-
 def add_api_routes(app: FastAPI, review=None, followup=None):
     """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
     chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
@@ -296,7 +293,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         out = {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
                "constraints": STORE.constraints_for(cid).model_dump(mode="json"), "active_plan": None,
                "flow": STORE.flow_json(cid), "unsupported": planner.unsupported_reasons(case)}
-        ids = STORE.plan_ids_for(cid)
+        ids = STORE.current_plan_ids_for(cid)   # a plan of another core version (previous_calculation) is never the case's current plan (10)
         if ids:
             out["active_plan"] = {"plan_id": ids[-1], "constraints": _constraint_dump(STORE._record(ids[-1]))}
         return out
@@ -321,14 +318,14 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
                 if case_id in STORE.cases else {}}
 
     @app.get("/api/cases/{case_id}/mesh")
-    async def case_mesh(case_id: str, plan_id: str | None = None):
+    async def case_mesh(case_id: str, plan_id: str | None = None, target_id: str | None = None):
         try:
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
         data = case.viewer_json()
         data.update(gum_filled_view(cid, case, data["gum"]))
-        data.update(ipr_cut_view(cid, case, plan_id))
+        data.update(ipr_cut_view(cid, case, plan_id, target_id))   # ?target_id= : the target turn's cut, before any plan
         return data
 
     @app.get("/api/cases/{case_id}/gum")
@@ -501,9 +498,25 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         if not req.confirmed:
             raise HTTPException(400, "의사의 명시적 확인이 필요합니다.")
         try:
-            return STORE.approve(plan_id)
+            approved = STORE.approve(plan_id)
         except ValueError as e:
             raise HTTPException(409, str(e))
+        _start_export(plan_id)   # the zip is built from now on, in the background (answer-polish (9))
+        return approved
+
+    def _start_export(plan_id: str):
+        p = STORE.plans[plan_id]
+        _, case = STORE.load_case(p["case_id"])
+        case = planner.cut_case(case, p["info"])     # the stage files and print models carry the IPR cut (#62)
+        return export_jobs.start(plan_id, case, p["stages"], p["case_id"], OUT_DIR / "stl" / f"{plan_id}.zip",
+                                 (p.get("approval") or {}).get("fingerprint"))
+
+    @app.get("/api/plans/{plan_id}/export-status")
+    async def export_status(plan_id: str):
+        """{building, done, total, ready}: how far the approved plan's zip is (the screen shows «N/20 단계»). Before
+        approval, or for a plan whose build never started, building false and ready false."""
+        p = require_plan(plan_id)
+        return export_jobs.status(plan_id, len(p["stages"]))
 
     @app.post("/api/plans/{plan_id}/review")
     async def request_review(plan_id: str):
@@ -528,15 +541,16 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             STORE.require_approved(plan_id)
         except ValueError as e:
             raise HTTPException(409, str(e))
-        _, case = STORE.load_case(p["case_id"])
-        case = planner.cut_case(case, p["info"])     # the stage files and print models carry the IPR cut (#62)
-        path = OUT_DIR / "stl" / f"{plan_id}.zip"
-        # Regenerate from the approved snapshot; a stale file cannot bypass approval. Building takes 5–11 s on the
-        # samples (mostly the print models), and the agent shares this process: off the event loop, or every other
-        # request and the agent's streamed answer wait for it (#119).
-        models = await asyncio.to_thread(_build_stl_zip, case, p["stages"], path, p["case_id"])
+        # The build the approval started (or one started now), keyed by the approval's fingerprint so a stale file of
+        # an earlier approval is never served: ready -> the cached zip at once; still building -> wait for it, off the
+        # event loop as before (#119). Building takes 5-11 s on the samples here (mostly the print models).
+        job = _start_export(plan_id)
+        await asyncio.to_thread(job.wait)
+        if job.error or not job.path.exists():
+            raise HTTPException(500, f"내보내기 파일을 만들지 못했습니다: {job.error or 'no file'}")
+        models = job.report
         note = f"{models['status']}; files={models['n_files']}" + (f"; reason={models['reason']}" if models.get("reason") else "")
-        return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
+        return FileResponse(str(job.path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
                             headers={"X-Cualign-Print-Models": note})
 
     @app.post("/api/cases/{case_id}/replay")
@@ -558,6 +572,8 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             constraints.check_case(case.ids)
         except ValueError as e:
             raise HTTPException(400, reason_ko(e))
+        if req.base_plan_id and req.base_plan_id in STORE.plans and STORE.previous_calculation(req.base_plan_id):
+            raise HTTPException(409, PREVIOUS_CALCULATION)
         step = recorded.ALIASES.get(req.step, req.step)
         out = {"recorded": True, "step": step, "answer_md": rec["answer_md"], "plan_selected": None, "plans": [], "recorded_at": rec["recorded_at"]}
         STORE.replays[cid] = {"step": step, "step_ko": recorded.STEP_KO[step], "plan_id": None, "recorded_at": rec["recorded_at"]}

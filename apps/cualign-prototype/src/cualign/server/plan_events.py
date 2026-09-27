@@ -43,6 +43,8 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     case summary, the clinical limits and the skill text (#48). Raises ValueError/KeyError/TypeError on bad input."""
     store = store or STORE
     cid, case = store.load_case(ctx.case_id)
+    if ctx.base_plan_id and ctx.base_plan_id in store.plans and store.previous_calculation(ctx.base_plan_id):
+        raise ValueError("이전 계산의 계획은 기준 계획이 될 수 없습니다")   # another core version's plan (answer-polish (10))
     constraints = store.constraints_for(cid, ctx.base_plan_id).patched(ctx.constraints.changes())
     constraints.check_case(case.ids)
     store.case_constraints[cid] = constraints

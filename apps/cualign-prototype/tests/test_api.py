@@ -85,15 +85,17 @@ def test_stl_zip_builds_off_the_event_loop(tmp_path, monkeypatch):
     process (#119). The build is held open until the other request is back."""
     monkeypatch.setattr(api, "OUT_DIR", tmp_path)
     monkeypatch.setattr(store, "OUT_DIR", tmp_path)
+    from cualign.server import export_jobs
+    monkeypatch.setattr(export_jobs, "JOBS", {})
     started, release, released = threading.Event(), threading.Event(), []
-    real = planner.export_print_models
+    real = export_jobs.print_models   # the build the approval starts (answer-polish (9)) runs this in its own thread
 
     def held(*args, **kwargs):
         started.set()
         released.append(release.wait(5))   # on the event loop nothing else runs, so this only times out
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(planner, "export_print_models", held)
+    monkeypatch.setattr(export_jobs, "print_models", held)
     app = FastAPI()
     api.add_api_routes(app)
 
