@@ -1,7 +1,7 @@
 """The next question for the dentist after each agent turn (#90).
 
 The screen shows the agent's answer and then one question card with two or three choices (the way a design agent
-asks before it draws). A small, fast model writes it from the last turns of the conversation; the planner's prompt
+asks before it draws). A small, fast model writes it from the last turn of the conversation (the answer and the sentence that asked for it); the planner's prompt
 and the rails are untouched. Any failure means no card, never an error on screen.
 """
 from __future__ import annotations
@@ -32,9 +32,16 @@ INSTRUCTIONS = (
     'Answer with JSON only: {"question": "...", "options": [{"label": "...", "message": "..."}, ...]}'
 )
 
-MAX_TURNS = 6           # the model sees only the tail of the conversation
-MAX_CHARS = 1500        # per message
+# The model sees the last answer and the dentist's last sentence only. With the last six turns of an E2E conversation
+# (three plan answers, about 3,000 characters) nim_lightning did not answer within 60 s (socket read timeout, 2026-09-28,
+# .report/11-gum-server.md) and the card was null on every run; the ten-sentence live check with one short answer
+# came back in seconds. The card asks about the plan just made, so that answer is all it needs.
+MAX_ANSWER_CHARS = 1200   # the last assistant answer (a plan answer is about 500 characters)
+MAX_USER_CHARS = 300      # the dentist's last sentence
+MAX_TURNS = 2
+MAX_CHARS = MAX_ANSWER_CHARS + MAX_USER_CHARS   # the whole tail
 MAX_OPTIONS = 3
+HEDGE_AFTER = 4         # seconds without an answer before a second call is started (next_question)
 # What the screen does with buttons, never a chip (#107): approving, exporting, holding, downloading, re-reviewing.
 HANGUL_RE = re.compile(r"[가-힣]")
 SCREEN_ACTION_RE = re.compile(r"승인|확정|내보내|export|보류|다운로드|STL|ZIP|검토 다시|재검토|approve", re.I)
@@ -68,21 +75,48 @@ def parse(text: str) -> dict | None:
 
 
 def tail(messages: list[dict]) -> list[dict]:
-    """The last turns with user/assistant roles only, each cut to MAX_CHARS."""
-    kept = [{"role": m["role"], "content": str(m.get("content") or "")[:MAX_CHARS]}
-            for m in messages if m.get("role") in ("user", "assistant")]
-    return kept[-MAX_TURNS:]
+    """The last assistant answer (cut to MAX_ANSWER_CHARS) preceded by the dentist's last sentence before it (cut to
+    MAX_USER_CHARS); without an assistant answer, the last user message alone. At most MAX_TURNS messages, MAX_CHARS
+    characters in all."""
+    turns = [m for m in messages if m.get("role") in ("user", "assistant")]
+    last_answer = next((i for i in range(len(turns) - 1, -1, -1) if turns[i]["role"] == "assistant"), None)
+    kept = []
+    if last_answer is None:
+        users = [m for m in turns if m["role"] == "user"]
+        if users:
+            kept.append({"role": "user", "content": str(users[-1].get("content") or "")[:MAX_USER_CHARS]})
+        return kept
+    last_user = next((i for i in range(last_answer - 1, -1, -1) if turns[i]["role"] == "user"), None)
+    if last_user is not None:
+        kept.append({"role": "user", "content": str(turns[last_user].get("content") or "")[:MAX_USER_CHARS]})
+    kept.append({"role": "assistant", "content": str(turns[last_answer].get("content") or "")[:MAX_ANSWER_CHARS]})
+    return kept
 
 
-async def next_question(llm, messages: list[dict], *, timeout_seconds: float = 12) -> dict | None:
-    """One question card for the conversation, or None (no answer, bad JSON, timeout, upstream error)."""
+async def next_question(llm, messages: list[dict], *, timeout_seconds: float = 12, hedge_after: float = HEDGE_AFTER) -> dict | None:
+    """One question card for the conversation, or None (no answer, bad JSON, timeout, upstream error).
+
+    The endpoint sometimes never answers a request (live 2026-09-28: 3 of 9 calls hung past 60 s, with 200 to 1400
+    characters of input alike, while the same inputs answered in 2 to 8 s the rest of the time, and a fresh request
+    right after a hung one answered). So when the first call has not answered after `hedge_after` seconds a second
+    call is started and the first answer wins, all within `timeout_seconds`."""
     turns = tail(messages)
     if not turns:
         return None
     chat = [{"role": "system", "content": INSTRUCTIONS},
             {"role": "user", "content": "Conversation:\n" + json.dumps(turns, ensure_ascii=False) + "\n\nJSON:"}]
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    calls = [asyncio.ensure_future(llm.ainvoke(chat))]
     try:
-        response = await asyncio.wait_for(llm.ainvoke(chat), timeout=timeout_seconds)
+        done, _ = await asyncio.wait(calls, timeout=min(hedge_after, timeout_seconds / 3))
+        if not done:
+            calls.append(asyncio.ensure_future(llm.ainvoke(chat)))
+            done, _ = await asyncio.wait(calls, timeout=max(deadline - loop.time(), 0), return_when=asyncio.FIRST_COMPLETED)
+        answered = [c for c in done if not c.exception()]
+        return parse(response_text(answered[0].result())) if answered else None
     except Exception:   # noqa: BLE001 - a missing card is the designed outcome of any failure here
         return None
-    return parse(response_text(response))
+    finally:
+        for c in calls:
+            c.cancel()

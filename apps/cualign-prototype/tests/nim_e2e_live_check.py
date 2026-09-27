@@ -35,7 +35,7 @@ from nim_live_check import converse, free_port, pick, tool_steps, wait_ready  # 
 
 HANGUL = re.compile(r"[가-힣]")
 LATIN = re.compile(r"[A-Za-z]")
-UNIVERSAL_TOOTH = re.compile(r"(?<![\d.])(?:[1-9]|1[0-6])번")     # a Universal number written to the dentist
+UNIVERSAL_TOOTH = re.compile(r"(?<![\d.])(?:[1-9]|10)번")         # a Universal number written to the dentist (11..16 read as FDI since #133)
 INTERNAL = re.compile(r"(?<![A-Za-z_])(?:allow_extraction|ipr_exclude|ipr_limit_mm|stage_cap|plan_id|expansion_ipr|anterior_first|"
                       r"space_deficit|p[0-9a-f]{6,})(?![A-Za-z_])")
 DISCLAIMER = "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
