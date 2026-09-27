@@ -227,3 +227,33 @@ export function formatViolations(item, plan) {
   }
   return `${LABEL_CONFLICT} ${count}`;
 }
+
+export function sortCases(cases, { sortBy = 'default', order = 'asc' } = {}) {
+  if (!Array.isArray(cases)) {
+    return [];
+  }
+  const list = [...cases];
+  if (sortBy === 'default') {
+    return list;
+  }
+  const direction = order === 'desc' ? -1 : 1;
+  return list.sort((a, b) => {
+    if (sortBy === 'id' || sortBy === 'case') {
+      const aVal = a.displayId || a.case_id || '';
+      const bVal = b.displayId || b.case_id || '';
+      return direction * aVal.localeCompare(bVal);
+    }
+    if (sortBy === 'status') {
+      const orderMap = { scan_check: 1, needs_plan: 2, violation: 3, ready: 4, approved: 5 };
+      const aVal = orderMap[a.status] || 99;
+      const bVal = orderMap[b.status] || 99;
+      return direction * (aVal - bVal);
+    }
+    if (sortBy === 'plans') {
+      const aCount = a.plans ? a.plans.length : 0;
+      const bCount = b.plans ? b.plans.length : 0;
+      return direction * (aCount - bCount);
+    }
+    return 0;
+  });
+}

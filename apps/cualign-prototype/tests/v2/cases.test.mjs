@@ -5,6 +5,7 @@ import {
   groupPlansByCaseId,
   transformCasesData,
   filterCases,
+  sortCases,
   countByStatus,
   countByKind,
   formatPlanSummary,
@@ -228,4 +229,38 @@ test('Cases data: FDI coordinates map covers standard maxillary teeth', () => {
     const fdi = universalToFdi(u);
     assert.ok(FDI_COORDINATES[fdi]);
   }
+});
+
+test('Cases data: sortCases sorts by id, status, and plans count', () => {
+  const items = [
+    { case_id: 'c', displayId: 'C', status: 'ready', plans: [{ id: 1 }, { id: 2 }] },
+    { case_id: 'a', displayId: 'A', status: 'violation', plans: [{ id: 1 }] },
+    { case_id: 'b', displayId: 'B', status: 'scan_check', plans: [] }
+  ];
+
+  // Default preserves original order
+  const defaultSorted = sortCases(items, { sortBy: 'default' });
+  assert.deepEqual(defaultSorted.map((x) => x.case_id), ['c', 'a', 'b']);
+
+  // Sort by id asc / desc
+  const idAsc = sortCases(items, { sortBy: 'id', order: 'asc' });
+  assert.deepEqual(idAsc.map((x) => x.case_id), ['a', 'b', 'c']);
+
+  const idDesc = sortCases(items, { sortBy: 'id', order: 'desc' });
+  assert.deepEqual(idDesc.map((x) => x.case_id), ['c', 'b', 'a']);
+
+  // Sort by status asc (scan_check -> violation -> ready)
+  const statusAsc = sortCases(items, { sortBy: 'status', order: 'asc' });
+  assert.deepEqual(statusAsc.map((x) => x.case_id), ['b', 'a', 'c']);
+
+  // Sort by plans count asc
+  const plansAsc = sortCases(items, { sortBy: 'plans', order: 'asc' });
+  assert.deepEqual(plansAsc.map((x) => x.case_id), ['b', 'a', 'c']);
+
+  const plansDesc = sortCases(items, { sortBy: 'plans', order: 'desc' });
+  assert.deepEqual(plansDesc.map((x) => x.case_id), ['c', 'a', 'b']);
+
+  // Handles null / empty
+  assert.deepEqual(sortCases(null), []);
+  assert.deepEqual(sortCases([]), []);
 });

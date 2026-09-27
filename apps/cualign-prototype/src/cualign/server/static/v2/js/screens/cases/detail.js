@@ -161,6 +161,7 @@ function buildPrescriptionSection(selectedCase) {
 export function renderDetail(container, {
   selectedCase = null,
   checkData = null,
+  checkError = null,
   onClose = () => {},
   onNavigate = () => {}
 } = {}) {
@@ -209,6 +210,9 @@ export function renderDetail(container, {
   body.appendChild(chartSection);
 
   // 2. Scan check
+  if (checkError) {
+    body.appendChild(h('div', { class: 'cases-error-box' }, checkError));
+  }
   const checkGrid = h('div', { class: 'cases-check-grid' }, ...buildCheckCards(checkData));
   const checkSection = h('div', { class: 'cases-detail-section' },
     h('div', { class: 'cases-detail-section-title' }, LABEL_SCAN_CHECK),

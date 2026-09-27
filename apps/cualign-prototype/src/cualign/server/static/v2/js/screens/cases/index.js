@@ -6,6 +6,7 @@ import {
   countByKind,
   countByStatus,
   filterCases,
+  sortCases,
   transformCasesData
 } from './data.js';
 import { renderFilters } from './filters.js';
@@ -19,8 +20,11 @@ export function mount(root, params, ctx) {
   let allCases = [];
   let currentStatus = 'all';
   let currentKind = 'all';
+  let currentSortBy = 'default';
+  let currentSortOrder = 'asc';
   let selectedCaseId = params.caseId || null;
   const checkCache = new Map();
+  const checkErrorCache = new Map();
 
   // Root screen container
   const screenEl = h('div', { class: 'screen-cases' });
@@ -50,6 +54,11 @@ export function mount(root, params, ctx) {
       kindFilter: currentKind
     });
 
+    const sorted = sortCases(filtered, {
+      sortBy: currentSortBy,
+      order: currentSortOrder
+    });
+
     const statusCounts = countByStatus(allCases);
     const kindCounts = countByKind(allCases);
     const selectedCase = getSelectedCase();
@@ -76,7 +85,7 @@ export function mount(root, params, ctx) {
     });
 
     renderCaseList(listEl, {
-      cases: filtered,
+      cases: sorted,
       selectedCaseId,
       onCaseSelect: (caseId) => {
         selectedCaseId = caseId;
@@ -88,13 +97,24 @@ export function mount(root, params, ctx) {
         }
         ensureCheckData(caseId);
         updateView();
+      },
+      onSort: (colKey) => {
+        if (currentSortBy === colKey) {
+          currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+          currentSortBy = colKey;
+          currentSortOrder = 'asc';
+        }
+        updateView();
       }
     });
 
     const checkData = selectedCaseId ? checkCache.get(selectedCaseId) : null;
+    const checkError = selectedCaseId ? checkErrorCache.get(selectedCaseId) : null;
     renderDetail(detailEl, {
       selectedCase,
       checkData,
+      checkError,
       onClose: () => {
         selectedCaseId = null;
         if (ctx.navigate) {
@@ -122,9 +142,13 @@ export function mount(root, params, ctx) {
           updateView();
         }
       }
-    } catch {
+    } catch (err) {
       if (isMounted) {
         checkCache.set(caseId, null);
+        checkErrorCache.set(caseId, err?.message || T.errors.requestFailed);
+        if (selectedCaseId === caseId) {
+          updateView();
+        }
       }
     }
   }

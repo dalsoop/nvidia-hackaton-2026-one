@@ -137,6 +137,9 @@
   user-select: none;
 }
 
+.cases-th-sortable { cursor: pointer; }
+.cases-th-sortable:hover { color: var(--color-text-primary); }
+
 .cases-table-row {
   display: grid;
   grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr;

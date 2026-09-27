@@ -24,7 +24,8 @@ function getStatusBadgeClass(status) {
 export function renderCaseList(container, {
   cases = [],
   selectedCaseId = null,
-  onCaseSelect = () => {}
+  onCaseSelect = () => {},
+  onSort = () => {}
 } = {}) {
   clear(container);
 
@@ -38,11 +39,11 @@ export function renderCaseList(container, {
 
   // Grid header row
   const tableHeader = h('div', { class: 'cases-table-header' },
-    h('span', null, T.cases.colCase),
-    h('span', null, T.cases.colStatus),
+    h('span', { class: 'cases-th-sortable', onClick: () => onSort('case') }, T.cases.colCase),
+    h('span', { class: 'cases-th-sortable', onClick: () => onSort('status') }, T.cases.colStatus),
     h('span', null, T.cases.colPlan),
     h('span', null, T.cases.colViolation),
-    h('span', null, T.cases.colPlansCount),
+    h('span', { class: 'cases-th-sortable', onClick: () => onSort('plans') }, T.cases.colPlansCount),
     h('span', null, T.cases.colPrescription)
   );
 
