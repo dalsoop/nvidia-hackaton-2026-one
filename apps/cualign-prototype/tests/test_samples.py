@@ -31,7 +31,7 @@ def test_start_screen_lists_the_samples_not_the_synthetic_cases():
     # the presets stay loadable by name (agent, tests, CLI); the screen filters them out
     assert {"moderate"} <= {r["case_id"] for r in rows if r["kind"] == "synthetic"}
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert 'id="screenStart"' in html and 'id="sampleCards"' in html and "screenSamples" not in html
+    assert 'id="screenStart"' in html and 'id="clRows"' in html and "screenSamples" not in html
     assert "발치안이랑 비발치안" not in html          # the tool does not pick the treatment direction
 
 
