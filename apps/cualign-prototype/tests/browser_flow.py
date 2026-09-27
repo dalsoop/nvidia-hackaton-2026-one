@@ -4,6 +4,7 @@ Requires installed Chrome or PLAYWRIGHT_CHROMIUM_EXECUTABLE. UI CDN access is re
 """
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 import socket
@@ -135,6 +136,29 @@ async def main():
             await page.locator("#stepNext").click()      # 단계 만들기
             await page.wait_for_function("document.body.classList.contains('step-stages') && window.__cualign.state.stage === 0")
             assert await page.locator(".stage-bar").is_visible()
+            # 치료 전 (stage 0) is the scan with every crown (#18 decision); the extracted crowns turn into silhouettes from stage 1
+            crown = "() => { const s = window.__cualign.state, id = String(s.plan.target.removed[0]), m = s.teeth[id]; return [m.material.opacity, m.userData.shell.visible]; }"
+            assert await page.evaluate(crown) == [1, False]
+            await page.locator("#stageSlider").fill("1")
+            await page.wait_for_function("window.__cualign.state.stage === 1")
+            assert await page.evaluate(crown) == [0.45, True]
+            await page.locator("#firstBtn").click(); await page.wait_for_function("window.__cualign.state.stage === 0")
+            # the 3D turns without a pole clamp (#18): a 720° vertical drag comes back to the start, the distance never changes,
+            # and a horizontal drag afterwards keeps the arch plane level (no roll drift)
+            await page.locator('.view-rail [data-view="frontal"]').click()
+            cam = "() => { const c = window.__cualign.camera, t = window.__cualign.controls.target; return { p: c.position.toArray(), d: c.position.distanceTo(t), rz: new c.position.constructor(1, 0, 0).applyQuaternion(c.quaternion).z }; }"
+            start = await page.evaluate(cam)
+            px = 4 * math.pi / await page.evaluate("window.__cualign.controls.speed")
+            for _ in range(8):
+                await page.mouse.move(960, 300); await page.mouse.down(); await page.mouse.move(960, 300 + px / 8, steps=15)
+                await page.wait_for_timeout(120); await page.mouse.up()      # a still pointer at release: no inertia
+                await page.wait_for_timeout(120)
+            end = await page.evaluate(cam)
+            assert math.dist(start["p"], end["p"]) < 8 and abs(start["d"] - end["d"]) < 1e-3, (start, end)
+            await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1260, 500, steps=10); await page.wait_for_timeout(120); await page.mouse.up()
+            assert abs((await page.evaluate(cam))["rz"]) < 1e-3
+            await page.mouse.dblclick(960, 500)
+            await page.wait_for_function("document.querySelector('.view-rail [data-view=\"occlusal\"]').getAttribute('aria-pressed') === 'true'")
             await page.reload()
             await page.wait_for_function("document.body.classList.contains('step-stages') && document.body.classList.contains('has-plan')", timeout=120000)
             assert await on_screen() == parent
@@ -393,31 +417,30 @@ async def main():
             await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
             assert "가짜 안내문" in await page.locator(".msg.error").last.inner_text()
             assert await page.locator("#resendBtn").is_visible()
-            # a sample case offers 건너뛰기 instead of 에이전트 없이 계산 on a failed turn (#15): the plan on screen is adopted
+            # a sample case offers 건너뛰기 instead of 에이전트 없이 계산 on a failed turn (#15). Without a recording (404, faked
+            # here: every sample has one since #134) the plan on screen is adopted
             assert await page.locator("#skipBtn").is_visible() and await page.locator("#retryFallback").is_hidden()
+            await page.route("**/api/cases/poseidon-000131/replay", lambda route: route.fulfill(status=404, content_type="application/json", body='{"detail":"녹화된 답이 없습니다"}'))
+            before_skip = await on_screen()
             await page.locator("#skipBtn").click()
             await page.wait_for_function("document.body.classList.contains('step-stages') && document.querySelector('#retryBar').hidden")
             assert "건너뜀" in await page.locator("#plans .plan-row.current .pill").inner_text()
             assert await page.locator(".msg.system", has_text="건너뛰었습니다").count() == 1
-            # with a recorded answer (contract 12-replay.md, shaped here until the server ships it): the answer plays in
-            # the agent's place, grey with its date, and its plan_selected lands like an agent turn
-            recorded_plan = await on_screen()
-            async def replay_route(route):
-                assert route.request.post_data_json["step"] == "plan", route.request.post_data_json
-                await route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "recorded": True, "answer_md": "녹화된 답입니다 (가짜). 처방대로 발치 계획을 짰습니다.",
-                    "plan_selected": {"plan_id": recorded_plan, "parent_plan_id": None, "review": {"status": "skipped"}},
-                    "plans": [], "recorded_at": "2026-09-28T10:00:00"}))
-            await page.route("**/api/cases/poseidon-000131/replay", replay_route)
+            await page.unroute("**/api/cases/poseidon-000131/replay")
+            # with the server's recorded answer (#134, contract 12-replay.md): the answer plays in the agent's place, grey
+            # with its date, and its plan_selected lands like an agent turn (#18: the live route, no fake)
             await page.locator("#chatInput").fill("처방대로 계획 짜줘")      # a new failed turn (건너뛰기 hid the retry bar)
             await page.locator("#sendBtn").click()
             await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
             await page.locator("#skipBtn").click()
-            await page.wait_for_selector(".msg.assistant.recorded")
-            assert "녹화된 답 · 2026-09-28" in await page.locator(".msg.assistant.recorded .recorded-tag").inner_text()
-            assert "녹화된 답입니다" in await page.locator(".msg.assistant.recorded").inner_text()
-            assert await on_screen() == recorded_plan and await page.locator("body").evaluate("b => b.classList.contains('step-stages')")
-            await page.unroute("**/api/cases/poseidon-000131/replay")
+            await page.wait_for_selector(".msg.assistant.recorded", timeout=60000)
+            assert "녹화된 답 · 2026-09-27" in await page.locator(".msg.assistant.recorded .recorded-tag").inner_text()
+            assert "녹화 시각 2026-09-27" in await page.locator(".msg.assistant.recorded .recorded-tag").get_attribute("title")
+            assert "계획을 만들었습니다" in await page.locator(".msg.assistant.recorded").inner_text()
+            assert await page.locator(".msg.system", has_text="녹화된 답을 보였습니다").count() == 1
+            await page.wait_for_function(f"{plan_on_screen} !== '{before_skip}'")
+            assert await page.locator("body").evaluate("b => b.classList.contains('step-stages')")
+            assert "검토 완료" in await page.locator("#plans .plan-row.current .pill").inner_text()
             await page.unroute("**/chat/stream")
 
             assert not errors, errors
