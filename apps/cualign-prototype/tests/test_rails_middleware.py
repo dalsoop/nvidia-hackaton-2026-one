@@ -54,7 +54,7 @@ def store(tmp_path, monkeypatch):
     for mod in (store_module, api, register):
         monkeypatch.setattr(mod, "OUT_DIR", tmp_path)
     s = store_module.Store()   # after OUT_DIR: Store() reads out/plans back since #92, and a developer's out/ is not empty
-    for mod in (api, register, plan_events, reviewer):
+    for mod in (api, register, plan_events, reviewer, rails_middleware):
         monkeypatch.setattr(mod, "STORE", s)
     return s
 

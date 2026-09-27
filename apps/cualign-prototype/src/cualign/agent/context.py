@@ -13,6 +13,7 @@ class PlanRun:
     plan_ids: set[str] = field(default_factory=set)
     target_ids: set[str] = field(default_factory=set)
     selected_plan_id: str | None = None
+    compared: bool = False  # compare_strategies ran, so the answer describes several plans (rails_middleware, #91)
     review_attempts: int = 0
     review_started: float | None = None
     review_busy: bool = False
