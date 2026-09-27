@@ -424,7 +424,7 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 #dArch { width: 100%; height: auto; }
 #dArch circle { fill: var(--panel-2); stroke: var(--line-strong); }
 #dArch circle.extract { stroke: var(--red); stroke-width: 2; }
-#dArch circle.ipr-dot { fill: var(--faint); stroke: none; }
+#dArch line.ipr { stroke: var(--blue, #3b82f6); stroke-width: 2.5; stroke-linecap: round; }
 #dArch text { fill: var(--text); font-size: 11px; text-anchor: middle; dominant-baseline: central; }
 #dArch text.key { fill: var(--faint); font-size: 10px; }   /* not .legend: that is the 3D legend, hidden until a plan */
 #dOpen { margin-top: auto; }
