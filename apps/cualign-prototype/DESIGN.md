@@ -398,12 +398,12 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | 상단 바 | `#homeBtn`(로고, 처음 화면) |
 | 시작 상태 | `body.start` · `#intro` `#introPick` · `#screenStart` `#sampleCards .case-card[data-id]` `#toPatients` · 입력창은 잠김 |
 | 케이스 카드 | `#caseCard` `#caseThumb` `#caseName` `#caseKind` `#caseSub` `#caseBadges` `#caseBtn`(바꾸기) `#casePop` `#popCases .item[data-id]` `#popPatients` |
-| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system` · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button`) · `.decision [data-act=keep|revert]` · `.plan-card`(여러 계획이 나온 턴) · `#retryBar` `#resendBtn` `#retryFallback` |
+| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, `.pending`은 자리 표시) · 「검토 질문」 블록 · `.decision [data-act=keep|revert]` · `.plan-card`(여러 계획이 나온 턴) · `.done`(내려받기 완료) · `#retryBar` `#resendBtn` `#retryFallback` |
 | 입력 | `#chips .chip[data-message]` · `#selChips` · `#chatForm` `#chatInput` `#sendBtn` |
-| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` · `.view-head`(왼쪽 `#condBox`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right|back|base]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
+| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#condBox`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right|back|base]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
 | 조건 | `#condBox`(details) `#condSummary` `#constraints` `#cExtraction` `#cLock` `#cExclude` `#cIpr` `#cCap` `#cOrder` `#fallbackBtn`(규칙 기반 계산) |
 | 입력 확인 | `body.checking` · `#checkBar` `#checkFacts` `#mirrorBtn` `#startPlan` `#otherScan` |
-| 내보내기 | `#exportBtn` `#exportPop` `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
+| 내보내기 | `#exportBtn` `#exportWhy`(잠긴 이유) `#exportPop` `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
 | 단계 | `body.has-plan` · `.stage-bar` `#firstBtn` `#playBtn` `#stageMarks` `#stageSlider` `#lastBtn` `#stageLabel` |
 | 결과 | `.result` `#statusBadge` `#planSelect` `#reviewBtn` · `.plan-meta`(자세히) 안 `#planNotice` `#resultCard` `#rStrategy` `#rStages` `#rMonths` `#rViol` `#rApproval` `#rPlan` `#rParent` `#rReview` `#revokeBtn` · `#reviewMemo` `#violTable` |
 | 내 스캔 | `#caseGate` `#gateClose` `#screenPatients` `#patientForm` `#pAlias` `#pMemo` `#pScans` `#pScansName` `#patientCards` `#patientBody` `#scanList` `#dropZone` `#scanInput` `#uploadStatus` `#deletePatient` |
