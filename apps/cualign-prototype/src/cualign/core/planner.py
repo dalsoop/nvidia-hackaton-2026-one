@@ -729,9 +729,58 @@ def intake_report(case: Case) -> dict:
             "unsupported": why, "ready": not why}
 
 
+SEQUENCE_ROUNDS = 4     # rounds of delaying one crown of a pair that clips on the way (see plan_stages)
+
+
+def _build_stages(moves: dict, yaw: dict, start: dict, dur: dict) -> list:
+    """Aligners from per-crown schedules: crown i moves straight to its target over dur[i] aligners beginning after
+    start[i] aligners (holding before and after)."""
+    N = max((start[i] + dur[i] for i in moves), default=0)
+    stages = []
+    for k in range(1, N + 1):
+        st = Moves()
+        for i in moves:
+            f = min(1.0, max(0.0, (k - start[i]) / dur[i])) if dur[i] else 1.0
+            st[i] = moves[i] * f
+            if yaw[i] * f:
+                st.yaw[i] = yaw[i] * f
+        stages.append(st)
+    return stages
+
+
+def _path_collisions(case: Case, stages: list, teeth: set | None = None) -> dict[tuple[int, int], int]:
+    """{pair: last aligner in which its hulls gain more than NEW_OVERLAP_MM3 of overlap}, over the pairs the stages
+    bring together (`teeth`: only pairs with one of these crowns)."""
+    out: dict[tuple[int, int], int] = {}
+    for si, disp in enumerate(stages, 1):
+        for a, b in _touching_pairs(case, disp):
+            if teeth is not None and a not in teeth and b not in teeth:
+                continue
+            if out.get((a, b), 0) >= si:
+                continue
+            ov = case._overlap(a, b, disp[a], disp[b], yaw_of(disp, a), yaw_of(disp, b))
+            if ov - case.pair_baseline(a, b) > NEW_OVERLAP_MM3:
+                out[(a, b)] = si
+    return out
+
+
 def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
-    """Split current -> target into aligners. order: 'simultaneous' | 'anterior_first' | 'sequential'."""
-    moves = {i: t for i, t in target.items() if t is not None}
+    """Split current -> target into aligners. Every crown of a movement group moves straight to its place over the
+    group's aligners (the largest move over the per-aligner limits), so neighbours keep their spacing evolving
+    together; crowns whose paths still clip each other are sequenced.
+
+    Sequencing (2026-09-28, in place of a fixed two-phase split): the aligners are checked for collisions; where two
+    crowns clip on the way, the one moving further waits until the clipping aligners have passed, then moves at the
+    full per-aligner step (if that still clips, the other waits instead), up to SEQUENCE_ROUNDS times. A blocked-out
+    canine thus comes into line after its neighbour has moved out of its way. A fixed order of phases does not do
+    this: aligning across the arch before the space is made jams a crowded arch (000097: 133 collisions), and sliding
+    along the arch first clips on other cases (synthetic moderate: 18) - measured in .report/14-two-phase.md. The
+    first aligner in which a delayed crown begins is `phase_boundary` (0 when nothing was delayed); `delays` lists
+    the delayed crowns with their first aligner.
+
+    order: 'simultaneous' | 'anterior_first' | 'sequential' - movement groups that start one after another.
+    """
+    moves = {i: np.asarray(t, float) for i, t in target.items() if t is not None}
     if order == "anterior_first":
         groups = [[i for i in moves if i in ANTERIOR], [i for i in moves if i not in ANTERIOR]]
     elif order == "sequential":
@@ -742,34 +791,59 @@ def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
         groups = [list(moves)]
     else:
         raise ValueError("order must be simultaneous | anterior_first | sequential")
-    stages: list[dict[int, np.ndarray]] = []
-    done = {i: np.zeros(3) for i in moves}
-    per_group = []
     yaw = {i: yaw_of(target, i) for i in moves}
-    done_yaw = {i: 0.0 for i in moves}
+    n_i = {i: max(int(math.ceil(np.linalg.norm(moves[i]) / MAX_LINEAR_PER_ALIGNER - 1e-9)),
+                  int(math.ceil(abs(yaw[i]) / MAX_ROTATION_PER_ALIGNER - 1e-9))) for i in moves}
+    start, dur, per_group, at = {}, {}, [], 0
     for g in groups:
-        dmax = max((np.linalg.norm(moves[i]) for i in g), default=0.0)
-        ymax = max((abs(yaw[i]) for i in g), default=0.0)
-        n = max(int(math.ceil(dmax / MAX_LINEAR_PER_ALIGNER - 1e-9)), int(math.ceil(ymax / MAX_ROTATION_PER_ALIGNER - 1e-9)))
-        n = max(n, 1) if dmax > 1e-9 or ymax > 1e-9 else 0
+        n = max((n_i[i] for i in g), default=0)
         per_group.append(n)
-        for s in range(1, n + 1):
-            f = s / n
-            st = Moves(done, yaw={i: y for i, y in done_yaw.items() if y})
-            for i in g:
-                st[i] = moves[i] * f
-                if yaw[i]:
-                    st.yaw[i] = yaw[i] * f
-            stages.append(st)
         for i in g:
-            done[i] = moves[i]
-            done_yaw[i] = yaw[i]
+            start[i], dur[i] = at, n
+        at += n
+    stages = _build_stages(moves, yaw, start, dur)
+    delayed: dict[int, int] = {}
+    tried: set[tuple[int, int]] = set()
+    changed: set[int] | None = None          # after the first round only pairs of the crowns just delayed can differ
+    hits: dict[tuple[int, int], int] = {}
+    for _ in range(SEQUENCE_ROUNDS):
+        if not stages:
+            break
+        if changed is not None:
+            hits = {pr: st for pr, st in hits.items() if not set(pr) & changed}
+        for pr, st in _path_collisions(case, stages, changed).items():
+            hits[pr] = st
+        moved = False
+        changed = set()
+        for (a, b), last in sorted(hits.items(), key=lambda x: x[1]):
+            if last >= len(stages):      # the pair collides in the target itself: no order of moves resolves that
+                continue
+            # the crown moving further waits until the clipping aligners have passed; if that was tried, the other
+            far, near = sorted((a, b), key=lambda i: -np.linalg.norm(moves[i]))
+            for wait, go in ((far, near), (near, far)):
+                if (wait, go) in tried or n_i[wait] == 0:
+                    continue
+                tried.add((wait, go))
+                start[wait] = max(start[wait] + 1, last)
+                changed.add(wait)
+                # the delayed crown still arrives with its group when it can (no faster than needed), else at full step
+                dur[wait] = max(n_i[wait], len(stages) - start[wait])
+                delayed[wait] = start[wait]
+                moved = True
+                break
+        if not moved:
+            break
+        stages = _build_stages(moves, yaw, start, dur)
     if not stages:
-        stages = [Moves(done)]
-    dmax_all = max(np.linalg.norm(v) for v in moves.values())
+        stages = [Moves({i: np.zeros(3) for i in moves})]
+    dmax_all = max((np.linalg.norm(v) for v in moves.values()), default=0.0)
+    step = max((float(np.linalg.norm(st[i] - (stages[k - 1][i] if k else np.zeros(3))))
+                for k, st in enumerate(stages) for i in st), default=0.0)
     n = len(stages)
-    info = {"n_stages": n, "order": order, "stages_per_group": per_group, "max_move_mm": round(float(dmax_all), 2),
-            "per_stage_mm": round(float(dmax_all / max(per_group[0], 1)), 3), "months": months_from_stages(n)}
+    boundary = min((s for s in start.values() if s), default=0)
+    info = {"n_stages": n, "order": order, "stages_per_group": per_group, "phase_boundary": boundary,
+            "delays": {i: s for i, s in sorted(delayed.items())},
+            "max_move_mm": round(float(dmax_all), 2), "per_stage_mm": round(step, 3), "months": months_from_stages(n)}
     return stages, info
 
 
