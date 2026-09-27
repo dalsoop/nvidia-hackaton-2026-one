@@ -39,7 +39,19 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "cualign.core" = ["templates/*.stl", "templates/ATTRIBUTION.md", "samples/ATTRIBUTION.md", "samples/*/*.stl", "samples/*/SOURCE.txt"]
-"cualign.server" = ["static/*.html", "static/*.js", "static/*.css", "static/*.png", "static/samples/*.png"]
+"cualign.server" = [
+  "static/*.html",
+  "static/*.js",
+  "static/*.css",
+  "static/*.png",
+  "static/samples/*.png",
+  "static/v2/*.html",
+  "static/v2/styles/*.css",
+  "static/v2/js/*.js",
+  "static/v2/js/*/*.js",
+  "static/v2/js/*/*/*.js",
+  "static/v2/js/*/*/*/*.js",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

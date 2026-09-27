@@ -1,0 +1,71 @@
+:root {
+  /* Surface and Background */
+  --color-bg: #000000;
+  --color-surface-base: #111111;
+  --color-surface-raised: #1a1a1a;
+  --color-surface-lock: #242424;
+
+  /* Borders and Dividers */
+  --color-border-subtle: #2e2e2e;
+  --color-border-strong: #5e5e5e;
+
+  /* Typography */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b3b3b3;
+  --color-text-muted: #898989;
+  --color-text-inverse: #000000;
+
+  /* Brand and Positive (Green) */
+  --color-accent: #76b900;
+  --color-accent-bg: #0d1a00;
+  --color-accent-light: #c6f27a;
+  --color-accent-dim: #5a8d00;
+
+  /* Violation and Danger (Red) */
+  --color-danger: #e52020;
+  --color-danger-bg: #2a0b0b;
+  --color-danger-light: #ffb3b3;
+
+  /* Warning and Caution (Orange/Amber) */
+  --color-warning: #ef9100;
+  --color-warning-bg: #2b1c00;
+  --color-warning-light: #ffd98a;
+
+  /* Info (Blue) */
+  --color-info: #4f8fd6;
+
+  /* Typography Tokens */
+  --font-family-base: Pretendard, 'IBM Plex Sans KR', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --font-family-mono: 'IBM Plex Mono', monospace;
+
+  /* Button Heights */
+  --btn-height-default: 36px;
+  --btn-height-primary: 46px;
+
+  /* Layout and Panel Widths */
+  --width-rail: 64px;
+  --width-tab-rail: 56px;
+  --width-panel-list: 280px;
+  --width-panel-work: 380px;
+  --width-panel-sidebar: 400px;
+  --height-topbar: 56px;
+
+  /* Border Radii */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-full: 9999px;
+
+  /* Spacings */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-28: 28px;
+  --space-36: 36px;
+}

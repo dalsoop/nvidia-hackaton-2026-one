@@ -31,3 +31,31 @@ def test_packaged_assets_are_required_and_nonempty(tmp_path):
         archive.writestr("cualign/server/static/style.css", "")
     with pytest.raises(ValueError, match="empty assets"):
         module.check_wheel(wheel)
+
+
+def test_v2_ui_assets_packaged(tmp_path):
+    root = Path(__file__).parents[1] / "src"
+    wheel = tmp_path / "v2_assets.whl"
+    with ZipFile(wheel, "w") as archive:
+        for directory in (root / "cualign/server/static/v2",):
+            for path in directory.rglob("*"):
+                if path.is_file() and "__pycache__" not in path.parts:
+                    archive.write(path, str(path.relative_to(root)))
+    with ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+        required_v2 = [
+            "cualign/server/static/v2/index.html",
+            "cualign/server/static/v2/styles/tokens.css",
+            "cualign/server/static/v2/styles/shell.css",
+            "cualign/server/static/v2/js/main.js",
+            "cualign/server/static/v2/js/ui/dom.js",
+            "cualign/server/static/v2/js/state/store.js",
+            "cualign/server/static/v2/js/api/endpoints.js",
+            "cualign/server/static/v2/js/domain/teeth.js",
+            "cualign/server/static/v2/js/domain/vocab.js",
+            "cualign/server/static/v2/js/domain/status.js",
+        ]
+        for item in required_v2:
+            assert item in names, f"Missing v2 asset: {item}"
+            assert archive.getinfo(item).file_size > 0, f"Empty v2 asset: {item}"
+
