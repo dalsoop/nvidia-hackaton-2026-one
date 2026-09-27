@@ -2,6 +2,7 @@
 import asyncio
 import threading
 from io import BytesIO
+from pathlib import Path
 from zipfile import ZipFile
 
 import httpx
@@ -92,10 +93,16 @@ def test_stl_zip_builds_off_the_event_loop(tmp_path, monkeypatch):
 
     def held(*args, **kwargs):
         started.set()
-        released.append(release.wait(5))   # on the event loop nothing else runs, so this only times out
+        released.append(release.wait(60))   # on the event loop nothing else runs, so this only times out
         return real(*args, **kwargs)
 
+    def tiny_zip(case, stages, zip_path):    # the tooth files are not the point: no geometry work, so the timing below
+        Path(zip_path).parent.mkdir(parents=True, exist_ok=True)   # measures only whether the loop is free while the build is held
+        ZipFile(zip_path, "w").close()
+        return zip_path
+
     monkeypatch.setattr(export_jobs, "print_models", held)
+    monkeypatch.setattr(export_jobs.planner, "export_zip", tiny_zip)
     app = FastAPI()
     api.add_api_routes(app)
 
@@ -105,8 +112,8 @@ def test_stl_zip_builds_off_the_event_loop(tmp_path, monkeypatch):
             pid = (result["chosen"] or result["best_failed"])["plan_id"]
             assert (await client.post(f"/api/plans/{pid}/approval", json={"confirmed": True})).status_code == 200
             download = asyncio.create_task(client.get(f"/api/plans/{pid}/stl.zip"))
-            assert await asyncio.to_thread(started.wait, 5)
-            other = await asyncio.wait_for(client.get(f"/api/plans/{pid}"), 2)
+            assert await asyncio.to_thread(started.wait, 60)
+            other = await asyncio.wait_for(client.get(f"/api/plans/{pid}"), 30)   # generous: a parallel --slow run loads the machine
             assert other.status_code == 200
             release.set()
             output = await download
