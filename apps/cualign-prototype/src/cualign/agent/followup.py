@@ -18,16 +18,20 @@ INSTRUCTIONS = (
     "to decide next, with 2 or 3 concrete choices. Each choice is a short label (at most 12 Korean characters) and the "
     "full message the dentist would send to the assistant to take that choice (one sentence, Korean, imperative). "
     "Good questions decide a condition: extraction, a time cap in months, teeth to lock, IPR exclusions, comparing "
-    "strategies, or a revision. Never offer approval, export or 보류 as a choice: the dentist approves with a button, "
-    "and every choice must be something the assistant can do in the next turn. Ask about the plan just made "
-    "(its strategy, months, violations), not in general. Never diagnose, never prescribe, never mention plan ids, "
-    "tool or field names. "
+    "strategies, or a revision. Never offer approval, export, download, hold (보류) or re-review as a choice: the screen "
+    "does those with buttons, and every choice must be a planning request the assistant can carry out in the next turn "
+    "(a condition change, a comparison, a revision). If the dentist's last message is off topic (not about this plan), "
+    "still ask about the plan just made. Ask about the plan just made (its strategy, months, violations), not in "
+    "general. Tooth numbers in FDI (11..28), never the app's 1..16. Never diagnose, never prescribe, never mention plan "
+    "ids, tool or field names. "
     'Answer with JSON only: {"question": "...", "options": [{"label": "...", "message": "..."}, ...]}'
 )
 
 MAX_TURNS = 6           # the model sees only the tail of the conversation
 MAX_CHARS = 1500        # per message
 MAX_OPTIONS = 3
+# What the screen does with buttons, never a chip (#107): approving, exporting, holding, downloading, re-reviewing.
+SCREEN_ACTION_RE = re.compile(r"승인|내보내|export|보류|다운로드|STL|ZIP|검토 다시|재검토|approve", re.I)
 
 
 def parse(text: str) -> dict | None:
@@ -45,7 +49,7 @@ def parse(text: str) -> dict | None:
         if not isinstance(o, dict):
             continue
         label, message = str(o.get("label") or "").strip(), str(o.get("message") or "").strip()
-        if label and message:
+        if label and message and not SCREEN_ACTION_RE.search(label + " " + message):
             options.append({"label": label[:24], "message": message[:200]})
     if not question or len(options) < 2:
         return None
