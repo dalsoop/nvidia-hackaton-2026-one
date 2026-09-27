@@ -153,6 +153,7 @@ nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 | VM에서 `https://192.168.5.2:8443/mcp`로 사설 CA와 토큰을 써서 MCP `initialize` | 통과 | 시험용 서버, 토큰이 없으면 401 |
 | `mcp add`와 `mcp status`의 `trustedPrivateTarget.state: match` | 검증 대기 | 온보딩이 막혀 Linux(Brev)에서 확인해야 합니다 |
 | 프록시의 도구 차단 기록 | 검증 대기 | |
+| `SOUL.md` 읽기 전용 | 강제되지 않음 | 2026-09-27 실제 창구에서 확인. `/sandbox/.openclaw` 전체가 `read_write`인 동안, 그 아래 `SOUL.md`를 `filesystem_policy.read_only`에 더해도 쓰기, `chmod`, 이름 바꾸기가 모두 됩니다. Landlock은 경로를 따라 권한을 더하기만 합니다. 잠금은 아직 없습니다 |
 
 ## 참고
 

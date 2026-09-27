@@ -109,6 +109,9 @@ def test_readme_lists_the_sources_outside_the_desk_for_the_maintainer():
                  "openshell/policy.yaml", "openshell/server-policy.yaml", "docs/nemoclaw.md"):
         assert path in readme and (ROOT / path).is_file(), path
     assert "--deny-tool" in readme
+    # Install step 3 points to the SOUL.md lock status; the record must be there.
+    assert "records if the sandbox can lock the file" in readme
+    assert "| `SOUL.md` 읽기 전용 | 강제되지 않음 |" in (ROOT / "docs" / "nemoclaw.md").read_text(encoding="utf-8")
     for name in ("SOUL.md", "TOOLS.md"):   # the runtime and tool sources are listed once, in the README
         assert "--deny-tool" not in (WS / name).read_text(encoding="utf-8"), name
 
