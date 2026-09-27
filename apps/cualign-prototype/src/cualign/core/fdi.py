@@ -2,6 +2,8 @@
 (upper right 18..11, upper left 21..28). Convert here, in one place, never in a prompt."""
 from __future__ import annotations
 
+from numbers import Integral
+
 TOOTH_LIST_KEYS = frozenset({"teeth", "removed", "locked", "lock", "extraction", "ipr_exclude", "ipr_applied_teeth"})
 TOOTH_MAP_KEYS = frozenset({"rotation_deg", "vertical_mm", "widths_mm"})   # {tooth: value}
 
@@ -12,6 +14,13 @@ def to_fdi(u: int) -> int:
     if not 1 <= u <= 16:
         raise ValueError(f"not an upper-arch Universal number: {u}")
     return 19 - u if u <= 8 else 12 + u
+
+
+def label(teeth) -> str:
+    """Tooth numbers as the dentist reads them, for text: 5 -> '14번', [5, 12] -> '14·24번'."""
+    if isinstance(teeth, Integral):
+        teeth = [teeth]
+    return "·".join(str(to_fdi(t)) for t in teeth) + "번"
 
 
 def from_fdi(f: int) -> int:

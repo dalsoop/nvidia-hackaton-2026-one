@@ -16,6 +16,7 @@ import numpy as np
 from .arch import Arch, symmetric_arch
 from .case import MD_WINDOW_DEG, Case
 from .constraints import Constraints
+from .fdi import label, to_fdi
 from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER,
                      PREMOLARS, SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
 
@@ -433,13 +434,13 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             width[i] -= r
         gain += sum(v for i, v in red.items() if in_scope(i))
         surf = sum(round(r / (ipr_limit_mm * 0.5)) for r in red.values()) if ipr_limit_mm else 0
-        notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {sorted(ipr_exclude)})" if ipr_exclude else ""))
+        notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {label(sorted(ipr_exclude))})" if ipr_exclude else ""))
     if strategy == "extraction":
         rm = list(extraction)            # as prescribed (checked in propose_target)
         for i in rm:
             gain += width[i]
             active.remove(i)
-        notes.append(f"처방대로 발치 {rm}")
+        notes.append(f"처방대로 {label(rm)} 발치")
     deficit = round(max(crowd - gain, 0.0), 2)       # the clinical deficit; shape room that does not fit shows as collision
 
     # Order along the arch by current arc-length coordinate (on the offset curve for expansion).
@@ -459,7 +460,8 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
             closing = tuple(0.0 if lock & blk else max(r, 0.0) for r, blk in zip(room, ({2, 3}, {14, 15})))
             if any(c > 0.05 for c in closing):
-                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 (3번 쪽 {closing[0]:.1f}mm, 14번 쪽 {closing[1]:.1f}mm)")
+                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 ({label(3)} 쪽 {closing[0]:.1f}mm, "
+                             f"{label(14)} 쪽 {closing[1]:.1f}mm)")
     else:
         gaps = [(width[active[k]] + width[active[k + 1]]) / 2 + CLEARANCE + extra.get((active[k], active[k + 1]), 0.0)
                 for k in range(len(active) - 1)]
@@ -469,7 +471,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             k0 = active.index(locked[0])
             s_new = chain - chain[k0] + s_cur[locked[0]]
             if len(locked) > 1:
-                notes.append(f"고정 {locked} 중 {locked[0]} 을 기준으로 정렬")
+                notes.append(f"고정 {label(locked)} 중 {label(locked[0])}을 기준으로 정렬")
         else:
             s_new = chain - chain.mean() + np.mean([s_cur[i] for i in active])
 
@@ -504,12 +506,12 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         if i not in target:
             target[i] = None
     for i, y in target.yaw.items():
-        notes.append(f"치아 {i} 회전 {y:+.1f}° 보정")
+        notes.append(f"{label(i)} 회전 {y:+.1f}° 보정")
     for i, dz in sorted(lift.items()):
-        notes.append(f"치아 {i} 수직 {dz:+.1f}mm 보정")
+        notes.append(f"{label(i)} 수직 {dz:+.1f}mm 보정")
     if extra:
         notes.append(f"치관 모양 때문에 접촉 폭보다 {sum(extra.values()):.1f}mm 더 둠 "
-                     + ", ".join(f"{a}-{b}" for a, b in sorted(extra)))
+                     + ", ".join(f"{to_fdi(a)}-{to_fdi(b)}" for a, b in sorted(extra)))
     disp = [float(np.linalg.norm(v)) for v in target.values() if v is not None]
     info = {"strategy": strategy, "space_gain_mm": round(gain, 2), "crowding_mm": crowd, "space_deficit_mm": deficit,
             "needed_mm": round(sum(width[i] for i in ids), 1),
@@ -550,12 +552,12 @@ def unsupported_reasons(case: Case) -> list[str]:
     out = []
     missing = [i for i in range(case.ids[0], case.ids[-1] + 1) if i not in case.ids]
     if missing:
-        out.append(f"치아 {missing} 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)")
+        out.append(f"{label(missing)} 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)")
     if len(case.ids) < 6:
         out.append(f"치아 {len(case.ids)}개: 악궁을 맞추기에 부족 (6개 이상 필요)")
     for i in case.ids:
         if case.yaw_measurable(i) and abs(case.crown_yaw(i)) >= MD_SEARCH_LIMIT_DEG:
-            out.append(f"치아 {i} 회전 {case.crown_yaw(i):+.0f}°: 측정 범위(±{MD_SEARCH_LIMIT_DEG:.0f}°) 끝 — 실제로는 더 돌아 있을 수 있음")
+            out.append(f"{label(i)} 회전 {case.crown_yaw(i):+.0f}°: 측정 범위(±{MD_SEARCH_LIMIT_DEG:.0f}°) 끝 — 실제로는 더 돌아 있을 수 있음")
     return out
 
 

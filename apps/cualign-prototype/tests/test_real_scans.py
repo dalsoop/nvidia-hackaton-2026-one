@@ -20,4 +20,4 @@ def test_gap_in_the_arch_is_unsupported():
     meshes = make_case("mild")
     del meshes[7]
     r = run_case(Case(meshes))
-    assert r["outcome"] == "unsupported" and "7" in r["reason"]
+    assert r["outcome"] == "unsupported" and "12번" in r["reason"]      # Universal 7 = FDI 12
