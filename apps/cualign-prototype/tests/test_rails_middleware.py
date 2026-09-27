@@ -446,9 +446,14 @@ def test_telemetry_switched_off(store, tmp_path, monkeypatch):
         assert os.environ["NEMO_GUARDRAILS_NO_USAGE_STATS"] == "1"
     monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
-    monkeypatch.setattr(cli.os, "execv", lambda *a: None)
-    cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=8000))
+    started = []
+    monkeypatch.setattr(cli.os, "execv", lambda *a: started.append("execv"))
+    monkeypatch.setattr(cli.subprocess, "call", lambda *a, **k: started.append("call") or 0)
+    with pytest.raises(SystemExit):
+        cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=8000))
     assert os.environ["NAT_TELEMETRY_ENABLED"] == "0"
+    # Windows waits on nat serve instead of os.execv, which would return at once (#83)
+    assert started[0] == ("call" if os.name == "nt" else "execv")
 
 
 def test_skipped_review_runs_on_server_with_memo_rail(store, tmp_path, monkeypatch):
