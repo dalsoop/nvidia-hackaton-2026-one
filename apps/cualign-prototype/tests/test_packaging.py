@@ -22,7 +22,7 @@ def test_packaged_assets_are_required_and_nonempty(tmp_path):
     root = Path(__file__).parents[1] / "src"
     wheel = tmp_path / "assets.whl"
     with ZipFile(wheel, "w") as archive:
-        for directory in (root / "cualign/core/templates", root / "cualign/core/samples", root / "cualign/server/static"):
+        for directory in (root / "cualign/core/templates", root / "cualign/data/samples", root / "cualign/server/static"):
             for path in directory.rglob("*"):
                 if path.is_file() and "__pycache__" not in path.parts:
                     archive.write(path, str(path.relative_to(root)))

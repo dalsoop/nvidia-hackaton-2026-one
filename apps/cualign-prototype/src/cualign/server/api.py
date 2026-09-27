@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from cualign.agent.reviewer import MANUAL_RETRY
-from cualign.core import Case, patients, planner
+from cualign.core import Case, patients, planner, samples
 from cualign.core.constraints import ConstraintPatch
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -116,6 +116,14 @@ def add_api_routes(app: FastAPI, review=None):
             raise HTTPException(404, str(e))
         return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
                 "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
+
+    @app.get("/api/cases/{case_id}/preview")
+    async def case_preview(case_id: str):
+        sample = samples.get(case_id)
+        path = None if sample is None else sample.folder / "preview.png"
+        if path is None or not path.is_file():
+            raise HTTPException(404, "no preview")
+        return FileResponse(path, media_type="image/png")
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str):

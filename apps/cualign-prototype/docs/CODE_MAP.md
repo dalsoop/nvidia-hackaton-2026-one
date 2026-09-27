@@ -21,9 +21,9 @@
 | `src/cualign/core/limits.py` | 계산 한계값, 전략·치아 집합, 장수·기간 환산 |
 | `src/cualign/core/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터 |
 | `src/cualign/core/synth.py` | 환자 데이터 없이 재현하는 합성 케이스 생성. 테스트·에이전트 평가·CLI용이며 첫 화면에는 내놓지 않음 |
-| `src/cualign/core/samples.py` | 첫 화면 샘플 3건(Poseidon3D 실제 상악 스캔)과 치과의사 처방. 처방을 케이스의 초기 계획 조건으로 넣음 |
-| `src/cualign/core/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`). `scripts/import_poseidon.py`로 만들었고 패키지에 포함 |
-| `src/cualign/core/samples/ATTRIBUTION.md` | 샘플 스캔의 출처·라이선스(CC-BY-4.0)·변경 내용. 자산과 함께 보존 |
+| `src/cualign/core/samples.py` | 첫 화면 샘플 3건의 처방과 초기 조건. 스캔 파일은 `data/samples/`를 읽음 |
+| `src/cualign/data/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`·`preview.png`). 패키지에 포함 |
+| `src/cualign/data/samples/ATTRIBUTION.md` | 샘플 스캔의 출처·라이선스(CC-BY-4.0)·변경 내용. 자산과 함께 보존 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
 | `src/cualign/core/skills.py` | `skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증 |

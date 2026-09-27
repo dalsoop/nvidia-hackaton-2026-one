@@ -103,7 +103,7 @@ NAT의 계획 에이전트가 조건을 해석해 계산 도구를 호출합니�
 ## 데이터·실행 근거
 
 첫 화면의 샘플 케이스 3건은 공개 데이터셋 Poseidon3D(Kubik & Spanel 2024, CC-BY-4.0)의 실제 상악 스캔이고, 함께 보이는
-처방은 치과의사가 이 스캔을 보고 정한 것입니다([출처·변경 내용](src/cualign/core/samples/ATTRIBUTION.md),
+처방은 치과의사가 이 스캔을 보고 정한 것입니다([출처·변경 내용](src/cualign/data/samples/ATTRIBUTION.md),
 판정 기록 `evals/real_scans/dentist_labels.yaml`). 테스트·에이전트 평가·CLI는 공개 치아 크라운 형상을 합성 배치한 케이스
 (`moderate` 등)를 씁니다. 형상 자산의 출처와 CC-BY 4.0 표기는 [ATTRIBUTION](src/cualign/core/templates/ATTRIBUTION.md)에
 있습니다. 식별 가능한 환자 데이터·스캔은 커밋하지 않습니다.

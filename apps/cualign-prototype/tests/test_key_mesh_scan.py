@@ -17,7 +17,7 @@ KEY = re.compile(rb"nvapi-[A-Za-z0-9_\-]{20,}")
 MESH = {".stl", ".ply", ".obj"}
 TEMPLATES = "src/cualign/core/templates/"
 # the start-screen samples (#46): three public CC-BY scans, every file named, so no other scan slips in beside them
-SAMPLE_MESHES = frozenset(f"src/cualign/core/samples/poseidon-{c}/{f}" for c in ("000097", "000131", "000001")
+SAMPLE_MESHES = frozenset(f"src/cualign/data/samples/poseidon-{c}/{f}" for c in ("000097", "000131", "000001")
                           for f in [f"{t}.stl" for t in range(2, 16)] + ["gingiva.stl"])
 
 
@@ -69,9 +69,9 @@ def test_scan_flags_planted_key(tmp_path):
 
 
 def test_scan_flags_mesh_outside_templates(tmp_path):
-    sample_dir = "src/cualign/core/samples/poseidon-000097/"
+    sample_dir = "src/cualign/data/samples/poseidon-000097/"
     for rel in (TEMPLATES + "2.stl", sample_dir + "2.stl", "uploads/ab12cd34/2.stl",
-                "src/cualign/core/samples/poseidon-999999/2.stl", sample_dir + "private_scan.obj",
+                "src/cualign/data/samples/poseidon-999999/2.stl", sample_dir + "private_scan.obj",
                 sample_dir + "extra/2.ply"):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_bytes(b"solid t\nendsolid t\n")
@@ -80,7 +80,7 @@ def test_scan_flags_mesh_outside_templates(tmp_path):
     assert sorted(scan(tmp_path, tree(tmp_path))) == [
         "plan.zip: zip holds 1 meshes", f"{sample_dir}extra/2.ply: mesh outside {TEMPLATES}",
         f"{sample_dir}private_scan.obj: mesh outside {TEMPLATES}",
-        f"src/cualign/core/samples/poseidon-999999/2.stl: mesh outside {TEMPLATES}",
+        f"src/cualign/data/samples/poseidon-999999/2.stl: mesh outside {TEMPLATES}",
         f"uploads/ab12cd34/2.stl: mesh outside {TEMPLATES}"]
 
 

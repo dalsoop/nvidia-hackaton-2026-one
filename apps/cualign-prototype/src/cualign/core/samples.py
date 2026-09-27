@@ -21,7 +21,7 @@ from pathlib import Path
 
 from .constraints import Constraints
 
-SAMPLE_DIR = Path(__file__).resolve().parent / "samples"
+SAMPLE_DIR = Path(__file__).resolve().parents[1] / "data" / "samples"
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ def test_samples_ship_with_the_package():
         assert s.available, s.case_id
         assert {f"{i}.stl" for i in range(2, 16)} <= {p.name for p in s.folder.iterdir()}
         assert (s.folder / "gingiva.stl").exists() and "CC-BY-4.0" in (s.folder / "SOURCE.txt").read_text()
-        assert (STATIC / "samples" / f"{s.case_id}.png").stat().st_size > 1000
+        assert (s.folder / "preview.png").stat().st_size > 1000
     assert "CC-BY-4.0" in (samples.SAMPLE_DIR / "ATTRIBUTION.md").read_text()
 
 
@@ -63,7 +63,7 @@ def test_activate_api_returns_the_prescription(tmp_path, monkeypatch):
         assert [c["case_id"] for c in cases[:3]] == IDS
         info = client.post("/api/cases/poseidon-000097/activate").json()
         assert info["n_teeth"] == 14 and info["constraints"]["allow_extraction"] is True
-        assert client.get("/ui/samples/poseidon-000097.png").status_code == 200
+        assert client.get("/api/cases/poseidon-000097/preview").status_code == 200
 
 
 def test_extraction_sample_plans_inside_its_prescription():

@@ -2,7 +2,7 @@
 
   uv run --extra render python scripts/render_sample_thumbs.py
 
-Writes src/cualign/server/static/samples/<case_id>.png (committed). The view is the app's occlusal view: from above
+Writes src/cualign/data/samples/<case_id>/preview.png (committed). The view is the app's occlusal view: from above
 (+z), incisors at the top, the patient's right (tooth 2) on the left. Flat-shaded triangles drawn far to near.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ APP = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP / "src"))
 from cualign.core import samples  # noqa: E402
 
-OUT = APP / "src" / "cualign" / "server" / "static" / "samples"
+
 TOOTH, GUM, BG = np.array([0xE9, 0xE3, 0xD6]) / 255, np.array([0xD9, 0x8B, 0x8F]) / 255, "#000000"   # DESIGN.md
 LIGHT = np.array([0.3, -0.4, 1.0]) / np.linalg.norm([0.3, -0.4, 1.0])
 SIZE_PX, DPI = (480, 360), 120
@@ -62,12 +62,11 @@ def render(sample: samples.Sample, out: Path) -> None:
 
 
 def main() -> int:
-    OUT.mkdir(parents=True, exist_ok=True)
     for s in samples.SAMPLES.values():
         if not s.available:
             print(f"skip {s.case_id}: not installed")
             continue
-        out = OUT / f"{s.case_id}.png"
+        out = s.folder / "preview.png"
         render(s, out)
         print(f"{out.relative_to(APP)}  {out.stat().st_size // 1024} KB")
     return 0

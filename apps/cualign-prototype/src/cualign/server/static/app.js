@@ -453,7 +453,7 @@ async function loadCases() {
       const img = document.createElement("img");
       img.className = "thumb";
       img.alt = `${c.case_id} 교합면`;
-      img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
+      img.src = `/api/cases/${encodeURIComponent(c.case_id)}/preview`;
       b.prepend(img);
       b.querySelector(".cid").textContent = c.case_id.replace(/^poseidon-/, "");
       b.querySelector(".sev").textContent = c.title;
