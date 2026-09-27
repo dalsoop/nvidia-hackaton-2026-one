@@ -62,11 +62,19 @@
   </div>
 
   <main class="layout">
+    <!-- 작업 흐름 레일 (v2 설계 보드 11): 모든 화면 공통. 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled + 조건 -->
+    <nav id="rail" class="rail" aria-label="작업 흐름">
+      <button type="button" data-go="start" title="케이스 목록"><span>케이스</span></button>
+      <button type="button" data-go="patients" title="환자·스캔 올리기"><span>환자·스캔</span></button>
+      <button type="button" data-go="check" title="입력 확인"><span>입력 확인</span><small>스캔 올린 뒤</small></button>
+      <button type="button" data-go="case" title="작업대"><span>작업대</span><small>케이스 연 뒤</small></button>
+      <button type="button" data-go="export" title="승인하고 STL 내보내기"><span>내보내기</span><small>계획 후</small></button>
+    </nav>
     <section class="chat">
       <div id="intro" class="intro">
         <img class="mark" src="intro-arch.png" alt="" />
         <h1>처방을 설명하고 교정을 설계해보세요</h1>
-        <button id="introPick" class="link-btn" type="button">샘플 케이스 고르기 →</button>
+        <button id="introPick" class="link-btn" type="button">케이스 고르기 →</button>
       </div>
       <div id="caseCard" class="case-head">
         <img id="caseThumb" class="thumb" alt="" hidden />
@@ -97,14 +105,35 @@
       <div id="canvasWrap" class="canvas-wrap">
         <canvas id="viewCanvas"></canvas>
         <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
+        <!-- 시작 상태 = 케이스 목록 (v2 설계 보드 02): 필터 · 표 · 오른쪽 상세. 상태는 서버가 계산한다 (/api/case-list) -->
         <div id="screenStart" class="start-pane">
-          <div class="start-body">
-          <h2>샘플 케이스로 시작하기</h2>
-          <div id="sampleCards" class="cards sample-cards"></div>
-          <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
-          <div class="gate-foot">
-            <button id="toPatients" class="btn ghost small" type="button">내 스캔 올리기 →</button>
-          </div>
+          <div class="cl">
+            <aside class="cl-filters">
+              <h2>필터</h2>
+              <div class="cl-group"><div class="cl-label">상태</div><div id="clStatus"></div></div>
+              <div class="cl-group"><div class="cl-label">종류</div><div id="clKind"></div></div>
+            </aside>
+            <section class="cl-main">
+              <div class="cl-head"><h1>케이스 <span id="clCount" class="count"></span></h1>
+                <button id="toPatients" class="btn ghost small" type="button">새 환자</button></div>
+              <div class="cl-table">
+                <div class="cl-row cl-thead"><span>케이스</span><span>상태</span><span>대표 계획</span><span>위반</span><span>계획</span><span>처방</span></div>
+                <div id="clRows"></div>
+              </div>
+              <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
+            </section>
+            <aside id="clDetail" class="cl-detail" hidden>
+              <div class="cl-dhead"><b id="dTitle"></b><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기">닫기</button></div>
+              <div id="dSub" class="muted"></div>
+              <div class="cl-label">치아 정보 · 상악 · FDI</div>
+              <svg id="dArch" viewBox="0 0 320 150" role="img" aria-label="치아 배열"></svg>
+              <div class="cl-label">스캔 확인</div>
+              <div id="dFacts" class="cl-facts"></div>
+              <div class="cl-label">처방</div>
+              <p id="dRx"></p>
+              <div id="dChips" class="badges"></div>
+              <button id="dOpen" class="btn primary" type="button">작업대 열기</button>
+            </aside>
           </div>
         </div>
         <div id="labels" class="labels"></div>
