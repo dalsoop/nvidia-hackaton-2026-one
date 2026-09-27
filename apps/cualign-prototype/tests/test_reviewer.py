@@ -189,7 +189,7 @@ def test_reviewer_instructions_come_from_the_workflow_config(tmp_path, monkeypat
         return Capture.messages[0]["content"]
     wf = yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "workflow.yml").read_text(encoding="utf-8"))
     configured = wf["functions"]["reviewer"]["instructions"]
-    assert "단계당 이동량" in configured and "never with the field name" in configured   # the rule this test exists for
+    assert "단계당 이동량" in configured and "never write a field name" in configured   # the rule this test exists for
     # 2026-09-27 golden set A: with thinking on, the review reasoned past max_tokens and the cut reasoning came back as
     # the memo (8 of 15 runs). The memo is a transcription of computed fields; it needs no reasoning channel.
     assert wf["llms"][wf["functions"]["reviewer"]["llm_name"]]["chat_template_kwargs"]["enable_thinking"] is False
@@ -223,3 +223,32 @@ def test_reviewer_gets_what_each_number_means(tmp_path, monkeypatch):
     sent = json.loads(user["content"])
     assert sent["field_notes"] == FIELD_NOTES
     assert sent["plan"]["plan_id"] == pid and "stages" not in sent["plan"] and "approval" not in sent["plan"]
+
+
+def test_reviewer_instructions_name_every_field_in_korean(tmp_path, monkeypatch):
+    """#106: a live memo wrote `shape_room_mm` to the dentist. The configured instructions must give a Korean name for
+    every measured field the reviewer reads (info/target keys ending in _mm/_deg/_teeth) and every violation type,
+    and forbid snake_case tokens outright; each field note must start with that Korean name."""
+    import re
+    import yaml
+    from pathlib import Path
+    from cualign.agent.reviewer import FIELD_NOTES
+    root = Path(__file__).resolve().parents[1]
+    wf = yaml.safe_load((root / "configs" / "workflow.yml").read_text(encoding="utf-8"))
+    text = wf["functions"]["reviewer"]["instructions"]
+    assert "never write a field name" in text and "_mm" in text and "_deg" in text
+    named = set(re.findall(r"([a-z][a-z0-9_/]*) -> ", text))
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    s = store_module.Store()
+    svc = PlanningService(s)
+    pid = svc.stages(svc.target("severe", "extraction", Constraints(extraction=(5, 12))))
+    plan = s.plan_json(pid)
+    measured = {k for k in set(plan["info"]) | set(plan["target"]) if k.endswith(("_mm", "_deg", "_teeth"))}
+    assert measured, "no measured fields in the plan data"
+    assert measured <= named, f"fields without a Korean name in the reviewer instructions: {sorted(measured - named)}"
+    source = (root / "src" / "cualign" / "core" / "planner.py").read_text(encoding="utf-8")
+    kinds = set(re.findall(r'"type": "([a-z_]+)"', source))
+    assert kinds and kinds <= named, f"violation types without a Korean name: {sorted(kinds - named)}"
+    assert measured <= set(FIELD_NOTES), f"measured fields without a field note: {sorted(measured - set(FIELD_NOTES))}"
+    for key, note in FIELD_NOTES.items():
+        assert re.match(r"^[가-힣IPR][^:]*: ", note), f"field note for {key} must start with its Korean name"
