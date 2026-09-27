@@ -126,6 +126,8 @@ class Truth:
     dz: dict[int, float] = field(default_factory=dict)        # vertical offset from the occlusal plane
     curve: Curve | None = None
     s_center: dict[int, float] = field(default_factory=dict)  # arc-length position of each crown centre
+    span_crowding: float | None = None    # clinical crowding over SPAN (build_crowded_arch)
+    contact_widths: dict[int, float] = field(default_factory=dict)
 
 
 def build_arch(family: str = "catenary", crowding: float = 0.0, kind: str = "box",
@@ -169,6 +171,64 @@ def build_arch(family: str = "catenary", crowding: float = 0.0, kind: str = "box
     # crowding = sum of widths - available arch length (negative = spacing; the aligned arch keeps `gap` between crowns)
     truth = Truth(widths=dict(WIDTHS), arch_length=round(L, 6), crowding=round(total - L, 6),
                   yaw=dict(yaw), dz=dict(dz), curve=cv, s_center=s)
+    return meshes, truth
+
+
+# ------------------------------------------------------------------------------------------------ clinical crowding
+SPAN = list(range(4, 14))     # arch length discrepancy span: second premolar to second premolar (Universal 4..13)
+CONTACT_BAND = 0.2            # contacts lie in the central 40 % of the crown's bucco-lingual depth
+
+
+def contact_width(i: int, kind: str) -> float:
+    """Mesiodistal width at the contacts, by definition: the crown's extent along its own MD axis (local x) within the
+    central bucco-lingual band (|y - centre| <= CONTACT_BAND x half-depth). Boxes: exactly WIDTHS[i]."""
+    m = crown(i, kind)
+    pts = np.vstack([m.vertices, trimesh.sample.sample_surface(m, 4000, seed=1)[0]])
+    y = pts[:, 1]
+    mid, half = (y.max() + y.min()) / 2, (y.max() - y.min()) / 2
+    x = pts[np.abs(y - mid) <= CONTACT_BAND * half, 0]
+    return float(x.max() - x.min())
+
+
+def build_crowded_arch(family: str = "catenary", deficit: float = 0.0, kind: str = "template",
+                       blocked: tuple[int, ...] = (6, 11), gap: float = 0.05,
+                       out_mm: float | None = None) -> tuple[dict[int, trimesh.Trimesh], Truth]:
+    """Upper arch crowded the way real arches are: teeth that have no room stand out of the arch, they do not pass
+    through their neighbours.
+
+    Every crown sits on the ideal arch in contact with its neighbours (plus `gap`), except the `blocked` teeth: the
+    deficit is shared among them, each keeps a slot `deficit / len(blocked)` narrower than its contact width, and it
+    stands buccal of the arch by half its own and half its deepest neighbour's depth, so it overlaps its neighbours in
+    the occlusal view only. `out_mm`: stand that far buccal instead (crown centre from the arch; real blocked-out
+    teeth are often 2–5 mm out, and less than clear of the neighbours). Clinical crowding over SPAN is exact by
+    construction (it does not depend on how far out the blocked teeth stand):
+    sum of contact widths - arc between the first molars' mesial contacts (Truth.span_crowding).
+    """
+    cw = {i: contact_width(i, kind) for i in UPPER}
+    share = deficit / len(blocked) if blocked and deficit else 0.0
+    if any(share > cw[i] for i in blocked):
+        raise ValueError("deficit larger than the blocked teeth")
+    occ = {i: cw[i] - (share if i in blocked else 0.0) for i in UPPER}     # arc each tooth occupies
+    L = sum(occ.values()) + gap * (len(UPPER) - 1)
+    cv = curve_of_length(family, L)
+    s, contact_s, pos = {}, {}, 0.0
+    for k, i in enumerate(UPPER):
+        s[i] = pos + occ[i] / 2
+        pos += occ[i]
+        if k < len(UPPER) - 1:
+            contact_s[(i, UPPER[k + 1])] = pos + gap / 2
+            pos += gap
+    meshes = {}
+    for k, i in enumerate(UPPER):
+        p, t, n = cv.at(s[i])
+        if i in blocked and share:
+            nb = [UPPER[j] for j in (k - 1, k + 1) if 0 <= j < len(UPPER)]
+            p = p + n * (out_mm if out_mm is not None else DEPTH[i] / 2 + max(DEPTH[j] for j in nb) / 2 + 0.3)
+        meshes[i] = _place(crown(i, kind), p, t)
+    available = contact_s[(13, 14)] - contact_s[(3, 4)]
+    truth = Truth(widths=dict(WIDTHS), arch_length=round(L, 6), crowding=round(deficit, 6), curve=cv, s_center=s)
+    truth.span_crowding = round(sum(cw[i] for i in SPAN) - available, 6)
+    truth.contact_widths = cw
     return meshes, truth
 
 

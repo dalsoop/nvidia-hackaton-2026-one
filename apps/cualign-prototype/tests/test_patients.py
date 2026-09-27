@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from cualign.core import store
-from cualign.core.synth import make_case
+from cualign.core.case import Case
 from cualign.server import api
 
 
@@ -25,7 +25,7 @@ def client(tmp_path, monkeypatch):
 
 
 def _scan_files(drop=(), transform=None, gum=False, open_crowns=False, rename=None):
-    meshes = {i: m.copy() for i, m in make_case("mild").items() if i not in drop}
+    meshes = {i: m.copy() for i, m in Case.synthetic("mild").mesh.items() if i not in drop}   # calibrated: 2 mm crowding
     if open_crowns:     # cut the gingival face off, as a segmented crown comes out of a scan
         for m in meshes.values():
             m.update_faces(m.face_normals[:, 2] > -0.5)

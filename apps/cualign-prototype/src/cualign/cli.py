@@ -41,9 +41,10 @@ def parse_constraints(text: str) -> dict:
 
 
 def cmd_cases(args):
-    from cualign.core.synth import PRESETS, make_case, save_case
+    from cualign.core.case import Case
+    from cualign.core.synth import PRESETS, save_case
     for name in PRESETS:
-        save_case(make_case(name), Path(args.out) / name)
+        save_case(Case.synthetic(name).mesh, Path(args.out) / name)     # calibrated to the preset's crowding
         print(f"[cases] {name:11s} -> {Path(args.out) / name}")
 
 
