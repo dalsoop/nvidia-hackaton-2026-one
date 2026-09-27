@@ -132,12 +132,16 @@ export function renderStaging(container, ctx) {
   const model = buildStagingModel(currentPlan);
   const currentStage = Math.max(0, Math.min(model.nStages, planStageIndex(state)));
 
-  // Resolve plan title (e.g. "계획 3" or plan_id prefix)
+  // Resolve the plan title from its list position or plan ID prefix.
   const plans = state.plans || [];
   const planIdx = plans.findIndex(p => planId(p) === planId(currentPlan));
-  const planTitle = planIdx !== -1 ? `계획 ${planIdx + 1}` : (currentPlan.plan_id ? `계획 ${currentPlan.plan_id.slice(0, 8)}` : '계획');
+  const planTitle = planIdx !== -1
+    ? SIDEBAR_VOCAB.staging.planLabel(planIdx + 1)
+    : (currentPlan.plan_id
+      ? SIDEBAR_VOCAB.staging.planLabel(currentPlan.plan_id.slice(0, 8))
+      : SIDEBAR_VOCAB.staging.defaultPlanLabel);
 
-  // 1. Summary Card (요약 줄 + 이동 내역 한 줄)
+  // 1. Summary card and movement history line
   const summarySec = h('div', { class: 'staging-summary-sec' });
   const summaryRow = h('div', { class: 'staging-summary-row' });
 
@@ -145,28 +149,28 @@ export function renderStaging(container, ctx) {
 
   if (model.summary?.strategy) {
     summaryRow.appendChild(h('span', null, [
-      '전략 ',
+      `${SIDEBAR_VOCAB.staging.summaryLabels.strategy} `,
       h('b', null, model.summary.strategy)
     ]));
   }
 
   summaryRow.appendChild(h('span', null, [
-    '총 ',
-    h('b', null, model.summary?.totalStagesText || `${model.nStages}장`)
+    `${SIDEBAR_VOCAB.staging.summaryLabels.total} `,
+    h('b', null, model.summary?.totalStagesText || SIDEBAR_VOCAB.staging.summaryLabels.stagesCount(model.nStages))
   ]));
 
   if (model.summary?.maxMovePerStageText) {
     summaryRow.appendChild(h('span', null, [
-      '장당 ',
+      `${SIDEBAR_VOCAB.staging.summaryLabels.perStage} `,
       h('b', null, model.summary.maxMovePerStageText)
     ]));
   }
 
   if (model.summary?.crowdingSecuredText) {
     summaryRow.appendChild(h('span', null, [
-      '총생 ',
+      `${SIDEBAR_VOCAB.staging.summaryLabels.crowding} `,
       h('b', null, `${model.summary.crowdingMm} mm`),
-      ' → 확보 ',
+      ` → ${SIDEBAR_VOCAB.staging.summaryLabels.secured} `,
       h('b', null, `${model.summary.securedMm} mm`)
     ]));
   }
@@ -255,7 +259,7 @@ export function renderStaging(container, ctx) {
   const currentBadge = h('div', {
     class: 'staging-current-badge',
     style: `top: ${currentBadgeTop}px`,
-    title: `현재 ${currentStage}단계`,
+    title: SIDEBAR_VOCAB.staging.currentStageTitle(currentStage),
     onClick: () => {
       ctx.store.set({ stageIndex: currentStage });
     }
@@ -267,7 +271,7 @@ export function renderStaging(container, ctx) {
     const barEl = h('div', {
       class: `staging-bar move-${bar.moveTypeKey || 'complex'}`,
       style: `left: ${bar.x}px; top: ${bar.y}px; width: ${bar.width}px; height: ${bar.height}px`,
-      title: `${bar.fdi}번 치아 (${bar.moveType}): ${bar.startStage}–${bar.endStage}단계`
+      title: SIDEBAR_VOCAB.staging.movementBarTitle(bar)
     });
     chartCanvas.appendChild(barEl);
   }
@@ -286,7 +290,7 @@ export function renderStaging(container, ctx) {
     const linkEl = h('div', {
       class: 'staging-link',
       style: `left: ${link.x}px; top: ${link.y}px; width: ${link.width}px; height: ${link.height}px`,
-      title: `${link.pair.join('·')} 치아 충돌 (${link.stage}단계)`
+      title: SIDEBAR_VOCAB.staging.collisionLinkTitle(link.pair, link.stage)
     });
     chartCanvas.appendChild(linkEl);
   }
@@ -296,7 +300,7 @@ export function renderStaging(container, ctx) {
     const ringEl = h('div', {
       class: 'staging-ring',
       style: `left: ${ring.x}px; top: ${ring.y}px; width: ${ring.size}px; height: ${ring.size}px`,
-      title: `${ring.fdi}번 충돌 (${ring.stage}단계)`
+      title: SIDEBAR_VOCAB.staging.collisionRingTitle(ring.fdi, ring.stage)
     });
     chartCanvas.appendChild(ringEl);
   }

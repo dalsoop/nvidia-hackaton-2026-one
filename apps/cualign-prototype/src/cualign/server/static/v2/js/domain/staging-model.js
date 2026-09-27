@@ -31,12 +31,12 @@ export function classifyToothMove(fdi, dx, dy, dz, rotDeg) {
   // Molars (17, 16, 26, 27) act as anchor/complex movement base
   const isMolar = [17, 16, 26, 27].includes(fdi);
   if (isMolar) {
-    return { moveType: '복합', moveTypeKey: 'complex' };
+    return { moveType: SIDEBAR_VOCAB.staging.moveTypes.complex, moveTypeKey: 'complex' };
   }
 
   // Significant rotation (dominant)
   if (absRot >= 5.0 && absRot > totalLinear * 3) {
-    return { moveType: '회전', moveTypeKey: 'rotation' };
+    return { moveType: SIDEBAR_VOCAB.staging.moveTypes.rotation, moveTypeKey: 'rotation' };
   }
 
   // Buccolingual displacement (check if dominant over vertical)
@@ -45,23 +45,23 @@ export function classifyToothMove(fdi, dx, dy, dz, rotDeg) {
 
   // Significant extrusion/intrusion (vertical z displacement dominant)
   if (absDz >= 0.8 && absDz > blMove) {
-    return { moveType: '정출함입', moveTypeKey: 'extrusion' };
+    return { moveType: SIDEBAR_VOCAB.staging.moveTypes.extrusion, moveTypeKey: 'extrusion' };
   }
 
   if (blMove >= 0.1) {
-    return { moveType: '협설', moveTypeKey: 'buccolingual' };
+    return { moveType: SIDEBAR_VOCAB.staging.moveTypes.buccolingual, moveTypeKey: 'buccolingual' };
   }
 
   if (absRot >= 3.0) {
-    return { moveType: '회전', moveTypeKey: 'rotation' };
+    return { moveType: SIDEBAR_VOCAB.staging.moveTypes.rotation, moveTypeKey: 'rotation' };
   }
 
   if (absDz >= 0.4) {
-    return { moveType: '정출함입', moveTypeKey: 'extrusion' };
+    return { moveType: SIDEBAR_VOCAB.staging.moveTypes.extrusion, moveTypeKey: 'extrusion' };
   }
 
   // Parallel / simple translation
-  return { moveType: '평행', moveTypeKey: 'parallel' };
+  return { moveType: SIDEBAR_VOCAB.staging.moveTypes.parallel, moveTypeKey: 'parallel' };
 }
 
 /**
@@ -152,13 +152,13 @@ export function buildStagingModel(planJson = null) {
       const sign = rotDeg < 0 ? '−' : '+';
       moveDetails.push({
         fdi,
-        text: `${fdi} 회전 ${sign}${Math.abs(rotDeg).toFixed(1)}°`
+        text: SIDEBAR_VOCAB.staging.rotationHistory(fdi, sign, Math.abs(rotDeg).toFixed(1))
       });
     } else if (Math.abs(dz) >= 0.8) {
       const sign = dz < 0 ? '−' : '+';
       moveDetails.push({
         fdi,
-        text: `${fdi} 수직 ${sign}${Math.abs(dz).toFixed(1)}mm`
+        text: SIDEBAR_VOCAB.staging.verticalHistory(fdi, sign, Math.abs(dz).toFixed(1))
       });
     }
 
@@ -217,7 +217,9 @@ export function buildStagingModel(planJson = null) {
 
   // 3. Summary (Only include fields that exist on server)
   const strategyRaw = planJson.strategy || '';
-  const strategyKo = SIDEBAR_VOCAB.staging.strategies[strategyRaw] || strategyRaw || '전략';
+  const strategyKo = SIDEBAR_VOCAB.staging.strategies[strategyRaw]
+    || strategyRaw
+    || SIDEBAR_VOCAB.staging.summaryLabels.strategy;
 
   const maxMovePerStageMm = info.per_stage_mm != null ? Number(info.per_stage_mm) : null;
   const maxMovePerStageText = maxMovePerStageMm != null ? `${maxMovePerStageMm} mm` : null;
@@ -225,13 +227,13 @@ export function buildStagingModel(planJson = null) {
   const crowdingMm = info.crowding_mm != null ? Number(info.crowding_mm) : (planJson.crowding_mm != null ? Number(planJson.crowding_mm) : null);
   const securedMm = info.secured_mm != null ? Number(info.secured_mm) : null;
   const crowdingSecuredText = (crowdingMm != null && securedMm != null)
-    ? `총생 ${crowdingMm} mm → 확보 ${securedMm} mm`
+    ? SIDEBAR_VOCAB.staging.summaryLabels.crowdingSecured(crowdingMm, securedMm)
     : null;
 
   const summary = {
     strategy: strategyKo,
     totalStages: nStages,
-    totalStagesText: `${nStages}장`,
+    totalStagesText: SIDEBAR_VOCAB.staging.summaryLabels.stagesCount(nStages),
     maxMovePerStageMm,
     maxMovePerStageText,
     crowdingMm,
@@ -239,10 +241,10 @@ export function buildStagingModel(planJson = null) {
     crowdingSecuredText
   };
 
-  // 4. Move History Line (이동 내역 한 줄)
+  // 4. Move history line
   const historyParts = [];
   if (maxArchExpansion >= 0.3) {
-    historyParts.push(`악궁 편측 ${maxArchExpansion.toFixed(1)}mm 확장`);
+    historyParts.push(SIDEBAR_VOCAB.staging.archExpansionHistory(maxArchExpansion.toFixed(1)));
   }
   for (const item of moveDetails) {
     historyParts.push(item.text);
