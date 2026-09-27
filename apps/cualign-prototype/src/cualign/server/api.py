@@ -1,5 +1,7 @@
 """Artifact API. Approval is checked on every export, including cached files."""
 from __future__ import annotations
+import asyncio
+import os
 import re
 import uuid
 from pathlib import Path
@@ -156,6 +158,19 @@ def _case_status(confirmed: bool | None, rep: dict | None) -> str:
     if rep["violations"]:
         return "violation"
     return "awaiting_approval"
+
+
+def _build_stl_zip(case: Case, stages: list[dict], path: Path, case_id: str) -> dict:
+    """Stage STLs and print models into `path`, built under a temporary name and moved into place: two downloads of
+    the same plan at once build side by side, and neither serves the other's half-written zip."""
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        planner.export_zip(case, stages, str(tmp))
+        models = planner.export_print_models(case, stages, str(tmp), case_id)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return models
 
 
 def add_api_routes(app: FastAPI, review=None, followup=None):
@@ -420,9 +435,10 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             raise HTTPException(409, str(e))
         _, case = STORE.load_case(p["case_id"])
         path = OUT_DIR / "stl" / f"{plan_id}.zip"
-        # Regenerate from the approved snapshot; a stale file cannot bypass approval.
-        planner.export_zip(case, p["stages"], str(path))
-        models = planner.export_print_models(case, p["stages"], str(path), p["case_id"])
+        # Regenerate from the approved snapshot; a stale file cannot bypass approval. Building takes 5–11 s on the
+        # samples (mostly the print models), and the agent shares this process: off the event loop, or every other
+        # request and the agent's streamed answer wait for it (#119).
+        models = await asyncio.to_thread(_build_stl_zip, case, p["stages"], path, p["case_id"])
         note = f"{models['status']}; files={models['n_files']}" + (f"; reason={models['reason']}" if models.get("reason") else "")
         return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
                             headers={"X-Cualign-Print-Models": note})
