@@ -6,8 +6,8 @@ install; they were made with scripts/import_poseidon.py (per-tooth crowns and th
 gingiva_raw.stl). The dentist writes tooth numbers in FDI, so the texts here do too; the planner uses Universal.
 
 A sample opens with its prescription already in the planning constraints: the app starts where diagnosis and
-prescription end, and plans inside them. The prescriptions are written in FDI with the app's (Universal) numbers
-beside them, because the constraint fields and the agent use Universal.
+prescription end, and plans inside them. The prescriptions are written in FDI only (#113); the constraint fields
+and the agent still use Universal internally, converted at the screen boundary (app.js fdi()/universal()).
 
 The constraint model cannot state every prescription exactly: IPR is per tooth (both surfaces of an allowed tooth,
 so the contacts at the ends of an allowed run get half) and at most IPR_PER_SURFACE, of which the core takes half
