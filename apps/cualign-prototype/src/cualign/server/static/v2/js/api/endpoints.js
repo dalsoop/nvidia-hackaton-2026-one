@@ -20,13 +20,18 @@ async function request(url, options = {}) {
 
   if (!res.ok) {
     let message = res.statusText || T.errors.requestFailed;
-    try {
-      const body = await res.json();
-      if (body && body.detail) {
-        message = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+    const text = await res.text();
+    if (text) {
+      try {
+        const body = JSON.parse(text);
+        if (body && body.detail) {
+          message = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+        } else {
+          message = text;
+        }
+      } catch (parseErr) {
+        message = text;
       }
-    } catch (_err) {
-      // Non-JSON response body
     }
     throw new ApiError(res.status, message);
   }
@@ -175,13 +180,18 @@ export async function chatStream(body, signal = null) {
 
   if (!res.ok) {
     let message = res.statusText || T.errors.streamFailed;
-    try {
-      const errJson = await res.json();
-      if (errJson && errJson.detail) {
-        message = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+    const text = await res.text();
+    if (text) {
+      try {
+        const errJson = JSON.parse(text);
+        if (errJson && errJson.detail) {
+          message = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+        } else {
+          message = text;
+        }
+      } catch (parseErr) {
+        message = text;
       }
-    } catch (_err) {
-      // Non-JSON stream error
     }
     throw new ApiError(res.status, message);
   }
