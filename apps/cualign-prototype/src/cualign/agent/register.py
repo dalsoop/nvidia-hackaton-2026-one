@@ -232,6 +232,7 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
             if run.selected_plan_id and run.selected_plan_id != inp.plan_id:
                 raise ValueError("a final plan is already selected in this request")
             run.selected_plan_id = inp.plan_id
+            run.selected_violations = list(p["violations"])
         return {"type": "plan_selected", **summary(inp.plan_id)}
 
     async def _export_stl(inp: PlanIdInput) -> dict:

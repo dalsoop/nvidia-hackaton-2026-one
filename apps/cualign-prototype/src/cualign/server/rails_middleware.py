@@ -22,6 +22,8 @@ puts the model's raw text in it, past the output rail. The whole exception goes 
 Regex rails (cualign.core.rail_patterns) run before the rail models, only while the rails are on:
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
   * a prescriptive sentence in the answer blocks it without asking the output rail model.
+The opening line's rule status is a fact the server holds (#91): when the selected plan failed validation and the
+answer opens with "규칙 위반은 없습니다", that claim is replaced by the plan's violations (rails on or off).
 The reviewer's memo goes to the plan card, not the answer, so reviewer.MEMO_CHECK gives it the same output check.
 """
 from __future__ import annotations
@@ -48,7 +50,9 @@ from cualign.agent import nim_stream_patch
 from cualign.agent.context import CURRENT_RUN
 from cualign.agent.overload import is_overload_error
 from cualign.keys import nvidia_key_available
-from cualign.core.rail_patterns import PII, PRESCRIPTIVE
+from collections import Counter
+
+from cualign.core.rail_patterns import NO_VIOLATION_CLAIM, PII, PRESCRIPTIVE
 from cualign.server.rails import ROOT
 
 logger = logging.getLogger(__name__)
@@ -76,6 +80,9 @@ class RailsMiddlewareConfig(FunctionMiddlewareBaseConfig, name="cualign_rails"):
         description="the NIM client's re-request policy (delays, codes, fallback models), set in configs/workflow.yml")
     overload_notice: str = Field(default="", description="sentence shown on screen with a resend button when the "
                                  "workflow dies of an overloaded NVIDIA API (#51); set in configs/workflow.yml")
+    violation_names: dict[str, str] = Field(default_factory=dict, description="Korean name of each validation "
+                                            "violation type, written into a corrected opening line (#91); set in "
+                                            "configs/workflow.yml")
 
 
 def matches(patterns: tuple[str, ...], text: str) -> bool:
@@ -135,6 +142,23 @@ def _record(kind: str, state: str, prev: str | None = None) -> str:
     return state
 
 
+def rule_status_fix(answer: str, names: dict[str, str]) -> str:
+    """#91: the opening line's rule status comes from the selected plan's validation, not from the model. A first line
+    that claims no violations for a plan whose validation failed gets the violations written in its place."""
+    run = CURRENT_RUN.get()
+    if run is None or not run.selected_violations:
+        return answer
+    head, sep, tail = answer.partition("\n")
+    counts = Counter(v["type"] for v in run.selected_violations)
+    status = "규칙 위반: " + ", ".join(f"{names.get(t, t)} {n}건" for t, n in counts.items())
+    fixed = re.sub(NO_VIOLATION_CLAIM, status, head)
+    if fixed == head:
+        return answer
+    logger.warning("cuAlign rails: the answer claimed no rule violations but the selected plan has %d; "
+                   "opening line corrected (#91)", len(run.selected_violations))
+    return fixed + sep + tail
+
+
 def _refuse() -> str:
     """The rails replace this turn's answer, so the UI must not be offered its plan either."""
     run = CURRENT_RUN.get()
@@ -145,11 +169,13 @@ def _refuse() -> str:
 
 class RailsMiddleware(FunctionMiddleware):
 
-    def __init__(self, rails: Any | None, fail_closed: bool, overload_notice: str = ""):
+    def __init__(self, rails: Any | None, fail_closed: bool, overload_notice: str = "",
+                 violation_names: dict[str, str] | None = None):
         super().__init__()
         self.rails = rails
         self.fail_closed = fail_closed
         self.overload_notice = overload_notice
+        self.violation_names = violation_names or {}
 
     def _failed(self, e: Exception) -> RuntimeError:
         """Call inside the except block: logs the whole exception, records for the UI's plan_error event whether the
@@ -206,11 +232,16 @@ class RailsMiddleware(FunctionMiddleware):
         return state
 
     async def _check_output(self, user: str, answer: str, prev: str) -> str | None:
-        """Returns the refusal that must replace the answer, or None to let the answer out."""
-        if self.rails is None or not answer.strip():
+        """Returns the text that must replace the answer (the refusal, or the answer with its opening rule status
+        corrected, #91), or None to let the answer out."""
+        if not answer.strip():
             return None
-        state = _record("output", await self._verdict(user, answer, "answer"), prev)
-        return _refuse() if state == "blocked" or (state == "error" and self.fail_closed) else None
+        if self.rails is not None:
+            state = _record("output", await self._verdict(user, answer, "answer"), prev)
+            if state == "blocked" or (state == "error" and self.fail_closed):
+                return _refuse()
+        fixed = rule_status_fix(answer, self.violation_names)
+        return None if fixed == answer else fixed
 
     async def check_memo(self, memo: str) -> tuple[str, bool]:
         """The reviewer's memo reaches the dentist on the plan card, not through the answer, so it gets the same
@@ -222,27 +253,27 @@ class RailsMiddleware(FunctionMiddleware):
 
     async def function_middleware_invoke(self, *args: Any, call_next, context, **kwargs: Any) -> Any:
         value = args[0] if args else None
-        user, state, refusal = await self._check_input(value)
-        if not refusal:
+        user, state, replacement = await self._check_input(value)
+        if not replacement:
             try:
                 out = await call_next(*args, **kwargs)
             except Exception as e:
                 raise self._failed(e) from None
-            refusal = await self._check_output(user, _text(out), state)
-        return refusal_like(value, refusal) if refusal else out
+            replacement = await self._check_output(user, _text(out), state)
+        return refusal_like(value, replacement) if replacement else out
 
     async def function_middleware_stream(self, *args: Any, call_next, context, **kwargs: Any) -> AsyncIterator[Any]:
         """Holds every chunk until the output verdict (the base class passes each chunk on at once)."""
-        user, state, refusal = await self._check_input(args[0] if args else None)
+        user, state, replacement = await self._check_input(args[0] if args else None)
         held = []
-        if not refusal:
+        if not replacement:
             try:
                 held = [chunk async for chunk in call_next(*args, **kwargs)]
             except Exception as e:
                 raise self._failed(e) from None
-            refusal = await self._check_output(user, "".join(_text(c) for c in held), state)
-        if refusal:
-            yield ChatResponseChunk.create_streaming_chunk(refusal)
+            replacement = await self._check_output(user, "".join(_text(c) for c in held), state)
+        if replacement:
+            yield ChatResponseChunk.create_streaming_chunk(replacement)
             return
         for chunk in held:
             yield chunk
@@ -269,7 +300,8 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
             raise RuntimeError(f"cuAlign: Guardrails cannot start ({off}) and CUALIGN_RAILS_FAIL_CLOSED=1")
     if off:
         logger.error("cuAlign: Guardrails OFF (%s) — every turn runs without rails", off)
-        async with _memo_rail(RailsMiddleware(None, fail_closed, config.overload_notice)) as middleware:
+        async with _memo_rail(RailsMiddleware(None, fail_closed, config.overload_notice,
+                                              config.violation_names)) as middleware:
             yield middleware
         return
     # Guardrails usage stats go out when LLMRails is built unless this is set; a value set elsewhere is kept.
@@ -278,7 +310,8 @@ async def cualign_rails(config: RailsMiddlewareConfig, _builder: Builder):
     rails = _import(config.rails_factory)(config.rails_config_dir or ROOT / "guardrails",
                                           config.rails_model_base_url).load()
     logger.info("cuAlign: Guardrails ON for the workflow (fail-%s)", "closed" if fail_closed else "open")
-    async with _memo_rail(RailsMiddleware(rails, fail_closed, config.overload_notice)) as middleware:
+    async with _memo_rail(RailsMiddleware(rails, fail_closed, config.overload_notice,
+                                          config.violation_names)) as middleware:
         yield middleware
 
 

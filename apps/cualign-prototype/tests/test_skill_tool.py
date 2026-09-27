@@ -73,3 +73,13 @@ def test_preloaded_skill_is_the_installed_one():
     pre = ContextPreload.model_validate(_workflow()["function_groups"]["cualign"]["context_preload"])
     assert pre.case and pre.limits and pre.skill in S.installed()
     assert CuAlignToolConfig().context_preload == ContextPreload()   # absent block: nothing extra
+
+
+def test_planner_answer_rule_status_comes_from_validation():
+    """#91 2026-09-27 실측: 규칙 검증에 실패한 계획을 첫 문장이 «규칙 위반은 없습니다» 로 썼다(A08 10회 중 2회). 같은 날 #77
+    재실측에서는 «최종 계획» 과 검토 실패 줄의 오류 코드(upstream_429)가 각 1회 나왔다. 지시문이 셋을 막는다."""
+    text = _workflow()["workflow"]["additional_instructions"]
+    assert "comes only from the selected plan's" in text and "when passed is false" in text
+    assert '"검토: 통과" means the reviewer wrote a memo, never' in text
+    assert "never its error code" in text
+    assert "never 최종 계획 or 확정" in text
