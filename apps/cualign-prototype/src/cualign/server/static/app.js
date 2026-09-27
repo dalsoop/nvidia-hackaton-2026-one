@@ -806,11 +806,11 @@ function sampleOf(caseId) {
 function renderChips() {
   const sample = sampleOf(state.meshCase);
   // short labels on the chip; the full sentence is what gets sent
-  const chips = state.plan
+  const chips = state.messages.some((m) => m.role === "user")
     ? [{ label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
        { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." },
        { label: "전략 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }]
-    : [sample ? { label: "처방대로 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
+    : [sample ? { label: "에이전트 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
        { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
        { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
   const box = $("chips");
@@ -855,9 +855,10 @@ async function activateCase(caseId, { greet = true } = {}) {
       : `계획을 시작하려면 제약을 알려 주세요.`);
     // no bubble: the case card on the panel top already says it; only a changed prescription is worth a line
     if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 — 3D 왼쪽 위 조건을 확인해 주세요.");
+    // the case opens with a rule-based preview of the prescription (#92): the first question is how to refine it
     const q = sample
-      ? { question: "이 처방으로 계획할까요? 기간 상한이나 먼저 풀 부위가 있으면 함께 정해 주세요.",
-          options: [{ label: "처방대로 계획", message: sample.request },
+      ? { question: "처방을 반영한 미리보기입니다(규칙 계산, 검토 없음). 이 초안을 어떻게 다듬을까요?",
+          options: [{ label: "에이전트 계획(검토 포함)", message: sample.request },
                     { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
                     { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
       : { question: "발치는 허용되나요? 기간 상한이 있으면 함께 알려 주세요.",
@@ -982,7 +983,7 @@ function renderResult(plan) {
   $("rApproval").textContent = plan.approval ? "의사 승인됨 · " + plan.approval.approved_at : "미승인";
 
   if (plan.input_stale) setBadge("이전 입력의 계획 — 승인·출력 불가", "fail");
-  else if (plan.passed || viol.length === 0) setBadge("규칙 통과 (의사 검토 전 초안)", "pass");
+  else if (plan.passed || viol.length === 0) setBadge(["passed", "running", "failed"].includes(plan.review?.status) ? "규칙 통과 (의사 검토 전 초안)" : "처방 미리보기 · 규칙 통과 (검토 없음)", "pass");
   else if (byType.space_deficit) setBadge("제약 모순 — 조건 완화 필요", "fail");
   else setBadge(`위반 ${viol.length}건 — 전략 전환 검토`, "warn");
 
@@ -1177,7 +1178,7 @@ function addQuestion(q) {
   for (const o of q.options) {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = o.label;
-    b.dataset.message = o.message ?? ""; b.dataset.fill = o.fill ?? "";
+    b.dataset.message = o.message ?? ""; b.dataset.fill = o.fill ?? ""; b.dataset.action = o.action ?? "";
     div.querySelector(".opts").appendChild(b);
   }
   div.addEventListener("click", (e) => {
@@ -1188,6 +1189,7 @@ function addQuestion(q) {
     picked.className = "picked"; picked.textContent = b.textContent;
     div.querySelector(".opts").replaceWith(picked);
     div.classList.add("done");
+    if (b.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
     send(b.dataset.message);
   });
   $("transcript").appendChild(div);
@@ -1196,7 +1198,39 @@ function addQuestion(q) {
 }
 // After each answer the server's fast model writes the next question; no card when it cannot. The request starts
 // when the stream ends (it overlaps the plan reload); a muted placeholder holds the card's place until it answers.
+// The demo path (preview → agent plan → time cap or comparison → export) is written down, keyed by the sentence
+// the dentist just sent; off that path the server's fast model writes the question (#90 혼합).
+const COMPARE = "이 처방 안에서 확장안과 IPR안을 비교해줘.";
+const SCRIPT = [
+  { when: (t, s) => s && t === s.request,
+    q: { question: "처방대로 에이전트가 계획하고 검토했습니다. 조건을 더 다듬을까요?",
+         options: [{ label: "12개월 안에", message: "12개월 안에 끝나게 다시 짜줘." },
+                   { label: "확장안·IPR안 비교", message: COMPARE },
+                   { label: "이대로 내보내기", action: "export" }] } },
+  { when: (t) => /12개월 안에 끝나게 다시 짜줘/.test(t),
+    q: { question: "기간을 맞춘 계획입니다. 다음은 어떻게 할까요?",
+         options: [{ label: "앞니 먼저 풀기", message: "앞니 총생부터 먼저 풀도록 다시 짜줘." },
+                   { label: "확장안·IPR안 비교", message: COMPARE },
+                   { label: "이대로 내보내기", action: "export" }] } },
+  { when: (t) => t === COMPARE,
+    q: { question: "두 안을 비교했습니다. 어느 쪽으로 갈까요?",
+         options: [{ label: "확장안으로", message: "확장안으로 계획해줘." },
+                   { label: "IPR안으로", message: "IPR안으로 계획해줘." },
+                   { label: "기간 상한 12개월", message: "12개월 안에 끝나게 다시 짜줘." }] } },
+  { when: (t) => /^(확장안|IPR안)으로 계획해줘/.test(t) || /앞니 총생부터 먼저/.test(t),
+    q: { question: "이 안으로 진행할까요?",
+         options: [{ label: "이대로 내보내기", action: "export" },
+                   { label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
+                   { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." }] } },
+];
+function scriptedFollowup() {
+  const last = [...state.messages].reverse().find((m) => m.role === "user")?.content?.replace(/^\[선택한 치아:[^\]]*\]\s*/, "").trim() ?? "";
+  const sample = sampleOf(state.meshCase);
+  return SCRIPT.find((s) => s.when(last, sample))?.q ?? null;
+}
 function requestFollowup() {
+  const scripted = scriptedFollowup();
+  if (scripted) return Promise.resolve(scripted);
   return api("/api/followup", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages: state.messages.slice(-8) }) }).then((r) => r.question ?? null, () => null);
 }
@@ -1587,4 +1621,4 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
     routing = false;
   } else history.replaceState(null, "", "#start");
 })();
-window.__cualign = { renderMd, reviewQuestions, addReviewQuestions };   // test hook (scratch browser checks)
+window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, scriptedFollowup, state };   // test hook (scratch browser checks)
