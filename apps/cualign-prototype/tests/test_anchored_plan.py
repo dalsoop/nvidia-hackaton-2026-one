@@ -40,7 +40,7 @@ def test_end_tooth_is_not_taken_for_a_displaced_one(moderate):
 
 
 def test_extraction_closes_its_spaces(moderate):
-    target, info = propose_target(moderate, "extraction")
+    target, info = propose_target(moderate, "extraction", extraction=(5, 12))
     A = moderate.placed(4, target[4], yaw_of(target, 4), hull=True)
     B = moderate.placed(6, target[6], yaw_of(target, 6), hull=True)
     gap = float(cKDTree(B.vertices).query(A.vertices)[0].min())

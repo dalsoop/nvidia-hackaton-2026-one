@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>cuAlign — 투명교정 스테이징 에이전트</title>
+  <title>cuAlign — 투명교정 에이전트</title>
+  <!-- favicon: "cA" in Pretendard Black as outlines, the top-bar wordmark's two colours (#90) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='2' fill='%23000'/%3E%3Cpath fill='%23fff' d='M8.91 23.71C12.17 23.71 14.16 21.84 14.22 18.93H10.61C10.51 20.12 9.87 20.75 8.97 20.75C7.86 20.75 7.12 19.81 7.12 17.92C7.12 16.06 7.86 15.13 8.97 15.13C9.87 15.13 10.51 15.77 10.61 16.94H14.22C14.18 14.07 12.13 12.22 8.91 12.22C5.32 12.22 3.16 14.54 3.16 17.96C3.16 21.39 5.32 23.71 8.91 23.71Z'/%3E%3Cpath fill='%2376b900' d='M18.03 23.5 18.91 20.59H23.89L24.78 23.5H28.98L24.06 8.65H18.75L13.8 23.5ZM19.81 17.63 21.33 12.65H21.45L22.99 17.63Z'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" />
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
@@ -15,144 +17,169 @@
     }
   </script>
 </head>
-<body>
+<body class="start">
   <header class="topbar">
-    <div class="brand">
+    <button id="homeBtn" class="brand" type="button" title="처음 화면으로">
       <span class="logo">cu<b>Align</b></span>
-      <span class="tagline">투명교정 스테이징 에이전트 <em>(초안 전용 · 최종 판단은 의사)</em></span>
-    </div>
-    <div class="controls">
-      <button id="caseBtn" class="btn ghost case-pill" title="환자·스캔 바꾸기">
-        <span class="k">환자</span> <span id="caseName">—</span>
-      </button>
-      <button id="fallbackBtn" class="btn ghost" title="LLM 없이 규칙 기반 루프만 돌립니다">규칙 기반 폴백</button>
-    </div>
+      <span class="tagline">투명교정 에이전트</span>
+    </button>
   </header>
 
-  <!-- 시작점: 샘플 케이스 카드 (#46). 내 스캔은 환자 → 스캔 업로드 → 입력 확인 → 계획 -->
+  <!-- 내 스캔: 한 모달에서 새 환자 등록 · 기존 환자 펼쳐 스캔 열기/올리기. 입력 확인은 3D 위 막대 (#90, #53) -->
   <div id="caseGate" class="gate" hidden>
-    <button id="gateClose" class="btn ghost small gate-x" type="button" hidden>닫기</button>
-    <!-- 0. 시작: 샘플 케이스 -->
-    <div id="screenStart" class="gate-panel screen">
-      <h1>케이스 열기</h1>
-      <p class="muted">상악만 다룹니다 · 진단과 처방이 끝난 상태에서 시작합니다 · 결과는 초안이며 최종 판단은 의사가 합니다.</p>
-      <p class="steps">케이스를 열면 의사의 처방(발치·IPR 등)이 계획 조건에 들어갑니다. 에이전트가 그 처방 안에서 단계 계획을 만들고 규칙으로 검증하며, 의사가 승인해야 STL을 내보냅니다.</p>
-      <div id="sampleCards" class="cards sample-cards"></div>
-      <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)의 실제 상악 스캔이고, 처방은 치과의사가 이 스캔을 보고 정한 것입니다.</p>
-      <div class="gate-foot">
-        <button id="toPatients" class="btn ghost small" type="button">내 스캔 올리기 →</button>
-      </div>
-    </div>
-
-    <!-- 1. 환자 목록 -->
-    <div id="screenPatients" class="gate-panel screen" hidden>
-      <h1>환자 선택</h1>
-      <p class="muted">환자를 고르거나 새로 등록한 뒤 그 환자의 스캔을 올립니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
-      <div id="patientCards" class="cards"></div>
+    <div id="screenPatients" class="gate-panel">
+      <button id="gateClose" class="btn ghost small gate-x" type="button">닫기</button>
+      <h1>내 스캔 올리기</h1>
+      <p class="muted">새 환자를 등록하며 상악 스캔을 올리거나, 아래에서 기존 환자를 펼쳐 스캔을 엽니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
       <form id="patientForm" class="new-patient">
         <h2>새 환자</h2>
         <label>별칭 <input id="pAlias" maxlength="40" placeholder="예: 3월 상담 A" required></label>
         <label>메모 <input id="pMemo" maxlength="200" placeholder="선택"></label>
+        <label class="drop" for="pScans">
+          <b>상악 스캔 파일 고르기</b>
+          <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
+          <span id="pScansName" class="muted">누르면 파일 선택 창이 열립니다. 나중에 올려도 됩니다.</span>
+        </label>
+        <input id="pScans" type="file" accept=".stl" multiple hidden />
         <button class="btn primary small" type="submit">등록</button>
         <p class="hint">실명·주민번호·연락처는 입력하지 마세요. 가명만 사용합니다.</p>
       </form>
-      <div class="gate-foot">
-        <button id="toSamples" class="btn ghost small" type="button">← 샘플 케이스</button>
+      <h2>기존 환자</h2>
+      <div id="patientCards" class="patient-list"></div>
+      <!-- 펼친 환자의 본문: 스캔 목록 + 업로드. JS가 펼친 환자 아래로 옮긴다 -->
+      <div id="patientBody" class="p-body" hidden>
+        <div id="scanList" class="scan-list"></div>
+        <label id="dropZone" class="drop" for="scanInput">
+          <b>이 환자에게 상악 스캔 올리기</b>
+          <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
+          <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
+        </label>
+        <input id="scanInput" type="file" accept=".stl" multiple hidden />
+        <p id="uploadStatus" class="muted" aria-live="polite"></p>
+        <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
       </div>
     </div>
-
-    <!-- 2. 환자 화면: 스캔 목록 + 업로드 -->
-    <div id="screenPatient" class="gate-panel screen" hidden>
-      <button class="btn ghost small back" data-go="patients" type="button">← 환자 목록</button>
-      <h1 id="patientTitle">환자</h1>
-      <p id="patientMeta" class="muted"></p>
-      <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
-      <h2>스캔</h2>
-      <div id="scanList" class="scan-list"></div>
-      <label id="dropZone" class="drop" for="scanInput">
-        <b>상악 스캔 올리기</b>
-        <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
-        <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
-      </label>
-      <input id="scanInput" type="file" accept=".stl" multiple hidden />
-      <p id="uploadStatus" class="muted" aria-live="polite"></p>
-    </div>
-
-    <!-- 3. 입력 확인: 3D는 오른쪽 뷰어에 표시 -->
-    <div id="screenCheck" class="gate-panel screen side" hidden>
-      <button class="btn ghost small back" data-go="patient" type="button">← 환자 화면</button>
-      <h1>입력 확인</h1>
-      <p id="checkMeta" class="muted"></p>
-      <div id="checkBadge" class="badge neutral"></div>
-      <dl id="checkList" class="check"></dl>
-      <div id="sideWarn" class="warn-box" hidden>
-        <b>치아 번호가 좌우 반대로 보입니다.</b> 2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다. 파일 번호를 확인하세요.
-        <button id="mirrorBtn" class="btn ghost small" type="button">좌우 번호 뒤집기 (u → 17−u)</button>
-      </div>
-      <p class="hint">오른쪽 3D에서 치아 번호(마우스를 올리면 표시)와 위치가 맞는지 확인하세요. 주황: 회전 보정 대상 · 파랑: 높이 보정 대상.</p>
-      <div class="gate-foot">
-        <button id="startPlan" class="btn primary" type="button">번호 확인 — 계획 시작</button>
-      </div>
-    </div>
-
   </div>
 
   <main class="layout">
     <section class="chat">
-      <fieldset id="constraints" class="constraints">
-        <legend>의사 처방 · 대화로도 수정 가능</legend>
-        <label><input id="cExtraction" type="checkbox"> 발치 허용</label>
-        <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
-        <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
-        <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
-        <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
-        <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
-      </fieldset>
+      <div id="intro" class="intro">
+        <img class="mark" src="intro-arch.png" alt="" />
+        <h1>처방을 설명하고 교정을 설계해보세요</h1>
+        <button id="introPick" class="link-btn" type="button">샘플 케이스 고르기 →</button>
+      </div>
+      <div id="caseCard" class="case-head">
+        <img id="caseThumb" class="thumb" alt="" hidden />
+        <div class="case-text"><span class="case-line"><b id="caseName">—</b><span id="caseKind" class="tag" hidden>샘플</span></span><span id="caseSub"></span><span id="caseBadges" class="badges"></span></div>
+        <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">바꾸기</button>
+        <div id="casePop" class="case-pop" hidden>
+          <div id="popCases"></div>
+          <button id="popPatients" class="link-btn" type="button">내 스캔 올리기 →</button>
+        </div>
+      </div>
       <div id="transcript" class="transcript" aria-live="polite"></div>
       <div id="retryBar" class="retry-bar" hidden>
-        <button id="resendBtn" class="btn ghost small" type="button">다시 보내기</button>
+        <button id="resendBtn" class="btn primary small" type="button">다시 보내기</button>
+        <button id="retryFallback" class="btn ghost small" type="button" title="모델 없이 규칙 기반 루프만 돌립니다">규칙 기반으로 계산</button>
       </div>
+      <div class="chips" id="chips"></div>
 
-      <div class="chips" id="chips">
-        <button class="chip">발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.</button>
-        <button class="chip">발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.</button>
-        <button class="chip">이 처방 안에서 확장안과 IPR안을 비교해줘.</button>
-        <button class="chip">13번은 움직이지 말고 다시 짜줘.</button>
-        <button class="chip">IPR은 앞니(7~10번) 빼고 해줘.</button>
-      </div>
-
+      <div id="selChips" class="sel-chips" hidden></div>
       <form id="chatForm" class="composer">
-        <textarea id="chatInput" rows="2" placeholder="처방과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
+        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요"></textarea>
         <button id="sendBtn" type="submit" class="btn primary">전송</button>
       </form>
     </section>
 
+    <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="대화 패널 크기 조정" tabindex="0" title="끌어서 너비 조절 · 두 번 눌러 원래대로"></div>
+
     <section class="viewer">
       <div id="canvasWrap" class="canvas-wrap">
         <canvas id="viewCanvas"></canvas>
+        <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
+        <div id="screenStart" class="start-pane">
+          <div class="start-body">
+          <h2>샘플 케이스로 시작하기</h2>
+          <div id="sampleCards" class="cards sample-cards"></div>
+          <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
+          <div class="gate-foot">
+            <button id="toPatients" class="btn ghost small" type="button">내 스캔 올리기 →</button>
+          </div>
+          </div>
+        </div>
         <div id="labels" class="labels"></div>
+        <!-- while a turn runs: the 3D dims and this pill repeats the running step -->
+        <div id="workNote" class="work-note" aria-live="polite"><i></i><span>계획을 준비하는 중…</span></div>
         <div class="view-head">
-          <span id="archLabel" class="arch">상악 · 교합면에서 본 모습</span>
-          <span class="view-btns">
-            <button class="btn ghost small" data-view="occlusal" title="교합면(위에서)">교합면</button>
-            <button class="btn ghost small" data-view="frontal" title="정면">정면</button>
+          <!-- 조건: 3D 왼쪽 위에 칩으로 접혀 있고, 펼치면 폼이 3D 위로 내려온다 (#90) -->
+          <details id="condBox" class="cond">
+            <summary>조건 <span id="condSummary" class="cond-chips">—</span></summary>
+            <fieldset id="constraints" class="constraints">
+              <legend>대화로도 바꿀 수 있습니다</legend>
+              <label>발치 치아 (빈칸: 비발치) <input id="cExtract" placeholder="예: 5, 12"></label>
+              <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
+              <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
+              <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
+              <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
+              <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
+              <button id="fallbackBtn" class="btn ghost small cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 규칙 기반 계산 (모델 없이)</button>
+            </fieldset>
+          </details>
+          <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
+          <div id="checkBar" class="check-bar" hidden>
+            <span id="checkFacts" class="facts"></span>
+            <button id="mirrorBtn" class="btn ghost small" type="button" hidden title="2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다">좌우 번호 뒤집기</button>
+            <button id="startPlan" class="btn primary small" type="button">이 스캔으로 계획</button>
+            <button id="otherScan" class="btn ghost small" type="button">다른 스캔</button>
+          </div>
+          <span class="view-bar">
+            <span class="view-actions export">
+              <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다">내보내기</button>
+              <div id="exportPop" class="export-pop" hidden>
+                <p>이 초안을 의사 승인으로 확정하고 단계별 치아 STL(zip)을 내려받습니다. 조건·3D·검토 결과를 확인하셨나요?</p>
+                <p id="exportSkip" class="export-skip" hidden>검토 에이전트를 거치지 않은 계획입니다.</p>
+                <div>
+                  <button id="exportGo" class="btn primary small" type="button">확정하고 내려받기</button>
+                  <button id="exportCancel" class="btn ghost small" type="button">취소</button>
+                </div>
+              </div>
+              <a id="stlLink" hidden download></a>
+              <span id="exportWhy" class="export-why"></span>
+            </span>
           </span>
         </div>
+        <!-- 오른쪽 세로 도구줄: 시점 여섯 개, 그 아래 겹쳐 보기·크게 보기 (#90) -->
+        <div class="view-rail">
+          <button class="btn ghost small" type="button" data-view="occlusal" title="교합면(위에서)">교합</button>
+          <button class="btn ghost small" type="button" data-view="frontal" title="정면">정면</button>
+          <button class="btn ghost small" type="button" data-view="left" title="환자 왼쪽">좌</button>
+          <button class="btn ghost small" type="button" data-view="right" title="환자 오른쪽">우</button>
+          <span class="rail-tools">
+            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="전후 겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다">겹쳐</button>
+            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다">크게</button>
+          </span>
+        </div>
+        <!-- view cube: click a face to look from that side (#90) -->
         <div id="tip" class="tip" hidden></div>
         <div class="legend">
-          <span><i class="sw ivory"></i>치아 <small>(진해질수록 이동량 큼)</small></span>
           <span><i class="sw red"></i>충돌</span>
           <span><i class="sw amber"></i>장당 이동 한계 초과</span>
           <span><i class="sw blue"></i>고정</span>
           <span><i class="sw ghost"></i>발치</span>
           <span><i class="sw ipr"></i>IPR mm</span>
-          <span><i class="sw gum"></i>잇몸 <small>(표시용)</small></span>
+          <span id="overlayLegend" hidden><i class="sw before"></i>치료 전 (겹쳐 보기)</span>
+          <span><i class="sw picked"></i>선택한 치아 <small>(눌러서 대화에 넘기기)</small></span>
         </div>
       </div>
 
       <div class="stage-bar">
+        <button id="firstBtn" class="btn ghost small" type="button" title="치료 전으로">처음</button>
         <button id="playBtn" class="btn ghost small" title="재생/정지">▶</button>
-        <input id="stageSlider" type="range" min="0" max="0" value="0" step="1" disabled />
+        <div class="slider-wrap">
+          <div id="stageMarks" class="stage-marks"></div>
+          <input id="stageSlider" type="range" min="0" max="0" value="0" step="1" disabled />
+        </div>
+        <button id="lastBtn" class="btn ghost small" type="button" title="목표 배열로">목표</button>
         <span id="stageLabel" class="stage-label">계획 없음</span>
       </div>
 
@@ -162,22 +189,24 @@
           <div class="plan-pick">
             <select id="planSelect" title="계획 선택"><option value="">계획 선택…</option></select>
             <button id="reviewBtn" class="btn ghost small" hidden>검토 다시 요청</button>
-            <button id="approveBtn" class="btn primary small" disabled>의사 승인</button>
-            <a id="stlLink" class="btn ghost small disabled" href="#" download>STL 다운로드 (zip)</a>
           </div>
         </div>
-        <p id="planNotice" aria-live="polite">계획 없음</p>
-        <dl id="resultCard" class="card">
-          <div><dt>전략</dt><dd id="rStrategy">—</dd></div>
-          <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
-          <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
-          <div><dt>위반</dt><dd id="rViol">—</dd></div>
-          <div><dt>계획 ID</dt><dd id="rPlan">—</dd></div>
-          <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
-          <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
-          <div><dt>의사 승인</dt><dd id="rApproval">—</dd></div>
-        </dl>
-        <p id="reviewMemo" class="review-memo"></p>
+        <details class="plan-meta">
+          <summary>자세히</summary>
+          <p id="planNotice" aria-live="polite">계획 없음</p>
+          <dl id="resultCard" class="card">
+            <div><dt>전략</dt><dd id="rStrategy">—</dd></div>
+            <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
+            <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
+            <div><dt>위반</dt><dd id="rViol">—</dd></div>
+            <div><dt>의사 승인</dt><dd id="rApproval">—</dd></div>
+            <div><dt>계획 ID</dt><dd id="rPlan">—</dd></div>
+            <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
+            <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
+          </dl>
+          <p id="reviewMemo" class="review-memo"></p>
+          <button id="revokeBtn" class="btn ghost small" type="button" hidden>승인 취소</button>
+        </details>
         <table class="viol" id="violTable">
           <thead><tr><th>단계</th><th>치아</th><th>종류</th><th>값</th></tr></thead>
           <tbody></tbody>

@@ -27,8 +27,8 @@ P4 = "p8914f75f7bc05129a0ae50495e0a8516"
 MEMO = "1) 한 줄 요약: 전략 ipr · 5장 · 1.2개월 · 위반 space_deficit 1건\n검토 메모도 초안입니다. 최종 판단은 의사가 합니다."
 
 
-def _cons(stage_cap=52, lock=(), ipr_exclude=(), order="simultaneous", allow_extraction=False):
-    return {"allow_extraction": allow_extraction, "lock": list(lock), "ipr_exclude": list(ipr_exclude),
+def _cons(stage_cap=52, lock=(), ipr_exclude=(), order="simultaneous", allow_extraction=False, extraction=()):
+    return {"allow_extraction": allow_extraction, "extraction": list(extraction), "lock": list(lock), "ipr_exclude": list(ipr_exclude),
             "ipr_limit_mm": None, "stage_cap": stage_cap, "order": order}
 
 
@@ -556,6 +556,12 @@ def test_stage_unit(answer, ok):
     (f"plan_id: {P1}\n발치 없이, 단계 상한 없음", {}, False),                                # hides the cap it used
     (f"plan_id: {P1}\n발치 허용, 단계 상한 52단계", {}, False),                              # wrong extraction
     (f"plan_id: {P1}\n발치 허용: 예 · 단계 상한: 52단계", {"allow_extraction": True}, True),
+    # a prescribed extraction: the answer names the prescribed teeth, in the app's numbers (#56)
+    (f"plan_id: {P1}\n발치 치아 5, 12번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
+    (f"plan_id: {P1}\n처방대로 5번과 12번을 발치했습니다. 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
+    (f"plan_id: {P1}\n발치 14·24(앱 번호 5·12) · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
+    (f"plan_id: {P1}\n발치 치아 4, 13번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, False),
+    (f"plan_id: {P1}\n발치 허용: 예 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, False),   # teeth missing
     (f"plan_id: {P1}\n단계 상한 52단계", {}, False),                                         # extraction not stated
     (f"plan_id: {P1}\n발치 없이", {}, False),                                                # cap not stated
     (f"{USED_52}", {}, False),                                                                # no presented plan
@@ -569,14 +575,18 @@ def test_runner_mirrors_the_ui_request():
     from evals.golden_a.runner import form_patch, ui_greeting
     from cualign.core.constraints import ConstraintPatch, Constraints
     app = (Path(__file__).resolve().parents[1] / "src/cualign/server/static/app.js").read_text(encoding="utf-8")
-    fixed = "계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?"
-    assert "를 불러왔습니다. ` +" in app and fixed in app
+    # the bubble text and the question card's question, joined into the one assistant message the model sees (#90)
+    fixed = ("계획을 시작하려면 제약을 알려 주세요.",
+             "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.")
+    assert "를 불러왔습니다. ` +" in app and all(f in app for f in fixed) and 'content: text + " " + q.question' in app
     assert "상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm" in app
     g = ui_greeting("moderate")
-    assert g.startswith("케이스 moderate (상악 14개 치아, 총생 ") and g.endswith(fixed)
+    assert g.startswith("케이스 moderate (상악 14개 치아, 총생 ") and g.endswith(" ".join(fixed))
     assert "stage_cap: cap, clear_stage_cap: cap === null, order:" in app
     patch = ConstraintPatch.model_validate(form_patch(Constraints()))
-    assert patch.clear_stage_cap and patch.changes() == Constraints().model_dump() | {"lock": [], "ipr_exclude": []}
+    assert patch.clear_stage_cap and patch.changes() == \
+        Constraints().model_dump(exclude={"allow_extraction"}) | {"extraction": [], "lock": [], "ipr_exclude": []}
+    assert "extraction: teeth(\"cExtract\")" in app            # the form sends the prescribed teeth (#56)
     assert ConstraintPatch.model_validate(form_patch(Constraints(stage_cap=52))).changes()["stage_cap"] == 52
 
 

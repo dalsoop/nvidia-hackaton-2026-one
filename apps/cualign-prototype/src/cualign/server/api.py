@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, patients, planner
-from cualign.core.constraints import ConstraintPatch
+from cualign.core.constraints import ConstraintPatch, reason_ko
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
 
@@ -28,6 +28,10 @@ class ApprovalRequest(BaseModel):
 
 class ConfirmRequest(BaseModel):
     revision: int | None = None
+
+
+class FollowupRequest(BaseModel):
+    messages: list[dict] = Field(default_factory=list, max_length=200)
 
 
 class PatientRequest(BaseModel):
@@ -67,7 +71,7 @@ def _summary(pid):
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
-                    changes=None, parent_plan_id=None):
+                    changes=None, parent_plan_id=None, extraction=None):
     cid, case = STORE.load_case(case_id)
     why = planner.unsupported_reasons(case)
     if why:
@@ -75,7 +79,9 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     c = STORE.constraints_for(cid, parent_plan_id)
     if changes is None:
         changes = {"stage_cap": stage_cap}
-        if allow_extraction is not None:
+        if extraction is not None:            # the prescribed teeth (#56); [] = non-extraction
+            changes["extraction"] = list(extraction)
+        elif allow_extraction is not None:    # legacy: false clears, true needs the teeth already prescribed
             changes["allow_extraction"] = allow_extraction
         if order is not None:
             changes["order"] = order
@@ -87,19 +93,54 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     for pid in ids:
         STORE.set_review(pid, {"status": "skipped", "attempts": 0,
                               "message": "규칙 폴백 — 검토 에이전트 미실행", "error": None})
+    return _rule_plan_result(cid, ids)
+
+
+def _constraint_dump(record: dict) -> dict:
+    constraints = record["constraints"]
+    if isinstance(constraints, dict):
+        return constraints
+    return constraints.model_dump(mode="json")
+
+
+def ensure_case_plan(case_id: str) -> dict | None:
+    """Build this case's stages from its own mesh and prescription. Another case's plan is never reused.
+
+    The planner rebuilds that case's whole trajectory. A prescription change starts a child plan of this case only.
+    """
+    current = STORE.constraints_for(case_id)
+    existing = STORE.plan_ids_for(case_id)
+    if not existing:
+        return rule_based_plan(case_id)
+    latest = existing[-1]
+    if _constraint_dump(STORE._record(latest)) == current.model_dump(mode="json"):
+        return None
+    return rule_based_plan(case_id, changes=current.model_dump(mode="json"), parent_plan_id=latest)
+
+
+def _rule_plan_result(cid, ids):
     tried = [_summary(pid) for pid in ids]
     chosen = next((p for p in tried if p["passed"]), None)
     result = {"case_id": cid, "chosen": chosen, "tried": tried}
     if chosen is None:
-        result["best_failed"] = min(tried, key=lambda p: (p["violations"], STORE.plans[p["plan_id"]]["info"]["space_deficit_mm"]))
+        result["best_failed"] = min(tried, key=lambda p: (p["violations"], STORE._record(p["plan_id"])["info"]["space_deficit_mm"]))
     return result
 
 
-def add_api_routes(app: FastAPI, review=None):
+def add_api_routes(app: FastAPI, review=None, followup=None):
     """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
     chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
-    None when no reviewer model is wired."""
+    None when no reviewer model is wired. `followup(messages)` writes the question card shown after each agent turn
+    (#90); None means no cards."""
     app.state.cualign_review = review
+
+    @app.post("/api/followup")
+    async def next_followup(req: FollowupRequest):
+        """{"question": {...}} or {"question": null}: the card is optional, so this never fails the screen."""
+        if followup is None:
+            return {"question": None}
+        return {"question": await followup(req.messages)}
+
     @app.get("/", include_in_schema=False)
     async def root():
         return RedirectResponse(url="/ui/")
@@ -114,6 +155,10 @@ def add_api_routes(app: FastAPI, review=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
+        try:
+            ensure_case_plan(cid)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
                 "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
 
@@ -266,7 +311,7 @@ def add_api_routes(app: FastAPI, review=None):
     @app.get("/api/plans")
     async def list_plans(case_id: str | None = None):
         return {"plans": [_summary(pid) for pid in reversed(list(STORE.plans))
-                          if case_id is None or STORE.plans[pid]["case_id"] == case_id]}
+                          if case_id is None or STORE._record(pid)["case_id"] == case_id]}
 
     def require_plan(pid):
         if pid not in STORE.plans:
@@ -327,7 +372,7 @@ def add_api_routes(app: FastAPI, review=None):
             changes = ConstraintPatch.model_validate(patch).changes()
             return rule_based_plan(req.case_id, changes=changes, parent_plan_id=req.parent_plan_id)
         except (KeyError, FileNotFoundError, ValueError) as e:
-            raise HTTPException(400, str(e))
+            raise HTTPException(400, reason_ko(e) if isinstance(e, ValueError) else str(e))
 
     if STATIC_DIR.exists():
         app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")

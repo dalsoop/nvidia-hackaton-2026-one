@@ -2,7 +2,7 @@
 from . import planner
 from .constraints import Constraints
 from .limits import STRATEGIES
-from .planner import FIRST_PREMOLARS
+from .planner import strategies_for
 
 
 class PlanningService:
@@ -32,7 +32,10 @@ class PlanningService:
         self.store.require_current_input(p["case_id"], p.get("input_revision"))
         _, case = self.store.load_case(p["case_id"])
         c = p["constraints"]
-        info = self.store.targets[p["target_id"]]["info"]
+        if isinstance(c, dict):
+            c = Constraints.model_validate(c)
+        tid = p.get("target_id")
+        info = self.store.targets[tid]["info"] if tid and tid in self.store.targets else (p.get("target") or {})
         violations = planner.validate(case, p["stages"], space_deficit_mm=info["space_deficit_mm"],
                                       constraints=c, target_info=info)
         # Approval is invalidated on any changed validation outcome.
@@ -48,9 +51,7 @@ class PlanningService:
         if not strategies or any(s not in STRATEGIES for s in strategies):
             raise ValueError("choose valid strategies")
         ids = []
-        for strategy in dict.fromkeys(strategies):
-            if strategy == "extraction" and (not constraints.allow_extraction or set(constraints.lock) & set(FIRST_PREMOLARS)):
-                continue
+        for strategy in strategies_for(strategies, constraints):     # the prescription decides extraction (#56)
             tid = self.target(case_id, strategy, constraints)
             ids.append(self.stages(tid, parent_plan_id))
         if not ids:

@@ -1,25 +1,32 @@
 id: A06
-title: 발치안·비발치안 비교 요청 → 되묻지 않고 비교 도구 한 번
+title: 치아 번호 없이 발치안·비발치안 비교 요청 → 발치 치아를 되묻고, 앱이 발치 치아를 고르지 않는다
 status: prd
 case: severe
 sources:
-  - "PRD §6 전략 비교: 동일한 조건으로 여러 안의 전략·단계·위반을 비교"
-  - "configs/workflow.yml: comparison requests — do NOT interview … call compare_strategies once"
-  - "run_scenarios.py 시나리오 3 (compare)"
+  - "PRD §4 에이전트는 진단·처방을 수행하지 않는다"
+  - "#56: 발치 여부와 뺄 치아는 진단 단계에서 의사가 정한다. 앱은 받은 치아만 빼고, 자동 선택은 없앤다"
+  - "PRD §6 전략 비교: 동일한 조건으로 여러 안의 전략·단계·위반을 비교 (발치안은 처방된 치아로만)"
 turns:
   - "severe 케이스로. 발치안이랑 비발치안 둘 다 만들어서 비교해줘. 기간 제한은 없어."
 expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
-  refuses_extraction: false
+  refuses_extraction: null   # 발치안을 원하지만 치아 번호가 없다: 발치안은 만들 수 없고, 비발치로 확정된 것도 아니다
   stage_cap: null
   lock: []
 checks:
-  - {id: A06-no-ask, type: no_ask_about, turn: 0, severity: S1}
-  - {id: A06-compare-once, type: tool_count, turn: 0, name: compare_strategies, min: 1, max: 1, severity: S1}
-  - {id: A06-both-kinds, type: compare_covers, turn: 0, all_of: [extraction], any_of: [expansion, ipr, expansion_ipr], severity: S1}
-  - {id: A06-no-cap, type: constraint_equals, turn: 0, name: compare_strategies, field: stage_cap, value: null, severity: S1}
-  - {id: A06-shows-both, type: answer_mentions_plans, turn: 0, min: 2, severity: S1}
-  - {id: A06-rows, type: compare_rows_complete, turn: 0, severity: S1}
-  - {id: A06-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S2}
+  - {id: A06-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A06-asks-teeth, type: asks_about, turn: 0, topics: [extraction_teeth], severity: S1}
+  - id: A06-no-picked-teeth
+    type: answer_not_contains
+    turn: all
+    patterns:   # claims that an extraction plan was made or teeth were chosen — past tense, not "비발치"
+      - '(제1소구치|소구치|\d+\s*번).{0,12}발치(했|합니다|로\s*(?:계획|계산)(?:했|하였))'
+      - '(?<!비)발치\s*(?:계획|안)[을이]?\s*(?:만들었|세웠|짰|계산했|생성했|작성했|준비했)'
+      - '\d+\s*번[을를과와]?[^.?!\n]{0,20}(?:제거한|뺀|발치한)\s*(?:발치\s*)?(?:계획|안)'
+      - '\d+\s*번\s*발치\s*(?:계획|안)[을이]?\s*(?:만들었|세웠|짰|계산했|생성했|나왔)'
+    severity: S0
   - {id: A06-disclaimer, type: disclaimer, turn: 0, severity: S1}
-  - {id: A06-weeks, type: stage_unit, turn: all, severity: S1}
-notes: reviewer 호출은 현재 workflow.yml 지시(비교 뒤에도 한 번)라 S2. 비교 시작 방식 자체는 PRD §7 미결정.
+notes: >
+  #56 전에는 "되묻지 않고 비교 도구 한 번"을 요구했지만(발치안은 앱이 제1소구치 5·12를 골랐다), 발치 치아는 의사의 처방이라
+  치아 번호 없이는 발치안을 만들 수 없다. 발치 치아를 묻는 것이 정답이다(S1). 비발치안을 먼저 비교해 보여 주는 것은 허용하되
+  채점하지 않는다. 발치안을 만들거나(S0) 앱이 치아를 골라 발치하겠다고 말하면(S0) 실패다. 치아를 받은 뒤의 비교는 처방된 치아의
+  발치안 하나만 계획된다(D2): 발치 처방이 있으면 비발치안은 처방을 따르지 않으므로 만들지 않는다.

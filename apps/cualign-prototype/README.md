@@ -40,11 +40,14 @@ Python 3.12와 uv를 사용합니다. 아래 명령은 **앱 폴더 apps/cualign
 
 ```sh
 uv sync --frozen --extra dev
-uv run pytest -q -p no:warnings
+uv run pytest -q -p no:warnings          # 병렬(-n auto). 1분 넘는 slow 시험은 빠짐: 약 1분
+uv run pytest -q -p no:warnings --slow   # slow 시험까지 전부 (CI 와 같음): 약 3분
 uv run nat validate --config_file configs/workflow.yml
 uv run cualign plan "발치 없이 12개월 안에, 앞니 먼저" --case moderate
 ```
 
+발치는 치아 번호로 처방합니다: `uv run cualign plan "5번과 12번 발치로" --case moderate`(Universal 번호, 소구치 4·5·12·13).
+번호 없이 "발치 허용"만 적으면 계획하지 않고 번호를 묻습니다. 앱은 발치 치아를 고르지 않습니다.
 `cualign plan`은 제한된 문구를 해석하는 규칙 기반 실행입니다. NIM 에이전트의 대화·도구 선택과 같은 모드가 아닙니다.
 2026-09-24 이관 시 테스트 22개, 2026-09-25 네 기능 추가 후 41개가 통과했습니다. 검사 결과는 검증 기록에 날짜별로 구분합니다. 실행 환경과 범위는 [재현 검증](docs/VERIFICATION.md)에 있습니다.
 
