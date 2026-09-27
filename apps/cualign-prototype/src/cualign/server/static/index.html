@@ -55,7 +55,8 @@
           <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
         </label>
         <input id="scanInput" type="file" accept=".stl" multiple hidden />
-        <p id="uploadStatus" class="muted" aria-live="polite"></p>
+        <!-- 업로드 결과: 진행 중엔 한 줄, 거절되면 「올린 파일 …」 + 서버 문구 그대로 + 다시 고르기 (#112, 보드 08) -->
+        <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
         <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
       </div>
     </div>
@@ -88,6 +89,13 @@
       <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 승인·STL은 3D 위 「내보내기」 하나 (#111) -->
       <section id="plans" class="plans" hidden>
         <div class="plans-head"><h2>계획</h2><span id="planCount" class="count"></span></div>
+        <!-- 계획이 하나도 없는 채 계산이 실패하면: 제목 + 서버 문구 그대로 + 조건 + 다시 계산 (#112, 보드 07) -->
+        <div id="planFail" class="plan-fail" hidden>
+          <b>계획을 만들지 못했습니다</b>
+          <p id="planFailMsg"></p>
+          <div id="planFailCond" class="cond-chips"></div>
+          <button id="planFailRetry" class="btn ghost small" type="button">이 조건으로 다시 계산</button>
+        </div>
         <details id="oldPlans" class="old-plans" hidden><summary>지난 계획 <span id="oldPlansN"></span>개</summary><div id="oldPlanList" class="plan-list"></div></details>
         <div id="planList" class="plan-list"></div>
         <details id="planReview" class="plan-review">
@@ -157,9 +165,18 @@
         <div class="view-head">
           <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
           <div id="checkBar" class="check-bar" hidden>
+            <!-- 막힌 스캔·방향 판정 불가는 제목 한 줄이 먼저 온다 (#112, 보드 09) -->
+            <b id="checkTitle" class="check-title" hidden></b>
             <span id="checkFacts" class="facts"></span>
             <button id="mirrorBtn" class="btn ghost small" type="button" hidden title="2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다">좌우 번호 뒤집기</button>
             <button id="startPlan" class="btn primary small" type="button">이 스캔으로 계획</button>
+            <span class="del-wrap">
+              <button id="deleteScan" class="btn ghost small danger" type="button" hidden>스캔 삭제</button>
+              <div id="deleteScanPop" class="del-pop" hidden>
+                <p>이 스캔과 파일을 지웁니다. 되돌릴 수 없습니다.</p>
+                <div><button id="deleteScanGo" class="btn primary small" type="button">삭제</button><button id="deleteScanCancel" class="btn ghost small" type="button">취소</button></div>
+              </div>
+            </span>
             <button id="otherScan" class="btn ghost small" type="button">다른 스캔</button>
           </div>
           <span class="view-bar">

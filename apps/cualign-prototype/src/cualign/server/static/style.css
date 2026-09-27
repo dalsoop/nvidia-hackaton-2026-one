@@ -524,3 +524,24 @@ body.start .chat, body.start .splitter { display: none; }
 .cond-state:empty { display: none; }
 .pane-foot { margin-top: auto; padding: 16px 20px 20px; border-top: 1px solid var(--line); flex: none; }
 .pane-foot .btn { width: 100%; height: 46px; font-size: 15px; }
+
+/* ---------- error and blocked states (#112) ---------- */
+.upload-status { font-size: 12px; color: var(--muted); }
+.upload-status:empty { display: none; }
+.upload-fail { margin-top: 8px; padding: 12px; border: 1px solid var(--red); border-left: 3px solid var(--red); background: var(--red-surface); border-radius: var(--radius); color: var(--red-text); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.upload-fail .files { color: var(--muted); }
+.upload-fail .why { margin: 0; font-size: 13px; color: var(--red-text); }
+.check-title { width: 100%; font-size: 14px; }
+.check-bar .check-title[hidden] { display: none; }
+.check-bar .btn[hidden] { display: none; }
+.del-wrap { position: relative; }
+.del-pop { position: absolute; left: 0; top: calc(100% + 6px); width: 280px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
+.del-pop[hidden] { display: none; }
+.del-pop p { margin: 0 0 8px; }
+.del-pop div { display: flex; gap: 6px; }
+.plan-fail { padding: 12px; border: 1px solid var(--red); border-left: 3px solid var(--red); background: var(--red-surface); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: 13px; }
+.plan-fail[hidden] { display: none; }
+.plan-fail b { color: var(--red-text); font-size: 14px; }
+.plan-fail p { margin: 0; color: var(--red-text); overflow-wrap: anywhere; }
+.plan-fail .cond-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.plan-fail .tag { color: var(--muted); border-color: var(--line-strong); }

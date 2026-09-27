@@ -399,7 +399,7 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | 화면 뼈대 | `.layout` 그리드 = 대화 `var(--chat-w, 380px)` · 경계 6px · 3D `1fr` · 사이드바 400px (980px 미만은 한 열) |
 | 시작 상태 | `body.start` · `#intro` `#introPick` · `#screenStart` `#sampleCards .case-card[data-id]` `#toPatients` · 입력창은 잠김 |
 | 케이스 카드 | `#caseCard` `#caseThumb` `#caseName` `#caseKind` `#caseSub` `#caseBadges` `#caseBtn`(바꾸기) `#casePop` `#popCases .item[data-id]` `#popPatients` |
-| 계획 목록 | `#plans`(케이스에 계획이 있으면 보임) `#planCount` · `#planList .plan-row[data-plan]`(`.n` 계획 N · `.what` 전략·장수·개월 · `.pill.fail/pass/ok/warn` 위반 n건/통과/승인됨/이전 스캔 기준 · 보는 계획은 `.current` + `.viewing`, 나머지는 `button[data-act=view]` 보기) · `#oldPlans`(접힌 지난 계획, `#oldPlansN` `#oldPlanList`) · `#planReview`(details) `#reviewLine` `#reviewMemo` `#reviewBtn`(검토 다시 요청) `#revokeBtn`(승인 취소) · 계획 id 는 카드 `title` 과 주소에만 |
+| 계획 목록 | `#plans`(케이스에 계획이 있거나 계획 생성이 실패했으면 보임) `#planCount` · `#planFail`(계획 0개 + 실패: `#planFailMsg` 서버 문구 그대로 · `#planFailCond .tag` 조건 · `#planFailRetry` 이 조건으로 다시 계산 — 규칙 기반) · `#planList .plan-row[data-plan]`(`.n` 계획 N · `.what` 전략·장수·개월 · `.pill.fail/pass/ok/warn` 위반 n건/통과/승인됨/이전 스캔 기준 · 보는 계획은 `.current` + `.viewing`, 나머지는 `button[data-act=view]` 보기) · `#oldPlans`(접힌 지난 계획, `#oldPlansN` `#oldPlanList`) · `#planReview`(details) `#reviewLine` `#reviewMemo` `#reviewBtn`(검토 다시 요청) `#revokeBtn`(승인 취소) · 계획 id 는 카드 `title` 과 주소에만 |
 | 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, 선택지에 `small` 힌트가 있으면 `.opts.stack`) · 「검토 질문」 블록 · `.decision [data-act=revert]`(새 안이 3D를 대체했다는 한 줄 + 되돌리기) · `.done`(내려받기 완료) · `#planNotice`(재계획 중·실패 한 줄, 입력창 위) · `#retryBar` `#resendBtn` `#retryFallback` |
 | 입력 | `#chips .chip[data-message]` · `#selChips` · `#chatForm` `#chatInput` `#sendBtn` |
 | 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#checkBar`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
@@ -407,10 +407,10 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | 단계 표 | `#stageFacts`(계획 N · 전략 · 총 장수 · 장당 mm · 총생→확보) `#stageNotes` · `#stageGrid .row[data-stage]`(현재 단계 `.cur`, 칸 `.c.move/vert/rot/mixed`, 위반 칸 `.coll/.warn`) · `.grid-legend` |
 | 규칙 | `#rulesFor` · `#ruleCards .rule`(충돌 · 장당 이동 한계 · 장수 상한 · 공간 부족, `.pill` 위반/통과/해당 없음) · `#violGroups .vg`(치아 쌍별 묶음, `.stages button[data-stage]` 로 단계 이동) |
 | 조건 | `#condFor` · `#condRx` `#condRxNote`(처방 원문) · `#constraints` `#cExtract` `#cLock` `#cExclude` `#cIpr` `#cCap` `#cOrder` · `#condState`(보고 있는 계획의 조건과 같음 / `.changed` 조건이 바뀜) · `#fallbackBtn`(이 조건으로 계산 — 규칙 기반) |
-| 입력 확인 | `body.checking` · `#checkBar` `#checkFacts` `#mirrorBtn` `#startPlan` `#otherScan` |
+| 입력 확인 | `body.checking` · `#checkBar`(막히면 `.fail`) `#checkTitle`(「계획할 수 없는 스캔입니다」·「방향을 정하지 못했습니다」, 그 밖엔 숨김) `#checkFacts`(`.warn` 방향 문구는 서버 `orientation.note` 그대로, 없으면 같은 문장) `#mirrorBtn` `#startPlan`(방향 불가면 「번호 확인 — 계획 시작」, 막힌 스캔이면 숨김) `#deleteScan` `#deleteScanPop` `#deleteScanGo` `#deleteScanCancel` `#otherScan` |
 | 내보내기 | `#exportBtn` `#exportWhy`(잠긴 이유) `#exportPop` `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
 | 단계 | `body.has-plan` · `.stage-bar` `#firstBtn` `#playBtn` `#stageMarks` `#stageSlider` `#lastBtn` `#stageLabel` |
-| 내 스캔 | `#caseGate` `#gateClose` `#screenPatients` `#patientForm` `#pAlias` `#pMemo` `#pScans` `#pScansName` `#patientCards` `#patientBody` `#scanList` `#dropZone` `#scanInput` `#uploadStatus` `#deletePatient` |
+| 내 스캔 | `#caseGate` `#gateClose` `#screenPatients` `#patientForm` `#pAlias` `#pMemo` `#pScans` `#pScansName` `#patientCards` `#patientBody` `#scanList` `#dropZone` `#scanInput` `#uploadStatus`(진행 한 줄 · 거절되면 `.upload-fail` 안 `.files` 「올린 파일 · N개」 `.why` 서버 문구 그대로 `[data-act=repick]` 다시 고르기) `#deletePatient` |
 | 기타 상태 | `body.focus3d`(3D 크게) `body.leaving`(카드 선택 전환) `body.resizing`(경계 끌기) · 주소 `#start` `#case=<id>` `#patients` `#patient=<id>` `#check=<case>` |
 
 브라우저 검증은 `tests/browser_flow.py`(가짜 모델, 자체 서버)에 단계를 더해 쓴다. 묶음마다 새 스크립트를 만들지 않는다.

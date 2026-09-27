@@ -45,6 +45,7 @@ const state = {
   newPlans: 0,           // plans added by the last refreshPlans: more than one means the turn compared strategies
   oldPlans: new Set(),   // plans that already existed when the case was opened: folded as 지난 계획 (#105, #111)
   tab: "stages",         // the open sidebar tab: stages | rules | cond (#111)
+  planError: null,       // the server's sentence when a case has no plan and the calculation failed (#112)
 };
 
 // ------------------------------------------------------------------ three.js
@@ -453,6 +454,28 @@ function fillConstraints(c) {
   $("cOrder").value = c.order;
   renderCondState();
 }
+// the form's conditions as short words: 비발치 · 고정 13번 · IPR 면당 0.25mm · 동시
+function condWords() {
+  const nums = (id) => $(id).value.split(/[,\s]+/).filter(Boolean);
+  const ext = nums("cExtract"), lock = nums("cLock"), excl = nums("cExclude"), parts = [];
+  parts.push(ext.length ? "발치 " + fdiList(ext) + "번" : "비발치");
+  if (lock.length) parts.push("고정 " + fdiList(lock) + "번");
+  if (excl.length) parts.push("IPR 제외 " + fdiList(excl) + "번");
+  parts.push("면당 " + ($("cIpr").value || "0") + " mm");
+  parts.push($("cCap").value ? "상한 " + $("cCap").value + "장" : "단계 상한 없음");
+  parts.push("이동 " + ($("cOrder").options[$("cOrder").selectedIndex]?.textContent ?? ""));
+  return parts;
+}
+// A case with no plan whose calculation failed (#112, 보드 07): the server's sentence as it came, the conditions it
+// was tried with, and one way out. Cleared by the next plan list that has rows.
+function renderPlanFail() {
+  const box = $("planFail"), msg = state.planError;
+  box.hidden = !msg;
+  if (!msg) return;
+  $("planFailMsg").textContent = msg;
+  $("planFailCond").replaceChildren(...condWords().map((t) => { const c = document.createElement("span"); c.className = "tag"; c.textContent = t; return c; }));
+  $("planFailRetry").disabled = state.streaming || state.loading;
+}
 // The 조건 tab's two lines: whose conditions the form holds, and whether it still matches the plan on screen (#111)
 function renderCondState() {
   const p = state.plan, n = planNo(p?.plan_id);
@@ -710,9 +733,19 @@ async function uploadScan(files) {
     state.patient = p;
     await openCheck(res.case_id, res.check);
   } catch (e) {
-    if (state.patient?.patient_id === pid) $("uploadStatus").textContent = "업로드 실패: " + e.message;
+    if (state.patient?.patient_id === pid) showUploadFail(files, e.message);
   }
 }
+// a 413 can come back without a JSON body (the proxy answers first): the same sentence the server would have sent
+const UPLOAD_TOO_BIG = "파일이 너무 큽니다(파일당 60MB, 한 번에 400MB까지).";
+function showUploadFail(files, message) {
+  const box = $("uploadStatus");
+  const names = [...files].map((f) => f.name), shown = names.slice(0, 3).join(", ") + (names.length > 3 ? " …" : "");
+  box.innerHTML = '<div class="upload-fail"><span class="files"></span><p class="why"></p><button class="btn ghost small" type="button" data-act="repick">다시 고르기</button></div>';
+  box.querySelector(".files").textContent = `올린 파일 · ${names.length}개 (${shown})`;
+  box.querySelector(".why").textContent = /^HTTP 413$/.test(message) ? UPLOAD_TOO_BIG : message;
+}
+$("uploadStatus").addEventListener("click", (e) => { if (e.target.closest("[data-act=repick]")) $("scanInput").click(); });
 
 async function openCheck(caseId, check) {
   const v = ++state.gateVersion;
@@ -756,7 +789,7 @@ async function openCheck(caseId, check) {
   if (check.outside.length) facts.push([`스캔에 없는 끝 치아 ${check.outside.join(", ")}번`]);
   if (Object.keys(rot).length) facts.push([`회전 보정 ${Object.keys(rot).join("·")}번 (주황)`]);
   if (Object.keys(vert).length) facts.push([`높이 보정 ${Object.keys(vert).join("·")}번 (파랑)`]);
-  if (o?.basis === "none") facts.push(["방향 근거 없음 — 교합면 방향 확인 필요", "warn"]);
+  if (o?.basis === "none") facts.push([o.note || `치아 ${check.n_teeth}개 — 방향을 정할 수 없어 입력 방향 그대로 둠`, "warn"]);
   if (o?.side === "reversed") facts.push(["치아 번호가 좌우 반대로 보임", "warn"]);
   if (check.confirmed) facts.push([`번호 확인됨 ${fmtDate(check.confirmed_at)}`]);
   for (const why of check.unsupported) facts.push([why, "bad"]);
@@ -773,6 +806,14 @@ async function openCheck(caseId, check) {
   $("checkBar").classList.toggle("fail", !check.ready);
   $("mirrorBtn").hidden = o?.side !== "reversed";
   $("startPlan").disabled = !check.ready;
+  // the state's title and its one way out: a blocked scan can only be deleted; an unoriented one is planned after
+  // the dentist has looked at the numbers (보드 09-a·b·c)
+  const title = !check.ready ? "계획할 수 없는 스캔입니다" : o?.basis === "none" ? "방향을 정하지 못했습니다" : "";
+  $("checkTitle").textContent = title; $("checkTitle").hidden = !title;
+  $("startPlan").hidden = !check.ready;
+  $("startPlan").textContent = o?.basis === "none" ? "번호 확인 — 계획 시작" : "이 스캔으로 계획";
+  $("deleteScan").hidden = check.ready || !(state.patient && /^P\d{4,}-S\d+$/.test(caseId));
+  $("deleteScanPop").hidden = true;
   $("caseName").textContent = (state.patient ? state.patient.alias + " · " : "") + sid + " · 입력 확인 중";
   // the card on the panel top is this scan's now, not the sample that was open before
   $("caseThumb").hidden = true; $("caseKind").hidden = true; $("caseSub").textContent = ""; $("caseSub").title = ""; $("caseBadges").replaceChildren();
@@ -969,6 +1010,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.oldPlans = new Set(before.plans.map((p) => p.plan_id));
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
+  state.planError = info.plan_error ?? null;   // the case opened but no plan could be made: the server's sentence
   await loadMesh(caseId);
   resetPlanPanel();
   fillConstraints(info.constraints);
@@ -1076,7 +1118,9 @@ function planPill(row) {
 // Plans that existed before the case was opened sit folded under 지난 계획 (#105).
 function renderPlanList() {
   const rows = Object.values(state.planRows), cur = state.plan?.plan_id;
-  $("plans").hidden = !rows.length;
+  if (rows.length) state.planError = null;
+  renderPlanFail();
+  $("plans").hidden = !rows.length && !state.planError;
   $("planCount").textContent = rows.length || "";
   const make = (row) => {
     const div = document.createElement("div");
@@ -1578,7 +1622,8 @@ async function send(text, constraints = null, { resend = false } = {}) {
     if (followup) askFollowup(caseId, followup);   // not awaited: the card arrives when the fast model answers
   } catch (e) {
     if (answer) setAnswer(bubble, answer); else bubble.remove();
-    $("planNotice").textContent = "재계획 실패 — 현재 3D는 이전 계획입니다.";
+    $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 현재 3D는 이전 계획입니다." : "";
+    if (!Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
     addMsg("error", overload
       ? overload.message + " 잠시 뒤 「다시 보내기」를 누르거나, 모델 없이 규칙 기반으로 계산할 수 있습니다."
       : "계획을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 모델 없이 규칙 기반으로 계산할 수 있습니다.");
@@ -1608,7 +1653,8 @@ async function runFallback() {
     if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
   } catch (e) {
     addMsg("error", "폴백 실패: " + e.message);
-    $("planNotice").textContent = "재계획 실패 — 이전 결과를 유지합니다.";
+    $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 이전 결과를 유지합니다." : "";
+    if (!Object.keys(state.planRows).length) { state.planError = e.message; renderPlanFail(); }
   } finally { setStreaming(false); updateActions(); }
 }
 
@@ -1729,6 +1775,20 @@ $("startPlan").addEventListener("click", async () => {
     if (state.checkCase === caseId) await activateCase(caseId);
   } catch (err) { alert("계획 시작 실패: " + err.message); $("startPlan").disabled = false; }
 });
+// 스캔 삭제 on the input check: one confirmation in place, then back to the patient's scans (#112)
+$("deleteScan").addEventListener("click", () => { $("deleteScanPop").hidden = !$("deleteScanPop").hidden; });
+$("deleteScanCancel").addEventListener("click", () => { $("deleteScanPop").hidden = true; });
+$("deleteScanGo").addEventListener("click", async () => {
+  const caseId = state.checkCase, [pid, sid] = (caseId ?? "").split("-");
+  $("deleteScanPop").hidden = true;
+  if (!pid || !sid) return;
+  try {
+    await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}`, { method: "DELETE" });
+    if (state.meshCase === caseId) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
+    state.checkCase = null;
+    await openPatient(pid);
+  } catch (err) { addMsg("error", "스캔 삭제 실패: " + err.message); }
+});
 $("mirrorBtn").addEventListener("click", async () => {
   const caseId = state.checkCase;
   const [pid, sid] = (caseId ?? "").split("-");
@@ -1828,6 +1888,7 @@ $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.ta
 $("playBtn").addEventListener("click", togglePlay);
 $("fallbackBtn").addEventListener("click", runFallback);
 $("retryFallback").addEventListener("click", () => { $("retryBar").hidden = true; runFallback(); });
+$("planFailRetry").addEventListener("click", () => { showTab("cond"); runFallback(); });
 $("exportBtn").addEventListener("click", () => {
   if (state.plan?.approval) { $("stlLink").click(); return; }
   $("exportPop").hidden = !$("exportPop").hidden;

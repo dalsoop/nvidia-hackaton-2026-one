@@ -27,6 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_patients import _scan_files   # noqa: E402  synthetic per-tooth scans, as the API tests use
 
 
+def document_has_plan(body_class: str) -> bool:
+    return "has-plan" in body_class.split()
+
+
 def write_scan(folder: Path, **kw) -> list[str]:
     """Synthetic scan files on disk for the file chooser: drop=(4,) leaves a gap, rename flips the numbering."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -273,9 +277,36 @@ async def main():
             await page.wait_for_function("!document.querySelector('#checkBar').hidden && document.querySelector('#checkFacts .bad')", timeout=120000)
             facts = await page.locator("#checkFacts").inner_text()
             assert "결손" in facts and "4" in facts, facts
-            assert await page.locator("#startPlan").is_disabled()
+            assert await page.locator("#startPlan").is_hidden()      # a blocked scan cannot start a plan (#112)
             assert await page.locator("#checkBar").evaluate("e => e.classList.contains('fail')")
+            assert await page.locator("#checkTitle").inner_text() == "계획할 수 없는 스캔입니다"
+            assert await page.locator("#deleteScan").is_visible()
             await page.screenshot(path=str(OUT / "check-unsupported.png"))
+            # 스캔 삭제 asks once in place, then the patient's scan list comes back without it
+            await page.locator("#deleteScan").click()
+            await page.wait_for_selector("#deleteScanPop:not([hidden])")
+            await page.locator("#deleteScanGo").click()
+            await page.wait_for_function("!document.querySelector('#caseGate').hidden && document.querySelector('#checkBar').hidden", timeout=60000)
+            assert await page.locator("#scanList .scan-row").count() == 0
+            # an upload the server refuses (#112, 보드 08): lower-arch numbers → 400 with the reason; the card shows the
+            # files, the sentence as it came, and 다시 고르기
+            lower = write_scan(OUT / "scans" / "lower", rename=lambda u: u + 16)
+            await page.set_input_files("#scanInput", lower)
+            await page.wait_for_selector("#uploadStatus .upload-fail", timeout=60000)
+            why = await page.locator("#uploadStatus .upload-fail .why").inner_text()
+            assert "하악" in why and "상악 스캔만" in why, why
+            assert "올린 파일" in await page.locator("#uploadStatus .upload-fail .files").inner_text()
+            assert await page.locator('#uploadStatus [data-act="repick"]').is_visible()
+            await page.screenshot(path=str(OUT / "upload-rejected.png"))
+            # a scan whose orientation cannot be decided (#104, 보드 09-c): closed synthetic crowns, no gum → basis none,
+            # yet plannable; the title says so and the button asks to confirm the numbers first
+            unoriented = write_scan(OUT / "scans" / "unoriented")
+            await page.set_input_files("#scanInput", unoriented)
+            await page.wait_for_function("!document.querySelector('#checkBar').hidden && !document.querySelector('#checkTitle').hidden", timeout=120000)
+            assert await page.locator("#checkTitle").inner_text() == "방향을 정하지 못했습니다"
+            assert "방향을 정할 수 없어 입력 방향 그대로 둠" in await page.locator("#checkFacts").inner_text()
+            assert await page.locator("#startPlan").is_enabled() and await page.locator("#startPlan").inner_text() == "번호 확인 — 계획 시작"
+            await page.screenshot(path=str(OUT / "check-unoriented.png"))
             await page.set_input_files("#scanInput", flipped)   # a second scan for the same patient
             await page.wait_for_function("document.querySelector('#checkFacts').textContent.includes('좌우 반대') && !document.querySelector('#mirrorBtn').hidden", timeout=120000)
             await page.screenshot(path=str(OUT / "check-reversed.png"))
@@ -285,10 +316,36 @@ async def main():
             assert "좌우 반대" not in facts and "문제 없음" in facts, facts
             pid = await page.evaluate("window.__cualign.state.patient.patient_id")
             await page.evaluate("(pid) => fetch('/api/patients/' + pid, { method: 'DELETE' }).then((r) => r.ok)", pid)   # reruns start empty
+
+            # A case that opens with no plan because the calculation failed (#112, 보드 07). The server contract for
+            # this state is not there yet, so the responses are shaped here: /activate carries plan_error, the plan
+            # list is empty. The card shows the sentence, the conditions, and 이 조건으로 다시 계산 brings a plan.
+            async def no_plan_activate(route):
+                r = await route.fetch(); body = await r.json(); body["plan_error"] = "규칙 계산 실패 (가짜): 접촉 폭을 맞출 수 없습니다."
+                await route.fulfill(json=body)
+            async def empty_plans(route):
+                await route.fulfill(json={"plans": []})
+            await page.route("**/api/cases/poseidon-000131/activate", no_plan_activate)
+            await page.route("**/api/plans?case_id=poseidon-000131", empty_plans)
+            await page.locator("#homeBtn").click()
+            await page.wait_for_function("document.body.classList.contains('start')")
+            await page.locator('#clRows .case-row[data-id="poseidon-000131"]').click()
+            await page.locator("#dOpen").click()
+            await page.wait_for_selector("#planFail:not([hidden])", timeout=60000)
+            assert "규칙 계산 실패 (가짜)" in await page.locator("#planFailMsg").inner_text()
+            assert await page.locator("#planFailCond .tag").count() >= 3
+            assert not document_has_plan(await page.evaluate("document.body.className"))
+            await page.screenshot(path=str(OUT / "plan-failed.png"))
+            await page.unroute("**/api/plans?case_id=poseidon-000131")
+            await page.locator("#planFailRetry").click()
+            await page.wait_for_function("document.querySelector('#planFail').hidden && document.body.classList.contains('has-plan')", timeout=120000)
+            assert await page.locator("#planList .plan-row").count() >= 1
+            await page.unroute("**/api/cases/poseidon-000131/activate")
             assert not errors, errors
             print("PASS: browser rule-based plan, export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "
-                  "my scan: unsupported gap and reversed numbering → mirror")
+                  "my scan: unsupported gap → 스캔 삭제, rejected upload card, unoriented scan, reversed numbering → mirror, "
+                  "no-plan failure card → 이 조건으로 다시 계산")
             await browser.close()
             browser = None
     finally:
