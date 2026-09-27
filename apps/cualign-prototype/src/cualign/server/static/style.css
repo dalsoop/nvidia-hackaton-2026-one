@@ -185,7 +185,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
-.view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
+.view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none; }
 .view-head .view-btns { display: flex; gap: 4px; pointer-events: auto; }
 /* floating toolbar over the 3D (#90): views | tools | decision, one place like a CAD viewport */
 .view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; }
