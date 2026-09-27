@@ -101,7 +101,7 @@ async def main():
                 args=["--enable-unsafe-swiftshader", "--use-angle=swiftshader"])
             page = await browser.new_page(viewport={"width":1500,"height":1000})
             errors = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.on("pageerror", lambda error: (errors.append(str(error)), print("PAGEERROR:", error, file=sys.stderr)))   # visible when a step times out
             page.on("dialog", lambda dialog: dialog.accept())
             # ?case=<id> is the documented dev/test hook; "moderate" is a synthetic preset with no start-screen
             # card (#90 — the start screen only offers Poseidon3D samples), so it opens the workspace deterministically.
@@ -258,8 +258,10 @@ async def main():
             # plan (#92), never the previous case's plan.
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
-            await page.locator('#clRows .case-row[data-id="poseidon-000097"]').click()      # row → detail panel
+            await page.locator('#sampleCards .case-card[data-id="poseidon-000097"]').click()      # card → detail under it
             assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14
+            assert await page.locator('#sampleCards > #clDetail.in-cards').count() == 1      # under the card row
+            assert await page.locator("#intro").is_visible()   # the intro panel is back on the left (③)
             await page.locator("#dOpen").click()
             await page.wait_for_function(f"(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && {plan_on_screen} !== p", arg=child)
             assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
@@ -329,7 +331,7 @@ async def main():
             await page.route("**/api/plans?case_id=poseidon-000131", empty_plans)
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
-            await page.locator('#clRows .case-row[data-id="poseidon-000131"]').click()
+            await page.locator('#sampleCards .case-card[data-id="poseidon-000131"]').click()
             await page.locator("#dOpen").click()
             await page.wait_for_selector("#planFail:not([hidden])", timeout=60000)
             assert "규칙 계산 실패 (가짜)" in await page.locator("#planFailMsg").inner_text()

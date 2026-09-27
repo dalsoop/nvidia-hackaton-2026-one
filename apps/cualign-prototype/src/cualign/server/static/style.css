@@ -351,19 +351,10 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .rail button:disabled { color: var(--faint); cursor: not-allowed; background: none; }
 .rail button:not(:disabled) small { display: none; }
 /* ---- case list (v2 보드 02) */
-.cl { min-height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
-.cl.has-detail { grid-template-columns: 240px minmax(0, 1fr) 400px; }
-.cl-filters { padding: 20px 16px; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 20px; }
-.cl-filters h2 { margin: 0; font-size: 18px; }
-.cl-group { display: flex; flex-direction: column; gap: 2px; }
-.cl-label { font-size: 11px; font-weight: 700; color: var(--muted); padding: 0 8px 6px; }
-.cl-filter { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 8px; font: inherit; font-size: 13px; color: var(--text); background: none; border: 0; border-radius: var(--radius); cursor: pointer; text-align: left; }
-.cl-filter:hover { background: var(--hover); }
-.cl-filter.on { background: var(--hover); font-weight: 700; }
-.cl-filter .n { color: var(--faint); font-variant-numeric: tabular-nums; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; background: var(--text); vertical-align: middle; }
 .dot.amber { background: var(--amber); } .dot.faint { background: var(--faint); } .dot.red { background: var(--red); } .dot.green { background: var(--green); }
-.cl-main { padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.start-body { max-width: 1100px; padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.start-sub { margin: 12px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); }
 .cl-head { display: flex; align-items: center; gap: 12px; }
 .cl-head h1 { margin: 0; font-size: 22px; flex: 1; }
 .cl-head .count { font-size: 14px; font-weight: 400; color: var(--faint); margin-left: 6px; }
@@ -378,7 +369,15 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .case-row .c-case small { color: var(--faint); font-size: 12px; }
 .case-row .c-rx { color: var(--muted); font-size: 12px; word-break: keep-all; }
 .case-row .c-viol.bad { color: var(--red-text); }
-.cl-detail { padding: 20px; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+/* the detail sits under the pressed card (full grid width) or row */
+.cl-detail { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; }
+.cl-detail[hidden] { display: none; }
+.cl-detail.in-cards { grid-column: 1 / -1; }
+#clRows .cl-detail { margin: 8px 12px 12px; }
+.cl-dbody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 4px 24px; align-items: start; }
+.cl-dbody > div { display: flex; flex-direction: column; gap: 8px; }
+#dArch { width: 100%; max-width: 300px; }
+@media (max-width: 1200px) { .cl-dbody { grid-template-columns: 1fr; } }
 .cl-dhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 16px; }
 .cl-detail .muted { color: var(--muted); font-size: 12px; }
 .cl-detail p { margin: 0; font-size: 13px; }
@@ -416,8 +415,8 @@ body.start .intro { flex: 1; }
 body.start .composer textarea, body.start .composer button { opacity: 0.5; pointer-events: none; }   /* the panel is a chat; input waits for a case */
 body.start .chips { display: none; }
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
-body.start .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0; }
-body.start .chat, body.start .splitter { display: none; }
+body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0; }
+body.start .splitter { pointer-events: none; }
 
 /* ---------- plans (#111): cards on the agent panel top, one per plan of this case ---------- */
 .plans { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
@@ -515,9 +514,9 @@ body.start .chat, body.start .splitter { display: none; }
 .vg.warn .stages button { color: var(--amber-text); border-color: var(--amber); }
 .vg .stages button.cur { background: var(--green); color: #000; border-color: var(--green); }
 /* conditions: the prescription, the form, whether it still matches the plan on screen, and the run button */
-.rx { padding: 0 20px 16px; }
-.rx p { margin: 0; font-size: 14px; line-height: 1.6; }
-.rx p:empty { display: none; }
+.pane .rx { padding: 0 20px 16px; }
+.pane .rx p { margin: 0; font-size: 14px; line-height: 1.6; }
+.pane .rx p:empty { display: none; }
 .constraints label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .constraints label:nth-child(-n+3) { grid-column: 1 / -1; }
 .cond-state { margin: 0; padding: 0 20px; font-size: 12px; color: var(--pass-text); }
@@ -556,3 +555,18 @@ body.start .chat, body.start .splitter { display: none; }
 [aria-pressed] .ic-on, [aria-pressed="true"] .ic-off { display: none; }
 [aria-pressed="true"] .ic-on { display: inline-block; }
 #playBtn { width: 36px; padding: 0; height: 32px; }
+
+/* ---------- start screen sample cards (③, 2026-09-28): thumbnail, title, plain finding, badges, status dot ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.sample-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 16px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; }
+.case-card::before { content: ""; position: absolute; top: 0; left: 0; width: 10px; height: 10px; background: var(--green); }  /* corner-square */
+.case-card:hover { border-color: var(--line-strong); }
+.case-card.on { border-color: var(--green); }
+.case-card .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
+.case-card .cid { font-weight: 700; font-size: 16px; }
+.case-card .rx { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: keep-all; }
+.case-card .st { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.case-card > span:empty { display: none; }
+.cards .empty, #clRows .empty { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 13px; }
+.case-card { transition: border-color 0.15s ease; }

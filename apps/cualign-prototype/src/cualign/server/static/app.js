@@ -36,7 +36,7 @@ const state = {
   trace: null,           // inline tool-call trace for the turn in progress
   labels: [],            // CSS2DObject IPR labels
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
-  caseList: [], clFilter: { status: "all", kind: "all" }, clSelected: null,   // 케이스 목록 (#109)
+  caseList: [], clSelected: null,   // 케이스 목록 (#109): 샘플 카드 + 가명 환자 표, 선택한 것 아래 상세 (③-b)
   checkCase: null,       // case id shown on the input-check screen
   checkRevision: null,   // scan revision shown there; the confirmation names it
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
@@ -869,29 +869,39 @@ async function loadCaseList() {
   renderCaseList();
 }
 function renderCaseList() {
-  const rows = state.caseList ?? [], f = state.clFilter;
-  const filterBtn = (key, label, dot, n, on) => {
+  const rows = state.caseList ?? [];
+  const samples = rows.filter((c) => c.kind === "sample"), patients = rows.filter((c) => c.kind !== "sample");
+  // the detail is one element that lives under the pressed card or row: take it out before the containers are rebuilt
+  const detail = $("clDetail");
+  document.querySelector(".start-body").append(detail);
+  $("clCount").textContent = rows.length || "";
+  const statusOf = (c) => CASE_STATUS[c.status] ?? [c.status_ko ?? c.status, "faint"];
+  // sample cards (#46 → ③): occlusal thumbnail, title, plain-words finding, badges, status dot
+  const cards = $("sampleCards");
+  cards.innerHTML = "";
+  for (const c of samples) {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "cl-filter" + (on ? " on" : ""); b.dataset.key = key;
-    b.innerHTML = '<span><i class="dot"></i></span><span class="n"></span>';
-    if (dot) b.querySelector(".dot").classList.add(dot); else if (dot === null) b.querySelector(".dot").remove();
-    b.querySelector("span").append(label); b.querySelector(".n").textContent = n;
-    return b;
-  };
-  $("clStatus").replaceChildren(filterBtn("all", "전체", "", rows.length, f.status === "all"),
-    ...Object.entries(CASE_STATUS).map(([k, [label, dot]]) => filterBtn(k, label, dot, rows.filter((c) => c.status === k).length, f.status === k)));
-  $("clKind").replaceChildren(filterBtn("all", "전체", null, rows.length, f.kind === "all"),
-    ...Object.entries(CASE_KIND).map(([k, label]) => filterBtn(k, label, null, rows.filter((c) => c.kind === k).length, f.kind === k)));
-  const shown = rows.filter((c) => (f.status === "all" || c.status === f.status) && (f.kind === "all" || c.kind === f.kind));
-  $("clCount").textContent = shown.length;
+    b.type = "button"; b.className = "case-card" + (c.case_id === state.clSelected ? " on" : ""); b.dataset.id = c.case_id;
+    b.innerHTML = '<img class="thumb" alt=""><span class="cid"></span><span class="rx"></span><span class="badges"></span><span class="st"><i class="dot"></i><span></span></span>';
+    b.querySelector("img").src = `samples/${encodeURIComponent(c.case_id)}.png`; b.querySelector("img").alt = `${c.title} 교합면`;
+    b.querySelector(".cid").textContent = c.title;
+    b.querySelector(".rx").textContent = c.subtitle ?? "";
+    b.querySelector(".badges").replaceChildren(...badgeTags(c.badges));
+    const [label, dot] = statusOf(c);
+    b.querySelector(".st .dot").classList.add(dot); b.querySelector(".st span").textContent = label + (c.n_plans ? ` · 계획 ${c.n_plans}개` : "");
+    b.title = c.prescription ? "처방 · " + c.prescription : "";
+    cards.appendChild(b);
+  }
+  if (!samples.length) cards.innerHTML = '<p class="empty">샘플 파일이 설치되지 않았습니다.</p>';
+  // patient rows: one per scan, the same columns as v2 보드 02
   const box = $("clRows");
   box.innerHTML = "";
-  for (const c of shown) {
+  for (const c of patients) {
     const r = document.createElement("button");
     r.type = "button"; r.className = "cl-row case-row" + (c.case_id === state.clSelected ? " on" : ""); r.dataset.id = c.case_id;
     r.innerHTML = '<span class="c-case"><b></b><small></small></span><span class="c-st"><i class="dot"></i><span></span></span>' +
                   '<span class="c-plan"></span><span class="c-viol"></span><span class="c-n"></span><span class="c-rx"></span>';
-    const [label, dot] = CASE_STATUS[c.status] ?? [c.status_ko ?? c.status, "faint"];
+    const [label, dot] = statusOf(c);
     r.querySelector(".c-case b").textContent = c.title;
     r.querySelector(".c-case small").textContent = c.subtitle ?? "";
     r.querySelector(".c-st .dot").classList.add(dot); r.querySelector(".c-st span").textContent = label;
@@ -902,11 +912,19 @@ function renderCaseList() {
     r.querySelector(".c-rx").textContent = c.prescription || "조건 · 기본값";
     box.appendChild(r);
   }
-  if (!shown.length) box.innerHTML = '<p class="empty">이 조건에 맞는 케이스가 없습니다.</p>';
+  if (!patients.length) box.innerHTML = '<p class="empty">등록된 가명 환자가 없습니다. 「새 환자」로 스캔을 올리세요.</p>';
+  // the detail opens right under what was pressed: one element, moved
   const sel = rows.find((c) => c.case_id === state.clSelected) ?? null;
-  $("clDetail").hidden = !sel; document.querySelector(".cl").classList.toggle("has-detail", !!sel);
-  if (sel) renderCaseDetail(sel);
+  detail.hidden = !sel;
+  if (sel) {
+    // a sample: after the card row (the three cards stay on one line, the detail spans under them); a patient: after its row
+    const anchor = sel.kind === "sample" ? $("sampleCards").lastElementChild : document.querySelector(`#clRows .case-row[data-id="${CSS.escape(sel.case_id)}"]`);
+    anchor?.after(detail);
+    detail.classList.toggle("in-cards", sel.kind === "sample");
+    renderCaseDetail(sel);
+  }
 }
+
 function renderCaseDetail(c) {
   $("dTitle").textContent = c.title; $("dSub").textContent = c.subtitle ?? "";
   const cons = state.cases.find((x) => x.case_id === c.case_id)?.constraints ?? null;
@@ -1700,21 +1718,18 @@ $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
 });
-$("clRows").addEventListener("click", (e) => {
-  const row = e.target.closest(".case-row");
-  if (!row) return;
-  state.clSelected = row.dataset.id;
-  renderCaseList();
-});
-$("clRows").addEventListener("dblclick", (e) => { const row = e.target.closest(".case-row"); if (row) openFromList(state.caseList.find((c) => c.case_id === row.dataset.id)); });
+// a card or a row: one press opens its detail underneath (press again to fold), a double press opens the case
+for (const id of ["sampleCards", "clRows"]) {
+  $(id).addEventListener("click", (e) => {
+    const el = e.target.closest(".case-card, .case-row");
+    if (!el || e.target.closest("#clDetail")) return;
+    state.clSelected = state.clSelected === el.dataset.id ? null : el.dataset.id;
+    renderCaseList();
+  });
+  $(id).addEventListener("dblclick", (e) => { const el = e.target.closest(".case-card, .case-row"); if (el) openFromList(state.caseList.find((c) => c.case_id === el.dataset.id)); });
+}
 $("dOpen").addEventListener("click", () => openFromList(state.caseList.find((c) => c.case_id === state.clSelected)));
 $("dClose").addEventListener("click", () => { state.clSelected = null; renderCaseList(); });
-for (const id of ["clStatus", "clKind"]) $(id).addEventListener("click", (e) => {
-  const b = e.target.closest(".cl-filter");
-  if (!b) return;
-  state.clFilter[id === "clStatus" ? "status" : "kind"] = b.dataset.key;
-  renderCaseList();
-});
 $("rail").addEventListener("click", async (e) => {
   const go = e.target.closest("button")?.dataset.go;
   if (!go || state.streaming || state.loading) return;
@@ -1860,7 +1875,7 @@ $("popCases").addEventListener("click", (e) => {
 });
 $("popPatients").addEventListener("click", () => { $("casePop").hidden = true; loadPatients().then(() => showScreen("patients")).catch((err) => addMsg("error", err.message)); });
 document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".case-head")) $("casePop").hidden = true; });
-$("introPick").addEventListener("click", () => $("clRows").querySelector(".case-row")?.focus());
+$("introPick").addEventListener("click", () => $("sampleCards").querySelector(".case-card")?.focus());
 $("gateClose").addEventListener("click", async () => {
   // no case open yet: the start state (the sample cards) is where the modal came from
   if (!state.activeCase) { showStart().catch((err) => addMsg("error", err.message)); return; }

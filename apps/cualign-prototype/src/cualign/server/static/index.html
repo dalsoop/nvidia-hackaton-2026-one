@@ -152,33 +152,38 @@
         <canvas id="viewCanvas"></canvas>
         <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
         <!-- 시작 상태 = 케이스 목록 (v2 설계 보드 02): 필터 · 표 · 오른쪽 상세. 상태는 서버가 계산한다 (/api/case-list) -->
+        <!-- 시작 상태 (결정 ③-b, 2026-09-28): 왼쪽 소개 패널 + 위 샘플 카드 3장 + 아래 가명 환자 표. 필터 없음.
+             상세는 누른 카드/행 바로 아래 펼친다(#clDetail 하나를 옮겨 붙임) · 더블클릭은 바로 열기 -->
         <div id="screenStart" class="start-pane">
-          <div class="cl">
-            <aside class="cl-filters">
-              <h2>필터</h2>
-              <div class="cl-group"><div class="cl-label">상태</div><div id="clStatus"></div></div>
-              <div class="cl-group"><div class="cl-label">종류</div><div id="clKind"></div></div>
-            </aside>
-            <section class="cl-main">
-              <div class="cl-head"><h1>케이스 <span id="clCount" class="count"></span></h1>
-                <button id="toPatients" class="btn ghost small" type="button"><svg class="ic" aria-hidden="true"><use href="#i-user-plus"></use></svg>새 환자</button></div>
-              <div class="cl-table">
-                <div class="cl-row cl-thead"><span>케이스</span><span>상태</span><span>대표 계획</span><span>위반</span><span>계획</span><span>처방</span></div>
-                <div id="clRows"></div>
-              </div>
-              <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
-            </section>
+          <div class="start-body">
+            <div class="cl-head"><h1>케이스 <span id="clCount" class="count"></span></h1>
+              <button id="toPatients" class="btn ghost small" type="button"><svg class="ic" aria-hidden="true"><use href="#i-user-plus"></use></svg>새 환자</button></div>
+            <h2 class="start-sub">샘플 케이스</h2>
+            <div id="sampleCards" class="cards sample-cards"></div>
+            <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
+            <h2 class="start-sub">가명 환자</h2>
+            <div class="cl-table">
+              <div class="cl-row cl-thead"><span>케이스</span><span>상태</span><span>대표 계획</span><span>위반</span><span>계획</span><span>처방</span></div>
+              <div id="clRows"></div>
+            </div>
+            <!-- 상세: renderCaseList 가 선택한 카드/행 뒤로 옮긴다 -->
             <aside id="clDetail" class="cl-detail" hidden>
               <div class="cl-dhead"><b id="dTitle"></b><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button></div>
               <div id="dSub" class="muted"></div>
-              <div class="cl-label">치아 정보 · 상악 · FDI</div>
-              <svg id="dArch" viewBox="0 0 320 150" role="img" aria-label="치아 배열"></svg>
-              <div class="cl-label">스캔 확인</div>
-              <div id="dFacts" class="cl-facts"></div>
-              <div class="cl-label">처방</div>
-              <p id="dRx"></p>
-              <div id="dChips" class="badges"></div>
-              <button id="dOpen" class="btn primary" type="button">작업대 열기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+              <div class="cl-dbody">
+                <div>
+                  <div class="cl-label">치아 정보 · 상악 · FDI</div>
+                  <svg id="dArch" viewBox="0 0 320 150" role="img" aria-label="치아 배열"></svg>
+                </div>
+                <div>
+                  <div class="cl-label">스캔 확인</div>
+                  <div id="dFacts" class="cl-facts"></div>
+                  <div class="cl-label">처방</div>
+                  <p id="dRx"></p>
+                  <div id="dChips" class="badges"></div>
+                  <button id="dOpen" class="btn primary" type="button">작업대 열기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+                </div>
+              </div>
             </aside>
           </div>
         </div>
