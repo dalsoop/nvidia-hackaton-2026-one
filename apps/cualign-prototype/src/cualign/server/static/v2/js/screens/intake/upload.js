@@ -204,7 +204,18 @@ export function formatBytes(bytes) {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function getErrorDetails(code) {
+export function resolveErrorCode(code, message) {
+  if (code && code !== UPLOAD_ERROR_CODES.SERVER_ERROR) return code;
+  if (!message) return UPLOAD_ERROR_CODES.SERVER_ERROR;
+  if (message.includes('하악') || message.includes('Universal 17')) return UPLOAD_ERROR_CODES.LOWER_ARCH;
+  if (message.includes('같은 번호') || message.includes('중복')) return UPLOAD_ERROR_CODES.DUPLICATE_TOOTH;
+  if (message.includes('너무 큽니다') || message.includes('한 번에') || message.includes('413')) return UPLOAD_ERROR_CODES.SIZE_EXCEEDED;
+  if (message.includes('한 덩어리 악궁 스캔')) return UPLOAD_ERROR_CODES.MONOLITHIC_SCAN;
+  if (message.includes('치아별 STL') || message.includes('잇몸 파일만으로')) return UPLOAD_ERROR_CODES.NO_TEETH;
+  return UPLOAD_ERROR_CODES.SERVER_ERROR;
+}
+
+export function getErrorDetails(code) {
   switch (code) {
     case UPLOAD_ERROR_CODES.LOWER_ARCH:
       return {
@@ -358,16 +369,21 @@ export function renderUpload(container, {
 
     // If there is a validation error or server error, render UploadErrors view
     const errorMsg = serverError ? serverError.message : (currentValidation && !currentValidation.valid ? currentValidation.error : null);
-    const errorCode = serverError ? UPLOAD_ERROR_CODES.SERVER_ERROR : (currentValidation && !currentValidation.valid ? currentValidation.code : null);
+    const rawCode = serverError ? UPLOAD_ERROR_CODES.SERVER_ERROR : (currentValidation && !currentValidation.valid ? currentValidation.code : null);
+    const errorCode = resolveErrorCode(rawCode, errorMsg);
 
     if (errorMsg) {
       const details = getErrorDetails(errorCode);
+      const offending = currentValidation?.offendingFiles || [];
       const errorCard = h('div', { class: 'upload-error-card', role: 'alert' },
         h('div', { class: 'upload-error-header' },
           h('span', { class: 'badge badge-violation upload-error-badge' }, details.badge),
           h('strong', { class: 'upload-error-title' }, details.title)
         ),
         h('div', { class: 'upload-error-message' }, errorMsg),
+        offending.length > 0 ? h('div', { class: 'upload-error-chips' },
+          ...offending.map((f) => h('span', { class: 'upload-error-file-chip' }, f))
+        ) : null,
         h('div', { class: 'upload-error-guide' }, details.guide)
       );
       statusContainerEl.appendChild(errorCard);
@@ -440,13 +456,14 @@ export function renderUpload(container, {
         onUploaded(res);
       }
 
-      // If upload succeeds and res contains case_id, navigate directly to #/check/<case_id>
-      if (res && res.case_id) {
+      // If upload succeeds and res contains check (or case_id), navigate directly to #/check/<case_id>
+      const caseId = res?.check?.case_id || res?.case_id;
+      if (caseId) {
         if (ctx.store) {
-          ctx.store.set({ caseId: res.case_id });
+          ctx.store.set({ caseId });
         }
         if (ctx.navigate) {
-          ctx.navigate(`#/check/${encodeURIComponent(res.case_id)}`);
+          ctx.navigate(`#/check/${encodeURIComponent(caseId)}`);
         }
       }
     } catch (err) {

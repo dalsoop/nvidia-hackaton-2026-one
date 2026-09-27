@@ -6,7 +6,10 @@ import {
   MAX_UPLOAD_BYTES,
   UPLOAD_ERROR_CODES,
   scanFileName,
-  validateScanFiles
+  validateScanFiles,
+  formatBytes,
+  resolveErrorCode,
+  getErrorDetails
 } from '../../src/cualign/server/static/v2/js/screens/intake/upload.js';
 
 test('Scan file name parser: Universal, gingiva, lower, and other files', () => {
@@ -157,4 +160,75 @@ test('Upload validation: 치아 파일 없음 및 빈 목록 거절', () => {
   const emptyRes = validateScanFiles([]);
   assert.equal(emptyRes.valid, false);
   assert.equal(emptyRes.code, UPLOAD_ERROR_CODES.EMPTY);
+
+  // Duplicate gingiva.stl
+  const dupGingiva = [
+    { name: '2.stl', size: 1024 },
+    { name: 'gingiva.stl', size: 1024 },
+    { name: 'gingiva.stl', size: 1024 }
+  ];
+  const resDupGingiva = validateScanFiles(dupGingiva);
+  assert.equal(resDupGingiva.valid, false);
+  assert.equal(resDupGingiva.code, UPLOAD_ERROR_CODES.DUPLICATE_TOOTH);
+  assert.match(resDupGingiva.error, /gingiva\.stl/);
+
+  // Unsorted teeth are sorted chronologically by tooth number
+  const unsorted = [
+    { name: '15.stl', size: 1024 },
+    { name: '2.stl', size: 1024 },
+    { name: '8.stl', size: 1024 }
+  ];
+  const resUnsorted = validateScanFiles(unsorted);
+  assert.equal(resUnsorted.valid, true);
+  assert.deepEqual(resUnsorted.teeth, [2, 8, 15]);
+});
+
+test('Upload constants and formatBytes helper', () => {
+  assert.equal(MAX_FILE_BYTES, 60 * 1024 * 1024);
+  assert.equal(MAX_UPLOAD_BYTES, 400 * 1024 * 1024);
+
+  assert.equal(formatBytes(0), '0 B');
+  assert.equal(formatBytes(1024), '1.0 KB');
+  assert.equal(formatBytes(50 * 1024 * 1024), '50.0 MB');
+});
+
+test('Upload error details and server error code resolution', () => {
+  // 1. Lower arch
+  const lowerDetails = getErrorDetails(UPLOAD_ERROR_CODES.LOWER_ARCH);
+  assert.equal(lowerDetails.badge, '하악 불가');
+  assert.equal(lowerDetails.title, '하악 치아 번호 감지');
+  assert.match(lowerDetails.guide, /상악\(Universal 1~16\) 스캔 계획만 지원/);
+
+  // 2. Duplicate tooth
+  const dupDetails = getErrorDetails(UPLOAD_ERROR_CODES.DUPLICATE_TOOTH);
+  assert.equal(dupDetails.badge, '중복 파일');
+  assert.equal(dupDetails.title, '중복 치아 번호 감지');
+
+  // 3. Size exceeded
+  const sizeDetails = getErrorDetails(UPLOAD_ERROR_CODES.SIZE_EXCEEDED);
+  assert.equal(sizeDetails.badge, '용량 초과');
+  assert.equal(sizeDetails.title, '파일 크기 한도 초과');
+
+  // 4. Monolithic scan
+  const monoDetails = getErrorDetails(UPLOAD_ERROR_CODES.MONOLITHIC_SCAN);
+  assert.equal(monoDetails.badge, '미분리 스캔');
+  assert.equal(monoDetails.title, '한 덩어리 악궁 스캔 감지');
+
+  // 5. No teeth
+  const noTeethDetails = getErrorDetails(UPLOAD_ERROR_CODES.NO_TEETH);
+  assert.equal(noTeethDetails.badge, '치아 없음');
+  assert.equal(noTeethDetails.title, '상악 치아 파일 누락');
+
+  // Server error fallback
+  const serverDetails = getErrorDetails(UPLOAD_ERROR_CODES.SERVER_ERROR);
+  assert.equal(serverDetails.badge, '서버 오류');
+  assert.equal(serverDetails.title, '스캔 올리기 실패');
+
+  // resolveErrorCode mapping from server error messages
+  assert.equal(resolveErrorCode(null, '18.stl: 하악(Universal 17~32) 번호입니다.'), UPLOAD_ERROR_CODES.LOWER_ARCH);
+  assert.equal(resolveErrorCode(null, '2.stl: 같은 번호의 파일이 두 개 있습니다.'), UPLOAD_ERROR_CODES.DUPLICATE_TOOTH);
+  assert.equal(resolveErrorCode(null, '파일이 너무 큽니다(파일당 60MB, 한 번에 400MB까지).'), UPLOAD_ERROR_CODES.SIZE_EXCEEDED);
+  assert.equal(resolveErrorCode(null, 'upper.stl: 한 덩어리 악궁 스캔으로 보입니다.'), UPLOAD_ERROR_CODES.MONOLITHIC_SCAN);
+  assert.equal(resolveErrorCode(null, '치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요.'), UPLOAD_ERROR_CODES.NO_TEETH);
+  assert.equal(resolveErrorCode(null, '네트워크 연결 실패'), UPLOAD_ERROR_CODES.SERVER_ERROR);
 });

@@ -218,7 +218,7 @@ export function mount(root, params, ctx) {
                 await loadCurrentPatient(nextPid);
               } else {
                 if (ctx.navigate) {
-                  ctx.navigate('#/patients');
+                  ctx.navigate('#/cases');
                 }
                 renderMainPanel();
               }
@@ -344,6 +344,9 @@ export function mount(root, params, ctx) {
             href: `#/check/${encodeURIComponent(caseId)}`,
             class: 'btn btn-ghost small intake-check-btn',
             onClick: (e) => {
+              if (ctx.store) {
+                ctx.store.set({ caseId });
+              }
               if (ctx.navigate) {
                 e.preventDefault();
                 ctx.navigate(`#/check/${encodeURIComponent(caseId)}`);
