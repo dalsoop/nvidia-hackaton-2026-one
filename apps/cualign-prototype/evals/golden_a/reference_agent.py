@@ -94,6 +94,7 @@ class Tools:
         self._fns: dict = {}
         cfg = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["functions"]["reviewer"]
         self._review_budget = {k: cfg[k] for k in ("max_attempts", "timeout_seconds", "total_seconds")}
+        self._review_budget["instructions"] = cfg.get("instructions", "")
 
     def __enter__(self) -> "Tools":
         from cualign.agent import register

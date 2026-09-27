@@ -65,3 +65,11 @@ def test_preloaded_skill_is_the_installed_one():
     pre = ContextPreload.model_validate(_workflow()["function_groups"]["cualign"]["context_preload"])
     assert pre.case and pre.limits and pre.skill in S.installed()
     assert CuAlignToolConfig().context_preload == ContextPreload()   # absent block: nothing extra
+
+
+def test_planner_answer_restates_the_review_in_korean():
+    """#74: the answer's 검토 line copied the memo's field names and quoted it as «검토 메모:»."""
+    text = _workflow()["workflow"]["additional_instructions"]
+    assert "restate the memo's figures under their Korean names" in text
+    assert "If the memo contains field names, do not copy them" in text
+    assert 'Do not quote the memo or its summary as "검토 메모:"' in text

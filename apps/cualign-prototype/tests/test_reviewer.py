@@ -184,3 +184,58 @@ def test_reviewer_gets_what_each_number_means(tmp_path, monkeypatch):
     sent = json.loads(user["content"])
     assert sent["field_notes"] == FIELD_NOTES
     assert sent["plan"]["plan_id"] == pid and "stages" not in sent["plan"] and "approval" not in sent["plan"]
+
+
+def _workflow() -> dict:
+    import yaml
+    from pathlib import Path
+    return yaml.safe_load((Path(__file__).resolve().parents[1] / "configs" / "workflow.yml").read_text(encoding="utf-8"))
+
+
+def test_workflow_reviewer_instructions_are_the_system_prompt(tmp_path, monkeypatch):
+    """#74: the memo named numbers by field (per_stage_mm …) and the planner copied it into the answer."""
+    from cualign.agent.reviewer import BoundedReviewerConfig, REVIEW_INSTRUCTIONS
+    cfg = BoundedReviewerConfig.model_validate({k: v for k, v in _workflow()["functions"]["reviewer"].items() if k != "_type"})
+    assert "never by the field" in cfg.instructions and "앞니 먼저" in cfg.instructions
+    # Every number the reviewer is told about has a Korean name; a live memo called needed_mm (95.8 mm) 총생.
+    from cualign.agent.reviewer import FIELD_NOTES
+    for field in (*FIELD_NOTES, "shape_room_mm"):
+        assert f"{field} " in cfg.instructions, field
+    assert "needed_mm 치아 폭 합" in cfg.instructions and "crowding_mm 총생" in cfg.instructions
+    assert BoundedReviewerConfig(llm_name="nim_review").instructions == ""  # no config: the built-in prompt
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    s = store_module.Store()
+    svc = PlanningService(s)
+    class Capture:
+        messages = None
+        async def ainvoke(self, messages):
+            Capture.messages = messages
+            return SimpleNamespace(content="검토 메모 초안")
+    for instructions, system in ((cfg.instructions, cfg.instructions.strip()), ("", REVIEW_INSTRUCTIONS)):
+        pid = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+        assert asyncio.run(review_plan(pid, Capture(), store=s, manual=True, instructions=instructions))["status"] == "passed"
+        assert Capture.messages[0] == {"role": "system", "content": system}
+
+
+def test_review_model_does_not_think():
+    """#74: a reasoning cut off at max_tokens came back as content and was stored as the memo."""
+    llms = _workflow()["llms"]
+    assert _workflow()["functions"]["reviewer"]["llm_name"] == "nim_review"
+    assert llms["nim_review"]["chat_template_kwargs"]["enable_thinking"] is False
+
+
+def test_truncated_reply_is_not_stored_as_memo(tmp_path, monkeypatch):
+    monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
+    s = store_module.Store()
+    svc = PlanningService(s)
+    pid = svc.stages(svc.target("moderate", "expansion_ipr", Constraints()))
+    class CutOff:
+        calls = 0
+        async def ainvoke(self, messages):
+            self.calls += 1
+            return SimpleNamespace(content="We need to produce a short Korean review memo: ...",
+                                   response_metadata={"finish_reason": "length"})
+    llm = CutOff()
+    result = asyncio.run(review_plan(pid, llm, store=s, manual=True))
+    assert result["status"] == "failed" and result["error"] == "invalid_response" and llm.calls == 2
+    assert "We need" not in result["message"]

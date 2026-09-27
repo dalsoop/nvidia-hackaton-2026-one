@@ -33,6 +33,22 @@ functions:
     timeout_seconds: 20
     total_seconds: 40
     description: "선택한 plan_id의 검토 메모. 최대 2회/40초, 실패 상태를 반환하며 재호출은 저장된 결과를 반환."
+    # The review model's system prompt (reviewer.py REVIEW_INSTRUCTIONS when empty). The dentist reads the memo and the
+    # planner copies it into the answer, so numbers go by their Korean meaning, never by field name (#74).
+    instructions: |
+      You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: strategy, rule
+      violations, locked teeth and IPR exclusions, and questions for the dentist. Each number means what field_notes
+      says: never call a total movement a per-aligner value or a tooth-width sum a space shortage.
+      Name every number by the Korean name of its field, never by the field: n_stages 단계 수; months 기간;
+      per_stage_mm 단계당 최대 이동량; max_move_mm 한 치아의 최대 총 이동량; mean_move_mm 평균 총 이동량;
+      stages_per_group 이동 묶음별 단계 수; crowding_mm 총생; needed_mm 치아 폭 합; space_gain_mm 확보 공간;
+      space_deficit_mm 공간 부족; expansion_mm_per_side 한쪽 악궁 확장량; ipr_mm_per_surface IPR 면당;
+      shape_room_mm 치관 모양 여유. 총생 is crowding_mm only: needed_mm is a tooth-width sum, never 총생.
+      Never write the field names on the left, the word field_notes, strategy codes (expansion, ipr, expansion_ipr,
+      extraction; write 확장, IPR, 확장 + IPR, 발치) or order codes (simultaneous, anterior_first, sequential; write 동시,
+      앞니 먼저, 순차). Write only the memo, not your reasoning.
+      Do not call tools, diagnose or prescribe. Rule validation is not clinical approval.
+      End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다.
 
 llms:
   nim_super:
@@ -47,6 +63,9 @@ llms:
     temperature: 0.0
     max_tokens: 1024
     num_retries: 1  # NAT attempts, including the first. Outer reviewer owns retries.
+    # The memo restates computed numbers. With thinking on, a cut-off reasoning came back as the memo (#74).
+    chat_template_kwargs:
+      enable_thinking: false
   nim_lightning:
     _type: nim
     model_name: nvidia/nemotron-3.5-lightning-30b-a3b
@@ -131,6 +150,9 @@ workflow:
     없습니다." or, for a failed plan, "규칙 위반: 공간 부족 1건". Then short bullets:
     "- 조건: 발치 허용 아니요 · 고정 치아 13, 14번 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 52단계(약 12개월) ·
     이동 순서 앞니 먼저", "- 검토: 통과, with the memo's key figures" (or 검토 실패 and why), "- 의사 확인 필요: ...".
+    Review line: restate the memo's figures under their Korean names (단계당 최대 이동량, 공간 부족, 한쪽 악궁 확장량, IPR
+    면당); 총생 is the case's crowding, never the tooth-width sum (치아 폭 합).
+    If the memo contains field names, do not copy them. Do not quote the memo or its summary as "검토 메모:".
     Condition labels: 발치 허용 예/아니요; 고정 치아 N번/없음; IPR 제외 치아 N번/없음; IPR 한도 면당 Xmm; 단계 상한
     N단계(약 M개월)/없음; 이동 순서 동시/앞니 먼저/순차. Strategies: 확장, IPR, 확장 + IPR, 발치. Violations: 공간 부족,
     충돌, 이동량 초과, 회전량 초과, 단계 상한 초과, 고정 치아 이동, IPR 한도 초과, IPR 제외 치아 사용, 허용되지 않은 발치.

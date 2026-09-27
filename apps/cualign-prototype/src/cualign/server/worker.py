@@ -68,5 +68,5 @@ async def manual_review(builder: WorkflowBuilder, name: str = "reviewer"):
 
     async def review(plan_id: str) -> dict:
         return await review_plan(plan_id, llm, max_attempts=config.max_attempts, timeout_seconds=config.timeout_seconds,
-                                 total_seconds=config.total_seconds, manual=True)
+                                 total_seconds=config.total_seconds, manual=True, instructions=config.instructions)
     return review
