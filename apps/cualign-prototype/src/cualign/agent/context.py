@@ -13,7 +13,6 @@ class PlanRun:
     plan_ids: set[str] = field(default_factory=set)
     target_ids: set[str] = field(default_factory=set)
     selected_plan_id: str | None = None
-    selected_violations: list[dict] | None = None  # the selected plan's validation result (#91)
     review_attempts: int = 0
     review_started: float | None = None
     review_busy: bool = False

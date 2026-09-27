@@ -436,11 +436,12 @@ function readConstraints() {
   const ipr = Number($("cIpr").value), cap = $("cCap").value === "" ? null : Number($("cCap").value);
   if (!Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("IPR은 면당 0~0.25mm입니다.");
   if (cap !== null && (!Number.isInteger(cap) || cap < 1)) throw new Error("단계 상한은 양의 정수입니다.");
-  return { allow_extraction: $("cExtraction").checked, lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
+  // extraction: the prescribed teeth (#56); the app never picks them, an empty field is non-extraction
+  return { extraction: teeth("cExtract"), lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
     ipr_limit_mm: ipr, stage_cap: cap, clear_stage_cap: cap === null, order: $("cOrder").value };
 }
 function fillConstraints(c) {
-  $("cExtraction").checked = c.allow_extraction;
+  $("cExtract").value = (c.extraction || []).join(", ");
   $("cLock").value = (c.lock || []).join(", ");
   $("cExclude").value = (c.ipr_exclude || []).join(", ");
   $("cIpr").value = c.ipr_limit_mm;
@@ -451,7 +452,8 @@ function fillConstraints(c) {
 // The folded conditions line: what the form says, in the dentist's words.
 function renderCondSummary() {
   const nums = (v) => v.split(/[,\s]+/).filter(Boolean);
-  const parts = [$("cExtraction").checked ? "발치 허용" : "비발치"];
+  const ext = nums($("cExtract").value);
+  const parts = [ext.length ? "발치 " + ext.join("·") + "번" : "비발치"];
   const lock = nums($("cLock").value), excl = nums($("cExclude").value);
   if (lock.length) parts.push("고정 " + lock.join("·") + "번");
   if (excl.length) parts.push("IPR 제외 " + excl.join("·") + "번");
@@ -832,8 +834,14 @@ async function loadCases() {
 }
 
 function sameConstraints(a, b) {
-  const keys = ["allow_extraction", "lock", "ipr_exclude", "ipr_limit_mm", "stage_cap", "order"];
+  const keys = ["extraction", "lock", "ipr_exclude", "ipr_limit_mm", "stage_cap", "order"];
   return !!a && !!b && keys.every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
+}
+
+// With extraction teeth prescribed only the extraction plan is made (#56): an expansion/IPR comparison is not offered.
+function withoutComparison(options) {
+  const prescribed = ($("cExtract")?.value ?? "").trim() !== "";
+  return prescribed ? options.filter((o) => !/확장안과 IPR안을 비교/.test(o.message ?? "")) : options;
 }
 
 function sampleOf(caseId) {
@@ -845,15 +853,17 @@ function sampleOf(caseId) {
 function renderChips() {
   const sample = sampleOf(state.meshCase);
   // short labels on the chip; the full sentence is what gets sent
-  const chips = state.followup?.options?.length
+  let chips = state.followup?.options?.length
     ? state.followup.options
     : state.messages.some((m) => m.role === "user")
     ? [{ label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
        { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." },
        { label: "전략 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }]
     : [sample ? { label: "에이전트 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
-       { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
+       sample ? { label: "12개월 안에", message: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." }
+              : { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
        { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
+  chips = withoutComparison(chips);
   const box = $("chips");
   box.hidden = !!document.querySelector("#transcript .question:not(.done):not(.pending)");   // the card asks first
   const key = (c) => c.message ?? c.fill ?? c.action ?? "";
@@ -904,11 +914,11 @@ async function activateCase(caseId, { greet = true } = {}) {
     const q = sample
       ? { question: "3D는 처방대로 규칙만으로 계산한 미리보기입니다(에이전트 검토 전). 단계를 넘겨 보고, 다음 중 하나로 이어가세요.",
           options: [{ label: "에이전트에게 계획 맡기기", hint: "처방을 읽고 계획을 짜고, 검토 에이전트가 문제점을 짚습니다", message: sample.request },
-                    { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에. 입력창에 문장이 채워지니 고쳐서 보내세요", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
+                    { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에. 입력창에 문장이 채워지니 고쳐서 보내세요", fill: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
                     { label: "확장안과 IPR안 비교", hint: "두 전략을 나란히 계산해 차이를 보여 줍니다", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
-      : { question: "발치는 허용되나요? 기간 상한이 있으면 함께 알려 주세요.",
+      : { question: "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.",
           options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
-                    { label: "발치 허용하고 계획", message: "발치를 허용하고 계획을 짜줘." },
+                    { label: "발치 치아 정하기", fill: "5번과 12번 발치로 계획을 짜줘." },
                     { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘." }] };
     state.messages.push({ role: "assistant", content: text + " " + q.question });
     addQuestion(q);
@@ -1041,7 +1051,10 @@ function renderResult(plan) {
     const val = v.type === "collision" ? `${v.overlap_mm3} mm³ (기준 ${v.baseline})`
       : v.type === "move_limit" ? `${v.mm} mm > ${v.limit}`
       : v.type === "stage_cap" ? `${v.n}장 > 상한 ${v.limit}`
-      : v.type === "space_deficit" ? `${v.mm} mm 부족 (허용 ${v.limit})` : JSON.stringify(v);
+      : v.type === "space_deficit" ? `${v.mm} mm 부족 (허용 ${v.limit})`
+      : v.type === "extraction_mismatch" ? `처방 ${(v.prescribed ?? []).join(", ") || "없음"} · 뺀 치아 ${(v.removed ?? []).join(", ") || "없음"}`
+      : v.type === "extraction_space_open" ? `닫지 못한 발치 공간 ${v.mm} mm (허용 ${v.limit})`
+      : JSON.stringify(v);
     tr.innerHTML = `<td>${v.stage ?? "전체"}</td><td>${(v.teeth ?? []).join(", ") || "—"}</td><td class="type">${v.type}</td><td>${val}</td>`;
     tb.appendChild(tr);
   }
@@ -1217,6 +1230,7 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
 // The agent's question card (#90): the question and two or three choices. A choice with a message is sent as the
 // dentist's turn; a choice with `fill` only puts a sentence in the composer to edit.
 function addQuestion(q) {
+  if (q?.options) q = { ...q, options: withoutComparison(q.options) };
   if (!q?.question || !(q.options?.length >= 2)) return null;
   const div = document.createElement("div");
   div.className = "question";

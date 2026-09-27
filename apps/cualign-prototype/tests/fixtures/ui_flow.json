@@ -6,7 +6,7 @@
   "fallback_stage_cap": 40,
   "request": "발치 없이 앞니부터 풀어 주세요.",
   "form": {
-    "allow_extraction": false,
+    "extraction": [],
     "lock": [3, 14],
     "ipr_exclude": [8, 9],
     "ipr_limit_mm": 0.2,
@@ -23,6 +23,7 @@
     "gate_message": "입력 확인",
     "review_status": "passed",
     "constraints": {
+      "extraction": [],
       "allow_extraction": false,
       "lock": [3, 14],
       "ipr_exclude": [8, 9],

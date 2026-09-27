@@ -7,10 +7,6 @@ The sentences each pattern must and must not match are in tests/test_rail_patter
 # Prescriptive or final-decision sentences an answer must not make. From the golden-set checker
 # (evals/golden_a/checks.py in #10); three are narrowed to the asserting form so that sentences handing the
 # decision to the dentist ("최종 계획 선택은 의사의 판단입니다.", "확정된 계획이 아닙니다.") pass.
-# #91: an opening line that says the plan has no rule violations. The rails middleware replaces it with the
-# selected plan's violations when its validation failed. 없다/없다고 (a hedge) is left alone.
-NO_VIOLATION_CLAIM = r"규칙\s*위반[은는이]?\s*없(?:습니다|어요|음)(?![가-힣])"
-
 PRESCRIPTIVE = (
     r"발치를?\s*해야\s*합니다",
     r"발치가\s*필요합니다",

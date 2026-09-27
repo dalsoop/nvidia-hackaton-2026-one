@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, patients, planner
-from cualign.core.constraints import ConstraintPatch
+from cualign.core.constraints import ConstraintPatch, reason_ko
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
 
@@ -71,7 +71,7 @@ def _summary(pid):
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
-                    changes=None, parent_plan_id=None):
+                    changes=None, parent_plan_id=None, extraction=None):
     cid, case = STORE.load_case(case_id)
     why = planner.unsupported_reasons(case)
     if why:
@@ -79,7 +79,9 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     c = STORE.constraints_for(cid, parent_plan_id)
     if changes is None:
         changes = {"stage_cap": stage_cap}
-        if allow_extraction is not None:
+        if extraction is not None:            # the prescribed teeth (#56); [] = non-extraction
+            changes["extraction"] = list(extraction)
+        elif allow_extraction is not None:    # legacy: false clears, true needs the teeth already prescribed
             changes["allow_extraction"] = allow_extraction
         if order is not None:
             changes["order"] = order
@@ -370,7 +372,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             changes = ConstraintPatch.model_validate(patch).changes()
             return rule_based_plan(req.case_id, changes=changes, parent_plan_id=req.parent_plan_id)
         except (KeyError, FileNotFoundError, ValueError) as e:
-            raise HTTPException(400, str(e))
+            raise HTTPException(400, reason_ko(e) if isinstance(e, ValueError) else str(e))
 
     if STATIC_DIR.exists():
         app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")
