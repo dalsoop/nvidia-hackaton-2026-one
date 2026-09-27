@@ -366,7 +366,7 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 
 ## 칩
 
-칩은 고정 목록이 아니라 지금 상황에서 할 만한 지시를 보여준다 [목표]. [현재] 고정 칩 5개는 입력창 왼쪽 + 메뉴의 「예시 문장」으로 들어갔고, 상황에 맞는 지시는 **질문 카드**가 맡는다: 케이스를 열면 고정 카드(처방대로 계획 · 기간 상한 정하기 · 확장안·IPR안 비교), 그 뒤로는 매 턴이 끝날 때 `nim_lightning`이 다음 질문과 선택지 2~3개를 써서 보인다(`/api/followup`, 실패하면 카드 없음). 질문 카드는 의도를 정할 때, 칩은 문장을 빌릴 때다.
+칩은 고정 목록이 아니라 지금 상황에서 할 만한 지시를 보여준다 [목표]. [현재] 고정 칩 5개는 입력창 왼쪽 + 메뉴의 「예시 문장」으로 들어갔고, 상황에 맞는 지시는 **질문 카드**가 맡는다: 케이스를 열면 고정 카드(처방대로 계획 · 기간 상한 정하기 · 확장안·IPR안 비교), 그 뒤로는 매 턴이 끝날 때 다음에 할 만한 지시 2~3개가 **입력창 위 칩**으로 바뀐다(데모 경로는 대본 `SCRIPT`, 그 밖은 `nim_lightning` `/api/followup`, 실패하면 기본 칩). 질문 카드는 케이스를 열 때처럼 의사가 의도를 정해야 할 때만, 칩은 다음 문장을 빌릴 때다 — 한 턴에 카드와 칩이 같이 뜨지 않는다.
 
 | 시점 | 칩 예시 |
 |---|---|
@@ -398,9 +398,9 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | 상단 바 | `#homeBtn`(로고, 처음 화면) |
 | 시작 상태 | `body.start` · `#intro` `#introPick` · `#screenStart` `#sampleCards .case-card[data-id]` `#toPatients` · 입력창은 잠김 |
 | 케이스 카드 | `#caseCard` `#caseThumb` `#caseName` `#caseKind` `#caseSub` `#caseBadges` `#caseBtn`(바꾸기) `#casePop` `#popCases .item[data-id]` `#popPatients` |
-| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, `.pending`은 자리 표시) · 「검토 질문」 블록 · `.decision [data-act=keep|revert]` · `.plan-card`(여러 계획이 나온 턴) · `.done`(내려받기 완료) · `#retryBar` `#resendBtn` `#retryFallback` |
+| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, 선택지에 `small` 힌트가 있으면 `.opts.stack`) · 「검토 질문」 블록 · `.decision [data-act=revert]`(새 안이 3D를 대체했다는 한 줄 + 되돌리기) · `.plan-card`(여러 계획이 나온 턴) · `.done`(내려받기 완료) · `#retryBar` `#resendBtn` `#retryFallback` |
 | 입력 | `#chips .chip[data-message]` · `#selChips` · `#chatForm` `#chatInput` `#sendBtn` |
-| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#condBox`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right|back|base]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
+| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#condBox`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
 | 조건 | `#condBox`(details) `#condSummary` `#constraints` `#cExtraction` `#cLock` `#cExclude` `#cIpr` `#cCap` `#cOrder` `#fallbackBtn`(규칙 기반 계산) |
 | 입력 확인 | `body.checking` · `#checkBar` `#checkFacts` `#mirrorBtn` `#startPlan` `#otherScan` |
 | 내보내기 | `#exportBtn` `#exportWhy`(잠긴 이유) `#exportPop` `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |

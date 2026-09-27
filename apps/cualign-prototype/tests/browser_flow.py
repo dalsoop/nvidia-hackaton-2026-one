@@ -172,8 +172,8 @@ async def main():
             assert await page.locator(".msg.error").last.is_visible()
             decision2 = page.locator(".decision").last
             assert await decision2.is_visible()
-            await decision2.locator('[data-act="keep"]').click()   # keep this plan; the bar loses its buttons
-            assert await decision2.locator("button").count() == 0
+            assert await decision2.locator('[data-act="revert"]').count() == 1   # keeping needs no button
+            assert await decision2.locator('[data-act="keep"]').count() == 0
             await page.screenshot(path=str(OUT / "review-failure.png"))
 
             # The dentist asks for the failed review again on the same plan.
