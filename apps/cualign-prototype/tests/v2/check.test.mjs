@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deriveCheckState } from '../../src/cualign/server/static/v2/js/screens/intake/check.js';
+import {
+  deriveCheckState,
+  parsePatientAndScanId,
+  formatBasis
+} from '../../src/cualign/server/static/v2/js/screens/intake/check.js';
 
 test('Check: normal supported scan produces ready state and confirm action', () => {
   const check = {
@@ -218,3 +222,75 @@ test('Check: widths and rotations sorted by FDI tooth number', () => {
   assert.equal(state.verticals[1].mm, -1.2);
 });
 
+test('Check: parsePatientAndScanId splits caseId correctly', () => {
+  assert.deepEqual(parsePatientAndScanId('P0001-S1'), { pid: 'P0001', sid: 'S1' });
+  assert.deepEqual(parsePatientAndScanId('P123-S45-rev2'), { pid: 'P123', sid: 'S45-rev2' });
+  assert.deepEqual(parsePatientAndScanId('upload-12345'), { pid: 'upload', sid: '12345' });
+  assert.deepEqual(parsePatientAndScanId('solo'), { pid: 'solo', sid: '' });
+  assert.deepEqual(parsePatientAndScanId(''), { pid: '', sid: '' });
+  assert.deepEqual(parsePatientAndScanId(null), { pid: '', sid: '' });
+});
+
+test('Check: formatBasis formats basis strings into Korean descriptions', () => {
+  assert.equal(formatBasis('gingiva'), '잇몸 기준');
+  assert.equal(formatBasis('cervical'), '치관 아래 경계 기준');
+  assert.equal(formatBasis('occlusal'), '교합면 기준');
+  assert.equal(formatBasis('palate'), '구개(입천장) 기준');
+  assert.equal(formatBasis('none'), '근거 없음');
+  assert.equal(formatBasis('unknown'), 'unknown');
+  assert.equal(formatBasis(null), '미지정');
+});
+
+test('Check: single string unsupported payload converts into reason array', () => {
+  const check = {
+    case_id: 'P9-S1',
+    unsupported: '스캔 품질 불량으로 계획 불가',
+    ready: false
+  };
+
+  const state = deriveCheckState(check);
+  assert.equal(state.isSupported, false);
+  assert.equal(state.ready, false);
+  assert.equal(state.unsupportedReasons.length, 1);
+  assert.equal(state.unsupportedReasons[0], '스캔 품질 불량으로 계획 불가');
+  assert.equal(state.primaryAction.disabled, true);
+  assert.equal(state.primaryAction.label, '계획할 수 없는 스캔');
+  assert.equal(state.showDelete, true);
+});
+
+test('Check: ready false with empty unsupported still marks unsupported and disabled', () => {
+  const check = {
+    case_id: 'P8-S1',
+    unsupported: [],
+    ready: false
+  };
+
+  const state = deriveCheckState(check);
+  assert.equal(state.isSupported, false);
+  assert.equal(state.ready, false);
+  assert.equal(state.unsupportedReasons.length, 1);
+  assert.equal(state.primaryAction.disabled, true);
+  assert.equal(state.primaryAction.label, '계획할 수 없는 스캔');
+  assert.equal(state.showDelete, true);
+});
+
+test('Check: combined orientation reversed and basis none', () => {
+  const check = {
+    case_id: 'P7-S1',
+    teeth: [2, 3, 4],
+    unsupported: [],
+    ready: true,
+    orientation: {
+      basis: 'none',
+      side: 'reversed',
+      note: '방향 기준 없음'
+    }
+  };
+
+  const state = deriveCheckState(check);
+  assert.equal(state.isReversed, true);
+  assert.equal(state.hasOrientationNotice, true);
+  assert.equal(state.orientationNote, '방향 기준 없음');
+  assert.equal(state.isSupported, true);
+  assert.equal(state.primaryAction.disabled, false);
+});

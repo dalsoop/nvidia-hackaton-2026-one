@@ -46,8 +46,17 @@ export function deriveCheckState(check) {
     };
   }
 
-  const unsupportedReasons = Array.isArray(check.unsupported) ? check.unsupported : [];
-  const isSupported = unsupportedReasons.length === 0;
+  let unsupportedReasons = [];
+  if (Array.isArray(check.unsupported)) {
+    unsupportedReasons = check.unsupported.filter(Boolean);
+  } else if (typeof check.unsupported === 'string' && check.unsupported.trim()) {
+    unsupportedReasons = [check.unsupported.trim()];
+  }
+
+  const isSupported = unsupportedReasons.length === 0 && check.ready !== false;
+  if (!isSupported && unsupportedReasons.length === 0) {
+    unsupportedReasons = ['스캔 점검 기준을 충족하지 못했습니다.'];
+  }
   const ready = Boolean(check.ready !== false && isSupported);
 
   const orientation = check.orientation || {};
@@ -138,16 +147,17 @@ export function deriveCheckState(check) {
   };
 }
 
-function parsePatientAndScanId(caseId) {
+export function parsePatientAndScanId(caseId) {
   if (!caseId) return { pid: '', sid: '' };
-  const parts = String(caseId).split('-');
+  const str = String(caseId).trim();
+  const parts = str.split('-');
   if (parts.length >= 2) {
-    return { pid: parts[0], sid: parts[1] };
+    return { pid: parts[0], sid: parts.slice(1).join('-') };
   }
   return { pid: parts[0], sid: '' };
 }
 
-function formatBasis(basis) {
+export function formatBasis(basis) {
   const map = {
     gingiva: '잇몸 기준',
     cervical: '치관 아래 경계 기준',
@@ -169,7 +179,7 @@ function formatBasis(basis) {
 export function mount(root, params, ctx) {
   clear(root);
 
-  const caseId = params.caseId;
+  const caseId = decodeURIComponent(params.caseId || '');
   const { pid, sid } = parsePatientAndScanId(caseId);
 
   // Screen container: Left 380px panel + Center 3D viewer
@@ -247,7 +257,7 @@ export function mount(root, params, ctx) {
 
   async function handleConfirm(state) {
     setErrorMessage('');
-    const btn = panel.querySelector('.btn-check-primary');
+    const btn = panel.querySelector('.check-btn-primary');
     if (btn) btn.disabled = true;
 
     try {
@@ -267,7 +277,7 @@ export function mount(root, params, ctx) {
 
   async function handleMirror() {
     setErrorMessage('');
-    const btn = panel.querySelector('.btn-check-mirror');
+    const btn = panel.querySelector('.check-btn-mirror');
     if (btn) btn.disabled = true;
 
     try {
@@ -301,8 +311,10 @@ export function mount(root, params, ctx) {
 
   async function handleDelete() {
     setErrorMessage('');
-    if (!window.confirm('이 스캔과 파일을 삭제하시겠습니까? 되돌릴 수 없습니다.')) {
-      return;
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (!window.confirm('이 스캔과 파일을 삭제하시겠습니까? 되돌릴 수 없습니다.')) {
+        return;
+      }
     }
 
     try {
@@ -353,7 +365,7 @@ export function mount(root, params, ctx) {
         type: 'button',
         class: 'btn btn-ghost check-btn-mirror',
         onClick: handleMirror
-      }, '좌우 번호 뒤집기 (u → 17−u)');
+      }, '좌우 번호 뒤집기');
 
       body.appendChild(h('div', { class: 'check-box check-box-warning' },
         h('b', null, '치아 번호가 좌우 반대로 보입니다.'),
