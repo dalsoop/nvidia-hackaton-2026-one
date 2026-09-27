@@ -9,6 +9,8 @@ import {
   eventsToTurn
 } from '../../src/cualign/server/static/v2/js/agent/events.js';
 
+import { executeChatStream, executeRulePlan } from '../../src/cualign/server/static/v2/js/agent/stream.js';
+import { createStore } from '../../src/cualign/server/static/v2/js/state/store.js';
 import { STRINGS } from '../../src/cualign/server/static/v2/js/agent/strings.js';
 
 test('Agent strings: verify Korean strings match design specifications', () => {
@@ -356,5 +358,170 @@ test('eventsToTurn: empty stream without selected plan results in error', () => 
   assert.equal(turn.status, 'error');
   assert.equal(turn.selectedPlan, null);
   assert.equal(turn.error.title, STRINGS.requestFailed);
+});
+
+test('executeRulePlan: calls rulePlan with viewingPlanId as parent_plan_id and updates store', async () => {
+  const store = createStore({
+    caseId: 'case-rule-01',
+    viewingPlanId: 'p-initial',
+    constraints: { allow_extraction: true },
+    plans: [{ plan_id: 'p-initial' }]
+  });
+
+  let capturedRuleBody = null;
+  const mockApi = {
+    async rulePlan(body) {
+      capturedRuleBody = body;
+      return {
+        case_id: 'case-rule-01',
+        chosen: { plan_id: 'p-new-rule', passed: true },
+        tried: [{ plan_id: 'p-new-rule' }]
+      };
+    },
+    async listPlans(caseId) {
+      return {
+        plans: [{ plan_id: 'p-initial' }, { plan_id: 'p-new-rule' }]
+      };
+    }
+  };
+
+  const res = await executeRulePlan({
+    ctx: { store, api: mockApi }
+  });
+
+  assert.equal(capturedRuleBody.case_id, 'case-rule-01');
+  assert.equal(capturedRuleBody.parent_plan_id, 'p-initial');
+  assert.equal(capturedRuleBody.allow_extraction, true);
+  assert.equal(res.chosen.plan_id, 'p-new-rule');
+
+  // Verify store plans and viewingPlanId updated
+  assert.equal(store.get().viewingPlanId, 'p-new-rule');
+  assert.equal(store.get().plans.length, 2);
+});
+
+test('executeChatStream: formats request body matching app.js, processes stream, and updates viewingPlanId', async () => {
+  const store = createStore({
+    caseId: 'case-chat-01',
+    viewingPlanId: 'p-base-01',
+    constraints: { lock: [14] },
+    chat: [
+      { role: 'user', content: '처음 요청' },
+      { role: 'assistant', content: '처음 답변' }
+    ],
+    plans: [{ plan_id: 'p-base-01' }]
+  });
+
+  let capturedChatBody = null;
+  const mockApi = {
+    async chatStream(body) {
+      capturedChatBody = body;
+      const reqId = body.cualign.request_id;
+      const caseId = body.cualign.case_id;
+
+      const ssePayload = [
+        `event: intermediate_data\ndata: ${JSON.stringify({ name: 'set_constraints', id: 's1' })}\n\n`,
+        `event: data\ndata: ${JSON.stringify({ choices: [{ delta: { content: '새 계획이 ' } }] })}\n\n`,
+        `event: data\ndata: ${JSON.stringify({ choices: [{ delta: { content: '준비되었습니다.' } }] })}\n\n`,
+        `event: plan_selected\ndata: ${JSON.stringify({ schema_version: 1, request_id: reqId, case_id: caseId, plan_id: 'p-chat-02' })}\n\n`,
+        `data: [DONE]\n\n`
+      ].join('');
+
+      const encoder = new TextEncoder();
+      return {
+        body: {
+          getReader() {
+            let done = false;
+            return {
+              async read() {
+                if (done) {
+                  return { value: undefined, done: true };
+                }
+                done = true;
+                return { value: encoder.encode(ssePayload), done: false };
+              }
+            };
+          }
+        }
+      };
+    },
+    async listPlans(caseId) {
+      return [{ plan_id: 'p-base-01' }, { plan_id: 'p-chat-02' }];
+    }
+  };
+
+  const turn = await executeChatStream({
+    ctx: { store, api: mockApi },
+    text: '두 번째 요청'
+  });
+
+  // Verify request body
+  assert.equal(capturedChatBody.cualign.case_id, 'case-chat-01');
+  assert.equal(capturedChatBody.cualign.base_plan_id, 'p-base-01');
+  assert.deepEqual(capturedChatBody.cualign.constraints, { lock: [14] });
+  assert.equal(capturedChatBody.messages.length, 3);
+  assert.equal(capturedChatBody.messages[2].content, '두 번째 요청');
+
+  // Verify stream outcome
+  assert.equal(turn.status, 'completed');
+  assert.equal(turn.assistantText, '새 계획이 준비되었습니다.');
+  assert.equal(turn.selectedPlan.plan_id, 'p-chat-02');
+
+  // Verify store state
+  assert.equal(store.get().viewingPlanId, 'p-chat-02');
+  assert.equal(store.get().plans.length, 2);
+});
+
+test('executeChatStream: handles nim_overload stream error and formats error turn', async () => {
+  const store = createStore({
+    caseId: 'case-overload-01',
+    viewingPlanId: null,
+    chat: [],
+    plans: []
+  });
+
+  const mockApi = {
+    async chatStream(body) {
+      const reqId = body.cualign.request_id;
+      const ssePayload = [
+        `event: intermediate_data\ndata: ${JSON.stringify({ name: 'prepare' })}\n\n`,
+        `event: plan_error\ndata: ${JSON.stringify({ kind: 'nim_overload', request_id: reqId, message: 'Server 503' })}\n\n`
+      ].join('');
+
+      const encoder = new TextEncoder();
+      return {
+        body: {
+          getReader() {
+            let done = false;
+            return {
+              async read() {
+                if (done) {
+                  return { value: undefined, done: true };
+                }
+                done = true;
+                return { value: encoder.encode(ssePayload), done: false };
+              }
+            };
+          }
+        }
+      };
+    }
+  };
+
+  const turn = await executeChatStream({
+    ctx: { store, api: mockApi },
+    text: '과부하 테스트'
+  });
+
+  assert.equal(turn.status, 'error');
+  assert.equal(turn.hasOverload, true);
+  assert.equal(turn.error.isOverload, true);
+  assert.equal(turn.error.message, STRINGS.overloadNotice);
+
+  const items = turnToChatItems(turn);
+  const errorItem = items.find((i) => i.role === 'error');
+  assert.notEqual(errorItem, undefined);
+  assert.equal(errorItem.isOverload, true);
+  assert.equal(errorItem.message, STRINGS.overloadNotice);
+  assert.equal(errorItem.canResend, true);
 });
 

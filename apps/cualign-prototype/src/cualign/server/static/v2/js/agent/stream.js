@@ -25,7 +25,8 @@ export async function executeChatStream({
     ? crypto.randomUUID()
     : ('req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7));
 
-  const currentPlans = state.plans || [];
+  const rawPlans = state.plans;
+  const currentPlans = Array.isArray(rawPlans) ? rawPlans : (rawPlans?.plans || []);
   const nextPlanNumber = currentPlans.length + 1;
 
   // Build transcript for model request
@@ -93,7 +94,8 @@ export async function executeChatStream({
 
     if (turnState.selectedPlan && !turnState.hasStreamError) {
       const listFn = ctx.api?.listPlans || listPlans;
-      const freshPlans = await listFn(caseId);
+      const freshPlansRes = await listFn(caseId);
+      const freshPlans = Array.isArray(freshPlansRes) ? freshPlansRes : (freshPlansRes?.plans || []);
       store.set({
         plans: freshPlans,
         viewingPlanId: turnState.selectedPlan.plan_id
@@ -145,7 +147,8 @@ export async function executeRulePlan({
   const selected = res.chosen || res.best_failed;
   if (selected && selected.plan_id) {
     const listFn = ctx.api?.listPlans || listPlans;
-    const freshPlans = await listFn(caseId);
+    const freshPlansRes = await listFn(caseId);
+    const freshPlans = Array.isArray(freshPlansRes) ? freshPlansRes : (freshPlansRes?.plans || []);
     store.set({
       plans: freshPlans,
       viewingPlanId: selected.plan_id

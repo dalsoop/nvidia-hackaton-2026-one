@@ -124,8 +124,17 @@ export function mountAgent(el, ctx) {
           transcript.appendChild(bubble);
         }
       } else if (item.role === 'error') {
-        const titleEl = h('b', null, item.title || STRINGS.requestFailed);
-        const bubble = h('div', { class: 'agent-bubble-error' }, titleEl, item.message || '');
+        let bubble;
+        if (item.isOverload) {
+          bubble = h('div', { class: 'agent-bubble-error' }, item.message || STRINGS.overloadNotice);
+        } else {
+          const showTitle = item.title && item.message && item.title !== item.message;
+          bubble = h('div', { class: 'agent-bubble-error' },
+            showTitle ? h('b', null, item.title) : null,
+            item.message || item.title || STRINGS.requestFailed
+          );
+        }
+
         const resendBtn = h('button', {
           type: 'button',
           class: 'btn-resend',
@@ -242,6 +251,9 @@ export function mountAgent(el, ctx) {
   });
 
   textarea.addEventListener('keydown', (e) => {
+    if (e.isComposing) {
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
