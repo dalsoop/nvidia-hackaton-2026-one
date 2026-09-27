@@ -40,7 +40,7 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   height: 48px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel);
 }
-.brand { display: flex; align-items: center; gap: 12px; font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.brand { display: flex; align-items: center; gap: 12px; font: inherit; color: inherit; text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; }
 .brand:hover .tagline { color: var(--text); }
 .logo { height: 22px; width: auto; display: block; }
 .tagline { color: var(--muted); font-size: 12px; }
@@ -391,11 +391,11 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .case-row .c-rx { color: var(--muted); font-size: 12px; word-break: keep-all; }
 .case-row .c-plan { color: var(--muted); }
 /* the detail sits under the pressed card (full grid width) or row */
-.cl-detail { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; }
+.cl-detail { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; }
 .cl-detail[hidden] { display: none; }
 .cl-detail.in-cards { grid-column: 1 / -1; }
 #clRows .cl-detail { margin: 8px 12px 12px; }
-.cl-dbody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 4px 24px; align-items: start; }
+.cl-dbody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 4px 24px; align-items: stretch; }   /* both columns full height: #dOpen (margin-top: auto) sits at the bottom */
 .cl-dbody > div { display: flex; flex-direction: column; gap: 8px; }
 #dArch { width: 100%; max-width: 300px; }
 @media (max-width: 1200px) { .cl-dbody { grid-template-columns: 1fr; } }
@@ -405,6 +405,8 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .cl-detail .cl-label { padding: 8px 0 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 .cl-facts { font-size: 13px; font-weight: 700; }
 .cl-chips { font-size: 12px; color: var(--muted); }
+.cl-reason { color: var(--muted); }
+.cl-reason:empty { display: none; }
 .cl-chips:empty, .cl-detail .cl-label[hidden], .cl-detail p[hidden] { display: none; }
 #dArch { width: 100%; height: auto; }
 #dArch circle { fill: var(--panel-2); stroke: var(--line-strong); }

@@ -36,7 +36,7 @@ const state = {
   trace: null,           // inline tool-call trace for the turn in progress
   labels: [],            // CSS2DObject IPR labels
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
-  caseList: [], clSelected: null,   // 케이스 목록 (#109): 샘플 카드 + 가명 환자 표, 선택한 것 아래 상세 (③-b)
+  caseList: [], clSelected: null,   // 케이스 목록 (#109): 샘플 카드 + 환자 표, 선택한 것 아래 상세 (③-b)
   checkCase: null,       // case id shown on the input-check screen
   checkRevision: null,   // scan revision shown there; the confirmation names it
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
@@ -936,7 +936,7 @@ async function loadCases() {
 // panel for the chosen row, 「디자인 시작하기」 goes to the check (unconfirmed scan) or the workspace.
 const CASE_STATUS = { scan_check: ["스캔 확인 필요", "amber"], plan_needed: ["계획 필요", "faint"], violation: ["위반 있음", "red"],
                       awaiting_approval: ["승인 대기", "green"], approved: ["승인됨", "green"] };
-const CASE_KIND = { sample: "샘플", patient: "가명 환자" };
+const CASE_KIND = { sample: "샘플", patient: "환자" };
 const ORDER_KO = { simultaneous: "동시", anterior_first: "앞니 먼저", sequential: "순차" };
 // Universal 1..16 (files, code) → FDI 18..11, 21..28 (what the dentist reads) — the screen shows FDI only (#113)
 async function loadCaseList() {
@@ -985,7 +985,7 @@ function renderCaseList() {
     r.querySelector(".c-plan").textContent = c.plan ? `${STRATEGY_KO[c.plan.strategy] ?? c.plan.strategy} · ${c.plan.n_stages}장` : "—";
     box.appendChild(r);
   }
-  if (!patients.length) box.innerHTML = '<p class="empty">등록된 환자가 없습니다.</p>';
+  if (!patients.length) box.innerHTML = '<p class="empty">등록된 환자가 없습니다. 「새 환자」로 스캔 파일을 업로드하세요.</p>';
   // the detail opens right under what was pressed: one element, moved
   const sel = rows.find((c) => c.case_id === state.clSelected) ?? null;
   detail.hidden = !sel;
@@ -1028,6 +1028,7 @@ function renderCaseDetail(c) {
   // 처방 column right above, so the block is hidden
   $("dRxLabel").hidden = $("dRx").hidden = patient;
   $("dRx").textContent = c.prescription || "처방 없음 · 조건 기본값";
+  $("dReason").textContent = c.reason ?? "";   // samples only; :empty hides the line
   // chips only for what differs from the prescription (a patient: from the defaults); 비발치 repeats the sentence, IPR
   // exclusions are the grey dots above
   const base = sampleOf(c.case_id)?.constraints ?? { extraction: [], lock: [], ipr_exclude: [], ipr_limit_mm: 0.25, stage_cap: null, order: "simultaneous" };
@@ -1828,7 +1829,13 @@ function autosize() {
   ta.style.overflowY = ta.scrollHeight > max ? "auto" : "hidden";
 }
 $("chatInput").addEventListener("input", autosize);
-$("homeBtn").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
+// the logo: back to the start screen from anywhere — detail folded, list scrolled to the top (the href is #start
+// for the browser; the click does the reset even when the address already is #start)
+$("homeBtn").addEventListener("click", (e) => {
+  e.preventDefault();
+  state.clSelected = null;
+  showStart().then(() => { $("screenStart").scrollTop = 0; }).catch((err) => addMsg("error", err.message));
+});
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
 $("chips").addEventListener("click", (e) => {
   const c = e.target.closest(".chip");
@@ -2133,6 +2140,6 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
     routing = true;
     try { await route(location.hash); } catch (e) { addMsg("error", e.message); }
     routing = false;
-  } else history.replaceState(null, "", "#start");
+  } else { history.replaceState(null, "", "#start"); renderRail(); }   // the rail lights 「환자」 on the very first paint too
 })();
 window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, scriptedFollowup, loadPlan, state };   // test hook (scratch browser checks)
