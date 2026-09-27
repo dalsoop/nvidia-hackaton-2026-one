@@ -85,6 +85,8 @@ textarea { resize: vertical; }
 body.resizing { cursor: col-resize; user-select: none; }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .layout > * { grid-column: auto; } .splitter { display: none; } .side { border-left: 0; border-top: 1px solid var(--line); } }
 
+/* a reload on a case or check address: the layout waits for the router (index.html head script), no start screen flash */
+html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; }
 .rail { grid-column: 1; } .chat { grid-column: 2; } .splitter { grid-column: 3; } .viewer { grid-column: 4; } .side-splitter { grid-column: 5; } .side { grid-column: 6; }
 .chat, .viewer {
   background: var(--panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden;
@@ -97,6 +99,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 .msg.user { align-self: flex-end; background: var(--hover); border: 1px solid var(--line); }
 .msg.assistant { align-self: stretch; max-width: none; background: none; border: 0; padding: 4px 4px; white-space: normal; }
 .msg.assistant p { margin: 0; }
+/* a recorded answer played by 건너뛰기 (#15): the agent's place, grey, with its date */
+.msg.assistant.recorded { color: var(--muted); }
+.recorded-tag { display: block; margin-bottom: 4px; font-size: 11px; color: var(--faint); }
 .msg.assistant p + p, .msg.assistant p + ul, .msg.assistant ul + p { margin-top: 8px; }
 .msg.assistant ul { margin: 0; padding-left: 18px; }
 .msg.assistant li + li { margin-top: 2px; }
@@ -109,6 +114,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 
 .retry-bar { display: flex; gap: 6px; padding: 0 16px 8px; }
 .retry-bar[hidden] { display: none; }
+.retry-bar .btn[hidden] { display: none; }
+/* 건너뛰기 under a running answer (#15) */
+.skip-row { align-self: stretch; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; font-size: 12px; color: var(--muted); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 8px; }
 .chips[hidden] { display: none; }
 .chip {
@@ -117,7 +125,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 }
 .chip:hover { border-color: var(--green); }
 
-.composer { display: flex; gap: 8px; padding: 0 16px 16px; }
+.composer { position: relative; display: flex; padding: 0 16px 16px; }
 /* the agent's question card: one question, two or three choices (#90) */
 .question { align-self: stretch; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 13px; }
 .question p { margin: 0 0 8px; }
@@ -159,8 +167,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .decision button { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--green); cursor: pointer; }
 .decision button:hover { text-decoration: underline; }
 .decision.done { color: var(--muted); }
-.composer .send { width: 44px; padding: 0; flex: none; }
-.composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
+/* the send icon sits inside the box: no background, no border; faint, bright on hover, fainter when it cannot send */
+.composer .send { position: absolute; right: 24px; bottom: 24px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; border-radius: 50%; color: var(--faint); cursor: pointer; }
+.composer .send:hover { color: var(--text); background: var(--hover); }
+.composer .send:disabled { color: var(--line-strong); background: none; cursor: not-allowed; }
+.composer textarea { flex: 1; resize: none; border-radius: 14px; padding: 10px 48px 10px 14px; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
 .trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -419,10 +430,11 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
 /* picking a sample: the start pane fades out while the case loads, then the workspace fades in */
-.start-pane, .intro { transition: opacity 0.25s ease, transform 0.25s ease; }
-body.leaving .start-pane, body.leaving .intro { opacity: 0; transform: translateY(-8px); pointer-events: none; }
-body.leaving .cl { opacity: 0.35; }
-@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* leaving the start (#15): only opacity moves. The start pane stays over the 3D, dimmed, until the case is on screen; the
+   column widths change once, with the renderer resized in the same task, so nothing slides sideways */
+.start-pane, .intro { transition: opacity 0.25s ease; }
+body.leaving .start-pane, body.leaving .intro { opacity: 0.5; pointer-events: none; }
+@keyframes rise { from { opacity: 0; } to { opacity: 1; } }
 body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar,
 body:not(.start) .stage-bar, body:not(.start) .legend { animation: rise 0.35s ease both; }
 @media (prefers-reduced-motion: reduce) {
@@ -441,7 +453,24 @@ body.no-case .composer { display: none; }   /* the panel is a chat; the input ap
 body.no-case .chips { display: none; }   /* the example chips wait for a case too */
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
-body.start .splitter { pointer-events: none; }
+
+/* ---------- design flow (#15): 초기 · 셋업 · 목표 · 단계 ---------- */
+.flow { display: flex; gap: 4px; padding: 10px 16px 0; }
+.flow button { flex: 1; font: inherit; font-size: 12px; color: var(--faint); background: none; border: 0; border-top: 2px solid var(--line); padding: 6px 0 4px; cursor: pointer; }
+.flow button:hover { color: var(--text); }
+.flow button.done { color: var(--muted); border-top-color: var(--line-strong); }
+.flow button.on { color: var(--green); border-top-color: var(--green); font-weight: 700; }
+.step-pane { padding: 10px 16px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.step-pane p { margin: 0; font-size: 13px; line-height: 1.5; }
+.step-pane p:empty { display: none; }
+body.start .flow, body.start .step-pane, body.step-stages .step-pane { display: none; }
+/* the slider, the legend and the mm labels belong to the stages (the target keeps the labels) */
+body:not(.step-stages) .stage-bar { display: none; }
+body.step-initial .legend, body.step-setup .legend, body.step-initial .ipr-label, body.step-setup .ipr-label, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }
+body.step-initial .side-tab[data-tab="stages"], body.step-initial .side-tab[data-tab="rules"],
+body.step-setup .side-tab[data-tab="stages"], body.step-setup .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
+.ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
+.exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
 
 /* ---------- plans (#111): cards on the agent panel top, one per plan of this case ---------- */
 .plans { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }

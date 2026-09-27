@@ -9,6 +9,10 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" />
   <link rel="stylesheet" href="style.css" />
+  <!-- 첫 페인트 전에 주소의 화면을 읽는다 (#15): 케이스·입력 확인 주소면 라우터가 그 화면을 열 때까지 .layout 을 숨겨 시작 화면이 스치지 않는다 -->
+  <script>
+    (function () { var h = location.hash; document.documentElement.className += /^#case=/.test(h) ? " booting h-case" : /^#check=/.test(h) ? " booting h-check" : ""; })();
+  </script>
   <script type="importmap">
     {
       "imports": {
@@ -107,7 +111,18 @@
           <button id="popPatients" class="link-btn" type="button">환자 등록 →</button>
         </div>
       </div>
-      <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 승인·STL은 3D 위 「내보내기」 하나 (#111) -->
+      <!-- 디자인 흐름 (#15): 초기 → 셋업 → 목표 → 단계. 누르면 그 상태로 가고 주소 &step= 에 남는다. 서버 계산은 열 때 한 번 -->
+      <nav id="flow" class="flow" aria-label="디자인 흐름">
+        <button type="button" data-step="initial">초기</button>
+        <button type="button" data-step="setup">셋업</button>
+        <button type="button" data-step="target">목표</button>
+        <button type="button" data-step="stages">단계</button>
+      </nav>
+      <div id="stepPane" class="step-pane">
+        <p id="stepLine"></p>
+        <button id="stepNext" class="btn primary" type="button">셋업 보기</button>
+      </div>
+      <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 단계 상태에서만 보인다 (#111, #15) -->
       <section id="plans" class="plans" hidden>
         <div class="plans-head"><h2>계획</h2></div>
         <!-- 계획이 하나도 없는 채 계산이 실패하면: 제목 + 서버 문구 그대로 + 조건 + 다시 계산 (#112, 보드 07) -->
@@ -133,14 +148,17 @@
       <div id="retryBar" class="retry-bar" hidden>
         <button id="resendBtn" class="btn primary small" type="button">다시 보내기</button>
         <button id="retryFallback" class="btn ghost small" type="button" title="모델 없이 화면의 조건으로 계산합니다">에이전트 없이 계산</button>
+        <!-- 샘플 케이스에선 「에이전트 없이 계산」 대신 (#15): 지금 계획을 그대로 채택 -->
+        <button id="skipBtn" class="btn ghost small" type="button" title="지금 화면의 계획을 그대로 씁니다" hidden>건너뛰기</button>
       </div>
       <p id="planNotice" class="plan-notice" aria-live="polite"></p>
       <div class="chips" id="chips"></div>
 
       <div id="selChips" class="sel-chips" hidden></div>
+      <!-- one rounded box (#15): the text and, at its right end, the send icon only -->
       <form id="chatForm" class="composer">
         <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요 · Enter 로 보내기"></textarea>
-        <button id="sendBtn" type="submit" class="btn primary send" aria-label="보내기" title="보내기 · Enter"><svg class="ic" aria-hidden="true"><use href="#i-send-horizontal"></use></svg></button>
+        <button id="sendBtn" type="submit" class="send" aria-label="보내기" title="보내기 · Enter"><svg class="ic" aria-hidden="true"><use href="#i-send-horizontal"></use></svg></button>
       </form>
     </section>
 
