@@ -308,7 +308,7 @@ async def main():
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
             await page.locator('#sampleCards .case-card[data-id="poseidon-000001"]').click()      # card → detail under it
-            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle:not(.ipr-dot)").count() == 14   # crowns only: 000001 also draws IPR-exclusion dots
+            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14 and await page.locator("#dArch line.ipr").count() == 9   # 000001: IPR on the 9 contacts between 15…25
             assert await page.locator('#sampleCards > #clDetail.in-cards').count() == 1      # under the card row
             assert await page.locator("#intro").is_visible()   # the intro panel is back on the left (③)
             await page.locator("#dOpen").click()
