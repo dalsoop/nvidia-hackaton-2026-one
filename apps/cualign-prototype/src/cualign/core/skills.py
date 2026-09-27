@@ -16,9 +16,13 @@ def installed(root: Path = SKILLS_DIR) -> list[str]:
     return sorted(p.parent.name for p in root.glob("*/SKILL.md"))
 
 
-def read_skill(name: str, root: Path = SKILLS_DIR) -> dict:
+def read_skill(name: str, root: Path = SKILLS_DIR, allowed: list[str] | None = None) -> dict:
+    """`allowed` is the agent's skill allowlist, with OpenClaw's rules (tools/skills.md, "Agent allowlists"):
+    None leaves every installed skill visible, [] exposes none, and a non-empty list is the final set."""
     if not isinstance(name, str) or not _NAME.match(name):
         raise ValueError(f"invalid skill name {name!r}; use lowercase letters, digits and hyphens")
+    if allowed is not None and name not in allowed:
+        raise ValueError(f"skill {name!r} is not allowed for this agent; allowed: {', '.join(allowed) or 'none'}")
     path = root / name / "SKILL.md"
     if not path.is_file():
         raise ValueError(f"unknown skill {name!r}; installed: {', '.join(installed(root)) or 'none'}")

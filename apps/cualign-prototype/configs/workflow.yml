@@ -15,6 +15,9 @@ general:
 function_groups:
   cualign:
     _type: cualign
+    # Skills this planner may read (OpenClaw agent-allowlist rules). cualign-planner in the same workspace is the
+    # OpenClaw desk's skill, so it stays out; see workspace/README.md.
+    skills: [cualign-clinical-rules]
     # What the `cuAlign server context` system message carries in advance (#48). Each item replaces a tool call the
     # agent used to make before planning, at one model round-trip each. Absent block = nothing extra.
     context_preload:

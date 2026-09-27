@@ -31,6 +31,16 @@ cuAlign 에이전트의 정의는 모두 이 폴더에 있다. 페르소나, 운
   옮기기 전 지시문과 바이트 단위로 같은지 해시로 확인한다. 골든셋(#73)이 그 문구에 맞춰져 있기 때문이다.
   `AGENTS.md`를 고치면 이 해시가 깨진다. 문구를 바꾸려면 골든셋을 다시 돌리고 해시를 함께 갱신한다.
 - **스킬:** `src/cualign/core/skills.py`가 `workspace/skills/<이름>/SKILL.md`를 읽는다(`load_skill` 도구, 서버 문맥 미리 싣기).
+- **스킬 허용 목록:** 위치와 사용 권한은 따로 정한다(OpenClaw `tools/skills.md`의 "Agent allowlists"). 규칙은 OpenClaw와 같다.
+  목록이 없으면 모든 스킬, `[]`이면 없음, 목록이 있으면 그 목록만이다.
+
+  | 에이전트 | 쓸 수 있는 스킬 | 설정 위치 |
+  |---|---|---|
+  | NAT 계획 에이전트 | `cualign-clinical-rules` | `configs/workflow.yml`의 `function_groups.cualign.skills` |
+  | OpenClaw 창구(`cualign-desk`) | `cualign-planner` | OpenClaw 설정의 `agents.list[].skills` |
+
+  계획 에이전트가 목록 밖 스킬을 `load_skill`로 요청하면 거절된다. 미리 싣는 스킬(`context_preload.skill`)이
+  목록 밖이면 서버가 시작하지 않는다. 허용 목록은 보안 경계가 아니다. 도구와 네트워크는 Guardrails와 OpenShell이 막는다.
 - **이미지:** `Dockerfile`과 `Dockerfile.openshell`이 `workspace/`를 `/app/workspace`로 복사한다.
 
 ## OpenClaw 샌드박스에 설치하기
@@ -56,6 +66,6 @@ OpenClaw는 샌드박스 안 `.openclaw/workspace/`의 파일을 대화 문맥�
 | `memory/YYYY-MM-DD.md`에 날마다 기록, `MEMORY.md`로 정리 | 쓰지 않음. `memory/` 폴더 없음 | 조건과 계획 이력은 서버가 가진다. 대화 기억이 서버의 확정 조건과 어긋나면 조건이 몰래 바뀐다. 진료 대화에 환자 정보가 섞일 수 있다 |
 | `HEARTBEAT.md`에 주기 작업 목록 | 없음 | 요청 때만 움직이고, 스스로 할 다음 행동(승인·내보내기)은 의사의 몫이다 |
 | 에이전트 하나가 워크스페이스 하나를 읽음 | 에이전트 둘: NAT 계획 에이전트(`AGENTS.md`, 규칙 스킬), OpenClaw 창구(나머지와 창구 스킬) | 계획과 규칙 검사는 검증된 NAT 에이전트에 남기고, 창구는 MCP로 맡긴다(`docs/nemoclaw.md`) |
-| `AGENTS.md`는 자유롭게 고치는 운영 규칙 | 바이트를 고정한 NAT 지시문 | 골든셋(#73)이 이 문구에 맞춰져 있다. 그래서 안에 적힌 옛 경로(`skills/cualign-clinical-rules/SKILL.md`)도 그대로 두었다. 스킬 이름으로 찾으므로 동작에는 영향이 없다 |
+| `AGENTS.md`는 자유롭게 고치는 운영 규칙 | 바이트를 고정한 NAT 지시문 | 골든셋(#73)이 이 문구에 맞춰져 있다. 안에 적힌 `skills/cualign-clinical-rules/SKILL.md`는 이 워크스페이스 기준 경로라 옮긴 뒤에도 맞다 |
 | 경계는 `SOUL.md`에 적음 | `SOUL.md`는 선언하고, 강제는 Guardrails·OpenShell 정책 파일이 한다 | 런타임 설정은 제자리가 정본이다. 문장을 복사하면 두 곳이 어긋난다 |
 | 이모지 | 정하지 않음 | 원래 자료에 없다 |

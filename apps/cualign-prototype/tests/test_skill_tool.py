@@ -65,3 +65,30 @@ def test_preloaded_skill_is_the_installed_one():
     pre = ContextPreload.model_validate(_workflow()["function_groups"]["cualign"]["context_preload"])
     assert pre.case and pre.limits and pre.skill in S.installed()
     assert CuAlignToolConfig().context_preload == ContextPreload()   # absent block: nothing extra
+
+
+def test_allowlist_follows_openclaw_rules():
+    """None = every installed skill, [] = none, a list = exactly these (OpenClaw tools/skills.md, "Agent allowlists")."""
+    assert S.read_skill("cualign-planner", allowed=None)["name"] == "cualign-planner"
+    with pytest.raises(ValueError, match="not allowed"):
+        S.read_skill("cualign-clinical-rules", allowed=[])
+    with pytest.raises(ValueError, match="not allowed.*cualign-clinical-rules"):
+        S.read_skill("cualign-planner", allowed=["cualign-clinical-rules"])
+
+
+def test_planner_cannot_read_the_desk_skill():
+    """The workspace holds both agents' skills; the planner's allowlist keeps the OpenClaw desk's skill out."""
+    from cualign.agent.register import CuAlignToolConfig
+
+    cfg = CuAlignToolConfig.model_validate({k: v for k, v in _workflow()["function_groups"]["cualign"].items() if k != "_type"})
+    assert cfg.skills == ["cualign-clinical-rules"]
+    assert set(cfg.skills) <= set(S.installed())
+    with pytest.raises(ValueError, match="not allowed"):
+        S.read_skill("cualign-planner", allowed=cfg.skills)
+
+
+def test_preloaded_skill_must_be_allowed():
+    from cualign.agent.register import CuAlignToolConfig
+
+    with pytest.raises(ValueError, match="not in skills"):
+        CuAlignToolConfig(skills=["cualign-planner"], context_preload={"skill": "cualign-clinical-rules"})
