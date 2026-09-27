@@ -13,9 +13,10 @@ import zipfile
 
 import numpy as np
 
-from .arch import Arch
+from .arch import Arch, symmetric_arch
 from .case import MD_WINDOW_DEG, Case
 from .constraints import Constraints
+from .fdi import label, to_fdi
 from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER,
                      PREMOLARS, SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
 
@@ -24,12 +25,13 @@ CLEARANCE = 0.05            # mm left between neighbouring crowns in the target
 # (concave) crowns already overlap by several mm3 in a well-aligned arch, so an absolute or relative threshold on the
 # raw overlap either flags every stage or misses a push into a pair that started overlapped.
 NEW_OVERLAP_MM3 = 1.0
-# Rotation and vertical corrections (assumed thresholds). A crown is derotated only when its mesiodistal axis is off the
-# arch tangent by at least ROTATION_MIN_DEG: the fitted tangent itself is off by up to ~10° on known arches (golden set
-# B), so smaller angles cannot be told apart from fit error. A crown is levelled when its top is more than
+# Rotation and vertical corrections (assumed thresholds). A crown is turned when its total yaw — the measured rotation
+# of its mesiodistal axis off the arch tangent (incisors only, see case.YAW_MEASURABLE) plus the turn of the tangent
+# between where it stands and where it lands on the target arch (every moved crown) — is at least ROTATION_MIN_DEG;
+# below that the fit error of the tangent is as large as the correction. A crown is levelled when its top is more than
 # VERTICAL_MIN_MM above or below its two neighbours' mean (not a flat plane: canine tips and lateral incisors differ
 # by nature; the end molars are left alone).
-ROTATION_MIN_DEG = 10.0
+ROTATION_MIN_DEG = 3.0
 VERTICAL_MIN_MM = 1.0
 MD_SEARCH_LIMIT_DEG = MD_WINDOW_DEG - 1.0   # a yaw this large hit the edge of the width-axis search
 
@@ -113,6 +115,27 @@ class _SpanModel:
         # no molar beyond an end of the span: that end tooth's own half width is measured from its centre
         self.extra = (self.widths[span[0]] / 2 if self.first == 0 else 0.0) + \
             (self.widths[span[-1]] / 2 if self.last == len(order) - 1 else 0.0)
+        # The target arch form: the in-line arch made left-right symmetric about the midline (the central incisors'
+        # contact, along the line from between the first molars to it) and smoothed to degree 4, passing through the
+        # first molars. The crowding is measured on `base`; the crowns are placed on `target` (see target_s).
+        in_line = [j for j in order if j not in self.out]
+        self.target = base
+        self._target_ends: dict[float, tuple[float, float]] = {}
+        if {3, 8, 9, 14} <= set(in_line):
+            mid = case.contact_point(8, 9)[:2]
+            axis = mid - (case.anchor[3][:2] + case.anchor[14][:2]) / 2
+            self.target = symmetric_arch(base, np.array([case.anchor[j] for j in in_line]), mid, axis,
+                                         np.array([j in (3, 14) for j in in_line]))
+
+    def target_s(self, s: float, offset: float) -> float:
+        """Arc position on the target arch (offset by `offset`) of arc position s on the in-line arch: the span's ends
+        (the first molars' mesial contacts) map onto their nearest points on the target, linearly in between."""
+        if offset not in self._target_ends:
+            sa, sb = self.ends(offset)
+            self._target_ends[offset] = (sa, sb, self.target.s_of(self.base.point(sa, offset), offset),
+                                         self.target.s_of(self.base.point(sb, offset), offset))
+        sa, sb, ta, tb = self._target_ends[offset]
+        return ta + (s - sa) * (tb - ta) / (sb - sa) if sb != sa else ta
 
     def ends(self, offset: float) -> tuple[float, float]:
         """Arc positions on the in-line arch offset by `offset` where the span starts and ends: the first molars'
@@ -210,9 +233,6 @@ SHAPE_STEP_MM = 0.2      # more room per round for a pair of neighbours whose cr
 SHAPE_ROUNDS = 12        # at most this many rounds (2.2 mm for one pair)
 TARGET_OVERLAP_MM3 = 0.5  # a pair may gain this much overlap in the target (half the validator's NEW_OVERLAP_MM3)
 
-LATERAL_TOL_MM = 0.75   # a crown this close to the fitted arch is left at its distance from it (natural arches are not
-                        # polynomials; pulling every crown onto the curve moved aligned teeth ~1 mm into their neighbours)
-
 
 def _isotonic(y: list[float]) -> list[float]:
     """Least-squares non-decreasing fit (pool adjacent violators)."""
@@ -233,21 +253,20 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
                      lock=frozenset(), close: bool = False,
                      close_sides: tuple[bool, bool] = (True, True),
                      removed=(), closable: tuple[bool, bool] = (True, True)
-                     ) -> tuple[list, dict, bool, tuple[float, float], float]:
+                     ) -> tuple[list, bool, tuple[float, float], float]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
-    Returns (arc position per active tooth, None for the anchors; lateral offset kept per span tooth; whether the span
-    fit; room left in front of each first molar). Along the arch, each span crown moves only as far as needed so that
+    Returns (arc position per active tooth, None for the anchors; whether the span fit; room left in front of each
+    first molar; extraction space left open). Along the arch, each span crown moves only as far as needed so that
     neighbours sit at least contact width apart and the span fits between the first molars' mesial contacts — an
     aligned arch stays put, a crowded one opens where it overlaps (a bounded isotonic fit). Locked span teeth stay: the
-    fit runs between them. Across the arch, only crowns more than LATERAL_TOL_MM off the arch are brought onto it.
+    fit runs between them. Across the arch, every crown is brought onto the target arch (the caller places it there).
     Widths are contact widths laid out along the contact line; the crowns are placed on the crown-centre arch, which
     runs inside the contacts and is shorter by the ratio k. When the span does not fit, the missing space is shared out
     as even overlap (the space deficit is reported by the caller). `extra`: more room for a pair of neighbours whose
     crown shapes still meet at contact width (see SHAPE_STEP_MM). `close`: close every space (after an extraction):
     the span becomes one contiguous chain, and the room left is for the molars to close."""
     model = _span_model(case)
-    arch = model.base
     sa, sb = model.ends(offset)
     sa0, sb0 = model.ends(0.0)
     avail = model.available + (sb - sa) - (sb0 - sa0)   # the expansion lengthens the contact line as much as the centre arc
@@ -285,15 +304,10 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
             if at is not None and not ((a == -1 and at >= R and closable[0]) or (b == len(span) and at <= L and closable[1])):
                 open_mm += max(R - L, 0.0)   # the run's slack stays between it and a locked tooth
     pos = {i: float(t[m] + D[m]) for m, i in enumerate(span)}
-    lateral = {}
-    for i in span:
-        s0 = arch.s_of(case.anchor[i])
-        e = float((case.anchor[i][:2] - arch.point(s0)) @ arch.normal(s0))
-        lateral[i] = e if abs(e) < LATERAL_TOL_MM or i in lock else 0.0
     room = (float(t[0] - lo), float(top - t[-1]))
     if close and not fixed:
         open_mm += sum(max(r, 0.0) for r, ok in zip(room, closable) if not ok)
-    return [pos.get(i) for i in active], lateral, fits, room, open_mm
+    return [pos.get(i) for i in active], fits, room, open_mm
 
 
 def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y,
@@ -355,9 +369,9 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
         if not extraction:
             raise ValueError("발치 처방(발치할 치아 번호)이 없어 발치안을 만들 수 없습니다.")
         if set(extraction) - set(case.ids):
-            raise ValueError(f"처방된 발치 치아가 케이스에 없습니다: {sorted(set(extraction) - set(case.ids))}")
+            raise ValueError(f"처방된 발치 치아가 케이스에 없습니다: {label(sorted(set(extraction) - set(case.ids)))}")
         if set(extraction) - set(PREMOLARS):
-            raise ValueError(f"소구치(4, 5, 12, 13) 발치만 계획할 수 있습니다: {sorted(set(extraction) - set(PREMOLARS))}")
+            raise ValueError(f"소구치({label(sorted(PREMOLARS))}) 발치만 계획할 수 있습니다: {label(sorted(set(extraction) - set(PREMOLARS)))}")
         if set(extraction) & set(lock):
             raise ValueError("locked teeth cannot be extracted")
     ipr_limit_mm = constraints.ipr_limit_mm if constraints else IPR_PER_SURFACE
@@ -420,24 +434,25 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             width[i] -= r
         gain += sum(v for i, v in red.items() if in_scope(i))
         surf = sum(round(r / (ipr_limit_mm * 0.5)) for r in red.values()) if ipr_limit_mm else 0
-        notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {sorted(ipr_exclude)})" if ipr_exclude else ""))
+        notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {label(sorted(ipr_exclude))})" if ipr_exclude else ""))
     if strategy == "extraction":
         rm = list(extraction)            # as prescribed (checked in propose_target)
         for i in rm:
             gain += width[i]
             active.remove(i)
-        notes.append(f"처방대로 발치 {rm}")
+        notes.append(f"처방대로 {label(rm)} 발치")
     deficit = round(max(crowd - gain, 0.0), 2)       # the clinical deficit; shape room that does not fit shows as collision
 
     # Order along the arch by current arc-length coordinate (on the offset curve for expansion).
     s_cur = {i: arch.s_of(case.anchor[i], offset) for i in active}
     active.sort(key=lambda i: s_cur[i])
-    lateral: dict[int, float] = {}
     fits, closing, open_mm = True, (0.0, 0.0), 0.0
+    # where the crowns are placed: the symmetric target arch for an anchored case, else the arch itself
+    curve, to_curve = (_span_model(case).target, _span_model(case).target_s) if anchored else (arch, lambda s, o: s)
     if anchored:
         sides = (any(i < 9 for i in extraction), any(i >= 9 for i in extraction))
         closable = (not lock & {2, 3}, not lock & {14, 15})
-        s_new, lateral, fits, room, open_mm = _anchored_layout(
+        s_new, fits, room, open_mm = _anchored_layout(
             case, active, width, s_cur, offset, extra, lock, close=strategy == "extraction", close_sides=sides,
             removed=tuple(extraction) if strategy == "extraction" else (), closable=closable)
         if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
@@ -445,7 +460,8 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
             closing = tuple(0.0 if lock & blk else max(r, 0.0) for r, blk in zip(room, ({2, 3}, {14, 15})))
             if any(c > 0.05 for c in closing):
-                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 (3번 쪽 {closing[0]:.1f}mm, 14번 쪽 {closing[1]:.1f}mm)")
+                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 ({label(3)} 쪽 {closing[0]:.1f}mm, "
+                             f"{label(14)} 쪽 {closing[1]:.1f}mm)")
     else:
         gaps = [(width[active[k]] + width[active[k + 1]]) / 2 + CLEARANCE + extra.get((active[k], active[k + 1]), 0.0)
                 for k in range(len(active) - 1)]
@@ -455,7 +471,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             k0 = active.index(locked[0])
             s_new = chain - chain[k0] + s_cur[locked[0]]
             if len(locked) > 1:
-                notes.append(f"고정 {locked} 중 {locked[0]} 을 기준으로 정렬")
+                notes.append(f"고정 {label(locked)} 중 {label(locked[0])}을 기준으로 정렬")
         else:
             s_new = chain - chain.mean() + np.mean([s_cur[i] for i in active])
 
@@ -475,23 +491,27 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
                 shift = np.zeros(2)
             target[i] = np.array([shift[0], shift[1], lift.get(i, 0.0)])
             continue
-        xy = arch.point(float(s_new[k]), offset) + arch.normal(float(s_new[k])) * lateral.get(i, 0.0)
+        s_t = to_curve(float(s_new[k]), offset)
+        xy = curve.point(s_t, offset)
         p = np.array([xy[0], xy[1], case.anchor[i][2] + lift.get(i, 0.0)])
         target[i] = p - case.anchor[i]
-        if i in rot:   # derotate onto the arch tangent where the crown ends up
-            t0, t1 = arch.tangent(s_cur[i], offset), arch.tangent(float(s_new[k]), offset)
-            turn = np.degrees(np.arctan2(t0[0] * t1[1] - t0[1] * t1[0], t0 @ t1))
-            target.yaw[i] = round(rot[i] + float(turn), 2)
+        # the crown turns with the arch: by the angle between the tangent where it stands and the target's tangent
+        # where it lands, plus its own measured rotation off the tangent (incisors); small totals are left alone
+        t0, t1 = arch.tangent(s_cur[i], offset), curve.tangent(s_t, offset)
+        turn = float(np.degrees(np.arctan2(t0[0] * t1[1] - t0[1] * t1[0], t0 @ t1)))
+        yaw = rot.get(i, 0.0) + turn
+        if abs(yaw) >= ROTATION_MIN_DEG:
+            target.yaw[i] = round(yaw, 2)
     for i in ids:
         if i not in target:
             target[i] = None
     for i, y in target.yaw.items():
-        notes.append(f"치아 {i} 회전 {y:+.1f}° 보정")
+        notes.append(f"{label(i)} 회전 {y:+.1f}° 보정")
     for i, dz in sorted(lift.items()):
-        notes.append(f"치아 {i} 수직 {dz:+.1f}mm 보정")
+        notes.append(f"{label(i)} 수직 {dz:+.1f}mm 보정")
     if extra:
         notes.append(f"치관 모양 때문에 접촉 폭보다 {sum(extra.values()):.1f}mm 더 둠 "
-                     + ", ".join(f"{a}-{b}" for a, b in sorted(extra)))
+                     + ", ".join(f"{to_fdi(a)}-{to_fdi(b)}" for a, b in sorted(extra)))
     disp = [float(np.linalg.norm(v)) for v in target.values() if v is not None]
     info = {"strategy": strategy, "space_gain_mm": round(gain, 2), "crowding_mm": crowd, "space_deficit_mm": deficit,
             "needed_mm": round(sum(width[i] for i in ids), 1),
@@ -532,12 +552,12 @@ def unsupported_reasons(case: Case) -> list[str]:
     out = []
     missing = [i for i in range(case.ids[0], case.ids[-1] + 1) if i not in case.ids]
     if missing:
-        out.append(f"치아 {missing} 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)")
+        out.append(f"{label(missing)} 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)")
     if len(case.ids) < 6:
         out.append(f"치아 {len(case.ids)}개: 악궁을 맞추기에 부족 (6개 이상 필요)")
     for i in case.ids:
         if case.yaw_measurable(i) and abs(case.crown_yaw(i)) >= MD_SEARCH_LIMIT_DEG:
-            out.append(f"치아 {i} 회전 {case.crown_yaw(i):+.0f}°: 측정 범위(±{MD_SEARCH_LIMIT_DEG:.0f}°) 끝 — 실제로는 더 돌아 있을 수 있음")
+            out.append(f"{label(i)} 회전 {case.crown_yaw(i):+.0f}°: 측정 범위(±{MD_SEARCH_LIMIT_DEG:.0f}°) 끝 — 실제로는 더 돌아 있을 수 있음")
     return out
 
 

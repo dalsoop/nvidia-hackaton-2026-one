@@ -303,7 +303,7 @@ async def main():
             await page.locator("#patientForm button[type=submit]").click()
             await page.wait_for_function("!document.querySelector('#checkBar').hidden && document.querySelector('#checkFacts .bad')", timeout=120000)
             facts = await page.locator("#checkFacts").inner_text()
-            assert "결손" in facts and "4" in facts, facts
+            assert "결손" in facts and "15번" in facts, facts      # Universal 4 = FDI 15 (core writes FDI)
             assert await page.locator("#startPlan").is_hidden()      # a blocked scan cannot start a plan (#112)
             assert await page.locator("#checkBar").evaluate("e => e.classList.contains('fail')")
             assert await page.locator("#checkTitle").inner_text() == "계획할 수 없는 스캔입니다"

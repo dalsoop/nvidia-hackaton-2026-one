@@ -21,7 +21,11 @@ MD_WINDOW_DEG = 35.0     # search the mesiodistal axis within this angle of the 
 MD_WINDOW_OTHER_DEG = 15.0   # ... and for canines, premolars, molars: their rhomboid outlines narrow along a diagonal
 # Incisor outlines are long and thin, so their axis (and a rotation about the long axis) can be read from the outline;
 # golden set B confirms 15–20° incisor rotations but reads a 12° molar and a 15° canine rotation as ~0°, and real
-# canines/molars read 18–36° with no rotation visible. Only incisors get rotation measured and corrected.
+# canines/molars read 18–36° with no rotation visible. Only incisors get rotation measured and corrected; the other
+# crowns turn with the arch tangent instead (planner._place). Five other estimators (outline PCA, minimum rectangle,
+# contact chord, labial contour line, template registration of the top-view depth map) were tried on golden set B
+# and the three bundled scans on 2026-09-28 and none recovers a known spin on canines/premolars/molars
+# (.report/1-target-rotation.md).
 YAW_MEASURABLE = frozenset({7, 8, 9, 10, 23, 24, 25, 26})
 MD_TURN_COST = 0.03      # mm of extent per degree the axis must save to turn away from the tangent
 # Crowding is measured the clinical way (#59): a tooth's width between its contact points, not its full outline. On a

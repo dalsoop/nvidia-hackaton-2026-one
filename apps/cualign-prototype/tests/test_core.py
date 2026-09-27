@@ -70,7 +70,7 @@ def test_stage_cap_violation():
 def test_lock_and_ipr_exclude(moderate):
     target, info = propose_target(moderate, "ipr", ipr_exclude={7, 8, 9, 10}, lock={3, 14})
     assert np.allclose(target[3], 0) and np.allclose(target[14], 0)
-    assert "제외 [7, 8, 9, 10]" in info["notes"][0]
+    assert "제외 12·11·21·22번" in info["notes"][0]      # FDI, as the dentist reads it (#113)
 
 
 def test_orders_change_stage_count(moderate):

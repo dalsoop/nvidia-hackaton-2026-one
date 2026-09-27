@@ -253,7 +253,7 @@ def test_v2_rejections_and_blocks_use_the_design_wording(client, monkeypatch):
     assert client.get("/api/patients/P0001").json()["scans"] == []               # rejected uploads are not kept
 
     check = post(_scan_files(drop=(7,))).json()["check"]
-    assert not check["ready"] and check["unsupported"] == ["치아 [7] 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)"]
+    assert not check["ready"] and check["unsupported"] == ["12번 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)"]
     check = post(_scan_files(drop=tuple(range(2, 12)))).json()["check"]            # 12..15: four teeth
     assert not check["ready"] and check["unsupported"] == ["치아 4개: 악궁을 맞추기에 부족 (6개 이상 필요)"]
     scan = post(_scan_files()).json()                                              # closed crowns, no gum: no evidence
