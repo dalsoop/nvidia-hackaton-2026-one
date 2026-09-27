@@ -16,9 +16,10 @@ WS = ROOT / "workspace"
 # sha256 of workspace/AGENTS.md after the #120 batch (7231 chars: the c98bef0 snapshot plus the #113 FDI table, the
 # conditions_ko line, the IPR-cap rule and the Korean-question rule) and the v3 batch (7476 chars: IPR contacts are not
 # a numbering puzzle, after the 2026-09-28 leak on the FDI-only sample text; then 8041 chars after the E2E rehearsal:
-# select_plan after a comparison, no tooth numbers from tool results; then 9004 chars for the step flow, .report/15:
-# the «Steps» paragraph — setup and target turns stop and ask back, stages takes the context's target_id).
-INSTRUCTIONS_SHA256 = "ac94c7d7a21db81481c71b70436145a7cf49cc0bc83ec61f60dc585633c42e7a"
+# select_plan after a comparison, no tooth numbers from tool results; then the #57 per-contact IPR prescription, and
+# 9273 chars with the step flow's «Steps» paragraph, .report/15: setup and target turns stop and ask back, stages takes
+# the context's target_id).
+INSTRUCTIONS_SHA256 = "dd591e5ecaeb216e40a31a23c2201f3a1fb17ebf5112c1eee367e101cafb1e5e"
 OPENCLAW = ROOT / "nemoclaw" / "openclaw-2026.7.1"
 HANGUL = re.compile("[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]")
 
@@ -36,7 +37,7 @@ def test_nat_reads_the_instructions_from_workspace_agents_md():
 
 def test_instructions_are_byte_identical_to_the_pre_move_snapshot():
     text = _instructions()
-    assert len(text) == 9004
+    assert len(text) == 9273
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == INSTRUCTIONS_SHA256
     assert hashlib.sha256((WS / "AGENTS.md").read_bytes()).hexdigest() == INSTRUCTIONS_SHA256
 

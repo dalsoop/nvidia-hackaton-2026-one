@@ -217,8 +217,71 @@ function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
     [src, dst] = [dst, src];
   }
   for (let v = 0; v < n; v++) { pos[3 * v] = skin.base[3 * v] + src[3 * v]; pos[3 * v + 1] = skin.base[3 * v + 1] + src[3 * v + 1]; pos[3 * v + 2] = skin.base[3 * v + 2] + src[3 * v + 2]; }
+  // the wall's copies of the rim vertices stay glued to the rim (splitGumBase)
+  for (const [c, o] of gum.geometry.userData.dups ?? []) { pos[3 * c] = pos[3 * o]; pos[3 * c + 1] = pos[3 * o + 1]; pos[3 * c + 2] = pos[3 * o + 2]; }
   gum.geometry.attributes.position.needsUpdate = true;
   gum.geometry.computeVertexNormals();
+  fixGumBaseNormals(gum.geometry);
+}
+// The server closes the gum with a wall down to a floor at z_base (gum_fill.base). Those faces share their rim vertices
+// with the scanned surface, so averaged normals bled the jagged rim into the wall as vertical streaks. Give the wall and
+// floor their own copies of the rim vertices: the surface keeps its smooth normals, the wall smooths only along itself.
+// `dups` pairs [copy, original] so the skin can keep the copies on the rim when the gum deforms.
+function splitGumBase(gumMesh, zBase) {
+  const v = gumMesh.v.flat(), f = gumMesh.f.flat(), dups = [];
+  if (zBase == null) return { v, f, dups, wall: [], floorVerts: new Set(), wallVerts: new Set() };   // no closed base (procedural gum): nothing to split
+  const onBase = (i) => Math.abs(v[3 * i + 2] - zBase) < 0.02;   // the server rounds z_base to 2 decimals
+  // face class: 0 surface (no vertex on the floor plane), 1 wall (some), 2 floor (all three)
+  const cls = new Uint8Array(f.length / 3), used = [new Uint8Array(v.length / 3), new Uint8Array(v.length / 3), new Uint8Array(v.length / 3)];
+  for (let k = 0; k < f.length; k += 3) {
+    const c = onBase(f[k]) + onBase(f[k + 1]) + onBase(f[k + 2]);
+    cls[k / 3] = c === 0 ? 0 : c === 3 ? 2 : 1;
+    used[cls[k / 3]][f[k]] = used[cls[k / 3]][f[k + 1]] = used[cls[k / 3]][f[k + 2]] = 1;
+  }
+  // the wall and the floor each get their own copy of a vertex another class also uses (rim: surface|wall,
+  // bottom edge: wall|floor). The surface keeps the originals.
+  for (const c of [1, 2]) {
+    const copy = new Map();
+    for (let k = 0; k < f.length; k += 3) {
+      if (cls[k / 3] !== c) continue;
+      for (let j = 0; j < 3; j++) {
+        const i = f[k + j];
+        if (!(used[0][i] || used[c === 1 ? 2 : 1][i])) continue;   // used by this class only: nothing to separate from
+        if (!copy.has(i)) { copy.set(i, v.length / 3); v.push(v[3 * i], v[3 * i + 1], v[3 * i + 2]); dups.push([v.length / 3 - 1, i]); }
+        f[k + j] = copy.get(i);
+      }
+    }
+  }
+  const wall = [], floorVerts = new Set(), wallVerts = new Set();
+  for (let k = 0; k < f.length; k += 3) {
+    if (cls[k / 3] === 1) { wall.push(k); wallVerts.add(f[k]); wallVerts.add(f[k + 1]); wallVerts.add(f[k + 2]); }
+    else if (cls[k / 3] === 2) { floorVerts.add(f[k]); floorVerts.add(f[k + 1]); floorVerts.add(f[k + 2]); }
+  }
+  return { v, f, dups, wall, floorVerts, wallVerts };
+}
+// The wall and floor triangles come with mixed winding (the wall is fanned from a loop, the floor ear-clipped), so
+// averaged normals alternate and the flat faces shade as stripes. Overwrite them: the floor faces straight down,
+// each wall vertex takes the mean of its faces' normals turned to point away from the arch.
+function fixGumBaseNormals(geo) {
+  const b = geo.userData.base;
+  if (!b) return;
+  const N = geo.attributes.normal.array, P = geo.attributes.position.array, I = geo.index.array;
+  for (const i of b.floorVerts) { N[3 * i] = 0; N[3 * i + 1] = 0; N[3 * i + 2] = -1; }
+  for (const i of b.wallVerts) { N[3 * i] = N[3 * i + 1] = N[3 * i + 2] = 0; }
+  let cx = 0, cy = 0;
+  for (const i of b.wallVerts) { cx += P[3 * i]; cy += P[3 * i + 1]; }
+  cx /= b.wallVerts.size || 1; cy /= b.wallVerts.size || 1;
+  for (const k of b.wall) {
+    const a = I[k], c = I[k + 1], d = I[k + 2];
+    const ax = P[3 * c] - P[3 * a], ay = P[3 * c + 1] - P[3 * a + 1], az = P[3 * c + 2] - P[3 * a + 2];
+    const bx = P[3 * d] - P[3 * a], by = P[3 * d + 1] - P[3 * a + 1], bz = P[3 * d + 2] - P[3 * a + 2];
+    let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    const mx = (P[3 * a] + P[3 * c] + P[3 * d]) / 3 - cx, my = (P[3 * a + 1] + P[3 * c + 1] + P[3 * d + 1]) / 3 - cy;
+    if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    for (const i of [a, c, d]) { N[3 * i] += nx; N[3 * i + 1] += ny; N[3 * i + 2] += nz; }
+  }
+  for (const i of b.wallVerts) { const l = Math.hypot(N[3 * i], N[3 * i + 1], N[3 * i + 2]) || 1; N[3 * i] /= l; N[3 * i + 1] /= l; N[3 * i + 2] /= l; }
+  geo.attributes.normal.needsUpdate = true;
 }
 function buildTeeth(mesh) {
   group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels();
@@ -246,9 +309,13 @@ function buildTeeth(mesh) {
   const gumMesh = mesh.gum_filled ?? mesh.gum;   // the sockets filled by the server when it sends gum_filled (contract 11-gum-server.md)
   if (gumMesh) {
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(gumMesh.v.flat(), 3));
-    geo.setIndex(gumMesh.f.flat());
+    const split = splitGumBase(gumMesh, mesh.gum_fill?.z_base);
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(split.v, 3));
+    geo.setIndex(split.f);
+    geo.userData.dups = split.dups;
+    if (split.wall.length) geo.userData.base = split;
     geo.computeVertexNormals();
+    fixGumBaseNormals(geo);
     // both sides (#18): the scanned gum is an open shell; from the base its inside showed black with FrontSide. The crowns stay FrontSide.
     const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1, side: THREE.DoubleSide }));
     gum.userData.gum = true;
@@ -1150,6 +1217,9 @@ function renderCaseDetail(c) {
   // IPR happens between two teeth: a blue line on each contact whose both crowns are allowed. Extraction prescriptions
   // make room by the extraction, not by IPR, so they draw none.
   const iprOn = !extract.size && (cons?.ipr_limit_mm ?? 0) > 0;
+  // a prescription names the contacts (#57, Universal pairs); without one the even rule applies to every allowed contact
+  const rx = new Set((cons?.ipr_surfaces ?? []).map(([a, b]) => Math.min(a, b) + "-" + Math.max(a, b)));
+  const iprAt = (u) => rx.size ? rx.has(u + "-" + (u + 1)) : iprOn && !iprOff.has(u) && !iprOff.has(u + 1);
   // 14 crowns on an arch, FDI 17…11 · 21…27 (Universal 2…15 from the patient's right)
   const svg = $("dArch"); svg.innerHTML = "";
   const ns = "http://www.w3.org/2000/svg";
@@ -1157,7 +1227,7 @@ function renderCaseDetail(c) {
   let iprCount = 0;
   for (let k = 0; k < 14; k++) {
     const u = k + 2, [x, y] = at(k);
-    if (iprOn && k < 13 && !iprOff.has(u) && !iprOff.has(u + 1)) {
+    if (k < 13 && iprAt(u)) {
       const [x2, y2] = at(k + 1), mx = (x + x2) / 2, my = (y + y2) / 2, nx = -(y2 - y), ny = x2 - x, n = Math.hypot(nx, ny);
       const line = document.createElementNS(ns, "line");   // across the contact, perpendicular to the arch
       line.setAttribute("x1", mx + (nx / n) * 9); line.setAttribute("y1", my + (ny / n) * 9);

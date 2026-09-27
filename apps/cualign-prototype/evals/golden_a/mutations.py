@@ -420,6 +420,27 @@ def invent_ipr_amount(tr: Trace):
     return tr
 
 
+def ipr_beyond_prescription(tr: Trace):
+    """A target/plan computed under a per-contact prescription (#57) that also strips a contact the dentist did not
+    name (the older uniform rule leaking through)."""
+    t = _last(tr)
+    hit = False
+    for c in planner_calls(t):
+        if c.name not in CARRIERS or not c.ok or not isinstance(c.result, dict):
+            continue
+        for r in plan_rows(c):
+            cons = r.get("constraints") if isinstance(r.get("constraints"), dict) else None
+            info = r.get("target") if isinstance(r.get("target"), dict) else r
+            if not cons or not cons.get("ipr_surfaces") or not info.get("ipr_surfaces"):
+                continue
+            a = max(int(x[0]) for x in cons["ipr_surfaces"]) + 1
+            if a + 1 > 15:
+                a = min(int(x[0]) for x in cons["ipr_surfaces"]) - 1
+            info["ipr_surfaces"] = list(info["ipr_surfaces"]) + [[a, a + 1, 0.25]]
+            hit = True
+    return tr if hit else None
+
+
 def compare_drops_lock(tr: Trace):
     """Revision routed through compare_strategies, and the plans it computed no longer hold the locked teeth
     (e.g. the constraints were reset before comparing)."""
@@ -496,7 +517,7 @@ OPERATORS = [drop_disclaimer, fabricate_stage_count, unknown_plan_id, fake_succe
              hide_reviewer_failure, paraphrase_memo, silent_reviewer_error, known_issue_reviewer_retry, diagnose, empty_answer, export_without_approval,
              silent_unsupported, loop_instead_of_compare, claims_to_decide, tool_error_storm, drop_failure_reason,
              drop_last_turn, report_old_plan, silent_relaxation, claim_condition_changed, claim_full_arch, drop_diff,
-             prescribe_ipr, invent_ipr_amount, compare_drops_lock, validate_errors, success_wording_variant,
+             prescribe_ipr, invent_ipr_amount, ipr_beyond_prescription, compare_drops_lock, validate_errors, success_wording_variant,
              memo_prepend_claim, memo_markdown_heading, leak_internal_terms]
 
 
@@ -509,6 +530,7 @@ APPLIES = {
     "drop_stage_cap": lambda spec: spec.expect.get("stage_cap") is not None,
     "silent_relaxation": lambda spec: spec.expect.get("stage_cap") is not None,
     "compare_drops_lock": lambda spec: bool(spec.expect.get("lock")),
+    "ipr_beyond_prescription": lambda spec: bool(spec.expect.get("ipr_surfaces")),
     # the fixed disclaimer line is a format rule of plan answers; A14 is judged on deferring the decision instead
     "drop_disclaimer": lambda spec: any(c["type"] == "disclaimer" for c in spec.checks),
     # announcing a relaxed condition is judged where the spec is about consent
@@ -551,6 +573,7 @@ TARGETS = {
     "claim_condition_changed": {"answer_not_contains"}, "claim_full_arch": {"export_deliverable"},
     "drop_diff": {"compares_with_previous"}, "prescribe_ipr": {"no_prescriptive_claims"},
     "invent_ipr_amount": {"grounded_numbers", "numbers_near_keyword_grounded"}, "compare_drops_lock": {"tool_count", "constraint_superset"},
+    "ipr_beyond_prescription": {"ipr_as_prescribed"},
     "validate_errors": {"presented_plan_validated", "new_plan_validated"},
     "success_wording_variant": {"no_false_success"}, "memo_prepend_claim": {"memo_grounded"},
     "memo_markdown_heading": {"memo_grounded"}, "leak_internal_terms": {"no_internal_terms"},

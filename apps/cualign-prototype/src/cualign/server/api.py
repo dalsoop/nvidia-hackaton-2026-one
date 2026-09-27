@@ -147,7 +147,7 @@ def _summary(pid):
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
-                    changes=None, parent_plan_id=None, extraction=None):
+                    changes=None, parent_plan_id=None, extraction=None, ipr_surfaces=None):
     cid, case = STORE.load_case(case_id)
     why = planner.unsupported_reasons(case)
     if why:
@@ -161,6 +161,8 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
             changes["allow_extraction"] = allow_extraction
         if order is not None:
             changes["order"] = order
+        if ipr_surfaces is not None:          # per-contact IPR (#57), Universal numbers as the CLI parsed them
+            changes["ipr_surfaces"] = list(ipr_surfaces)
     c = c.patched(changes)
     c.check_case(case.ids)
     service = PlanningService(STORE)
