@@ -153,7 +153,7 @@ nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 | VM에서 `https://192.168.5.2:8443/mcp`로 사설 CA와 토큰을 써서 MCP `initialize` | 통과 | 시험용 서버, 토큰이 없으면 401 |
 | `mcp add`와 `mcp status`의 `trustedPrivateTarget.state: match` | 검증 대기 | 온보딩이 막혀 Linux(Brev)에서 확인해야 합니다 |
 | 프록시의 도구 차단 기록 | 검증 대기 | |
-| `SOUL.md` 읽기 전용 | 강제되지 않음 | 2026-09-27 실제 창구에서 확인. `/sandbox/.openclaw` 전체가 `read_write`인 동안, 그 아래 `SOUL.md`를 `filesystem_policy.read_only`에 더해도 쓰기, `chmod`, 이름 바꾸기가 모두 됩니다. Landlock은 경로를 따라 권한을 더하기만 합니다. 잠금은 아직 없습니다 |
+| `SOUL.md` 읽기 전용 | 강제되지 않음 | 2026-09-27 실제 창구에서 확인. `/sandbox/.openclaw` 전체가 `read_write`인 동안, 그 아래 `SOUL.md`를 `filesystem_policy.read_only`에 더해도 쓰기, `chmod`, 이름 바꾸기가 모두 됩니다. Landlock은 경로를 따라 권한을 더하기만 합니다. 잠금은 아직 없습니다. 공식 문서가 권하는 방법은 아래 "SOUL.md 보호" 절에 있습니다 |
 | 창구 독자 시험 | 통과 | 2026-09-27. 승인, 케이스 목록, 계획 요청 모두 3번 중 3번 통과(아래 참고) |
 
 ### 창구 독자 시험 (2026-09-27)
@@ -178,6 +178,26 @@ openshell sandbox exec -n cualign-desk -- openclaw agent --agent main \
 승인 요청의 경계는 `SOUL.md` 규칙 1이 지킵니다. 창구는 스킬 본문을 읽기 전에는 스킬 설명만 봅니다. 규칙 1 없이 돌린 3번은 모두 `cualign_list_cases`나 `cualign_get_plan`을 불렀고, 1번은 `cualign_plan`까지 불러 새 초안 계획을 만들었습니다. 38행 문구나 스킬 설명을 고쳐도 `cualign_list_cases` 호출이 남았습니다. 규칙 1에 "파일을 읽기 전에"를 넣은 뒤 3번 모두 도구 호출 0번이었습니다. 스킬 파일은 바꾸지 않았습니다.
 
 시험으로 서버(`/sandbox/out/plans/`)에 생긴 초안 계획 9개는 시험 뒤 운영자 터미널에서 지웠습니다. 이 시험 전에 있던 계획 3개는 그대로 두었습니다. 15번 실행 뒤에도 창구에 `memory/` 폴더가 없고 `MEMORY.md` 해시가 그대로입니다.
+
+### SOUL.md 보호: 공식 문서의 방법 (2026-09-27 확인)
+
+NemoClaw는 설계상 `/sandbox/.openclaw`를 쓰기 가능하게 둡니다. 에이전트가 자기 설정을 관리하고 스킬을 설치해야 하기 때문입니다. Filesystem Controls 문서는 "NemoClaw does not provide post-provisioning immutability for the OpenClaw config or state tree."라고 적습니다. NemoClaw 보안 권장 문서는 변경 가능한 에이전트 설정을 격리 경계로 삼는 것("Treating mutable agent config as an isolation boundary")을 흔한 실수로 꼽습니다. 처방은 OpenShell 정책과 credential provider를 강제 경계로 삼고, 설정이 바뀌는지 감시하다가 침해가 의심되면 신뢰할 수 있는 입력으로 샌드박스를 다시 만드는 것입니다. 그래서 `SOUL.md`의 규칙은 창구의 행동을 이끄는 지침이고, 보안 경계가 아닙니다.
+
+| 층 | 방법 | 막는 것 | 이 저장소의 상태 |
+|---|---|---|---|
+| OpenShell 프록시(강제 경계) | 승인·내보내기 MCP 도구를 프록시에서 거부합니다. 4절의 `--deny-tool`이 이 일을 하고, 정책 스키마에서는 MCP 규칙과 `deny_rules`로 적습니다. | 창구가 `SOUL.md`를 고쳐도 승인과 내보내기는 되지 않습니다. | 차단 기록 검증 대기. 위 표의 "프록시의 도구 차단 기록" 행과 같습니다 |
+| OpenClaw 도구 정책(애플리케이션 층) | 창구 에이전트에서 `write`, `edit`, `apply_patch`, `group:runtime`(`exec`, `process`, `code_execution`)을 거부합니다. OpenClaw 문서에 따르면 `write`를 거부해도 `apply_patch`는 막히지 않으므로 함께 적습니다. `read`는 스킬 본문을 읽는 데 필요하므로 남깁니다. | 도구나 셸 명령으로 `SOUL.md`·`MEMORY.md`를 쓰는 일과 기억 저장을 막습니다. 이 정책도 에이전트가 고칠 수 있는 OpenClaw 설정에 있으므로, NemoClaw는 이 층을 경계가 아니라 추가 방어로 봅니다. | 적용하지 않았습니다. OpenClaw 2026.7.1의 에이전트별 설정 키는 확인이 필요합니다 |
+| 읽기 전용 host mount(NemoClaw) | `nemoclaw onboard --host-mount <호스트 경로>:/sandbox/<대상>`. 문서에 따르면 받아들인 mount는 모두 읽기 전용입니다. `ro` mount는 커널이 쓰기를 막으므로, Landlock의 `read_write` 권한으로도 풀리지 않습니다. | 샌드박스 안에서 mount한 파일을 고치는 일을 막습니다. | 시험하지 않았습니다. Docker의 Linux와 WSL2에서만 되고, 온보딩 때 정해야 합니다. 문서의 예시는 `/sandbox/project` 같은 새 경로입니다. OpenClaw가 읽는 `/sandbox/.openclaw/workspace`를 이 mount로 대신하는 방법은 문서에 없습니다. NemoClaw가 그 폴더에 `POLICY.md`를 쓰는 문제도 문서에서 다루지 않습니다 |
+| 감지와 복구(DLI 04a의 reviewable history, known-good 상태로 복구) | 운영자 터미널에서 워크스페이스 파일의 sha256을 저장소와 비교합니다. 다르면 설치 직후 만든 snapshot으로 되돌리거나, 저장소의 파일을 다시 복사합니다. `rebuild`는 워크스페이스 상태를 새 샌드박스로 옮기므로, `rebuild`만으로는 고친 파일이 되돌아가지 않습니다. | 변조를 막지는 못하지만, 찾아서 되돌립니다. | 설치 때 한 번 비교했습니다(창구 독자 시험). 주기적인 비교는 없습니다 |
+
+출처:
+
+- [NemoClaw: Understand Filesystem Controls](https://docs.nvidia.com/nemoclaw/user-guide/openclaw/security/security-controls/filesystem-controls) (접근 2026-09-27)
+- [NemoClaw: Security Posture and Control Trade-Offs](https://docs.nvidia.com/nemoclaw/user-guide/openclaw/security/best-practices) (접근 2026-09-27)
+- [NemoClaw: Understand Sandbox State](https://docs.nvidia.com/nemoclaw/user-guide/openclaw/manage-sandboxes/state-and-backups/understand-sandbox-state): host mount, `rebuild`의 상태 보존 (접근 2026-09-27)
+- [OpenShell: Policy Schema Reference](https://docs.nvidia.com/openshell/how-it-works/policies/schema): MCP 규칙, `deny_rules` (접근 2026-09-27)
+- [OpenClaw: Tool policy](https://docs.openclaw.ai/gateway/config-tools/tool-policy) (접근 2026-09-27)
+- [NVIDIA DLI NemoClaw 04a](https://nvdli.github.io/NemoClawDLI/nemoclaw/04a-safety.html): persona tamper, reviewable history, known-good 상태로 복구 (접근 2026-09-27)
 
 ## 참고
 
