@@ -38,7 +38,7 @@ cualign = "cualign.agent.register"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"cualign.core" = ["templates/*.stl", "templates/ATTRIBUTION.md", "samples/ATTRIBUTION.md", "samples/*/*.stl", "samples/*/SOURCE.txt"]
+"cualign.core" = ["templates/*.stl", "templates/ATTRIBUTION.md", "samples/ATTRIBUTION.md", "samples/*/*.stl", "samples/*/SOURCE.txt", "samples/recorded/*/*.json"]
 "cualign.server" = ["static/*.html", "static/*.js", "static/*.css", "static/*.png", "static/samples/*.png", "static/icons/*.png"]
 
 [tool.pytest.ini_options]

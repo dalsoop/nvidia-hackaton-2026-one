@@ -58,6 +58,7 @@ def _plan_from_file(data: dict) -> dict:
 class Store:
     def __init__(self):
         self.cases: dict[str, Case] = {}
+        self.replays: dict[str, dict] = {}   # case_id -> the last replayed recording {step, plan_id, recorded_at} (core/recorded.py)
         self.case_constraints: dict[str, Constraints] = {}
         self.active_case: str | None = None
         self.targets: dict[str, dict] = {}
