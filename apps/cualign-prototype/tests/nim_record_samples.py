@@ -16,7 +16,8 @@ recomputes. Recordings of earlier runs (and the old plan.json) are removed for t
 
 Runs against a fresh store (out/nim-live/record-store): a plan another run left must not become the base plan.
 Never prints the API key. Costs real NVIDIA usage: up to fifteen conversations.
-Run: uv run --frozen python -X utf8 tests/nim_record_samples.py [case_id ...]   (default: all three samples)
+Run: uv run --frozen python -X utf8 tests/nim_record_samples.py [case_id ...] [--only step,step]   (default: all three samples,
+every step; --only re-records the named steps of those cases, keeping the rest)
 """
 import asyncio
 import json
@@ -54,11 +55,14 @@ def _question(rec: dict) -> bool:
     return _clean(rec) and "?" in rec["answer"] and not rec["plan_selected"]
 
 
-async def record_case(client, url, case_id, log, out):
+async def record_case(client, url, case_id, log, out, only=None):
+    """`only`: record these steps only (the turns before the last of them still run, unsaved, so the conversation and
+    the case flow are the same as on screen); without it every step, after removing the case's earlier recordings."""
     from cualign.core import recorded
     from cualign.core.samples import SAMPLES
     sample = SAMPLES[case_id]
-    shutil.rmtree(recorded.RECORDED_DIR / case_id, ignore_errors=True)   # earlier runs and the old plan.json
+    if not only:
+        shutil.rmtree(recorded.RECORDED_DIR / case_id, ignore_errors=True)   # earlier runs and the old plan.json
     r = await client.post(url + f"/api/cases/{case_id}/activate", timeout=120)
     if r.status_code != 200:
         out[case_id] = {"error": f"activate {r.status_code} {r.text[:120]}"}
@@ -67,6 +71,8 @@ async def record_case(client, url, case_id, log, out):
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     plan = [("setup", sample.request, dict(sample.constraints)), ("target", recorded.REQUESTS["target"], {}),
             ("stages", recorded.REQUESTS["stages"], {}), ("cap", recorded.REQUESTS["cap"], {}), ("compare", recorded.REQUESTS["compare"], {})]
+    if only:
+        plan = plan[: max(i for i, (st, _, _) in enumerate(plan) if st in only) + 1]
     for step, text, patch in plan:
         ctx = {"request_id": f"rec-{step}", "case_id": case_id, "base_plan_id": base, "constraints": patch}
         messages, ev, rec = await turn(client, url, messages, text, ctx, log, step=recorded.TURN_STEP[step])
@@ -90,6 +96,9 @@ async def record_case(client, url, case_id, log, out):
         elif step == "compare" and sample.constraints.get("extraction") and _question(rec):   # asked back, no plan made
             answer = re.sub(r"^\s*Final Answer:\s*", "", rec["answer"]).strip()
             saved = recorded.save(case_id, step, {**common, "constraints": {}, "answer_md": answer, "review": None})
+        if only and step not in only and saved:      # a turn run only to reach a later step: not recorded
+            saved.unlink()
+            saved = None
         results[step] = {"saved": str(saved.relative_to(ROOT)) if saved else None, "elapsed_s": rec["elapsed_s"], "tools": rec["tools"],
                          "plan_selected": rec["plan_selected"], "review": (rec["review"] or {}).get("status"),
                          "step_done": (done or {}).get("step"), **answer_checks(rec["answer"])}
@@ -97,7 +106,7 @@ async def record_case(client, url, case_id, log, out):
     out[case_id] = results
 
 
-async def main(case_ids):
+async def main(case_ids, only=None):
     load_dotenv(ROOT / ".env")
     if not os.environ.get("NVIDIA_API_KEY", "").startswith("nvapi-"):
         raise SystemExit("NVIDIA_API_KEY is not set (put it in apps/cualign-prototype/.env)")
@@ -116,7 +125,7 @@ async def main(case_ids):
         await wait_ready(url, proc)
         async with httpx.AsyncClient() as client:
             for case_id in case_ids:
-                await record_case(client, url, case_id, log, out)
+                await record_case(client, url, case_id, log, out, only=only)
     finally:
         proc.terminate()
         try:
@@ -129,4 +138,10 @@ async def main(case_ids):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1:] or list(ORDER)))
+    args = sys.argv[1:]
+    only = None
+    if "--only" in args:                      # --only target,compare : record those steps only (case ids before it)
+        i = args.index("--only")
+        only = set(args[i + 1].split(","))
+        args = args[:i] + args[i + 2:]
+    asyncio.run(main(args or list(ORDER), only=only))
