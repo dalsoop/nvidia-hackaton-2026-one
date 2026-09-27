@@ -19,10 +19,26 @@ OpenShell 샌드박스의 경계는 네 가지다(NVIDIA DLI NemoClaw [04a Safet
 - **바꿀 수 있는 시점:** `filesystem_policy`·`landlock`·`process`는 샌드박스를 만들 때 고정되고, `network_policies`만 실행 중에 바꿀 수 있다.
 - **막힌 결과의 해석:** 명령이 막혔다는 결과만으로 어느 경계가 막았는지 단정하지 않는다. 예를 들어 아래 기록의 `/app` 쓰기 거부는 Landlock 이 아니라 비루트 사용자의 파일 권한으로도 날 수 있다. 어느 경계인지는 `openshell logs`의 판정 기록(네트워크는 `policy:`·`engine:`)이나 Landlock 적용 기록으로 확인한다.
 
+## 버전: 0.0.116 으로 고정
+
+이 문서의 기록은 모두 OpenShell **0.0.116** 이다. 설치 스크립트는 버전을 주지 않으면 최신판을 받으므로, 버전을 고정해 설치한다.
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | OPENSHELL_VERSION=v0.0.116 sh
+openshell --version    # openshell 0.0.116
+```
+
+0.1.x(0.1.0·0.1.1, 2026-09-26 출시)에서는 이 문서의 절차가 동작하지 않는다(2026-09-27, WSL 2 Ubuntu-20.04 · Docker Desktop 29.6 · OpenShell 0.1.1 에서 확인):
+
+- 기본 이미지(`nvcr.io/nvidia/base/ubuntu:24.04`)에 `sandbox` 사용자가 없어, `policy.yaml`로 만든 샌드박스가 `IdentityResolutionFailed`로 시작하지 않는다.
+- `sandbox create --from <Dockerfile>`의 로컬 빌드가 빠졌다(릴리스 노트 #3214). 아래 «실행»의 `--from Dockerfile.openshell`을 그대로 쓸 수 없다.
+- 게이트웨이 드라이버 변수는 `OPENSHELL_COMPUTE_DRIVER=docker`다(아래 함정의 `OPENSHELL_DRIVERS`가 아님).
+- `sandbox` 사용자를 넣은 이미지로도 감독 프로세스가 `seccomp notification probe … notification launcher disappeared`로 죽었다. 이 환경(WSL 2 + Docker Desktop)만의 문제인지는 확인하지 않았다.
+
 ## 실측 (WSL 2 Ubuntu-24.04 · Docker Desktop · OpenShell 0.0.116 · 2026-09-23)
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | OPENSHELL_VERSION=v0.0.116 sh
 openshell status                                                        # Connected · mTLS
 openshell sandbox create --name cualign-demo --policy openshell/policy.yaml
 openshell sandbox exec -n cualign-demo -- curl -sS https://example.com  # 기대: 차단
