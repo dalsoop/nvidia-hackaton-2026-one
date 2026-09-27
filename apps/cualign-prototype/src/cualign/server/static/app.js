@@ -1076,9 +1076,16 @@ $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
 });
-$("sampleCards").addEventListener("click", (e) => {
+$("sampleCards").addEventListener("click", async (e) => {
   const card = e.target.closest(".case-card");
-  if (card) { state.patient = null; activateCase(card.dataset.id).catch((err) => addMsg("error", `케이스 로드 실패: ${err.message}`)); }
+  if (!card || state.streaming || state.loading) return;
+  state.patient = null;
+  // the pane fades while the mesh loads; leaveStart() drops both classes when the workspace is ready
+  card.classList.add("picked");
+  document.body.classList.add("leaving");
+  try { await activateCase(card.dataset.id); }
+  catch (err) { addMsg("error", `케이스 로드 실패: ${err.message}`); }
+  finally { document.body.classList.remove("leaving"); card.classList.remove("picked"); }
 });
 $("patientCards").addEventListener("click", (e) => {
   const card = e.target.closest(".case-card");

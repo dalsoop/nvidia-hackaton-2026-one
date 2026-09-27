@@ -273,17 +273,33 @@ button:disabled { cursor:not-allowed; }
 .scan-row .del { color: var(--muted); }
 
 /* ---------- start state (#90): the work screen before a case is open ---------- */
-.intro { display: none; padding: 24px 16px; }
-.intro h1 { margin: 0 0 12px; font-size: 20px; font-weight: 700; line-height: 1.3; }
-.intro .lead { margin: 0 0 12px; }
-.intro .muted { color: var(--muted); margin: 0; }
+/* start state of the agent panel: mark + one line, centred like an empty chat (#90) */
+.intro { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.intro .mark { width: 64px; height: 64px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 20px; }
+.intro h1 { margin: 0 0 12px; font-size: 18px; font-weight: 700; line-height: 1.4; }
+.intro .lead { margin: 0 0 12px; max-width: 320px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.intro .muted { color: var(--faint); margin: 0; font-size: 12px; }
 .start-pane { display: none; position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 24px; background: var(--bg); }
 .start-body { width: min(840px, 100%); margin: auto; }
 .start-pane h2 { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
 .start-pane .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
 .start-x { position: absolute; top: 16px; right: 16px; }
-body.start .intro { display: block; }
+body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
+/* picking a sample: the start pane fades out while the case loads, then the workspace fades in */
+.start-pane, .intro { transition: opacity 0.25s ease, transform 0.25s ease; }
+body.leaving .start-pane, body.leaving .intro { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+.case-card { transition: opacity 0.2s ease, border-color 0.15s ease; }
+body.leaving .case-card:not(.picked) { opacity: 0.35; }
+.case-card.picked { border-color: var(--green); }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar,
+body:not(.start) .stage-bar, body:not(.start) .legend { animation: rise 0.35s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .start-pane, .intro, .case-card { transition: none; }
+  body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar,
+  body:not(.start) .stage-bar, body:not(.start) .legend { animation: none; }
+}
 body.start .constraints, body.start .transcript, body.start .retry-bar, body.start .chips,
 body.start .view-head, body.start .legend, body.start .stage-bar, body.start .result,
 body.start #fallbackBtn, body.start #caseBtn, body.start .chat-tools, body.start .sel-chips, body.start .view-cube { display: none; }
