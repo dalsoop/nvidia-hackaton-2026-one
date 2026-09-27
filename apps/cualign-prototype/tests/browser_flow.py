@@ -218,7 +218,9 @@ async def main():
             # plan (#92), never the previous case's plan.
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
-            await page.locator('#sampleCards .case-card[data-id="poseidon-000097"]').click()
+            await page.locator('#clRows .case-row[data-id="poseidon-000097"]').click()      # row → detail panel
+            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14
+            await page.locator("#dOpen").click()
             await page.wait_for_function("(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && document.querySelector('#rPlan').textContent !== p", arg=child)
             assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
             assert await page.locator("#stlLink").get_attribute("href") is None

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from cualign.agent.reviewer import MANUAL_RETRY
-from cualign.core import Case, patients, planner
+from cualign.core import Case, patients, planner, samples
 from cualign.core.constraints import ConstraintPatch, reason_ko
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -127,6 +127,37 @@ def _rule_plan_result(cid, ids):
     return result
 
 
+_CASE_LIST_STATUS_KO = {"scan_check": "스캔 확인 필요", "plan_needed": "계획 필요", "violation": "위반 있음",
+                        "awaiting_approval": "승인 대기", "approved": "승인됨"}
+
+
+def _representative_plan(plan_ids: list[str]) -> dict | None:
+    """승인된 계획이 있으면 그중 가장 최근 것, 없으면 그 케이스의 가장 최근 계획(#110)."""
+    approved = [STORE.plans[pid] for pid in plan_ids if STORE.plans[pid]["approval"]]
+    if approved:
+        return approved[-1]
+    return STORE.plans[plan_ids[-1]] if plan_ids else None
+
+
+def _plan_row(rec: dict | None) -> dict | None:
+    if rec is None:
+        return None
+    return {"plan_id": rec["plan_id"], "strategy": rec["strategy"], "n_stages": rec["info"]["n_stages"],
+            "passed": not rec["violations"], "violations": len(rec["violations"])}
+
+
+def _case_status(confirmed: bool | None, rep: dict | None) -> str:
+    if confirmed is False:      # patient scan the dentist has not checked yet
+        return "scan_check"
+    if rep is None:
+        return "plan_needed"
+    if rep["approval"]:
+        return "approved"
+    if rep["violations"]:
+        return "violation"
+    return "awaiting_approval"
+
+
 def add_api_routes(app: FastAPI, review=None, followup=None):
     """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
     chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
@@ -148,6 +179,37 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
     @app.get("/api/cases")
     async def list_cases():
         return {"cases": STORE.available_cases(), "active": STORE.active_case}
+
+    @app.get("/api/case-list")
+    async def case_list():
+        """샘플 3건과 환자 스캔 전체를 계획 상태와 함께 한 화면에 준다(#110). 메시는 로드하지 않는다."""
+        rows = []
+        for s in samples.SAMPLES.values():
+            if not s.available:
+                continue
+            n_teeth = sum(1 for f in s.folder.glob("*.stl") if f.name != "gingiva.stl")
+            plan_ids = STORE.plan_ids_for(s.case_id)
+            rep = _representative_plan(plan_ids)
+            status = _case_status(None, rep)
+            rows.append({"case_id": s.case_id, "kind": "sample", "title": s.title, "subtitle": s.summary,
+                        "status": status, "status_ko": _CASE_LIST_STATUS_KO[status], "plan": _plan_row(rep),
+                        "n_plans": len(plan_ids), "prescription": s.prescription, "badges": list(s.badges),
+                        "patient": None, "confirmed": None, "n_teeth": n_teeth or None, "crowding_mm": None,
+                        "unsupported": []})
+        for p in patients.list_patients():
+            for sc in p["scans"]:
+                confirmed = sc.get("confirmed_revision") == sc.get("revision", 1)
+                plan_ids = STORE.plan_ids_for(sc["case_id"])
+                rep = _representative_plan(plan_ids)
+                status = _case_status(confirmed, rep)
+                rows.append({"case_id": sc["case_id"], "kind": "patient", "title": p["alias"],
+                            "subtitle": f"{p['alias']} · {sc['scan_id']}",
+                            "status": status, "status_ko": _CASE_LIST_STATUS_KO[status], "plan": _plan_row(rep),
+                            "n_plans": len(plan_ids), "prescription": None, "badges": [],
+                            "patient": {"patient_id": p["patient_id"], "alias": p["alias"], "scan_id": sc["scan_id"]},
+                            "confirmed": confirmed, "n_teeth": len(sc["teeth"]), "crowding_mm": None,
+                            "unsupported": []})
+        return {"cases": rows}
 
     @app.post("/api/cases/{case_id}/activate")
     async def activate_case(case_id: str):

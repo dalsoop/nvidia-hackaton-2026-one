@@ -31,6 +31,7 @@ const state = {
   trace: null,           // inline tool-call trace for the turn in progress
   labels: [],            // CSS2DObject IPR labels
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
+  caseList: [], clFilter: { status: "all", kind: "all" }, clSelected: null,   // 케이스 목록 (#109)
   checkCase: null,       // case id shown on the input-check screen
   checkRevision: null,   // scan revision shown there; the confirmation names it
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
@@ -484,6 +485,7 @@ function updateActions() {
   $("constraints").disabled = !!busy;
   const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
   $("exportBtn").disabled = !exportable;
+  renderRail();
   $("exportBtn").textContent = p?.approval ? "STL 내려받기" : "내보내기";
   // why the button is off, in the same order as the gate above; nothing while a turn or a load is running
   $("exportWhy").textContent = exportable || busy ? "" : !p ? "계획이 없습니다" : p.input_stale ? "이전 입력의 계획"
@@ -546,6 +548,7 @@ function showScreen(name) {
   $("checkBar").hidden = !check;
   document.body.classList.toggle("checking", check);
   $("caseGate").hidden = check;
+  renderRail();
 }
 // Leave the input check: the bar and the tooth numbers go; the mesh stays until something else loads.
 function endCheck() {
@@ -563,6 +566,7 @@ async function showStart() {
   $("caseGate").hidden = true;
   document.body.classList.add("start");
   lockComposer(true);
+  renderRail();
 }
 function lockComposer(on) {
   $("chatInput").disabled = on;
@@ -572,6 +576,7 @@ lockComposer(true);
 function leaveStart() {
   document.body.classList.remove("start");
   lockComposer(false);
+  renderRail();
 }
 // Each screen gets an address (#start, #case=<id>[&plan=<planId>], #patients, #patient=<id>, #check=<case>) so the browser's back
 // and forward buttons move between screens (#90). Moves made by back/forward replace instead of pushing.
@@ -626,7 +631,7 @@ function setChatWidth(px) {
   });
   sp.addEventListener("pointermove", (e) => {
     if (!sp.hasPointerCapture(e.pointerId)) return;
-    setChatWidth(e.clientX - document.querySelector(".layout").getBoundingClientRect().left);
+    setChatWidth(e.clientX - document.querySelector(".layout").getBoundingClientRect().left - 64);   // minus the rail
   });
   sp.addEventListener("pointerup", (e) => {
     sp.releasePointerCapture(e.pointerId);
@@ -803,34 +808,112 @@ function caseTitle(caseId, crowding) {
 async function loadCases() {
   const { cases, active } = await api("/api/cases");
   state.cases = cases;
-  const wrap = $("sampleCards");
-  wrap.innerHTML = "";
-  for (const c of cases.filter((x) => x.kind !== "synthetic")) {
-    const b = document.createElement("button");
-    b.className = "case-card";
-    b.dataset.id = c.case_id;
-    b.innerHTML = `<span class="cid"></span><span class="rx"></span><span class="badges"></span><span class="meta"></span>`;
-    if (c.kind === "sample") {
-      const img = document.createElement("img");
-      img.className = "thumb";
-      img.alt = `${c.case_id} 교합면`;
-      img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
-      b.prepend(img);
-      // the card shows the finding and the prescription only; the case number and tooth numbering come after it opens (#90)
-      b.querySelector(".cid").textContent = c.title;
-      b.querySelector(".rx").textContent = c.summary;
-      b.querySelector(".badges").replaceChildren(...badgeTags(c.badges));
-      b.title = "처방 · " + c.prescription;
-      b.querySelector(".meta").textContent = c.available ? "" : "샘플 파일이 설치되지 않았습니다";
-      b.disabled = !c.available;
-    } else {
-      b.querySelector(".cid").textContent = c.case_id;
-      b.querySelector(".meta").textContent = `상악 · ${c.kind}`;
-    }
-    wrap.appendChild(b);
-  }
-  if (!wrap.children.length) wrap.innerHTML = '<p class="empty">샘플 케이스가 없습니다. 아래 «내 스캔 올리기»로 시작하세요.</p>';
+  await loadCaseList();
   return active;
+}
+
+// ---- case list (#109, v2 보드 02): every case with a state the server computed; filters by state and kind, a detail
+// panel for the chosen row, 「작업대 열기」 goes to the check (unconfirmed scan) or the workspace.
+const CASE_STATUS = { scan_check: ["스캔 확인 필요", "amber"], plan_needed: ["계획 필요", "faint"], violation: ["위반 있음", "red"],
+                      awaiting_approval: ["승인 대기", "green"], approved: ["승인됨", "green"] };
+const CASE_KIND = { sample: "샘플", patient: "가명 환자" };
+const ORDER_KO = { simultaneous: "동시", anterior_first: "앞니 먼저", sequential: "순차" };
+// Universal 1..16 (files, code) → FDI 18..11, 21..28 (what the dentist reads) — the screen shows FDI only (#113)
+const fdi = (u) => (u <= 8 ? 19 - u : 12 + u);
+const fdiList = (ids) => (ids ?? []).map(fdi).join("·");
+async function loadCaseList() {
+  const { cases } = await api("/api/case-list");
+  state.caseList = cases;
+  renderCaseList();
+}
+function renderCaseList() {
+  const rows = state.caseList ?? [], f = state.clFilter;
+  const filterBtn = (key, label, dot, n, on) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "cl-filter" + (on ? " on" : ""); b.dataset.key = key;
+    b.innerHTML = '<span><i class="dot"></i></span><span class="n"></span>';
+    if (dot) b.querySelector(".dot").classList.add(dot); else if (dot === null) b.querySelector(".dot").remove();
+    b.querySelector("span").append(label); b.querySelector(".n").textContent = n;
+    return b;
+  };
+  $("clStatus").replaceChildren(filterBtn("all", "전체", "", rows.length, f.status === "all"),
+    ...Object.entries(CASE_STATUS).map(([k, [label, dot]]) => filterBtn(k, label, dot, rows.filter((c) => c.status === k).length, f.status === k)));
+  $("clKind").replaceChildren(filterBtn("all", "전체", null, rows.length, f.kind === "all"),
+    ...Object.entries(CASE_KIND).map(([k, label]) => filterBtn(k, label, null, rows.filter((c) => c.kind === k).length, f.kind === k)));
+  const shown = rows.filter((c) => (f.status === "all" || c.status === f.status) && (f.kind === "all" || c.kind === f.kind));
+  $("clCount").textContent = shown.length;
+  const box = $("clRows");
+  box.innerHTML = "";
+  for (const c of shown) {
+    const r = document.createElement("button");
+    r.type = "button"; r.className = "cl-row case-row" + (c.case_id === state.clSelected ? " on" : ""); r.dataset.id = c.case_id;
+    r.innerHTML = '<span class="c-case"><b></b><small></small></span><span class="c-st"><i class="dot"></i><span></span></span>' +
+                  '<span class="c-plan"></span><span class="c-viol"></span><span class="c-n"></span><span class="c-rx"></span>';
+    const [label, dot] = CASE_STATUS[c.status] ?? [c.status_ko ?? c.status, "faint"];
+    r.querySelector(".c-case b").textContent = c.title;
+    r.querySelector(".c-case small").textContent = c.subtitle ?? "";
+    r.querySelector(".c-st .dot").classList.add(dot); r.querySelector(".c-st span").textContent = label;
+    r.querySelector(".c-plan").textContent = c.plan ? `${STRATEGY_KO[c.plan.strategy] ?? c.plan.strategy} · ${c.plan.n_stages}장 · ${c.plan.passed ? "통과" : "위반"}` : "—";
+    const v = c.plan?.violations ?? 0;
+    r.querySelector(".c-viol").textContent = c.plan ? (v ? `${v}건` : "0") : "—"; r.querySelector(".c-viol").classList.toggle("bad", v > 0);
+    r.querySelector(".c-n").textContent = c.n_plans ?? 0;
+    r.querySelector(".c-rx").textContent = c.prescription || "조건 · 기본값";
+    box.appendChild(r);
+  }
+  if (!shown.length) box.innerHTML = '<p class="empty">이 조건에 맞는 케이스가 없습니다.</p>';
+  const sel = rows.find((c) => c.case_id === state.clSelected) ?? null;
+  $("clDetail").hidden = !sel; document.querySelector(".cl").classList.toggle("has-detail", !!sel);
+  if (sel) renderCaseDetail(sel);
+}
+function renderCaseDetail(c) {
+  $("dTitle").textContent = c.title; $("dSub").textContent = c.subtitle ?? "";
+  const cons = state.cases.find((x) => x.case_id === c.case_id)?.constraints ?? null;
+  const extract = new Set(cons?.extraction ?? []);
+  // 14 crowns on an arch, FDI 17…11 · 21…27 (Universal 2…15 from the patient's right)
+  const svg = $("dArch"); svg.innerHTML = "";
+  const ns = "http://www.w3.org/2000/svg";
+  for (let k = 0; k < 14; k++) {
+    const u = k + 2, a = Math.PI - (Math.PI * (k + 0.5)) / 14, x = 160 + 140 * Math.cos(a), y = 130 - 118 * Math.sin(a);
+    const circle = document.createElementNS(ns, "circle"); circle.setAttribute("cx", x); circle.setAttribute("cy", y); circle.setAttribute("r", 11);
+    if (extract.has(u)) circle.classList.add("extract");
+    const t = document.createElementNS(ns, "text"); t.setAttribute("x", x); t.setAttribute("y", y); t.textContent = fdi(u);
+    svg.append(circle, t);
+  }
+  if (extract.size) { const l = document.createElementNS(ns, "text"); l.setAttribute("x", 160); l.setAttribute("y", 140); l.classList.add("legend"); l.textContent = "빨간 테두리 · 발치 대상"; svg.append(l); }
+  const facts = [["치아", c.n_teeth != null ? `${c.n_teeth}개` : "—"], ["총생", c.crowding_mm != null ? `${c.crowding_mm} mm` : (c.badges ?? []).find((b) => b.startsWith("총생"))?.slice(3) ?? "—"],
+                 ["계획", `${c.n_plans ?? 0}개`]];
+  if (c.kind === "patient") facts.push(["번호 확인", c.confirmed ? "확인됨" : "확인 전"]);
+  if (c.unsupported?.length) facts.push(["계획", "불가 · " + c.unsupported[0]]);
+  $("dFacts").replaceChildren(...facts.map(([k, v]) => { const d = document.createElement("div"); d.textContent = v; const s = document.createElement("small"); s.textContent = k; d.prepend(s); return d; }));
+  $("dRx").textContent = c.prescription || "처방 없음 · 조건 기본값";
+  const chips = cons ? [extract.size ? "발치 " + fdiList([...extract]) : "비발치", cons.ipr_exclude?.length ? "IPR 제외 " + fdiList(cons.ipr_exclude) : "IPR 제외 없음",
+                        `면당 ${cons.ipr_limit_mm ?? 0.25} mm`, cons.stage_cap ? `단계 상한 ${cons.stage_cap}` : "단계 상한 없음", "이동 " + (ORDER_KO[cons.order] ?? cons.order ?? "동시")] : (c.badges ?? []);
+  $("dChips").replaceChildren(...badgeTags(chips));
+  $("dOpen").textContent = c.kind === "patient" && !c.confirmed ? "입력 확인 열기" : "작업대 열기";
+}
+async function openFromList(c) {
+  if (!c || state.streaming || state.loading) return;
+  document.body.classList.add("leaving");
+  try {
+    if (c.kind === "patient") {
+      state.patient = await api("/api/patients/" + encodeURIComponent(c.patient.patient_id));
+      if (!c.confirmed) { await openCheck(c.case_id); return; }
+    } else state.patient = null;
+    await activateCase(c.case_id);
+  } catch (err) { addMsg("error", `케이스 로드 실패: ${err.message}`); }
+  finally { document.body.classList.remove("leaving"); }
+}
+// ---- rail: where the dentist is and where they can go next
+function renderRail() {
+  const start = document.body.classList.contains("start"), checking = document.body.classList.contains("checking");
+  const patientsOpen = !$("caseGate").hidden;
+  const on = patientsOpen ? "patients" : start ? "start" : checking ? "check" : "case";
+  for (const b of document.querySelectorAll("#rail button")) {
+    const go = b.dataset.go;
+    b.classList.toggle("on", go === on);
+    b.disabled = go === "check" ? !state.checkCase && !(state.patient?.scans?.length) : go === "case" ? !state.meshCase : go === "export" ? $("exportBtn").disabled : false;
+    b.classList.toggle("done", go === "case" ? !!state.meshCase && on !== "case" : go === "export" ? !!$("stlLink").getAttribute("href") : false);
+  }
 }
 
 function sameConstraints(a, b) {
@@ -1468,16 +1551,29 @@ $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
 });
-$("sampleCards").addEventListener("click", async (e) => {
-  const card = e.target.closest(".case-card");
-  if (!card || state.streaming || state.loading) return;
-  state.patient = null;
-  // the pane fades while the mesh loads; leaveStart() drops both classes when the workspace is ready
-  card.classList.add("picked");
-  document.body.classList.add("leaving");
-  try { await activateCase(card.dataset.id); }
-  catch (err) { addMsg("error", `케이스 로드 실패: ${err.message}`); }
-  finally { document.body.classList.remove("leaving"); card.classList.remove("picked"); }
+$("clRows").addEventListener("click", (e) => {
+  const row = e.target.closest(".case-row");
+  if (!row) return;
+  state.clSelected = row.dataset.id;
+  renderCaseList();
+});
+$("clRows").addEventListener("dblclick", (e) => { const row = e.target.closest(".case-row"); if (row) openFromList(state.caseList.find((c) => c.case_id === row.dataset.id)); });
+$("dOpen").addEventListener("click", () => openFromList(state.caseList.find((c) => c.case_id === state.clSelected)));
+$("dClose").addEventListener("click", () => { state.clSelected = null; renderCaseList(); });
+for (const id of ["clStatus", "clKind"]) $(id).addEventListener("click", (e) => {
+  const b = e.target.closest(".cl-filter");
+  if (!b) return;
+  state.clFilter[id === "clStatus" ? "status" : "kind"] = b.dataset.key;
+  renderCaseList();
+});
+$("rail").addEventListener("click", async (e) => {
+  const go = e.target.closest("button")?.dataset.go;
+  if (!go || state.streaming || state.loading) return;
+  if (go === "start") await showStart();
+  else if (go === "patients") await loadPatients().then(() => showScreen("patients"));
+  else if (go === "check") await openCheck(state.checkCase ?? state.patient.scans[state.patient.scans.length - 1].case_id);
+  else if (go === "case") { $("caseGate").hidden = true; endCheck(); leaveStart(); setHash("#case=" + state.meshCase + (state.plan ? "&plan=" + state.plan.plan_id : "")); }
+  else if (go === "export") $("exportBtn").click();
 });
 $("patientCards").addEventListener("click", (e) => {
   const head = e.target.closest(".p-head");
@@ -1601,7 +1697,7 @@ $("popCases").addEventListener("click", (e) => {
 });
 $("popPatients").addEventListener("click", () => { $("casePop").hidden = true; loadPatients().then(() => showScreen("patients")).catch((err) => addMsg("error", err.message)); });
 document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".case-head")) $("casePop").hidden = true; });
-$("introPick").addEventListener("click", () => $("sampleCards").querySelector(".case-card:not(:disabled)")?.focus());
+$("introPick").addEventListener("click", () => $("clRows").querySelector(".case-row")?.focus());
 $("gateClose").addEventListener("click", async () => {
   // no case open yet: the start state (the sample cards) is where the modal came from
   if (!state.activeCase) { showStart().catch((err) => addMsg("error", err.message)); return; }
@@ -1681,7 +1777,7 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
     catch (e) { addMsg("error", `케이스 로드 실패: ${e.message}`); }
   }
   // The page opens in the start state; "내 스캔 올리기" leads to the patient flow (patient → scan → plan).
-  if (active) document.querySelector(`.case-card[data-id="${CSS.escape(active)}"]`)?.classList.add("current");
+  if (active) { state.clSelected = active; renderCaseList(); }   // the list opens on the case the server has active
   // a reload or a shared address opens the same screen; otherwise this is the start state
   if (location.hash && location.hash !== "#start") {
     routing = true;

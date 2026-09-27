@@ -72,7 +72,7 @@ textarea { resize: vertical; }
 
 /* ---------- layout ---------- */
 .layout {
-  flex: 1; display: grid; grid-template-columns: var(--chat-w, 30%) 6px minmax(420px, 1fr);
+  flex: 1; display: grid; grid-template-columns: 64px var(--chat-w, 30%) 6px minmax(420px, 1fr);
   gap: 0; padding: 0; min-height: 0;
 }
 /* drag handle between the agent panel and the 3D (#90) */
@@ -237,26 +237,12 @@ body.streaming .work-note { display: flex; }
 .gate-panel h1 { margin: 0 0 4px; font-size: 20px; font-weight: 700; }
 .gate-panel .muted { color: var(--muted); margin: 0 0 16px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 16px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; }
-.case-card::before { content: ""; position: absolute; top: 0; left: 0; width: 10px; height: 10px; background: var(--green); }  /* corner-square */
-.case-card:hover { border-color: var(--line-strong); }
-.case-card.current { border: 2px solid var(--green); padding: 15px; }
-.case-card.current .cid::after { content: " · 현재"; color: var(--muted); font-weight: 400; font-size: 12px; }
-.case-card .cid { font-weight: 700; font-size: 16px; margin-top: 4px; }
-.case-card .meta { color: var(--faint); font-size: 12px; }
 .gate-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
 .gate-panel { position: relative; }
 .gate-x { position: absolute; top: 16px; right: 16px; }
 /* start screen sample cards (#46): occlusal thumbnail, case number, finding, prescription */
-.sample-cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-.sample-cards .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
-.case-card .rx { font-size: 12px; line-height: 1.5; color: var(--text); word-break: keep-all; overflow-wrap: anywhere; }
 .badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .badges:empty { display: none; }
-.case-card > span:empty { display: none; }
-.case-card:disabled { cursor: not-allowed; color: var(--faint); }
-.case-card:disabled::before { background: var(--line-strong); }
-.case-card:disabled:hover { border-color: var(--line); }
 
 .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 .stage-bar input[type=range] { width: 100%; accent-color: var(--green); }
@@ -387,22 +373,70 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .link-btn { font: inherit; font-size: 13px; background: none; border: 0; padding: 4px 0; color: var(--muted); cursor: pointer; }
 .link-btn:hover, .link-btn:focus-visible { color: var(--green); outline: none; }
 .start-pane { display: none; position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 24px; background: var(--bg); }
-.start-body { width: min(840px, 100%); margin: auto; }
-.start-pane h2 { margin: 0 0 16px; font-size: 24px; font-weight: 700; text-align: center; }
+.start-pane { padding: 0; }
 .start-pane .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+/* ---- rail (v2 보드 11) */
+.rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
+.rail button { width: 56px; padding: 8px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 10.5px; line-height: 1.2; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
+.rail button small { font-size: 9px; color: var(--faint); }
+.rail button:hover { background: var(--hover); color: var(--text); }
+.rail button.on { color: var(--green); background: var(--panel-2); border-color: var(--green); font-weight: 700; }
+.rail button.done { color: var(--text); }
+.rail button:disabled { color: var(--faint); cursor: not-allowed; background: none; }
+.rail button:not(:disabled) small { display: none; }
+/* ---- case list (v2 보드 02) */
+.cl { min-height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+.cl.has-detail { grid-template-columns: 240px minmax(0, 1fr) 400px; }
+.cl-filters { padding: 20px 16px; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 20px; }
+.cl-filters h2 { margin: 0; font-size: 18px; }
+.cl-group { display: flex; flex-direction: column; gap: 2px; }
+.cl-label { font-size: 11px; font-weight: 700; color: var(--muted); padding: 0 8px 6px; }
+.cl-filter { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 8px; font: inherit; font-size: 13px; color: var(--text); background: none; border: 0; border-radius: var(--radius); cursor: pointer; text-align: left; }
+.cl-filter:hover { background: var(--hover); }
+.cl-filter.on { background: var(--hover); font-weight: 700; }
+.cl-filter .n { color: var(--faint); font-variant-numeric: tabular-nums; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; background: var(--text); vertical-align: middle; }
+.dot.amber { background: var(--amber); } .dot.faint { background: var(--faint); } .dot.red { background: var(--red); } .dot.green { background: var(--green); }
+.cl-main { padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.cl-head { display: flex; align-items: center; gap: 12px; }
+.cl-head h1 { margin: 0; font-size: 22px; flex: 1; }
+.cl-head .count { font-size: 14px; font-weight: 400; color: var(--faint); margin-left: 6px; }
+.cl-table { border: 1px solid var(--line); border-radius: var(--radius); }
+.cl-row { display: grid; grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr; gap: 16px; padding: 10px 16px; font-size: 13px; align-items: center; text-align: left; }
+.cl-thead { font-size: 12px; color: var(--faint); background: var(--panel); border-bottom: 1px solid var(--line); }
+.case-row { width: 100%; font: inherit; color: var(--text); background: none; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.case-row:last-child { border-bottom: 0; }
+.case-row:hover { background: var(--hover); }
+.case-row.on { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--green); }
+.case-row .c-case b { display: block; font-size: 14px; }
+.case-row .c-case small { color: var(--faint); font-size: 12px; }
+.case-row .c-rx { color: var(--muted); font-size: 12px; word-break: keep-all; }
+.case-row .c-viol.bad { color: var(--red-text); }
+.cl-detail { padding: 20px; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.cl-dhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 16px; }
+.cl-detail .muted { color: var(--muted); font-size: 12px; }
+.cl-detail p { margin: 0; font-size: 13px; }
+.cl-detail .cl-label { padding: 8px 0 2px; border-top: 1px solid var(--line); margin-top: 4px; }
+.cl-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cl-facts div { background: var(--panel-2); border-radius: var(--radius); padding: 6px 8px; font-size: 13px; font-weight: 700; }
+.cl-facts div small { display: block; font-size: 11px; font-weight: 400; color: var(--faint); }
+#dArch { width: 100%; height: auto; }
+#dArch circle { fill: var(--panel-2); stroke: var(--line-strong); }
+#dArch circle.extract { stroke: var(--red); stroke-width: 2; }
+#dArch text { fill: var(--text); font-size: 11px; text-anchor: middle; dominant-baseline: central; }
+#dArch text.legend { fill: var(--faint); font-size: 10px; }
+#dOpen { margin-top: auto; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
 /* picking a sample: the start pane fades out while the case loads, then the workspace fades in */
 .start-pane, .intro { transition: opacity 0.25s ease, transform 0.25s ease; }
 body.leaving .start-pane, body.leaving .intro { opacity: 0; transform: translateY(-8px); pointer-events: none; }
-.case-card { transition: opacity 0.2s ease, border-color 0.15s ease; }
-body.leaving .case-card:not(.picked) { opacity: 0.35; }
-.case-card.picked { border-color: var(--green); }
+body.leaving .cl { opacity: 0.35; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar,
 body:not(.start) .stage-bar, body:not(.start) .legend { animation: rise 0.35s ease both; }
 @media (prefers-reduced-motion: reduce) {
-  .start-pane, .intro, .case-card { transition: none; }
+  .start-pane, .intro { transition: none; }
   body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar,
   body:not(.start) .stage-bar, body:not(.start) .legend { animation: none; }
 }
@@ -412,3 +446,6 @@ body.start .sel-chips, body.start .view-rail { display: none; }
 body.start .intro { flex: 1; }
 body.start .composer textarea, body.start .composer button { opacity: 0.5; pointer-events: none; }   /* the panel is a chat; input waits for a case */
 body.start .chips { display: none; }
+/* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
+body.start .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr); }
+body.start .panel, body.start .splitter { display: none; }
