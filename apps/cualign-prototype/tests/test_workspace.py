@@ -47,25 +47,49 @@ def test_agents_md_carries_the_core_rules():
     assert "No tool can approve a plan" in text and "the dentist must approve in the UI" in text
 
 
-def test_soul_and_memory_state_the_same_boundaries():
-    soul = (WS / "SOUL.md").read_text(encoding="utf-8")
-    memory = (WS / "MEMORY.md").read_text(encoding="utf-8")
-    for doc in (soul, memory):
-        assert "초안" in doc
-        assert "진단" in doc and "처방" in doc
-        assert "몰래 풀지 않는다" in doc
-        assert "cuAlign 화면에서만" in doc
-        assert "`memory/`" in doc and "환자를 식별할 수 있는 정보" in doc
-    # guardrails/ and openshell/ stay the runtime source; SOUL.md points to them instead of copying them.
-    for path in ("guardrails/prompts.yml", "guardrails/policy/cualign_clinical_scope_v1.0.0.md",
-                 "openshell/policy.yaml", "openshell/server-policy.yaml"):
-        assert path in soul and (ROOT / path).is_file()
-
-
 def test_convention_files_and_no_memory_folder():
     for name in ("SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md", "README.md"):
         assert (WS / name).is_file(), name
     assert not (WS / "memory").exists()   # memory is off (MEMORY.md says why)
+
+
+def _sentences(text: str) -> list[str]:
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    parts = []
+    for line in text.splitlines():
+        cells = line.strip().strip("|").split("|") if line.lstrip().startswith("|") else [line]
+        for cell in cells:
+            parts += [s for s in re.split(r"(?<=[.!?])\s+", cell) if re.search(r"\w", s)]
+    return parts
+
+
+def test_english_workspace_files_follow_ste():
+    # DESIGN.md §11 of the stable-agent-documentation-guidebook: English originals have no Hangul, and Vale counts
+    # words as \S*\w\S* tokens. Context files keep 20 words or fewer. AGENTS.md and the skill bodies
+    # are out of scope: their bytes are tied to the golden set (#73, #96).
+    for name, limit in (("SOUL.md", 20), ("IDENTITY.md", 20), ("USER.md", 20), ("TOOLS.md", 20), ("MEMORY.md", 20)):
+        text = (WS / name).read_text(encoding="utf-8")
+        assert not HANGUL.search(text), name
+        assert "\u2014" not in text, name
+        for s in _sentences(text):
+            assert len(re.findall(r"\S*\w\S*", s)) <= limit, (name, s)
+
+
+def test_rules_have_a_reason_and_do_not_copy_the_planner():
+    for name in ("SOUL.md", "USER.md", "MEMORY.md"):
+        text = (WS / name).read_text(encoding="utf-8")
+        rules = [line for line in text.splitlines() if re.match(r"\d+\. \*\*", line)]
+        assert rules, name
+        assert all("(Reason: " in line for line in rules), name
+        # The boundaries live in AGENTS.md and the skills; the desk files point there instead of copying them.
+        for copied in ("Never diagnose", "Never silently relax", "No tool can approve", "이 계획은 초안입니다"):
+            assert copied not in text, (name, copied)
+    soul = (WS / "SOUL.md").read_text(encoding="utf-8")
+    assert "skills/cualign-planner/SKILL.md" in soul and (WS / "skills" / "cualign-planner" / "SKILL.md").is_file()
+    # guardrails/ and openshell/ stay the runtime source; SOUL.md points to them instead of copying them.
+    for path in ("guardrails/prompts.yml", "guardrails/policy/cualign_clinical_scope_v1.0.0.md",
+                 "openshell/policy.yaml", "openshell/server-policy.yaml"):
+        assert path in soul and (ROOT / path).is_file()
 
 
 def test_tools_md_names_tools_and_points_to_their_source():
@@ -77,11 +101,9 @@ def test_tools_md_names_tools_and_points_to_their_source():
     assert "--deny-tool" in text and "null" not in text   # argument meanings stay in the docstrings and the skill
 
 
-
 def test_heartbeat_md_is_the_openclaw_default():
     # openclaw 2026.7.1 src/agents/templates/HEARTBEAT.md: comments only, so OpenClaw skips the heartbeat model call.
     assert hashlib.sha256((WS / "HEARTBEAT.md").read_bytes()).hexdigest() == OPENCLAW_HEARTBEAT_SHA256
-
 
 
 def test_skills_live_only_in_workspace():
