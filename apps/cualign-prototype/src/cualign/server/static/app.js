@@ -15,6 +15,7 @@ const GHOST_GREY = 0xb3b3b3;   // colors.text-mute, the legend's dashed 「발�
 const state = {
   messages: [],          // full transcript sent to /chat/stream
   streaming: false,
+  stlBusy: false,        // the server is building the STL zip for a download (#119)
   meshCase: null,        // case_id currently loaded in the viewer
   activeCase: null,      // case_id being planned (the input-check screen can show another scan in the viewer)
   cases: [],             // /api/cases rows
@@ -484,9 +485,9 @@ function updateActions() {
   for (const id of ["sendBtn", "fallbackBtn", "caseBtn", "planSelect"]) $(id).disabled = !!busy;
   $("constraints").disabled = !!busy;
   const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
-  $("exportBtn").disabled = !exportable;
+  $("exportBtn").disabled = !exportable || state.stlBusy;
   renderRail();
-  $("exportBtn").textContent = p?.approval ? "STL 내려받기" : "내보내기";
+  $("exportBtn").textContent = state.stlBusy ? "STL 만드는 중…" : p?.approval ? "STL 내려받기" : "내보내기";
   // why the button is off, in the same order as the gate above; nothing while a turn or a load is running
   $("exportWhy").textContent = exportable || busy ? "" : !p ? "계획이 없습니다" : p.input_stale ? "이전 입력의 계획"
     : dirty ? "조건이 바뀜 · 새 계획 뒤 승인" : !p.passed ? `규칙 위반 ${(p.violations ?? []).length}건 · 조건을 바꿔 다시 계획`
@@ -1732,11 +1733,29 @@ $("exportGo").addEventListener("click", async () => {
   if (!state.plan?.approval) await approveCurrent();
   if (state.plan?.approval && $("stlLink").hasAttribute("href")) $("stlLink").click();
 });
-// One transcript card per approval once its STL download starts; 다시 내려받기 clicks the same link again.
+// The server builds the zip on every download (5–11 s on a real scan, #119), and a link click shows nothing until the
+// file arrives: fetch it so the button says so meanwhile (and a refused download shows its reason instead of being
+// saved as the file), then hand it to the browser. Every download path clicks the hidden link, which lands here.
+// One transcript card per approval once its file arrives; 다시 내려받기 downloads again.
 const doneCards = new Set();
-$("stlLink").addEventListener("click", () => {
+async function downloadStl() {
   const p = state.plan, link = $("stlLink");
-  if (!p?.approval || !link.hasAttribute("href")) return;
+  if (state.stlBusy || !p?.approval || !link.hasAttribute("href")) return;
+  state.stlBusy = true; updateActions();
+  try {
+    const r = await fetch(link.href);
+    if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.detail || ("HTTP " + r.status)); }
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url; a.download = `cualign_${p.plan_id}_stages.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    addMsg("error", `STL 내려받기 실패: ${err.message}`);
+    return;
+  } finally {
+    state.stlBusy = false; updateActions();
+  }
   const key = p.plan_id + "@" + p.approval.approved_at;
   if (doneCards.has(key)) return;
   doneCards.add(key);
@@ -1745,11 +1764,12 @@ $("stlLink").addEventListener("click", () => {
   div.innerHTML = '<span></span><button class="btn ghost small" type="button">다시 내려받기</button>';
   div.querySelector("span").textContent = `승인 완료 · 단계별 STL ${p.stages?.length ?? p.info?.n_stages ?? "?"}장을 내려받았습니다`;
   div.querySelector("button").addEventListener("click", () => {
-    if (state.plan?.plan_id === p.plan_id && link.hasAttribute("href")) link.click();
+    if (state.plan?.plan_id === p.plan_id) link.click();
   });
   $("transcript").appendChild(div);
   $("transcript").scrollTop = $("transcript").scrollHeight;
-});
+}
+$("stlLink").addEventListener("click", (e) => { e.preventDefault(); downloadStl(); });
 $("revokeBtn").addEventListener("click", approveCurrent);
 $("reviewBtn").addEventListener("click", reviewCurrent);
 $("constraints").addEventListener("input", () => { renderCondSummary(); updateActions(); });
