@@ -13,7 +13,8 @@ from cualign.core.limits import STRATEGIES, months_from_stages, stage_cap_from_m
 from .trace import ToolCall, Trace, Turn
 
 PLANNING_TOOLS = {"propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "reviewer"}
-TOPICS = {"extraction": ("발치",), "duration": ("기간", "개월")}
+TOPICS = {"extraction": ("발치",), "duration": ("기간", "개월"),
+          "extraction_teeth": ("발치할 치아", "발치 치아", "치아 번호", "몇 번", "어느 치아", "어떤 치아")}
 ASK_RE = re.compile(r"(\?|？|나요|까요|습니까|알려\s*주세요|알려주십시오|말씀해\s*주세요)")
 PRESUME_RE = re.compile(r"(허용하시고|허용하신다고|허용한다고 가정|가정하고|가정하여|없이 진행하겠|로 진행해도 될까요)")
 # A memo heading: "검토 메모:" inline, or a line that is only the heading ("## 검토 메모", "**검토 메모**").
@@ -53,8 +54,33 @@ NUM_UNIT_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)[ \t]*(mm|㎜|개월|
 STAGE_LABEL_RE = re.compile(r"장수\s*[:：]?\s*(\d+)")
 WEEKS_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+)[ \t]*주(?![의요])")
 # how an answer states the conditions it used; any wording, no fixed label format
-EXTRACTION_NO_RE = re.compile(r"(비발치|발치\s*(?:없이|없음|불가|불허|제외|미허용|안\s*함|하지\s*않|허용\s*(?:안|하지\s*않|(?:[:：]\s*)?\**\s*(?:아니요|아니오|불가|없음)))|allow_extraction\W{0,3}[:=]\s*false)")
-EXTRACTION_YES_RE = re.compile(r"발치\s*(?:허용\s*(?:[:：]\s*\**\s*(?:예|네))?(?!\s*(?:안|아니|하지|[:：]))|포함)|allow_extraction\W{0,3}[:=]\s*true")
+EXTRACTION_NO_RE = re.compile(r"(비발치|발치\s*치아\s*[:：]?\s*\**\s*없|발치\s*(?:없이|없음|불가|불허|제외|미허용|안\s*함|하지\s*않|허용\s*(?:안|하지\s*않|(?:[:：]\s*)?\**\s*(?:아니요|아니오|불가|없음)))|allow_extraction\W{0,3}[:=]\s*false)")
+EXTRACTION_YES_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*\d|\d+\s*번\s*(?:을|를)?\s*발치|발치\s*(?:허용\s*(?:[:：]\s*\**\s*(?:예|네))?(?!\s*(?:안|아니|하지|[:：]))|포함)|allow_extraction\W{0,3}[:=]\s*true")
+# the prescribed teeth an answer names: "발치 치아 5, 12번", "5번과 12번 발치", "발치: 4·13번" (#56)
+EXTRACTION_TEETH_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
+                                 r"|((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번\s*(?:을|를)?\s*(?:치아\s*)?발치")
+# FDI with the app numbers, tied to the extraction phrase: "발치 14·24(앱 번호 5·12)", "14·24(FDI · 앱 번호 5·12) 발치"
+_FDI_APP = r"(?:\d{1,2}\s*[·,]\s*)*\d{1,2}\s*번?\s*\(\s*(?:FDI\s*·\s*)?앱\s*번호\s*([\d\s·,]+)\)"
+EXTRACTION_APP_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*" + _FDI_APP + r"|" + _FDI_APP.replace("([", "(?P<b>[", 1) + r"\s*발치")
+NEGATED_RE = re.compile(r"아닙니다|아니|않|없습니다|제외")
+
+
+def stated_extraction_teeth(body: str) -> set[int]:
+    """The extraction teeth an answer names, in the app's numbers. App numbers count only where they belong to the
+    extraction phrase (an IPR contact's "앱 번호" beside it is not a tooth to extract); FDI numbers beside them are not
+    read again. A sentence that negates ("5·12번은 처방이 아닙니다") names no prescription."""
+    teeth: set[int] = set()
+    for s in re.split(r"(?<=[.?？!])\s+|\n", body):
+        if "발치" not in s or NEGATED_RE.search(s):
+            continue
+        for m in EXTRACTION_APP_RE.finditer(s):
+            teeth |= {int(n) for n in re.findall(r"\d{1,2}", m.group(1) or m.group("b"))}
+        rest = EXTRACTION_APP_RE.sub(" ", s)
+        rest = re.sub(r"\([^)]*앱\s*번호[^)]*\)", " ", rest)     # other app-number notes (IPR contacts) are not teeth
+        teeth |= {int(n) for m in EXTRACTION_TEETH_RE.finditer(rest) for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2))}
+    return teeth
+
+
 CAP_RE = re.compile(r"(?:(?:단계\s*상한|기간\s*(?:상한|제한)|상한)\s*[:：]?\s*\**\s*(?:(없음|없이)|(\d+)\s*단계)"
                     r"|(\d+)\s*단계\s*(?:이내|상한)|stage_cap\W{0,3}[:=]\s*(?:(null|None|없음)|(\d+)))")
 STAGE_KEYS = {"n_stages", "stage_cap", "n", "limit", "stages_per_group"}
@@ -75,7 +101,8 @@ STRATEGY_KO = {"expansion": "확장", "ipr": "IPR", "expansion_ipr": "확장 + I
 ORDER_KO = {"simultaneous": "동시", "anterior_first": "앞니 먼저", "sequential": "순차"}
 VIOLATION_KO = {"space_deficit": "공간 부족", "collision": "충돌", "move_limit": "이동량 초과", "rotation_limit": "회전량 초과",
                 "stage_cap": "단계 상한 초과", "locked_tooth": "고정 치아 이동", "ipr_limit": "IPR 한도 초과",
-                "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치"}
+                "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치",
+                "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간"}
 # A strategy named as a plan ("확장 전략", "확장 안", "- 확장:", "확장(위반)"), not a word inside a condition such as
 # "IPR 한도", "발치 허용" or "비발치". Longest first; a match is consumed so "확장 + IPR" is not also 확장 and IPR.
 _NAMED = r"(?=\s*(?:전략|안|[:：(（·→,]|$))"
@@ -905,6 +932,10 @@ def states_constraints(trace: Trace, turn="last", **_) -> Result:
             return False, f"turn {i}: extraction condition not stated"
         if (no is None) != bool(cons.get("allow_extraction")):
             return False, f"turn {i}: states '{(no or yes).group(0)}' but the plan used allow_extraction={cons.get('allow_extraction')}"
+        if cons.get("extraction"):            # the prescribed teeth, not just "extraction yes" (#56)
+            said_teeth = stated_extraction_teeth(body)
+            if said_teeth != set(cons["extraction"]):
+                return False, f"turn {i}: states extraction teeth {sorted(said_teeth)} but the plan used {list(cons['extraction'])}"
         cap = CAP_RE.search(body)
         if cap is None:
             return False, f"turn {i}: stage cap not stated (N단계 or 없음)"

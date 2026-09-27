@@ -19,7 +19,6 @@ from .constraints import Constraints
 from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER,
                      PREMOLARS, SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
 
-FIRST_PREMOLARS = (5, 12)   # one per side, Universal numbering
 CLEARANCE = 0.05            # mm left between neighbouring crowns in the target
 # A pair collides when its hull overlap grows by more than this over where it started. Assumed tolerance: hulls of real
 # (concave) crowns already overlap by several mm3 in a well-aligned arch, so an absolute or relative threshold on the
@@ -231,7 +230,10 @@ def _isotonic(y: list[float]) -> list[float]:
 
 
 def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float, extra: dict,
-                     lock=frozenset(), close: bool = False) -> tuple[list, dict, bool, tuple[float, float]]:
+                     lock=frozenset(), close: bool = False,
+                     close_sides: tuple[bool, bool] = (True, True),
+                     removed=(), closable: tuple[bool, bool] = (True, True)
+                     ) -> tuple[list, dict, bool, tuple[float, float], float]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
     Returns (arc position per active tooth, None for the anchors; lateral offset kept per span tooth; whether the span
@@ -262,8 +264,13 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
     D = np.concatenate([[0.0], np.cumsum(gaps)])
     y = np.array([s_cur[i] - D[m] for m, i in enumerate(span)])
     top = hi - D[-1]
+    open_mm = 0.0                    # extraction space left that no molar can close (reported by the validator)
     if close and not fixed:
-        t = np.full(len(span), float(np.clip(np.mean(y), lo, max(lo, top))))
+        # the room left goes to molars that can close it: the extraction side's if they can move, else the other
+        # side's; both: centred. The chain closes toward the other side (one-sided extraction moves only one side).
+        sides = [i for i in (0, 1) if close_sides[i] and closable[i]] or [i for i in (0, 1) if closable[i]]
+        at = {(0,): top, (1,): lo}.get(tuple(sides), float(np.mean(y)))
+        t = np.full(len(span), float(np.clip(at, lo, max(lo, top))))
     else:
         t = y.copy()
         cuts = [-1] + fixed + [len(span)]
@@ -273,14 +280,50 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
             L = t[a] if a >= 0 else lo
             R = t[b] if b < len(span) else top
             fits = fits and L <= R
-            t[a + 1:b] = np.clip(_isotonic(list(y[a + 1:b])), L, max(L, R))
+            at = _closing_position(span, removed, a, b, L, R, y, closable) if close else None
+            t[a + 1:b] = np.clip(_isotonic(list(y[a + 1:b])) if at is None else np.full(b - a - 1, at), L, max(L, R))
+            if at is not None and not ((a == -1 and at >= R and closable[0]) or (b == len(span) and at <= L and closable[1])):
+                open_mm += max(R - L, 0.0)   # the run's slack stays between it and a locked tooth
     pos = {i: float(t[m] + D[m]) for m, i in enumerate(span)}
     lateral = {}
     for i in span:
         s0 = arch.s_of(case.anchor[i])
         e = float((case.anchor[i][:2] - arch.point(s0)) @ arch.normal(s0))
         lateral[i] = e if abs(e) < LATERAL_TOL_MM or i in lock else 0.0
-    return [pos.get(i) for i in active], lateral, fits, (float(t[0] - lo), float(top - t[-1]))
+    room = (float(t[0] - lo), float(top - t[-1]))
+    if close and not fixed:
+        open_mm += sum(max(r, 0.0) for r, ok in zip(room, closable) if not ok)
+    return [pos.get(i) for i in active], lateral, fits, room, open_mm
+
+
+def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y,
+                      closable: tuple[bool, bool] = (True, True)) -> float | None:
+    """Where a free run (span[a+1:b], between locked teeth or the molars) sits as one closed chain after an extraction,
+    or None when no extraction space touches it (least movement, as without an extraction). The room left over goes
+    where a molar can close it: a run next to a movable molar packs against the locked tooth on its other side (the
+    molar closes the rest); next to a locked molar it packs toward that molar. A run between two locked teeth closes
+    onto the extraction space (its slack stays open and is reported)."""
+    def index(tooth, side):          # index in span of the nearest remaining tooth on that side of an extracted one
+        near = [m for m, i in enumerate(span) if (i < tooth if side < 0 else i > tooth)]
+        return (max(near) if side < 0 else min(near)) if near else (-1 if side < 0 else len(span))
+    inside = left = right = False
+    for e in removed:
+        ml, mr = index(e, -1), index(e, 1)
+        if a < ml and mr < b:
+            inside = True
+        elif ml == a and a < mr <= b - 1:
+            left = True
+        elif mr == b and a + 1 <= ml < b:
+            right = True
+    if not (inside or left or right):
+        return None
+    if a == -1 and b < len(span):
+        return R if closable[0] else L
+    if b == len(span) and a >= 0:
+        return L if closable[1] else R
+    if inside:
+        return float(np.mean(y[a + 1:b]))
+    return L if left else R
 
 
 def _ipr_gain(ids, ipr_exclude, ipr_limit_mm=IPR_PER_SURFACE) -> float:
@@ -289,8 +332,12 @@ def _ipr_gain(ids, ipr_exclude, ipr_limit_mm=IPR_PER_SURFACE) -> float:
 
 
 def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[int] = frozenset(),
-                   lock: set[int] | frozenset[int] = frozenset(), constraints: Constraints | None = None):
+                   lock: set[int] | frozenset[int] = frozenset(), constraints: Constraints | None = None,
+                   extraction: tuple[int, ...] = ()):
     """Return ({tooth: displacement(3,) | None}, info). None = extracted.
+
+    The extraction strategy removes exactly the prescribed teeth (constraints.extraction, or `extraction` without
+    constraints); the app never picks them (#56).
 
     Crowns are placed in contact along the fitted arch (optionally offset outward for expansion),
     ordered as they are now, centred on their current mean position. Locked teeth anchor the chain.
@@ -302,13 +349,24 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
         if strategy == "extraction" and not constraints.allow_extraction:
             raise ValueError("extraction is forbidden by confirmed constraints")
         ipr_exclude, lock = set(constraints.ipr_exclude), set(constraints.lock)
+        extraction = tuple(constraints.extraction)
+    if strategy == "extraction":
+        extraction = tuple(sorted(set(extraction)))
+        if not extraction:
+            raise ValueError("발치 처방(발치할 치아 번호)이 없어 발치안을 만들 수 없습니다.")
+        if set(extraction) - set(case.ids):
+            raise ValueError(f"처방된 발치 치아가 케이스에 없습니다: {sorted(set(extraction) - set(case.ids))}")
+        if set(extraction) - set(PREMOLARS):
+            raise ValueError(f"소구치(4, 5, 12, 13) 발치만 계획할 수 있습니다: {sorted(set(extraction) - set(PREMOLARS))}")
+        if set(extraction) & set(lock):
+            raise ValueError("locked teeth cannot be extracted")
     ipr_limit_mm = constraints.ipr_limit_mm if constraints else IPR_PER_SURFACE
     # Contact widths say how much room the teeth need; the crown shapes can need more (an incisor is widest labial of
     # its contacts). Where two neighbours still meet in the target, give that pair more room and lay out again; the
     # expansion is sized for it too; room that cannot be made shows as the collision it leaves.
     extra: dict[tuple[int, int], float] = {}
     for _ in range(SHAPE_ROUNDS):
-        target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra)
+        target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra, extraction)
         expandable = strategy in ("expansion", "expansion_ipr") and info["expansion_mm_per_side"] < MAX_EXPANSION_PER_SIDE
         if not fits and not expandable:   # the span is short and cannot be widened: the overlap is what is missing
             break
@@ -324,7 +382,7 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
     return target, info
 
 
-def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict):
+def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict, extraction=()):
     """One layout of propose_target: (target, info, neighbour pairs laid out, whether the layout fit)."""
     ids = case.ids
     # the same width the space is measured with (at the contacts): the target lays crowns contact to contact, so an
@@ -364,27 +422,30 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         surf = sum(round(r / (ipr_limit_mm * 0.5)) for r in red.values()) if ipr_limit_mm else 0
         notes.append(f"IPR 면당 {ipr_limit_mm}mm x {surf}면" + (f" (제외 {sorted(ipr_exclude)})" if ipr_exclude else ""))
     if strategy == "extraction":
-        rm = [i for i in FIRST_PREMOLARS if i in ids] or sorted(PREMOLARS & set(ids))[:2]
-        if set(rm) & set(lock):
-            raise ValueError("locked teeth cannot be extracted")
+        rm = list(extraction)            # as prescribed (checked in propose_target)
         for i in rm:
             gain += width[i]
             active.remove(i)
-        notes.append(f"제1소구치 발치 {rm}")
+        notes.append(f"처방대로 발치 {rm}")
     deficit = round(max(crowd - gain, 0.0), 2)       # the clinical deficit; shape room that does not fit shows as collision
 
     # Order along the arch by current arc-length coordinate (on the offset curve for expansion).
     s_cur = {i: arch.s_of(case.anchor[i], offset) for i in active}
     active.sort(key=lambda i: s_cur[i])
     lateral: dict[int, float] = {}
-    fits, closing = True, (0.0, 0.0)
+    fits, closing, open_mm = True, (0.0, 0.0), 0.0
     if anchored:
-        s_new, lateral, fits, room = _anchored_layout(case, active, width, s_cur, offset, extra, lock,
-                                                      close=strategy == "extraction")
+        sides = (any(i < 9 for i in extraction), any(i >= 9 for i in extraction))
+        closable = (not lock & {2, 3}, not lock & {14, 15})
+        s_new, lateral, fits, room, open_mm = _anchored_layout(
+            case, active, width, s_cur, offset, extra, lock, close=strategy == "extraction", close_sides=sides,
+            removed=tuple(extraction) if strategy == "extraction" else (), closable=closable)
         if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
+            # the molars close whatever room is left on their side (unless one of them is locked): the layout leaves it
+            # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
             closing = tuple(0.0 if lock & blk else max(r, 0.0) for r, blk in zip(room, ({2, 3}, {14, 15})))
             if any(c > 0.05 for c in closing):
-                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 (좌 {closing[0]:.1f}mm, 우 {closing[1]:.1f}mm)")
+                notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 (3번 쪽 {closing[0]:.1f}mm, 14번 쪽 {closing[1]:.1f}mm)")
     else:
         gaps = [(width[active[k]] + width[active[k + 1]]) / 2 + CLEARANCE + extra.get((active[k], active[k + 1]), 0.0)
                 for k in range(len(active) - 1)]
@@ -436,6 +497,8 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             "needed_mm": round(sum(width[i] for i in ids), 1),
             "mean_move_mm": round(float(np.mean(disp)), 2), "max_move_mm": round(float(np.max(disp)), 2),
             "notes": notes, "removed": [i for i in ids if target[i] is None], "locked": sorted(lock),
+            "extraction": list(extraction) if strategy == "extraction" else [],
+            "open_space_mm": round(open_mm, 2),
             "ipr_mm_per_surface": ipr_limit_mm if strategy in ("ipr", "expansion_ipr") else 0.0,
             "ipr_applied_teeth": sorted(red) if ipr_limit_mm > 0 else [],
             "ipr_exclude": sorted(ipr_exclude), "expansion_mm_per_side": round(float(offset), 2),
@@ -565,6 +628,10 @@ def validate(case: Case, stages: list[dict], stage_cap: int | None = None,
         removed = set(case.ids) - set(stages[-1]) if stages else set(case.ids)
         if removed and not constraints.allow_extraction:
             viol.append({"stage": None, "type": "extraction_forbidden", "teeth": sorted(removed)})
+        elif constraints.allow_extraction and removed != set(constraints.extraction):
+            # the plan must extract exactly the prescribed teeth: not others, and not skip them (#56)
+            viol.append({"stage": None, "type": "extraction_mismatch", "teeth": sorted(removed ^ set(constraints.extraction)),
+                         "prescribed": list(constraints.extraction), "removed": sorted(removed)})
         for si, st in enumerate(stages, 1):
             for tooth in constraints.lock:
                 if tooth not in st or np.linalg.norm(st[tooth]) > 1e-6:
@@ -575,6 +642,10 @@ def validate(case: Case, stages: list[dict], stage_cap: int | None = None,
         excluded = set(info.get("ipr_applied_teeth", [])) & set(constraints.ipr_exclude)
         if excluded:
             viol.append({"stage": None, "type": "ipr_excluded", "teeth": sorted(excluded)})
+        if info.get("open_space_mm", 0.0) > SPACE_DEFICIT_TOLERANCE_MM:
+            # extraction space that no molar can close (a locked molar or locked teeth around it): not a finished plan
+            viol.append({"stage": None, "type": "extraction_space_open", "mm": info["open_space_mm"],
+                         "limit": SPACE_DEFICIT_TOLERANCE_MM})
     if space_deficit_mm is not None and space_deficit_mm > SPACE_DEFICIT_TOLERANCE_MM:
         viol.append({"stage": None, "type": "space_deficit", "mm": round(space_deficit_mm, 2),
                      "limit": SPACE_DEFICIT_TOLERANCE_MM})
@@ -640,12 +711,22 @@ def export_print_models(case: Case, stages: list[dict], zip_path: str, case_id: 
     return report
 
 
+def strategies_for(allowed, constraints: Constraints | None) -> list[str]:
+    """The strategies a prescription allows (#56): with extraction teeth prescribed, only extraction (the other
+    strategies would not extract them); without, every allowed strategy but extraction (the app does not pick teeth).
+    A prescription whose strategy the caller excluded is an error, not a silent other plan."""
+    allowed = list(dict.fromkeys(allowed))
+    if constraints is not None and constraints.extraction:
+        if "extraction" not in allowed:
+            raise ValueError("처방은 발치인데 요청한 전략에 발치가 없습니다.")
+        return ["extraction"]
+    return [s for s in allowed if s != "extraction"]
+
+
 def compare_strategies(case: Case, allowed=STRATEGIES, stage_cap: int | None = None,
                        order: str = "simultaneous", constraints: Constraints | None = None) -> list[dict]:
     rows = []
-    for s in allowed:
-        if constraints and s == "extraction" and not constraints.allow_extraction:
-            continue
+    for s in strategies_for(allowed, constraints):
         target, info = propose_target(case, s, constraints=constraints)
         stages, sinfo = plan_stages(case, target, order=constraints.order if constraints else order)
         viol = validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"],

@@ -206,7 +206,7 @@ def test_reviewer_gets_what_each_number_means(tmp_path, monkeypatch):
     monkeypatch.setattr(store_module, "OUT_DIR", tmp_path)
     s = store_module.Store()
     svc = PlanningService(s)
-    pid = svc.stages(svc.target("severe", "extraction", Constraints(allow_extraction=True)))
+    pid = svc.stages(svc.target("severe", "extraction", Constraints(extraction=(5, 12))))
     plan = s.plan_json(pid)
     # Every noted field exists in the data the reviewer reads, so a rename cannot leave a note behind.
     assert set(FIELD_NOTES) <= set(plan["info"]) | set(plan["target"])

@@ -20,7 +20,7 @@ a reviewer. Do not compute stages, movements or months yourself, and do not chan
 ## Procedure
 
 1. Settle the case. If the dentist has not named one, call `cualign_list_cases` and ask which case, once.
-2. Settle the conditions. Use what the dentist already said: 발치 여부 (`allow_extraction`), 고정할 치아 (`lock`),
+2. Settle the conditions. Use what the dentist already said: 발치할 치아 (`extraction`, 처방된 치아 번호; 비발치는 []), 고정할 치아 (`lock`),
    IPR 제외 치아 (`ipr_exclude`), 단계 수 상한 (`stage_cap`). If a condition is unclear, ask once in one message.
    If the dentist says to go ahead, call `cualign_plan` with what you have; unknown conditions stay null.
 3. Call `cualign_plan` once per request. Do not retry in a loop. If the result has `status: "error"`, report the

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from cualign.agent.context import CURRENT_RUN, PlanRun
-from cualign.core.constraints import ConstraintPatch
+from cualign.core.constraints import ConstraintPatch, ExtractionTeethNeeded, reason_ko
 from cualign.core.store import STORE
 
 logger = logging.getLogger(__name__)
@@ -80,8 +80,12 @@ class PlanEventsASGI:
             run, system = open_run(ctx, preload=preload)
             data.setdefault("messages", []).insert(0, system)
             body = json.dumps(data).encode()
-        except (ValueError, KeyError, TypeError):
-            return await JSONResponse({"detail": "Invalid case, parent plan or constraints"}, status_code=400)(scope, receive, send)
+        except ExtractionTeethNeeded as e:     # the prescription is the dentist's: say what is missing (#56)
+            return await JSONResponse({"detail": str(e)}, status_code=400)(scope, receive, send)
+        except (ValueError, KeyError, TypeError) as e:
+            why = reason_ko(e) if isinstance(e, ValueError) and "발치" in reason_ko(e) else ""
+            return await JSONResponse({"detail": "Invalid case, parent plan or constraints" + (f": {why}" if why else "")},
+                                      status_code=400)(scope, receive, send)
 
         replayed = False
         async def replay():
