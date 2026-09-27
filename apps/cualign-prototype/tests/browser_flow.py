@@ -104,20 +104,24 @@ async def main():
             await page.goto(url + "/ui/?case=moderate")
             await page.wait_for_function("!document.body.classList.contains('start')")
 
-            # Rule-based plan via the folded conditions panel (no model): open the details, then the fallback button.
-            # Also open the result panel's "자세히" details so #rPlan/#rParent/#rReview/... are visible (inner_text
-            # needs layout; their contents are correct but invisible while the <details> is closed).
-            await page.locator("#condBox").evaluate("(el) => { el.open = true; }")
-            await page.locator(".plan-meta").evaluate("(el) => { el.open = true; }")
+            # Rule-based plan from the sidebar's 조건 tab (no model). The plan on screen is the canvas's data-plan-id;
+            # the cards on the panel top mark it 보는 중 (#111). Helpers read the test hook, not the removed result card.
+            plan_on_screen = "(window.__cualign.state.plan?.plan_id ?? '')"
+            async def on_screen():
+                return await page.evaluate(plan_on_screen)
+            async def approval():
+                return await page.evaluate("window.__cualign.state.plan?.approval ?? null")
+            await page.locator("#tabCond").click()
             await page.locator("#fallbackBtn").click()
-            await page.wait_for_function("document.querySelector('#rPlan').textContent.startsWith('p') && !document.querySelector('#fallbackBtn').disabled"
-                " && document.querySelector('#viewCanvas').dataset.planId === document.querySelector('#rPlan').textContent")
-            parent = await page.locator("#rPlan").inner_text()
+            await page.wait_for_function(f"{plan_on_screen}.startsWith('p') && !document.querySelector('#fallbackBtn').disabled"
+                f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}")
+            parent = await on_screen()
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == parent
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"] .viewing').is_visible()
             assert await page.locator("#stlLink").get_attribute("href") is None
             parent_detail = store_module.STORE.plan_json(parent)
             assert parent_detail["passed"] and parent_detail["review"]["status"] == "skipped"
-            assert await page.locator("#rReview").inner_text() == "미실행 (규칙 폴백)"
+            assert "미실행 (규칙 폴백)" in await page.locator("#reviewLine").inner_text()
             assert int(await page.locator("#stageSlider").get_attribute("max")) == parent_detail["info"]["n_stages"]
             await page.locator("#stageSlider").fill(str(parent_detail["info"]["n_stages"]))
             await page.locator("#stageSlider").dispatch_event("input")
@@ -130,31 +134,35 @@ async def main():
             await page.wait_for_selector("#exportPop:not([hidden])")
             async with page.expect_download() as download:
                 await page.locator("#exportGo").click()
-            await page.wait_for_function("document.querySelector('#rApproval').textContent.startsWith('의사 승인됨')")
+            await page.wait_for_function("!!window.__cualign.state.plan?.approval")
+            assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
             assert (await page.locator("#exportBtn").inner_text()) == "STL 내려받기"
             await (await download.value).save_as(OUT / "approved-stages.zip")
 
-            # Revoke the approval (「자세히」 details, next to the review fields) and confirm export gates again.
+            # Revoke the approval (the 검토 fold under the plan cards) and confirm export gates again.
+            await page.locator("#planReview").evaluate("(el) => { el.open = true; }")
             await page.locator("#revokeBtn").click()
-            await page.wait_for_function("document.querySelector('#rApproval').textContent === '미승인'")
+            await page.wait_for_function("!window.__cualign.state.plan?.approval")
             assert (await page.locator("#exportBtn").inner_text()) == "내보내기"
             assert await page.locator("#stlLink").get_attribute("href") is None
             # Re-approve so the plan is on screen as approved again before the next edit invalidates it.
             await page.locator("#exportBtn").click()
             await page.wait_for_selector("#exportPop:not([hidden])")
             await page.locator("#exportGo").click()
-            await page.wait_for_function("document.querySelector('#rApproval').textContent.startsWith('의사 승인됨')")
+            await page.wait_for_function("!!window.__cualign.state.plan?.approval")
 
-            # Editing the folded conditions makes the on-screen (approved) plan stale for export until replanned.
+            # Editing the conditions makes the on-screen (approved) plan stale for export until replanned.
             await page.locator("#cLock").fill("13")
             assert await page.locator("#exportBtn").is_disabled()
+            assert "조건이 바뀜" in await page.locator("#condState").inner_text()
             await page.locator("#fallbackBtn").click()
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent !== p && !document.querySelector('#fallbackBtn').disabled"
-                " && document.querySelector('#viewCanvas').dataset.planId === document.querySelector('#rPlan').textContent", arg=parent)
-            child = await page.locator("#rPlan").inner_text()
-            assert await page.locator("#rParent").inner_text() == parent
-            assert await page.locator("#rApproval").inner_text() == "미승인"
+            await page.wait_for_function(f"(p) => {plan_on_screen} !== p && !document.querySelector('#fallbackBtn').disabled"
+                f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}", arg=parent)
+            child = await on_screen()
+            assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == parent
+            assert await approval() is None
+            assert "조건과 같음" in await page.locator("#condState").inner_text()
             assert await page.locator("#stlLink").get_attribute("href") is None
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
             await page.locator("#stageSlider").evaluate("(el) => { el.value=el.max; el.dispatchEvent(new Event('input')); }")
@@ -163,25 +171,37 @@ async def main():
             await page.screenshot(path=str(OUT / "revision.png"))
 
             # The decision bar for this revision lets the dentist undo it; revert, then pick the child plan again
-            # through #planSelect so the rest of the script continues from it.
+            # with the 보기 button of its card (#111) so the rest of the script continues from it.
             await page.locator(".decision").last.locator('[data-act="revert"]').click()
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=parent)
-            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", child)
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=child)
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=parent)
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"]').count() == 1
+            await page.locator(f'#plans .plan-row[data-plan="{child}"] button[data-act="view"]').click()
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child)
+            assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{child}"] .viewing').is_visible()
+            assert await page.locator(f'#plans .plan-row[data-plan="{parent}"] button[data-act="view"]').is_visible()
+            # the sidebar follows the card: its 규칙 tab names the plan on screen
+            await page.locator("#tabRules").click()
+            assert (await page.locator("#rulesFor").inner_text()).startswith("계획 ")
+            assert await page.locator("#ruleCards .rule").count() >= 4
+            await page.screenshot(path=str(OUT / "plan-cards.png"))
 
             # Send a real HTTP stream through PlanEventsASGI and the actual tool group. The fake reviewer fails and
             # the streamed text carries an unrelated plan id that must not steer selection.
             await page.locator("#chatInput").fill("IPR은 앞니 빼고 다시 짜줘")
             await page.locator("#sendBtn").click()
-            await page.wait_for_function("document.querySelector('#rReview').textContent === '검토 실패' && !document.querySelector('#sendBtn').disabled")
-            selected = await page.locator("#rPlan").inner_text()
+            await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'failed' && !document.querySelector('#sendBtn').disabled")
+            selected = await on_screen()
             assert selected != "p999" and selected != child
-            assert await page.locator("#rParent").inner_text() == child
+            assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == child
+            assert "검토 실패" in await page.locator("#reviewLine").inner_text()
             assert await page.locator("#cLock").input_value() == "13"
             assert await page.locator("#cExclude").input_value() == "7, 8, 9, 10"
             assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
-            assert await page.locator(".plan-card").last.is_visible()
+            # a comparison turn adds one card per plan it made; the selected one is 보는 중
+            assert await page.locator("#planList .plan-row").count() >= 3
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{selected}"] .viewing').is_visible()
             assert await page.locator(".msg.error").last.is_visible()
             decision2 = page.locator(".decision").last
             assert await decision2.is_visible()
@@ -192,8 +212,9 @@ async def main():
             # The dentist asks for the failed review again on the same plan.
             assert await page.locator("#reviewBtn").is_visible()
             await page.locator("#reviewBtn").click()
-            await page.wait_for_function("document.querySelector('#rReview').textContent === '메모 생성 완료' && !document.querySelector('#sendBtn').disabled")
-            assert await page.locator("#rPlan").inner_text() == selected
+            await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'passed' && !document.querySelector('#sendBtn').disabled")
+            assert await on_screen() == selected
+            assert "메모 생성 완료" in await page.locator("#reviewLine").inner_text()
             assert await page.locator("#reviewBtn").is_hidden()
             if store_module.STORE.plan_json(selected)["passed"]:
                 assert await page.locator("#exportBtn").is_enabled()
@@ -209,13 +230,14 @@ async def main():
                 await release.wait()
                 await route.fulfill(json=parent_payload)
             await page.route("**/api/plans/" + parent, delayed_parent)
-            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", parent)
+            # the cards' buttons are disabled while a load runs, so the second choice goes through the test hook
+            await page.locator(f'#plans .plan-row[data-plan="{parent}"] button[data-act="view"]').click()
             await pending.wait()
-            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", child)
-            await page.wait_for_function("(p)=>document.querySelector('#rPlan').textContent===p", arg=child)
+            await page.evaluate("(p) => { window.__cualign.loadPlan(p).catch(() => {}); }", child)
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child)
             release.set()
             await page.wait_for_timeout(100)
-            assert await page.locator("#rPlan").inner_text() == child
+            assert await on_screen() == child
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
 
             # Reload keeps the case and the plan on screen via the #case=…&plan=… address (#90).
@@ -223,7 +245,8 @@ async def main():
             case_name_before = await page.locator("#caseName").inner_text()
             await page.reload()
             await page.wait_for_function("!document.body.classList.contains('start')")
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=child, timeout=120000)
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child, timeout=120000)
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{child}"]').count() == 1
             assert await page.locator("#caseName").inner_text() == case_name_before
             assert await page.locator("#stlLink").get_attribute("href") is None   # approval was revoked above
 
@@ -234,7 +257,7 @@ async def main():
             await page.locator('#clRows .case-row[data-id="poseidon-000097"]').click()      # row → detail panel
             assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14
             await page.locator("#dOpen").click()
-            await page.wait_for_function("(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && document.querySelector('#rPlan').textContent !== p", arg=child)
+            await page.wait_for_function(f"(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && {plan_on_screen} !== p", arg=child)
             assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
             assert await page.locator("#stlLink").get_attribute("href") is None
 
@@ -263,7 +286,7 @@ async def main():
             pid = await page.evaluate("window.__cualign.state.patient.patient_id")
             await page.evaluate("(pid) => fetch('/api/patients/' + pid, { method: 'DELETE' }).then((r) => r.ok)", pid)   # reruns start empty
             assert not errors, errors
-            print("PASS: browser rule-based plan, export/approval, revision, reviewer failure, manual re-review, "
+            print("PASS: browser rule-based plan, export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "
                   "my scan: unsupported gap and reversed numbering → mirror")
             await browser.close()

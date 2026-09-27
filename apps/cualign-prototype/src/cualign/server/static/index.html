@@ -85,11 +85,26 @@
           <button id="popPatients" class="link-btn" type="button">내 스캔 올리기 →</button>
         </div>
       </div>
+      <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 승인·STL은 3D 위 「내보내기」 하나 (#111) -->
+      <section id="plans" class="plans" hidden>
+        <div class="plans-head"><h2>계획</h2><span id="planCount" class="count"></span></div>
+        <details id="oldPlans" class="old-plans" hidden><summary>지난 계획 <span id="oldPlansN"></span>개</summary><div id="oldPlanList" class="plan-list"></div></details>
+        <div id="planList" class="plan-list"></div>
+        <details id="planReview" class="plan-review">
+          <summary><span id="reviewLine">검토</span></summary>
+          <p id="reviewMemo" class="review-memo"></p>
+          <div class="plan-review-acts">
+            <button id="reviewBtn" class="btn ghost small" type="button" hidden>검토 다시 요청</button>
+            <button id="revokeBtn" class="btn ghost small" type="button" hidden>승인 취소</button>
+          </div>
+        </details>
+      </section>
       <div id="transcript" class="transcript" aria-live="polite"></div>
       <div id="retryBar" class="retry-bar" hidden>
         <button id="resendBtn" class="btn primary small" type="button">다시 보내기</button>
         <button id="retryFallback" class="btn ghost small" type="button" title="모델 없이 규칙 기반 루프만 돌립니다">규칙 기반으로 계산</button>
       </div>
+      <p id="planNotice" class="plan-notice" aria-live="polite"></p>
       <div class="chips" id="chips"></div>
 
       <div id="selChips" class="sel-chips" hidden></div>
@@ -140,20 +155,6 @@
         <!-- while a turn runs: the 3D dims and this pill repeats the running step -->
         <div id="workNote" class="work-note" aria-live="polite"><i></i><span>계획을 준비하는 중…</span></div>
         <div class="view-head">
-          <!-- 조건: 3D 왼쪽 위에 칩으로 접혀 있고, 펼치면 폼이 3D 위로 내려온다 (#90) -->
-          <details id="condBox" class="cond">
-            <summary>조건 <span id="condSummary" class="cond-chips">—</span></summary>
-            <fieldset id="constraints" class="constraints">
-              <legend>대화로도 바꿀 수 있습니다</legend>
-              <label>발치 치아 (빈칸: 비발치) <input id="cExtract" placeholder="예: 5, 12"></label>
-              <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
-              <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
-              <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
-              <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
-              <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
-              <button id="fallbackBtn" class="btn ghost small cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 규칙 기반 계산 (모델 없이)</button>
-            </fieldset>
-          </details>
           <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
           <div id="checkBar" class="check-bar" hidden>
             <span id="checkFacts" class="facts"></span>
@@ -211,37 +212,48 @@
         <button id="lastBtn" class="btn ghost small" type="button" title="목표 배열로">목표</button>
         <span id="stageLabel" class="stage-label">계획 없음</span>
       </div>
-
-      <div class="result">
-        <div class="result-head">
-          <span id="statusBadge" class="badge neutral">계획 없음</span>
-          <div class="plan-pick">
-            <select id="planSelect" title="계획 선택"><option value="">계획 선택…</option></select>
-            <button id="reviewBtn" class="btn ghost small" hidden>검토 다시 요청</button>
-          </div>
-        </div>
-        <details class="plan-meta">
-          <summary>자세히</summary>
-          <p id="planNotice" aria-live="polite">계획 없음</p>
-          <dl id="resultCard" class="card">
-            <div><dt>전략</dt><dd id="rStrategy">—</dd></div>
-            <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
-            <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
-            <div><dt>위반</dt><dd id="rViol">—</dd></div>
-            <div><dt>의사 승인</dt><dd id="rApproval">—</dd></div>
-            <div><dt>계획 ID</dt><dd id="rPlan">—</dd></div>
-            <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
-            <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
-          </dl>
-          <p id="reviewMemo" class="review-memo"></p>
-          <button id="revokeBtn" class="btn ghost small" type="button" hidden>승인 취소</button>
-        </details>
-        <table class="viol" id="violTable">
-          <thead><tr><th>단계</th><th>치아</th><th>종류</th><th>값</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
     </section>
+
+    <!-- 작업대 오른쪽 사이드바 (#111): 단계 표 · 규칙 · 조건. 값은 보고 있는 계획(state.plan)에서 온다 -->
+    <aside id="side" class="side">
+      <div class="side-tabs" role="tablist">
+        <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="true">단계 표</button>
+        <button id="tabRules" class="side-tab" type="button" role="tab" data-tab="rules" aria-selected="false">규칙</button>
+        <button id="tabCond" class="side-tab" type="button" role="tab" data-tab="cond" aria-selected="false">조건</button>
+      </div>
+      <section id="paneStages" class="pane" role="tabpanel">
+        <div class="pane-head">
+          <div id="stageFacts" class="facts-line"></div>
+          <p id="stageNotes" class="sub"></p>
+        </div>
+        <div id="stageGrid" class="stage-grid" aria-label="단계 표"></div>
+        <div class="grid-legend">
+          <span><i class="sw mixed"></i>복합</span><span><i class="sw move"></i>수평 이동</span><span><i class="sw vert"></i>정출·함입</span><span><i class="sw rot"></i>회전</span><span><i class="sw coll"></i>충돌</span>
+        </div>
+      </section>
+      <section id="paneRules" class="pane" role="tabpanel" hidden>
+        <div class="pane-head"><h2>규칙</h2><p id="rulesFor" class="sub"></p></div>
+        <div id="ruleCards" class="rule-cards"></div>
+        <h3 class="pane-sub">위반 묶음</h3>
+        <div id="violGroups" class="viol-groups"></div>
+      </section>
+      <section id="paneCond" class="pane" role="tabpanel" hidden>
+        <div class="pane-head"><h2>조건</h2><p id="condFor" class="sub"></p></div>
+        <div class="rx"><h3 class="pane-sub">처방</h3><p id="condRx"></p><p id="condRxNote" class="sub"></p></div>
+        <fieldset id="constraints" class="constraints">
+          <label>발치 치아 (빈칸: 비발치) <input id="cExtract" placeholder="예: 5, 12"></label>
+          <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
+          <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
+          <label>IPR 한도 (면당 mm, 0.25 이하) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
+          <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
+          <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
+        </fieldset>
+        <p id="condState" class="cond-state" aria-live="polite"></p>
+        <div class="pane-foot">
+          <button id="fallbackBtn" class="btn primary cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 계산</button>
+        </div>
+      </section>
+    </aside>
   </main>
 
   <script type="module" src="app.js"></script>
