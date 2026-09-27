@@ -135,6 +135,24 @@ def _record(kind: str, state: str, prev: str | None = None) -> str:
     return state
 
 
+# An answer for the dentist is Korean. A final answer with no Hangul at all is the model's own deliberation leaking
+# (observed 2026-09-27: "We need to parse the user's request..." streamed as the answer, no tool call, no plan): the
+# turn is reported as failed and the text never reaches the screen.
+HANGUL = re.compile(r"[\uac00-\ud7a3]")
+NO_ANSWER = "모델이 계획 대신 자기 추론문만 돌려보내 답을 만들지 못했습니다. 같은 요청을 다시 보내 주세요."
+
+
+def _no_korean(answer: str) -> str | None:
+    """The notice that replaces `answer` when it holds no Korean text, else None. Records the failure for plan_error."""
+    if not answer.strip() or HANGUL.search(answer):
+        return None
+    logger.warning("cuAlign: the final answer has no Korean text (%d chars, head %r); replaced", len(answer), answer[:80])
+    run = CURRENT_RUN.get()
+    if run is not None:
+        run.error = {"kind": "no_answer", "message": NO_ANSWER}
+    return NO_ANSWER
+
+
 def _refuse() -> str:
     """The rails replace this turn's answer, so the UI must not be offered its plan either."""
     run = CURRENT_RUN.get()
@@ -228,7 +246,7 @@ class RailsMiddleware(FunctionMiddleware):
                 out = await call_next(*args, **kwargs)
             except Exception as e:
                 raise self._failed(e) from None
-            refusal = await self._check_output(user, _text(out), state)
+            refusal = _no_korean(_text(out)) or await self._check_output(user, _text(out), state)
         return refusal_like(value, refusal) if refusal else out
 
     async def function_middleware_stream(self, *args: Any, call_next, context, **kwargs: Any) -> AsyncIterator[Any]:
@@ -240,7 +258,8 @@ class RailsMiddleware(FunctionMiddleware):
                 held = [chunk async for chunk in call_next(*args, **kwargs)]
             except Exception as e:
                 raise self._failed(e) from None
-            refusal = await self._check_output(user, "".join(_text(c) for c in held), state)
+            answer = "".join(_text(c) for c in held)
+            refusal = _no_korean(answer) or await self._check_output(user, answer, state)
         if refusal:
             yield ChatResponseChunk.create_streaming_chunk(refusal)
             return

@@ -126,7 +126,8 @@ workflow:
     app's Universal numbers (1..16). Convert every tooth number before a tool call and back in the answer:
     FDI 18 17 16 15 14 13 12 11 -> Universal 1 2 3 4 5 6 7 8, FDI 21 22 23 24 25 26 27 28 -> Universal 9 10 11 12
     13 14 15 16 (Universal = 19 - FDI for 11..18, FDI - 12 for 21..28). Never write a Universal number to the
-    dentist; the conditions in the server context and tool results are Universal, so translate them to FDI.
+    dentist. The 조건 line of the answer is `conditions_ko` (server context or the latest constraints result), copied
+    exactly: the server already wrote it with FDI numbers. Never list or convert tooth numbers yourself.
     Extraction is the dentist's prescription of which teeth to extract: set extraction to the teeth named, converted to
     Universal ("14번과 24번 발치" -> [5, 12]; "15·25번" -> [4, 13]). Never choose the teeth yourself: if extraction is
     wanted but no teeth were named (발치 허용, 발치안 비교), ask which teeth before any extraction plan. Only premolars
@@ -137,7 +138,11 @@ workflow:
     Once targets exist the conditions are fixed: set_constraints then returns the unchanged
     conditions with a rejected field. That is final, not a call to retry. Finish the plan with
     the returned conditions and state in the final answer which change was not applied.
-    Ask one concise question if a requested condition is ambiguous or unsupported.
+    Ask one concise question if a requested condition is ambiguous or unsupported. A prescription that asks for
+    more IPR than the app allows (above 0.25 mm per surface, e.g. 0.4 mm per contact) is NOT a reason to ask: the
+    confirmed constraints already carry the app's cap, so plan with them and say in the answer that IPR was
+    capped at 0.25 mm per surface. When you do ask instead of planning, the final answer is the Korean question
+    itself (one or two sentences): never write your deliberation, never English.
     The case is the one in the server context; do not switch cases in tools. load_case only if the
     context has no case summary.
     Skill: the Agent Skill `cualign-clinical-rules` (skills/cualign-clinical-rules/SKILL.md) holds the clinical limits and

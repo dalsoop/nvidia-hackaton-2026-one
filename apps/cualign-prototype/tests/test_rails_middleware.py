@@ -558,3 +558,19 @@ def test_overload_crash_reaches_the_ui_as_a_nim_overload_event(store, tmp_path, 
     assert error["kind"] == "nim_overload" and error["message"] == "MARK-NOTICE 과부하입니다."
     assert error["request_id"] == "r-51" and "plan_selected" not in body
     assert sse_event(body, "plan_context")["request_id"] == "r-51"
+
+
+ENGLISH_ONLY = "We need to parse the user's request... universal numbering... So we should respond with a question."
+
+
+def test_answer_without_korean_is_replaced_and_reported(store, tmp_path, monkeypatch):
+    """2026-09-27 live: the model called no tool and streamed its English deliberation as the answer. Such an answer
+    never reaches the dentist: the notice replaces it (stream and non-stream) and the turn ends with a plan_error
+    (kind no_answer) instead of silence."""
+    from cualign.server.rails_middleware import NO_ANSWER
+    with FakeLLM(ENGLISH_ONLY) as llm, serve(tmp_path, monkeypatch, llm) as client:
+        stream = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+        plain = ask(client, "/generate")
+    assert NO_ANSWER in stream and "universal numbering" not in stream
+    assert sse_event(stream, "plan_error")["kind"] == "no_answer" and "plan_selected" not in stream
+    assert NO_ANSWER in plain and "universal numbering" not in plain
