@@ -43,7 +43,7 @@ A reader test uses a new session with no other context, and it runs more than on
 
   The planner refuses a `load_skill` request for a skill outside its list. The server does not start when the preloaded skill is outside the list. The allowlist is not a security boundary. Guardrails and OpenShell block tools and network access.
 - **Images:** `Dockerfile` and `Dockerfile.openshell` copy `workspace/` to `/app/workspace`.
-- **OpenClaw templates:** `HEARTBEAT.md` is a copy of an OpenClaw template. The OpenClaw `AGENTS.md` template is the upstream reference for `desk/AGENTS.md`. `nemoclaw/openclaw-2026.7.1/README.md` records the version and the hashes.
+- **OpenClaw template:** `HEARTBEAT.md` is a copy of an OpenClaw template. `nemoclaw/openclaw-2026.7.1/README.md` records the version and the hash.
 
 ## Sources for the maintainer
 

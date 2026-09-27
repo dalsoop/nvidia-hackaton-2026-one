@@ -1,4 +1,4 @@
-<!-- source: README.md sha256: 09e7059c97eaa584193ff7937b919b097572a604b6649ebac839fb70ad179d9f -->
+<!-- source: README.md sha256: 72a09cfe071c45055962622ab3807986069d2398a0fdbbbdddd5fa2cd3aff088 -->
 # cuAlign 에이전트 워크스페이스
 
 cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구성은 NVIDIA DLI NemoClaw 과정 03b(OpenClaw)의 `.openclaw/workspace/` 규약을 따릅니다. 이 폴더를 읽는 에이전트는 둘이고, 에이전트마다 읽는 파일이 다릅니다.
@@ -44,7 +44,7 @@ cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구�
 
   계획 에이전트는 목록 밖 스킬을 `load_skill`로 요청하면 거절합니다. 미리 싣는 스킬이 목록 밖이면 서버가 시작하지 않습니다. 허용 목록은 보안 경계가 아닙니다. 도구와 네트워크는 Guardrails와 OpenShell이 막습니다.
 - **이미지:** `Dockerfile`과 `Dockerfile.openshell`이 `workspace/`를 `/app/workspace`로 복사합니다.
-- **OpenClaw 템플릿:** `HEARTBEAT.md`는 OpenClaw 템플릿의 사본입니다. OpenClaw의 `AGENTS.md` 템플릿은 `desk/AGENTS.md`의 상위 참고본입니다. 버전과 해시는 `nemoclaw/openclaw-2026.7.1/README.md`에 적혀 있습니다.
+- **OpenClaw 템플릿:** `HEARTBEAT.md`는 OpenClaw 템플릿의 사본입니다. 버전과 해시는 `nemoclaw/openclaw-2026.7.1/README.md`에 적혀 있습니다.
 
 ## 관리자용 정본
 

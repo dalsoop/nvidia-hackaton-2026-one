@@ -128,11 +128,12 @@ def test_desk_agents_md_holds_only_the_desk_operating_rules():
     assert "Copy `desk/AGENTS.md` to `/sandbox/.openclaw/workspace/AGENTS.md`." in readme
 
 
-def test_vendored_openclaw_templates_match_their_record():
-    # The OpenClaw version and the sha256 of each copy are recorded once, in nemoclaw/openclaw-2026.7.1/README.md.
+def test_vendored_openclaw_template_matches_its_record():
+    # The OpenClaw version and the sha256 of the copy are recorded once, in nemoclaw/openclaw-2026.7.1/README.md.
     rows = re.findall(r"^\| `(templates/[^`]+)` \| `[^`]+` \| `([0-9a-f]{64})` \|", (OPENCLAW / "README.md").read_text(encoding="utf-8"),
                       flags=re.M)
-    assert {path for path, _ in rows} == {"templates/HEARTBEAT.md", "templates/AGENTS.template.md"}
+    assert {path for path, _ in rows} == {"templates/HEARTBEAT.md"}
+    assert [p.name for p in (OPENCLAW / "templates").iterdir()] == ["HEARTBEAT.md"]   # no copy that nothing uses
     for path, digest in rows:
         assert hashlib.sha256((OPENCLAW / path).read_bytes()).hexdigest() == digest, path
 

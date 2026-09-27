@@ -1,6 +1,6 @@
-# OpenClaw 2026.7.1 templates
+# OpenClaw 2026.7.1 template copy
 
-These files are copies of the OpenClaw workspace templates. The copies are the base of the desk workspace files. The table is the one record of their version and hash.
+This folder has a copy of one OpenClaw workspace template. `workspace/HEARTBEAT.md` has the same bytes. The table is the one record of its version and hash.
 
 - OpenClaw version: 2026.7.1, the `openclaw` package in the NemoClaw desk image.
 - Package root: `/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw`.
@@ -8,8 +8,5 @@ These files are copies of the OpenClaw workspace templates. The copies are the b
 | Copy | Path in the package | sha256 | Used by |
 |---|---|---|---|
 | `templates/HEARTBEAT.md` | `src/agents/templates/HEARTBEAT.md` | `ecce558615751a35aa173731e892ff3993f44bb4f5a1219c0a02994790c85528` | `workspace/HEARTBEAT.md`, same bytes |
-| `templates/AGENTS.template.md` | `docs/reference/templates/AGENTS.md` | `7d340e13e845b8bf7c69c60f5dbcc7b5b0e03b1401496d2a091af7223499bbfc` | Upstream reference for `workspace/desk/AGENTS.md` |
 
-The `AGENTS.md` template has the name `AGENTS.template.md` here. A coding agent reads the nearest `AGENTS.md` as its instructions, and this template is not for it.
-
-Keep the bytes of the copies unchanged. To update them, copy the files from a new OpenClaw version into a new folder, and record the version and the hashes here. `tests/test_workspace.py` checks the hashes.
+Keep the bytes of the copy unchanged. To update it, copy the file from a new OpenClaw version into a new folder, and record the version and the hash here. `tests/test_workspace.py` checks the hash.
