@@ -35,6 +35,21 @@ class Arch:
         w[[0, -1]] = END_WEIGHT
         self.cx = np.polyfit(u, xy[:, 0], deg, w=w)
         self.cy = np.polyfit(u, xy[:, 1], deg, w=w)
+        self._finish(xy, margin, n_samples)
+
+    @classmethod
+    def from_poly(cls, cx: np.ndarray, cy: np.ndarray, crowns_xy: np.ndarray, margin: float = 8.0,
+                  n_samples: int = 2000) -> "Arch":
+        """An arch from given polynomials x(u), y(u) over u in [0, 1] (np.polyval order) instead of a fit; `crowns_xy`:
+        the crown positions on that curve in arch order (its end directions are read off them)."""
+        self = cls.__new__(cls)
+        self.c = np.asarray(crowns_xy, float).mean(0)
+        self.axes = np.eye(2)
+        self.cx, self.cy = np.asarray(cx, float), np.asarray(cy, float)
+        self._finish(np.asarray(crowns_xy, float)[:, :2], margin, n_samples)
+        return self
+
+    def _finish(self, xy: np.ndarray, margin: float, n_samples: int) -> None:
         self.dcx, self.dcy = np.polyder(self.cx), np.polyder(self.cy)
         speed0 = float(np.hypot(np.polyval(self.dcx, 0.0), np.polyval(self.dcy, 0.0))) or 1.0
         speed1 = float(np.hypot(np.polyval(self.dcx, 1.0), np.polyval(self.dcy, 1.0))) or 1.0
@@ -152,3 +167,46 @@ class Arch:
         turn = fit + ((raw - fit + np.pi) % (2 * np.pi) - np.pi)
         # moving along the left normal (-ty, tx) by e scales ds by (1 - e * dtheta/ds); outward = sign * left normal
         return float(-self.sign * offset * turn)
+
+
+MOLAR_WEIGHT = 1e2      # weight of the first molars in the symmetric fit: the curve passes (nearly) through them
+
+
+def symmetric_arch(base: Arch, P: np.ndarray, mid: np.ndarray, axis: np.ndarray, molars: np.ndarray,
+                   margin: float = 8.0) -> Arch:
+    """The target arch form: a left-right symmetric curve fitted to the crown points P (world xy, arch order) and
+    their mirror images across the midline through `mid` along `axis` (unit, pointing anterior).
+
+    In the midline frame the curve is x(u) = b1 u + b3 u^3 + b5 u^5 (odd), y(u) = a0 + a2 u^2 + a4 u^4 (even) —
+    symmetric by construction, six parameters for 2 x 14 points, so it smooths the crowns' irregularities instead of
+    following them (the case arch, degree 5 in both, nearly interpolates) — over the signed arc parameter u of the
+    current arch `base`, 0 at the midline and ±1 at the end crowns, each side scaled by its own length so mirrored
+    crowns overlay. The end crowns are pinned (END_WEIGHT) and the first molars (`molars`: boolean mask over P)
+    weighted so the curve passes through them: they are the anchors the span is laid out between, and they stay.
+    Why x to the fifth: with x cubic the curve cuts the corners and the arch between the first molars comes out
+    1.3–4.7 mm short on the golden-set families and the real scans (crowns then overlap); a sixth power in y bends
+    wildly on crowded arches. Measured 2026-09-28 (.report/2-target-curve.md).
+    """
+    P = np.asarray(P, float)[:, :2]
+    ey = np.asarray(axis, float) / np.linalg.norm(axis)
+    ex = np.array([ey[1], -ey[0]])
+    L = (P - mid[:2]) @ np.stack([ex, ey], 1)
+    s = np.array([base.s_of(p) for p in P])
+    s_mid = base.s_of(mid)
+    half = np.where(s < s_mid, max(s_mid - s[0], 1e-6), max(s[-1] - s_mid, 1e-6))
+    u = (s - s_mid) / half
+    w = np.ones(len(P))
+    w[[0, -1]] = END_WEIGHT
+    w[np.asarray(molars, bool)] = MOLAR_WEIGHT
+    U, W = np.concatenate([u, -u]), np.sqrt(np.concatenate([w, w]))
+    X, Y = np.concatenate([L[:, 0], -L[:, 0]]), np.concatenate([L[:, 1], L[:, 1]])
+    bx = np.linalg.lstsq(np.stack([U, U ** 3, U ** 5], 1) * W[:, None], X * W, rcond=None)[0]
+    ay = np.linalg.lstsq(np.stack([np.ones_like(U), U ** 2, U ** 4], 1) * W[:, None], Y * W, rcond=None)[0]
+    from numpy.polynomial import Polynomial as Poly
+    px, py = Poly([0.0, bx[0], 0.0, bx[1], 0.0, bx[2]]), Poly([ay[0], 0.0, ay[1], 0.0, ay[2]])
+    sub = Poly([-1.0, 2.0])                       # u = 2v - 1: Arch parameterises v over [0, 1]
+    pxv, pyv = px(sub), py(sub)
+    cx = Poly([mid[0]]) + pxv * ex[0] + pyv * ey[0]
+    cy = Poly([mid[1]]) + pxv * ex[1] + pyv * ey[1]
+    crowns = mid[:2] + np.outer(px(u), ex) + np.outer(py(u), ey)
+    return Arch.from_poly(cx.coef[::-1], cy.coef[::-1], crowns, margin=margin)
