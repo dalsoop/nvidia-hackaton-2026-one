@@ -14,7 +14,6 @@ const fdiList = (ids) => [...(ids ?? [])].map(fdi).join("·");
 // teeth are ivory, movement is a heat tint, collisions red, limit breaches amber, locked teeth blue.
 const IVORY = new THREE.Color(0xe9e3d6);
 const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.error, warning, locked
-const GHOST_GREY = 0xb3b3b3;   // colors.text-mute, the legend's dashed 「발치」 outline
 
 // ------------------------------------------------------------------ state
 const state = {
@@ -117,18 +116,34 @@ function gumSkin(geo) {
   }
   return { base, ids: skinIds, w, toothIds: ids };
 }
-function deformGum(st) {
+// Each vertex is carried to where its nearest crowns would take it: R(v − c) + c + d per crown (yaw about the
+// crown's pivot, then the translation), blended by the skin weights (#14: rotation included).
+function deformGum(st, rot = {}, piv = {}) {
   const skin = state.gumSkin, gum = state.gum;
   if (!skin || !gum) return;
   const pos = gum.geometry.attributes.position.array, n = pos.length / 3;
-  const moves = skin.toothIds.map((id) => st[id] ?? null);
+  const moves = skin.toothIds.map((id) => {
+    if (!st[id] && !rot[id]) return null;
+    const a = ((rot[id] ?? 0) * Math.PI) / 180, d = st[id] ?? [0, 0, 0], c = piv[id] ?? [0, 0, 0];
+    return { cos: Math.cos(a), sin: Math.sin(a), d, c };
+  });
   for (let v = 0; v < n; v++) {
+    const x = skin.base[3 * v], y = skin.base[3 * v + 1];
+    // a crown the plan removed has no entry: it is no neighbour (the filled gum shows in its socket), its share goes
+    // to the crowns that are still there
+    let all = 0, present = 0;
+    for (let j = 0; j < GUM_K; j++) { const g = skin.w[v * GUM_K + j]; all += g; if (moves[skin.ids[v * GUM_K + j]]) present += g; }
+    const share = present > 1e-6 ? all / present : 0;
     let dx = 0, dy = 0, dz = 0;
     for (let j = 0; j < GUM_K; j++) {
-      const t = moves[skin.ids[v * GUM_K + j]], g = skin.w[v * GUM_K + j];
-      if (t) { dx += g * t[0]; dy += g * t[1]; dz += g * t[2]; }
+      const t = moves[skin.ids[v * GUM_K + j]], g = skin.w[v * GUM_K + j] * share;
+      if (!t) continue;
+      const rx = x - t.c[0], ry = y - t.c[1];
+      dx += g * (t.cos * rx - t.sin * ry + t.c[0] + t.d[0] - x);
+      dy += g * (t.sin * rx + t.cos * ry + t.c[1] + t.d[1] - y);
+      dz += g * t.d[2];
     }
-    pos[3 * v] = skin.base[3 * v] + dx; pos[3 * v + 1] = skin.base[3 * v + 1] + dy; pos[3 * v + 2] = skin.base[3 * v + 2] + dz;
+    pos[3 * v] = x + dx; pos[3 * v + 1] = y + dy; pos[3 * v + 2] = skin.base[3 * v + 2] + dz;
   }
   gum.geometry.attributes.position.needsUpdate = true;
   gum.geometry.computeVertexNormals();
@@ -142,20 +157,27 @@ function buildTeeth(mesh) {
     geo.setIndex(t.f.flat());
     geo.computeVertexNormals();
     geo.computeBoundingBox();
-    const mat = new THREE.MeshStandardMaterial({ color: IVORY.clone(), roughness: 0.45, metalness: 0.02, transparent: true, opacity: 1, side: THREE.DoubleSide });
+    const mat = new THREE.MeshStandardMaterial({ color: IVORY.clone(), roughness: 0.45, metalness: 0.02, transparent: true, opacity: 1, side: THREE.FrontSide });   // closed crowns: no inner black faces (#14)
     const m = new THREE.Mesh(geo, mat);
     m.userData.id = id;
     group.add(m);
     ghost.add(new THREE.Mesh(geo, GHOST_MAT));   // the untreated position, shown by 전후 겹쳐 보기
     state.teeth[id] = m;
     state.center[id] = geo.boundingBox.getCenter(new THREE.Vector3());
+    // a thin white outline for an extracted crown (#14): the same crown inflated 4% about its centre, back faces only,
+    // as a child so it follows the crown; shown only while the crown is a silhouette
+    const c = state.center[id];
+    const shell = new THREE.Mesh(geo.clone().translate(-c.x, -c.y, -c.z), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, opacity: 0.6, depthWrite: false }));
+    shell.position.copy(c); shell.scale.setScalar(1.04); shell.visible = false;
+    m.add(shell); m.userData.shell = shell;
   }
-  if (mesh.gum) {
+  const gumMesh = mesh.gum_filled ?? mesh.gum;   // the sockets filled by the server when it sends gum_filled (contract 11-gum-server.md)
+  if (gumMesh) {
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(mesh.gum.v.flat(), 3));
-    geo.setIndex(mesh.gum.f.flat());
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(gumMesh.v.flat(), 3));
+    geo.setIndex(gumMesh.f.flat());
     geo.computeVertexNormals();
-    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1, side: THREE.DoubleSide }));
+    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1, side: THREE.FrontSide }));
     gum.userData.gum = true;
     state.gum = gum;
     state.gumSkin = gumSkin(geo);
@@ -190,6 +212,7 @@ function setView(kind) {
   }
   controls.target.copy(c);
   controls.update();
+  for (const b of document.querySelectorAll(".view-rail [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === kind));
 }
 
 // ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
@@ -240,7 +263,7 @@ function applyStage(k) {
   const plan = state.plan;
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
   const rot = k > 0 ? plan?.rotations?.[k - 1] ?? {} : {};
-  deformGum(st);   // the gum follows the crowns
+  deformGum(st, rot, plan?.pivots ?? {});   // the gum follows the crowns, turning with them
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
@@ -253,19 +276,20 @@ function applyStage(k) {
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
     const gone = hasPlan && removed.has(id);
     m.visible = !gone || k === 0;
-    // extracted teeth at stage 0: a wireframe ghost like the legend's dashed swatch; materials are per tooth and
-    // reused across plans, so every other tooth gets its solid look back
-    m.material.opacity = gone ? 0.6 : 1;
-    m.material.wireframe = gone;
+    // extracted teeth at stage 0: a translucent white silhouette (#14); materials are per tooth and reused across
+    // plans, so every other tooth gets its solid look back
+    m.material.opacity = gone ? 0.45 : 1;
+    m.material.depthWrite = !gone;
+    m.userData.shell.visible = gone;
     const moved = d ? Math.hypot(...d) : 0;
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
-    if (gone) m.material.color.setHex(GHOST_GREY);
+    if (gone) m.material.color.setHex(0xffffff);
     else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
     else m.material.color.copy(IVORY);
-    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
+    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : gone ? 0x777777 : 0x000000);   // the silhouette reads white, not lit grey
   }
   placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
@@ -287,8 +311,11 @@ function applyStage(k) {
   ghost.visible = state.overlay && k > 0;
   const n = hasPlan ? plan.stages.length : 0;
   const months = plan?.info?.months ?? "—";
-  $("stageLabel").textContent = !hasPlan ? "계획 없음" : k === 0 ? `치료 전 · 총 ${n}단계 · 예상 ${months}개월` : `단계 ${k} / ${n} · 예상 ${months}개월`;
+  $("stageLabel").textContent = !hasPlan ? "계획 없음" : `${n}단계 · ${months}개월`;
   $("stageSlider").value = k;
+  const tip = $("stageTip");
+  tip.textContent = k === 0 ? "치료 전" : `단계 ${k}`;
+  tip.style.left = n ? `calc(8px + ${(k / n) * 100}% - ${(k / n) * 16}px)` : "8px";   // the thumb's centre: 8px inset each side
   markStage(k);
 }
 
@@ -298,6 +325,8 @@ function onPointerMove(e) {
   const p = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(p, camera);
   const hit = raycaster.intersectObjects(group.children.filter((o) => o.isMesh && o.visible && !o.userData.gum))[0];
+  canvas.style.cursor = hit ? "pointer" : "";
+  if (hit && state.plan && !state.pickedOnce && !localStorage.getItem("cualign.pickHint")) showPickHint();
   const tip = $("tip");
   if (!hit) { tip.hidden = true; return; }
   const m = hit.object, id = m.userData.id;
@@ -313,6 +342,12 @@ function onPointerMove(e) {
   tip.hidden = false;
 }
 
+// the first time the pointer rests on a tooth: one line saying what a click does, once per browser (#14)
+function showPickHint() {
+  localStorage.setItem("cualign.pickHint", "1");
+  $("pickHint").hidden = false;
+  setTimeout(() => { $("pickHint").hidden = true; }, 8000);
+}
 // ---- click a tooth to name it in the chat (#90): a click without a drag toggles it; drags still orbit
 function toothAt(e) {
   const r = canvas.getBoundingClientRect();
@@ -342,7 +377,7 @@ canvas.addEventListener("pointerup", (e) => {
   const id = toothAt(e);
   if (!id) return;
   if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
-  state.pickedOnce = true; $("pickedLegend").hidden = false;
+  state.pickedOnce = true; $("pickedLegend").hidden = false; $("pickHint").hidden = true;
   renderSelection();
 });
 $("selChips").addEventListener("click", (e) => {
@@ -368,7 +403,8 @@ function renderStageMarks() {
     b.type = "button";
     b.className = "stage-mark " + (s.collision ? "collision" : "move_limit");
     b.style.left = `${(+k / n) * 100}%`;
-    b.title = `단계 ${k}: ` + [s.collision && `충돌 ${s.collision}`, s.move_limit && `장당 이동 한계 초과 ${s.move_limit}`].filter(Boolean).join(" · ");
+    b.dataset.tip = `단계 ${k} · ` + [s.collision && `충돌 ${s.collision}건`, s.move_limit && `한계 초과 ${s.move_limit}건`].filter(Boolean).join(" · ");
+    b.setAttribute("aria-label", b.dataset.tip);
     b.addEventListener("click", () => { stopPlay(); applyStage(+k); });
     box.append(b);
   }
@@ -453,12 +489,16 @@ function readConstraints() {
   return { extraction: teeth("cExtract"), lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
     ipr_limit_mm: ipr, stage_cap: cap, clear_stage_cap: cap === null, order: $("cOrder").value };
 }
+// 기간(개월) ↔ 단계 상한: the same formula as the server's limits.py (30.4 days a month, 7 days an aligner)
+const capOfMonths = (m) => Math.round((m * 30.4) / 7);
+const monthsOfCap = (cap) => Math.round(((cap * 7) / 30.4) * 10) / 10;
 function fillConstraints(c) {
   $("cExtract").value = (c.extraction || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cLock").value = (c.lock || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cExclude").value = (c.ipr_exclude || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cIpr").value = c.ipr_limit_mm;
   $("cCap").value = c.stage_cap ?? "";
+  $("cMonths").value = c.stage_cap ? monthsOfCap(c.stage_cap) : "";
   $("cOrder").value = c.order;
   renderCondState();
 }
@@ -550,7 +590,8 @@ async function reviewCurrent() {
   const p = state.plan;
   if (!p || state.streaming || state.loading || constraintsDirty()) return;
   state.loading = true; updateActions();
-  $("reviewLine").innerHTML = `<b>계획 ${planNo(p.plan_id)}</b> 검토 · 검토 중`;
+  const row = state.planRows[p.plan_id];
+  if (row) { row.review = { ...(row.review ?? {}), status: "running" }; renderPlanList(); }
   try {
     const result = await api("/api/plans/" + encodeURIComponent(p.plan_id) + "/review", { method: "POST" });
     if (state.plan?.plan_id === p.plan_id) {
@@ -599,7 +640,7 @@ async function showStart() {
 }
 function lockComposer(on) {
   $("chatInput").disabled = on;
-  $("chatInput").placeholder = on ? "케이스를 열면 입력할 수 있습니다" : "처방과 우선순위를 적어 주세요";
+  $("chatInput").placeholder = on ? "케이스를 열면 입력할 수 있습니다" : "처방과 우선순위를 적어 주세요 · Enter 로 보내기";
 }
 lockComposer(true);
 function leaveStart() {
@@ -641,13 +682,40 @@ async function route(hash) {
 window.addEventListener("popstate", () => route(location.hash).catch((err) => addMsg("error", err.message)));
 
 // Agent panel width: drag the splitter, arrow keys move it, double click resets. Kept per browser.
-const CHAT_MIN = 300, VIEWER_MIN = 420;
+const CHAT_MIN = 300, VIEWER_MIN = 420, SIDE_MIN = 320, SIDE_MAX = 640;
+const sideWidth = () => document.querySelector(".side").getBoundingClientRect().width;
 function setChatWidth(px) {
   const layout = document.querySelector(".layout");
   if (px == null) { layout.style.removeProperty("--chat-w"); localStorage.removeItem("cualign.chatWidth"); return; }
-  px = Math.round(Math.max(CHAT_MIN, Math.min(px, layout.clientWidth - VIEWER_MIN - 6)));
+  px = Math.round(Math.max(CHAT_MIN, Math.min(px, layout.clientWidth - 64 - 12 - sideWidth() - VIEWER_MIN)));   // rail, two splitters, sidebar, 3D
   layout.style.setProperty("--chat-w", px + "px");
   localStorage.setItem("cualign.chatWidth", px);
+}
+// Sidebar width (#14): the same splitter on the sidebar's left; 320–640, the 3D keeps its 420
+function setSideWidth(px) {
+  const layout = document.querySelector(".layout");
+  if (px == null) { layout.style.removeProperty("--side-w"); localStorage.removeItem("cualign.sideWidth"); return; }
+  const chat = document.querySelector(".chat").getBoundingClientRect().width;
+  px = Math.round(Math.max(SIDE_MIN, Math.min(px, SIDE_MAX, layout.clientWidth - 64 - 12 - chat - VIEWER_MIN)));
+  layout.style.setProperty("--side-w", px + "px");
+  localStorage.setItem("cualign.sideWidth", px);
+}
+{
+  const sp = $("sideSplitter");
+  const saved = +localStorage.getItem("cualign.sideWidth");
+  if (saved) setSideWidth(saved);
+  sp.addEventListener("pointerdown", (e) => { e.preventDefault(); sp.setPointerCapture(e.pointerId); sp.classList.add("dragging"); document.body.classList.add("resizing"); });
+  sp.addEventListener("pointermove", (e) => {
+    if (!sp.hasPointerCapture(e.pointerId)) return;
+    setSideWidth(document.querySelector(".layout").getBoundingClientRect().right - e.clientX - 3);   // the pointer sits on the 6px splitter
+  });
+  sp.addEventListener("pointerup", (e) => { sp.releasePointerCapture(e.pointerId); sp.classList.remove("dragging"); document.body.classList.remove("resizing"); });
+  sp.addEventListener("dblclick", () => setSideWidth(null));
+  sp.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setSideWidth(sideWidth() + (e.key === "ArrowLeft" ? 16 : -16));
+  });
 }
 {
   const sp = $("splitter");
@@ -1079,7 +1147,10 @@ async function activateCase(caseId, { greet = true } = {}) {
                     { label: "발치 치아 정하기", fill: "14번과 24번 발치로 계획을 짜줘." },
                     { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘." }] };
     state.messages.push({ role: "assistant", content: text + " " + q.question });
-    addQuestion(q);
+    // one bubble and the three ways on as chips (#14) — not a boxed card
+    addMsg("assistant", q.question);
+    state.followup = { options: q.options.map(({ label, message, fill }) => ({ label, message, fill })) };
+    renderChips();
   }
 }
 
@@ -1093,7 +1164,7 @@ function resetPlanPanel() {
   renderPlanList();
   $("viewCanvas").dataset.planId = "";
   $("reviewMemo").textContent = "";
-  $("reviewLine").textContent = "검토";
+  $("reviewLine").textContent = "검토"; $("planReview").hidden = true;
   renderLegend(null);
   $("planNotice").textContent = "";
   $("stageSlider").disabled = true;
@@ -1143,11 +1214,13 @@ function planNo(planId) {
   const i = Object.keys(state.planRows).indexOf(planId);
   return i < 0 ? "?" : i + 1;
 }
+const REVIEW_SHORT = { not_requested: "검토 전", skipped: "검토 전", running: "검토 중", passed: "검토 완료", failed: "검토 실패" };
 function planPill(row) {
   const viol = typeof row.violations === "number" ? row.violations : (row.violations ?? []).length;
   if (row.input_stale) return ["이전 스캔 기준", "warn"];
   if (row.approval || row.approved) return ["승인됨", "ok"];
-  return viol ? [`위반 ${viol}건`, "fail"] : ["통과", "pass"];
+  const review = REVIEW_SHORT[row.review?.status] ?? "검토 전";   // rules and review in one line (#14)
+  return viol ? [`위반 ${viol}건 · ${review}`, "fail"] : [`규칙 통과 · ${review}`, "pass"];
 }
 // The plan cards on the panel top (#111): one row per plan, the plan on screen marked 보는 중, the rest with 보기.
 // Plans that existed before the case was opened sit folded under 지난 계획 (#105).
@@ -1210,21 +1283,18 @@ async function loadPlan(planId) {
 
 
 // ------------------------------------------------------------------ plan on screen: cards, review line, sidebar (#111)
-const NOT_REVIEWED = "아직 검토 전 · 에이전트에게 맡기면 검토합니다";
-const REVIEW_KO = { not_requested: NOT_REVIEWED, running: "검토 중", passed: "검토 완료", failed: "검토 실패", skipped: NOT_REVIEWED };
 function renderResult(plan) {
   // the /api/plans row of this plan follows what the detail says (approval, review), so the card is right at once
   const row = state.planRows[plan.plan_id];
   if (row) Object.assign(row, { passed: plan.passed, violations: (plan.violations ?? []).length, approval: plan.approval, input_stale: plan.input_stale, review: plan.review });
   renderPlanList();
-  const review = plan.review ?? {}, n = planNo(plan.plan_id);
-  const line = $("reviewLine");
-  line.innerHTML = `<b></b> · `;
-  line.querySelector("b").textContent = `계획 ${n}`;
-  line.append(REVIEW_KO[review.status] || review.status || "—");
+  const review = plan.review ?? {};
   const memo = splitNote((review.message ?? "") + (review.error ? " (" + review.error + ")" : ""));
   $("reviewMemo").innerHTML = esc(memo.body.trim()) + (memo.note ? `<small class="note">${esc(memo.note)}</small>` : "");
   if (plan.approval) $("reviewMemo").prepend(Object.assign(document.createElement("div"), { textContent: "승인됨 · " + fmtDate(plan.approval.approved_at) }));
+  // the fold shows once a review result is in (passed · failed) or the plan is approved; an unreviewed plan has no fold
+  $("reviewLine").textContent = memo.body.trim() ? "검토 메모" : "검토";
+  $("planReview").hidden = !plan.approval && !["passed", "failed"].includes(review.status);
   renderSide(plan);
   renderLegend(plan);
 }
@@ -1246,7 +1316,7 @@ function renderSide(plan) {
 function renderStagePane(plan) {
   const facts = $("stageFacts"), grid = $("stageGrid");
   facts.innerHTML = ""; grid.innerHTML = "";
-  if (!plan) return;
+  if (!plan) { for (const el of document.querySelectorAll(".grid-legend [data-kind]")) el.hidden = true; return; }
   const n = plan.stages?.length ?? 0, t = plan.target ?? {}, info = plan.info ?? {};
   // two lines (#13 polish): 「확장 · 9단계 · 약 2.1개월」 / 「총생 1.6 mm → 확보 2.1 mm」; the movement notes are on the 규칙 tab
   const l1 = document.createElement("span"); l1.className = "l1";
@@ -1262,7 +1332,7 @@ function renderStagePane(plan) {
   const bad = {};
   for (const v of plan.violations ?? []) if (v.stage != null) for (const id of v.teeth ?? []) (bad[v.stage] ??= {})[String(id)] = v.type;
   const cells = {};   // [k][id] → { kinds, title }
-  const moving = new Set();
+  const moving = new Set(), used = new Set();
   for (let k = 1; k <= n; k++) for (const id of teeth) {
     const a = at(k - 1, id), b = at(k, id);
     const dxy = Math.hypot(b[0] - a[0], b[1] - a[1]), dz = Math.abs(b[2] - a[2]), dr = Math.abs(yaw(k, id) - yaw(k - 1, id));
@@ -1270,7 +1340,10 @@ function renderStagePane(plan) {
     const parts = [dxy > 0.02 && `수평 ${dxy.toFixed(2)}mm`, dz > 0.02 && `수직 ${(b[2] - a[2]).toFixed(2)}mm`, dr > 0.5 && `회전 ${(yaw(k, id) - yaw(k - 1, id)).toFixed(1)}°`].filter(Boolean);
     (cells[k] ??= {})[id] = { kinds, title: `단계 ${k} · 치아 ${fdi(id)}` + (parts.length ? " · " + parts.join(" · ") : " · 이동 없음") + (bad[k]?.[id] ? " · " + RULE_KO[bad[k][id]] : "") };
     if (kinds.length || bad[k]?.[id]) moving.add(id);
+    if (kinds.length) used.add(kinds.length > 1 ? "mixed" : kinds[0]);
+    if (bad[k]?.[id] === "collision") used.add("coll");
   }
+  for (const el of document.querySelectorAll(".grid-legend [data-kind]")) el.hidden = !used.has(el.dataset.kind);
   grid.style.gridTemplateColumns = `26px repeat(${teeth.length}, minmax(0, 1fr))`;
   const hd = document.createElement("span"); hd.className = "hd"; grid.append(hd);
   for (const id of teeth) { const h = document.createElement("span"); h.className = "hd" + (moving.has(id) ? "" : " nil"); h.textContent = fdi(id); grid.append(h); }
@@ -1297,7 +1370,10 @@ function renderRulesPane(plan) {
   cards.innerHTML = ""; groups.innerHTML = "";
   $("rulesFor").textContent = plan ? `계획 ${planNo(plan.plan_id)} · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · ${plan.stages?.length ?? 0}장` : "";
   // the planner's movement notes (from the 단계 표 head, #13 polish); they name Universal ids: 「치아 13 회전 …」 → FDI
-  $("ruleNotes").textContent = plan ? (plan.target?.notes ?? []).map((s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)).join(" · ") : "";
+  // …and a Universal list like [5, 12] → 14·24 until the server writes FDI itself (temporary, #14)
+  const toFdi = (s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)
+    .replace(/\[(\d{1,2}(?:,\s*\d{1,2})*)\]/g, (m, list) => { const ids = list.split(/,\s*/).map(Number); return ids.every((u) => u >= 1 && u <= 16) ? fdiList(ids) : m; });
+  $("ruleNotes").textContent = plan ? (plan.target?.notes ?? []).map(toFdi).join(" · ") : "";
   if (!plan) return;
   const viol = plan.violations ?? [], by = (t) => viol.filter((v) => v.type === t);
   const coll = by("collision"), mv = by("move_limit"), cap = by("stage_cap"), sp = by("space_deficit");
@@ -1313,9 +1389,12 @@ function renderRulesPane(plan) {
       ? `처방 ${fdiList(v.prescribed) || "없음"} · 뺀 치아 ${fdiList(v.removed) || "없음"}` : `닫지 못한 공간 ${v.mm} mm`]]);
   for (const [name, why, [st, cls, detail]] of rules) {
     const d = document.createElement("div"); d.className = "rule";
-    d.innerHTML = `<div><span class="name"></span><span class="why"></span></div><div class="st"><span class="pill"></span><span class="detail"></span></div>`;
+    d.innerHTML = `<div><span class="name"></span><span class="why"></span></div><div class="st"><span class="mark"></span><span class="detail"></span></div>`;
     d.querySelector(".name").textContent = name; d.querySelector(".why").textContent = why;
-    const pl = d.querySelector(".pill"); pl.textContent = st; if (cls) pl.classList.add(cls);
+    const mark = d.querySelector(".mark");
+    if (cls === "fail") { mark.className = "pill fail"; mark.textContent = st; }                                   // a violation is the only badge
+    else if (cls === "pass") { mark.className = "mark ok"; mark.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg>'; mark.title = st; d.classList.add("passed"); }
+    else { mark.className = "mark na"; mark.textContent = st; }
     d.querySelector(".detail").textContent = detail;
     cards.append(d);
   }
@@ -1994,6 +2073,8 @@ async function downloadStl() {
 $("stlLink").addEventListener("click", (e) => { e.preventDefault(); downloadStl(); });
 $("revokeBtn").addEventListener("click", approveCurrent);
 $("reviewBtn").addEventListener("click", reviewCurrent);
+$("cMonths").addEventListener("input", () => { const m = Number($("cMonths").value); $("cCap").value = m > 0 ? capOfMonths(m) : ""; });
+$("cCap").addEventListener("input", () => { const cap = Number($("cCap").value); $("cMonths").value = cap > 0 ? monthsOfCap(cap) : ""; });
 $("constraints").addEventListener("input", () => updateActions());
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
