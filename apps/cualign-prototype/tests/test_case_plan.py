@@ -73,3 +73,28 @@ def test_activate_opens_the_case_even_when_the_rule_plan_fails(monkeypatch, tmp_
     assert "crowding_mm" in body and "constraints" in body
     assert client.get("/api/plans", params={"case_id": "moderate"}).json()["plans"] == []
     assert client.post("/api/cases/no-such-case/activate").status_code == 404
+
+
+def test_reopening_a_case_reuses_the_preview_under_the_same_conditions(monkeypatch, tmp_path):
+    """Screen review 2026-09-28: opening a case again left the earlier preview under 지난 계획 and saved a new one with
+    the same conditions. A plan under the case's current conditions, latest or not, is reused; only new conditions plan."""
+    client = _client(monkeypatch, tmp_path)
+    client.post("/api/cases/moderate/activate")
+    preview = _ids(client, "moderate")
+    # an agent turn (here POST /api/plan) planned under other conditions; the case now carries those
+    r = client.post("/api/plan", json={"case_id": "moderate", "stage_cap": 40, "parent_plan_id": preview[-1]})
+    assert r.status_code == 200, r.text
+    capped = [pid for pid in _ids(client, "moderate") if pid not in preview]
+    assert capped
+    # the dentist went back to the preview's conditions (the case's conditions are the preview's again)
+    api.STORE.case_constraints["moderate"] = api.STORE.constraints_for("moderate", preview[0])
+    client.post("/api/cases/moderate/activate")
+    assert set(_ids(client, "moderate")) == set(preview + capped)   # no twin of the preview
+    # a new process: plans come back from disk, the case's conditions are the default ones the preview was made under
+    client = _client(monkeypatch, tmp_path)
+    client.post("/api/cases/moderate/activate")
+    assert set(_ids(client, "moderate")) == set(preview + capped)
+    # conditions nobody planned under still get a plan
+    api.STORE.case_constraints["moderate"] = api.STORE.constraints_for("moderate").patched({"stage_cap": 12})
+    client.post("/api/cases/moderate/activate")
+    assert len(_ids(client, "moderate")) == 2 * len(preview) + len(capped)   # one preview per strategy again

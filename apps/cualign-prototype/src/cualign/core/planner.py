@@ -510,8 +510,8 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     for i, dz in sorted(lift.items()):
         notes.append(f"{label(i)} 수직 {dz:+.1f}mm 보정")
     if extra:
-        notes.append(f"치관 모양 때문에 접촉 폭보다 {sum(extra.values()):.1f}mm 더 둠 "
-                     + ", ".join(f"{to_fdi(a)}-{to_fdi(b)}" for a, b in sorted(extra)))
+        pairs = ", ".join(f"{to_fdi(a)}-{to_fdi(b)}" for a, b in sorted(extra))   # FDI contact pairs, mid-sentence
+        notes.append(f"치관 모양 때문에 {pairs} 사이를 접촉 폭보다 {sum(extra.values()):.1f}mm 더 둠")
     disp = [float(np.linalg.norm(v)) for v in target.values() if v is not None]
     info = {"strategy": strategy, "space_gain_mm": round(gain, 2), "crowding_mm": crowd, "space_deficit_mm": deficit,
             "needed_mm": round(sum(width[i] for i in ids), 1),

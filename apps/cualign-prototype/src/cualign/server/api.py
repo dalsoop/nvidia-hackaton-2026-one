@@ -160,10 +160,10 @@ def ensure_case_plan(case_id: str) -> dict | None:
     existing = STORE.plan_ids_for(case_id)
     if not existing:
         return rule_based_plan(case_id)
-    latest = existing[-1]
-    if _constraint_dump(STORE._record(latest)) == current.model_dump(mode="json"):
-        return None
-    return rule_based_plan(case_id, changes=current.model_dump(mode="json"), parent_plan_id=latest)
+    wanted = current.model_dump(mode="json")
+    if any(_constraint_dump(STORE._record(pid)) == wanted for pid in existing):
+        return None   # a plan under these very conditions exists (the preview of an earlier opening): reuse it, do not add a twin
+    return rule_based_plan(case_id, changes=wanted, parent_plan_id=existing[-1])
 
 
 def _rule_plan_result(cid, ids):
