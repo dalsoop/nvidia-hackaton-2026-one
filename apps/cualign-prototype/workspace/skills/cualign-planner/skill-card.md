@@ -38,10 +38,10 @@ Mitigation: Review and scan skill before deployment. <br>
 **Other Properties Related to Output:** [Draft-only; no patient identifiers or scan files pass through the skill] <br>
 
 ## Evaluation Tasks: <br>
-Offline tests of the MCP server it calls (tests/test_mcp_server.py, and the real-worker test in tests/test_rails_middleware.py). On 2026-09-27, the skill was installed on a NemoClaw desk on Brev (Linux). The list, plan and approval requests ran once each there ("Brev 배포 확인" in docs/nemoclaw.md). <br>
+Offline tests of the MCP server it calls (tests/test_mcp_server.py, and the real-worker test in tests/test_rails_middleware.py). On 2026-09-27, the skill at commit 4f7bbd2 was installed on a NemoClaw desk on Brev (Linux). This is the version before the English rewrite. The list, plan and approval requests ran once each there ("Brev 배포 확인" in docs/nemoclaw.md). <br>
 
 ## Evaluation Results: <br>
-All three requests passed on 2026-09-27. <br>
+The 4f7bbd2 version passed all three requests on 2026-09-27. The English rewrite (c21744d) and later versions did not run on the desk yet. Run the three requests again on the desk for these versions. <br>
 
 ## Testing Completed: <br>
 **[ ] Agent Red-Teaming** <br>
