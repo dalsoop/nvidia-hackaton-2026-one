@@ -128,6 +128,7 @@ test('Status: canApprove conditions', () => {
   assert.equal(canApprove({ ...validPlan, review: { status: 'failed' } }), false);
   assert.equal(canApprove({ ...validPlan, review: { status: 'pending' } }), false);
   assert.equal(canApprove({ ...validPlan, is_stale: true }), false);
+  assert.equal(canApprove({ ...validPlan, input_stale: true }), false);
   assert.equal(canApprove({ ...validPlan, stale_scan: true }), false);
   assert.equal(canApprove(null), false);
 });

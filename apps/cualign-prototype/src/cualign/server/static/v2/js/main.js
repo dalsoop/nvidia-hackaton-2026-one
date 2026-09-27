@@ -1,7 +1,7 @@
 // Application entry point: hash router, layout shell mounting, lifecycle management
 
 import { createStore } from './state/store.js';
-const api = await import(['.', 'api', 'endpoints.js'].join('/'));
+import * as api from './api/endpoints.js';
 import { renderTopbar } from './shell/topbar.js';
 import { renderRail } from './shell/rail.js';
 
@@ -10,6 +10,8 @@ import * as patientScreen from './screens/intake/patient.js';
 import * as checkScreen from './screens/intake/check.js';
 import * as workspaceScreen from './screens/workspace/index.js';
 
+const PATIENT_CASE_RE = /^P\d+-S\d+$/;
+
 export const ROUTES = [
   { pattern: '#/cases', screen: casesScreen, nav: { active: 'cases', kind: 'none' } },
   { pattern: '#/cases/:caseId', screen: casesScreen, nav: { active: 'cases', kind: 'none' } },
@@ -17,6 +19,16 @@ export const ROUTES = [
   { pattern: '#/check/:caseId', screen: checkScreen, nav: { active: 'check', kind: 'patient' } },
   { pattern: '#/workspace/:caseId', screen: workspaceScreen, nav: { active: 'workspace' } }
 ];
+
+function resolveKind(navConfig, caseId) {
+  if (navConfig && navConfig.kind) {
+    return navConfig.kind;
+  }
+  if (caseId) {
+    return PATIENT_CASE_RE.test(caseId) ? 'patient' : 'sample';
+  }
+  return 'none';
+}
 
 function matchRoute(hash) {
   const normalized = hash && hash.startsWith('#/') ? hash : '#/cases';
@@ -58,6 +70,8 @@ export function initApp() {
 
   const store = createStore();
   let currentUnmount = null;
+  let currentNavConfig = { active: 'cases', kind: 'none' };
+  let currentParams = {};
 
   function navigate(path) {
     window.location.hash = path.startsWith('#') ? path : `#${path}`;
@@ -69,21 +83,22 @@ export function initApp() {
     navigate
   };
 
-  function updateShell(navConfig, params) {
-    if (params.caseId) {
-      store.set({ caseId: params.caseId });
-    }
+  function renderShell() {
+    const state = store.get();
+    const caseId = currentParams.caseId || state.caseId;
+    const kind = resolveKind(currentNavConfig, caseId);
 
     renderTopbar(topbarEl, ctx);
-
-    const kind = navConfig.kind || (params.caseId && params.caseId.includes('-') ? 'patient' : 'sample');
     renderRail(railEl, {
-      active: navConfig.active || 'cases',
+      active: currentNavConfig.active || 'cases',
       kind,
-      confirmed: Boolean(store.get().confirmed),
-      stage: store.get().stage || 'none'
+      confirmed: Boolean(state.confirmed),
+      stage: state.stage || 'none',
+      caseId
     });
   }
+
+  store.subscribe(renderShell);
 
   function handleRoute() {
     const { route, params } = matchRoute(window.location.hash);
@@ -93,7 +108,14 @@ export function initApp() {
       currentUnmount = null;
     }
 
-    updateShell(route.nav, params);
+    currentNavConfig = route.nav;
+    currentParams = params;
+
+    if (params.caseId && params.caseId !== store.get().caseId) {
+      store.set({ caseId: params.caseId });
+    } else {
+      renderShell();
+    }
 
     if (route.screen && typeof route.screen.mount === 'function') {
       currentUnmount = route.screen.mount(screenEl, params, ctx);

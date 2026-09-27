@@ -105,6 +105,8 @@ export const T = {
   errors: {
     network: '네트워크 연결에 실패했습니다.',
     notFound: '요청한 대상을 찾을 수 없습니다.',
-    server: '서버 오류가 발생했습니다.'
+    server: '서버 오류가 발생했습니다.',
+    streamFailed: '스트림 연결에 실패했습니다.',
+    requestFailed: '요청 처리에 실패했습니다.'
   }
 };

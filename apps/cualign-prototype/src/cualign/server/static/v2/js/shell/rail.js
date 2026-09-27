@@ -54,17 +54,21 @@ function createLockSvg() {
   return svg;
 }
 
-export function renderRail(el, { active = 'cases', kind = 'none', confirmed = false, stage = 'none' } = {}) {
+export function renderRail(el, { active = 'cases', kind = 'none', confirmed = false, stage = 'none', caseId = null } = {}) {
   clear(el);
 
   const isPatient = kind === 'patient';
+  const wsHref = caseId ? `#/workspace/${encodeURIComponent(caseId)}` : '#/workspace';
+  const checkHref = caseId ? `#/check/${encodeURIComponent(caseId)}` : '#/check';
+  const intakeHref = caseId ? `#/patients/${encodeURIComponent(caseId.split('-')[0])}` : '#/patients';
+
   const allSteps = [
     { id: 'cases', label: T.rail.steps.cases, href: '#/cases', path: 'M4 6h16M4 12h16M4 18h10' },
-    { id: 'intake', label: T.rail.steps.intake, href: '#/patients', path: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.3 3.3 0 0 1 0 6.4M18 14.8c2 .6 3.4 2.3 4 5.2', patientOnly: true },
-    { id: 'check', label: T.rail.steps.check, href: '#/check', path: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8.5 12l2.5 2.5 4.5-5', patientOnly: true },
-    { id: 'workspace', label: T.rail.steps.workspace, href: '#/workspace', path: 'M5.5 19.5c-.8-5.2.3-9.8 2.5-12.3C9.1 5.9 10.5 5 12 5s2.9.9 4 2.2c2.2 2.5 3.3 7.1 2.5 12.3' },
-    { id: 'approve', label: T.rail.steps.approve, href: '#/workspace', path: 'M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6zM8.8 12.2l2.3 2.3 4.3-4.6' },
-    { id: 'export', label: T.rail.steps.export, href: '#/workspace', path: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M4 17v1.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V17' }
+    { id: 'intake', label: T.rail.steps.intake, href: intakeHref, path: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.3 3.3 0 0 1 0 6.4M18 14.8c2 .6 3.4 2.3 4 5.2', patientOnly: true },
+    { id: 'check', label: T.rail.steps.check, href: checkHref, path: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8.5 12l2.5 2.5 4.5-5', patientOnly: true },
+    { id: 'workspace', label: T.rail.steps.workspace, href: wsHref, path: 'M5.5 19.5c-.8-5.2.3-9.8 2.5-12.3C9.1 5.9 10.5 5 12 5s2.9.9 4 2.2c2.2 2.5 3.3 7.1 2.5 12.3' },
+    { id: 'approve', label: T.rail.steps.approve, href: wsHref, path: 'M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6zM8.8 12.2l2.3 2.3 4.3-4.6' },
+    { id: 'export', label: T.rail.steps.export, href: wsHref, path: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M4 17v1.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V17' }
   ];
 
   const defs = kind === 'none' ? allSteps.slice(0, 1) : allSteps.filter((d) => isPatient || !d.patientOnly);

@@ -1,5 +1,7 @@
 // API client endpoints for backend communication
 
+import { T } from '../domain/vocab.js';
+
 export class ApiError extends Error {
   constructor(status, message) {
     super(message);
@@ -13,17 +15,17 @@ async function request(url, options = {}) {
   try {
     res = await fetch(url, options);
   } catch (err) {
-    throw new ApiError(0, err.message || 'Network connection failed');
+    throw new ApiError(0, err.message || T.errors.network);
   }
 
   if (!res.ok) {
-    let message = res.statusText || 'Request failed';
+    let message = res.statusText || T.errors.requestFailed;
     try {
       const body = await res.json();
       if (body && body.detail) {
         message = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
       }
-    } catch {
+    } catch (_err) {
       // Non-JSON response body
     }
     throw new ApiError(res.status, message);
@@ -168,17 +170,17 @@ export async function chatStream(body, signal = null) {
       signal
     });
   } catch (err) {
-    throw new ApiError(0, err.message || 'Stream connection failed');
+    throw new ApiError(0, err.message || T.errors.streamFailed);
   }
 
   if (!res.ok) {
-    let message = res.statusText || 'Stream failed';
+    let message = res.statusText || T.errors.streamFailed;
     try {
       const errJson = await res.json();
       if (errJson && errJson.detail) {
         message = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
       }
-    } catch {
+    } catch (_err) {
       // Non-JSON stream error
     }
     throw new ApiError(res.status, message);

@@ -57,7 +57,7 @@ export function canApprove(plan) {
   if (revStatus !== 'passed' && revStatus !== 'skipped') {
     return false;
   }
-  if (plan.is_stale || plan.stale_scan || plan.stale) {
+  if (plan.input_stale || plan.is_stale || plan.stale_scan || plan.stale) {
     return false;
   }
   return true;

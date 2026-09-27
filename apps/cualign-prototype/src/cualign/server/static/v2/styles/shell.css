@@ -42,13 +42,8 @@ body {
   text-decoration: none;
 }
 
-.topbar-logo-accent {
-  color: var(--color-accent);
-}
-
-.topbar-spacer {
-  flex-grow: 1;
-}
+.topbar-logo-accent { color: var(--color-accent); }
+.topbar-spacer { flex-grow: 1; }
 
 .topbar-case-btn {
   height: var(--btn-height-default);
@@ -104,18 +99,9 @@ body {
   border-radius: var(--radius-xs);
 }
 
-.rail-line {
-  width: 2px;
-  height: 12px;
-}
-
-.rail-line-active {
-  background: var(--color-accent-dim);
-}
-
-.rail-line-inactive {
-  background: var(--color-border-subtle);
-}
+.rail-line { width: 2px; height: 12px; }
+.rail-line-active { background: var(--color-accent-dim); }
+.rail-line-inactive { background: var(--color-border-subtle); }
 
 .rail-step {
   width: 56px;
@@ -139,24 +125,9 @@ body {
   font-weight: 700;
 }
 
-.rail-step-done {
-  color: var(--color-text-primary);
-  background: none;
-  border-color: transparent;
-}
-
-.rail-step-open {
-  color: var(--color-text-secondary);
-  background: none;
-  border-color: transparent;
-}
-
-.rail-step-locked {
-  color: var(--color-border-strong);
-  background: none;
-  border-color: transparent;
-  cursor: not-allowed;
-}
+.rail-step-done { color: var(--color-text-primary); background: none; border-color: transparent; }
+.rail-step-open { color: var(--color-text-secondary); background: none; border-color: transparent; }
+.rail-step-locked { color: var(--color-border-strong); background: none; border-color: transparent; cursor: not-allowed; }
 
 .rail-step-icon-wrap {
   position: relative;
@@ -189,16 +160,8 @@ body {
   place-items: center;
 }
 
-.rail-step-label {
-  font-size: 10.5px;
-  line-height: 1.2;
-}
-
-.rail-step-note {
-  font-size: 9.5px;
-  line-height: 1.1;
-  color: var(--color-text-muted);
-}
+.rail-step-label { font-size: 10.5px; line-height: 1.2; }
+.rail-step-note { font-size: 9.5px; line-height: 1.1; color: var(--color-text-muted); }
 
 /* Screen Area */
 #screen {
@@ -229,10 +192,7 @@ body {
   box-sizing: border-box;
 }
 
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-primary {
   height: var(--btn-height-primary);
@@ -243,17 +203,8 @@ body {
   font-weight: 700;
 }
 
-.btn-ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--color-text-secondary);
-}
-
-.btn-danger {
-  background: var(--color-danger);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-danger);
-}
+.btn-ghost { background: transparent; border-color: transparent; color: var(--color-text-secondary); }
+.btn-danger { background: var(--color-danger); color: var(--color-text-primary); border: 1px solid var(--color-danger); }
 
 /* Shared Badges */
 .badge {
@@ -268,35 +219,11 @@ body {
   white-space: nowrap;
 }
 
-.badge-scan-check {
-  border: 1px solid var(--color-warning);
-  background: var(--color-warning-bg);
-  color: var(--color-warning-light);
-}
-
-.badge-needs-plan {
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-raised);
-  color: var(--color-text-secondary);
-}
-
-.badge-violation {
-  border: 1px solid var(--color-danger);
-  background: var(--color-danger-bg);
-  color: var(--color-danger-light);
-}
-
-.badge-ready {
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent-bg);
-  color: var(--color-accent-light);
-}
-
-.badge-approved {
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-}
+.badge-scan-check { border: 1px solid var(--color-warning); background: var(--color-warning-bg); color: var(--color-warning-light); }
+.badge-needs-plan { border: 1px solid var(--color-border-strong); background: var(--color-surface-raised); color: var(--color-text-secondary); }
+.badge-violation { border: 1px solid var(--color-danger); background: var(--color-danger-bg); color: var(--color-danger-light); }
+.badge-ready { border: 1px solid var(--color-accent); background: var(--color-accent-bg); color: var(--color-accent-light); }
+.badge-approved { border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-text-inverse); }
 
 /* Shared Panels */
 .panel-list {
@@ -334,17 +261,8 @@ body {
   gap: var(--space-4);
 }
 
-.panel-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.panel-subtitle {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-text-secondary);
-}
+.panel-title { margin: 0; font-size: 18px; font-weight: 700; }
+.panel-subtitle { font-size: 11px; font-weight: 700; color: var(--color-text-secondary); }
 
 .panel-body {
   flex-grow: 1;
