@@ -120,12 +120,14 @@ function gumSkin(geo) {
 }
 // Each vertex is carried to where its nearest crowns would take it: R(v − c) + c + d per crown (yaw about the
 // crown's pivot, then the translation), blended by the skin weights (#14: rotation included).
-function deformGum(st, rot = {}, piv = {}) {
+// A crown the plan removed is no neighbour at all (server contract 11-gum-server.md): the filled socket cover must not
+// follow a crown that is gone, so its share goes to the crowns still there.
+function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
   const skin = state.gumSkin, gum = state.gum;
   if (!skin || !gum) return;
   const pos = gum.geometry.attributes.position.array, n = pos.length / 3;
   const moves = skin.toothIds.map((id) => {
-    if (!st[id] && !rot[id]) return null;
+    if (removed.has(id) || (!st[id] && !rot[id])) return null;
     const a = ((rot[id] ?? 0) * Math.PI) / 180, d = st[id] ?? [0, 0, 0], c = piv[id] ?? [0, 0, 0];
     return { cos: Math.cos(a), sin: Math.sin(a), d, c };
   });
@@ -325,12 +327,13 @@ function applyStage(k) {
   const plan = state.plan;
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
   const rot = k > 0 ? plan?.rotations?.[k - 1] ?? {} : {};
-  deformGum(st, rot, plan?.pivots ?? {});   // the gum follows the crowns, turning with them
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
   const removed = new Set((plan?.target?.removed ?? []).map(String));
   const plain = state.step === "initial", setup = state.step === "setup";   // #15: before the target, the crowns all stay
+  // the gum follows the crowns, turning with them; from the target on, the removed crowns are gone for it too
+  deformGum(st, rot, plan?.pivots ?? {}, k > 0 && !plain && !setup ? removed : new Set());
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c

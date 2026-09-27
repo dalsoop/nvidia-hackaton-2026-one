@@ -9,6 +9,7 @@ from pathlib import Path
 import socket
 import sys
 import threading
+import time
 
 import httpx
 import uvicorn
@@ -154,8 +155,10 @@ async def main():
             assert await page.locator('#rail button[data-go="export"]').is_enabled()      # the rail item is the visible 내보내기
             await page.locator('#rail button[data-go="export"]').click()
             await page.wait_for_selector("#exportPop:not([hidden])")
-            async with page.expect_download() as download:
+            t0 = time.monotonic()
+            async with page.expect_download(timeout=180000) as download:      # a real scan's zip takes a while (#119; 000097 with the filled gum)
                 await page.locator("#exportGo").click()
+            print(f"STL download started after {time.monotonic() - t0:.1f}s")
             await page.wait_for_function("!!window.__cualign.state.plan?.approval")
             assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
