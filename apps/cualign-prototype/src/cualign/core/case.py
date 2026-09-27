@@ -7,6 +7,7 @@ check in an earlier spike).
 """
 from __future__ import annotations
 
+import copy
 import glob
 import os
 from pathlib import Path
@@ -46,6 +47,7 @@ class Case:
         self.name = name
         self.mesh = {int(i): m for i, m in meshes.items()}
         self.ids = sorted(self.mesh)
+        self._hull_faces = hull_faces
         self.hull: dict[int, trimesh.Trimesh] = {}
         for i in self.ids:
             h = self.mesh[i].convex_hull
@@ -112,6 +114,25 @@ class Case:
             slope = (pts[-1][1] - pts[-2][1]) / (pts[-1][0] - pts[-2][0]) if len(pts) > 1 and pts[-1][0] != pts[-2][0] else 0.6
             comp += (target - got) / max(slope, 0.2)
         return case
+
+    def with_meshes(self, meshes: dict[int, trimesh.Trimesh]) -> "Case":
+        """A copy of this case with some crowns replaced (IPR-cut crowns, ipr_cut.py). Positions, arch, rotation
+        pivots and the mesiodistal axes stay those of the scan; hulls, contact caches and the collision baseline are
+        rebuilt for the new crowns. Display gum and gum scan are shared."""
+        new = copy.copy(self)
+        new.mesh = {**self.mesh, **{int(i): m for i, m in meshes.items()}}
+        new.hull = dict(self.hull)
+        for i in meshes:
+            h = new.mesh[i].convex_hull
+            if len(h.faces) > self._hull_faces:
+                h = h.simplify_quadric_decimation(face_count=self._hull_faces).convex_hull
+            new.hull[i] = h
+        new._outline = {**self._outline, **{i: new.mesh[i].convex_hull.vertices[:, :2].copy() for i in meshes}}
+        new._cw, new._contact, new._surf, new._base_all = {}, {}, {}, {}
+        new._md = dict(self._md)
+        new._span_cache = None
+        new.baseline = new._pair_overlaps({i: np.zeros(3) for i in new.ids})
+        return new
 
     # ------------------------------------------------------------------ geometry
     def transform(self, i: int, d, yaw_deg: float = 0.0) -> np.ndarray:
@@ -282,3 +303,17 @@ class Case:
         g = self._gum
         return {"name": self.name, "arch": "upper", "ids": self.ids, "arch_order": order, "teeth": teeth,
                 "gum": {"v": np.round(g.vertices, 3).tolist(), "f": g.faces.tolist()}}
+
+    def cut_json(self, max_faces: int = 1500) -> dict:
+        """`teeth_cut` ({tooth: {v, f}} like `teeth`, the IPR-cut crowns only) and `ipr_cut` ({tooth: {"mm": width
+        taken off, "faces": indices into that tooth's f lying on the cut planes}}) for a case from ipr_cut.cut_ipr;
+        both empty for a case without cuts."""
+        from .ipr_cut import CAP_TOL_DECIMATED, cut_faces
+        teeth, cut = {}, {}
+        for i, e in (getattr(self, "ipr_cut", None) or {}).items():
+            m = self.mesh[i]
+            if len(m.faces) > max_faces:
+                m = m.simplify_quadric_decimation(face_count=max_faces)
+            teeth[str(i)] = {"v": np.round(m.vertices, 3).tolist(), "f": m.faces.tolist()}
+            cut[str(i)] = {"mm": e["mm"], "faces": cut_faces(m, e["planes"], tol=CAP_TOL_DECIMATED).tolist()}
+        return {"teeth_cut": teeth, "ipr_cut": cut}
