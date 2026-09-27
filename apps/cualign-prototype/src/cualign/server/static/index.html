@@ -51,20 +51,20 @@
   <div id="caseGate" class="gate" hidden>
     <div id="screenPatients" class="gate-panel">
       <button id="gateClose" class="btn ghost small gate-x" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button>
-      <h1>내 스캔 올리기</h1>
-      <p class="muted">새 환자를 등록하며 상악 스캔을 올리거나, 아래에서 기존 환자를 펼쳐 스캔을 엽니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
+      <h1>환자 등록</h1>
+      <p class="muted">가명으로 등록하고 상악 스캔을 올립니다. 정보는 이 컴퓨터에만 저장됩니다.</p>
       <form id="patientForm" class="new-patient">
-        <h2>새 환자</h2>
         <label>별칭 <input id="pAlias" maxlength="40" placeholder="예: 3월 상담 A" required></label>
         <label>메모 <input id="pMemo" maxlength="200" placeholder="선택"></label>
-        <label class="drop" for="pScans">
-          <b>상악 스캔 파일 고르기</b>
-          <span>치아별 STL(<code>11.stl</code> … <code>27.stl</code>, 선택: <code>gingiva.stl</code>)</span>
-          <span id="pScansName" class="muted">누르면 파일 선택 창이 열립니다. 나중에 올려도 됩니다.</span>
+        <!-- 끌어다 놓으면 pScans.files 에 담겨 등록과 같은 업로드 경로를 탄다 -->
+        <label id="pDrop" class="drop" for="pScans">
+          <b>STL 파일을 끌어다 놓거나 눌러서 고르기</b>
+          <span class="muted">치아별로 <code>11.stl</code> … <code>27.stl</code>, 잇몸은 <code>gingiva.stl</code></span>
+          <span id="pScansName"></span>
         </label>
         <input id="pScans" type="file" accept=".stl" multiple hidden />
         <button class="btn primary small" type="submit">등록</button>
-        <p class="hint">실명·주민번호·연락처는 입력하지 마세요. 가명만 사용합니다.</p>
+        <p class="hint">가명만 씁니다. 실명·주민번호·연락처는 넣지 않습니다.</p>
       </form>
       <h2>기존 환자</h2>
       <div id="patientCards" class="patient-list"></div>
@@ -72,9 +72,8 @@
       <div id="patientBody" class="p-body" hidden>
         <div id="scanList" class="scan-list"></div>
         <label id="dropZone" class="drop" for="scanInput">
-          <b>이 환자에게 상악 스캔 올리기</b>
-          <span>치아별 STL(<code>11.stl</code> … <code>27.stl</code>, 선택: <code>gingiva.stl</code>)</span>
-          <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
+          <b>STL 파일을 끌어다 놓거나 눌러서 고르기</b>
+          <span class="muted">치아별로 <code>11.stl</code> … <code>27.stl</code>, 잇몸은 <code>gingiva.stl</code>. 한 덩어리 스캔은 아직 받지 않습니다.</span>
         </label>
         <input id="scanInput" type="file" accept=".stl" multiple hidden />
         <!-- 업로드 결과: 진행 중엔 한 줄, 거절되면 「올린 파일 …」 + 서버 문구 그대로 + 다시 고르기 (#112, 보드 08) -->
@@ -96,7 +95,6 @@
       <div id="intro" class="intro">
         <img class="mark" src="intro-arch.png" alt="" />
         <h1>처방을 설명하고 교정을 설계해보세요</h1>
-        <button id="introPick" class="link-btn" type="button">케이스 고르기 →</button>
       </div>
       <div id="caseCard" class="case-head">
         <div class="case-text"><b id="caseName">—</b></div>
@@ -160,7 +158,8 @@
             <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
             <h2 class="start-sub">환자 목록</h2>
             <div class="cl-table">
-              <div class="cl-row cl-thead"><span>케이스</span><span>상태</span><span>대표 계획</span><span>위반</span><span>계획</span><span>처방</span></div>
+              <!-- 4열: 위반 건수·계획 수는 행 아래 상세(#dFacts)에서만 -->
+              <div class="cl-row cl-thead"><span>환자</span><span>상태</span><span>처방</span><span>최근 계획</span></div>
               <div id="clRows"></div>
             </div>
             <!-- 상세: renderCaseList 가 선택한 카드/행 뒤로 옮긴다 -->
@@ -173,9 +172,10 @@
                 </div>
                 <div>
                   <div id="dFacts" class="cl-facts"></div>
-                  <div class="cl-label">처방</div>
+                  <!-- 환자 행은 표의 처방 열이 이미 보이므로 상세에서는 숨긴다 -->
+                  <div id="dRxLabel" class="cl-label">처방</div>
                   <p id="dRx"></p>
-                  <div id="dChips" class="badges"></div>
+                  <div id="dChips" class="cl-chips"></div>
                   <button id="dOpen" class="btn primary" type="button">디자인 시작하기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
                 </div>
               </div>
