@@ -21,6 +21,7 @@
   --pass-text: #c6f27a;
   --blue: #4f8fd6;            /* colors.locked — 3D only */
   --ipr: #bff230;             /* colors.ipr-cut */
+  --ipr-face: #2f8ae8;        /* colors.ipr-face — the cut planes on a crown, 3D only (#22) */
   --radius: 2px;              /* rounded.sm */
   --font: Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
 }
@@ -206,6 +207,7 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .legend .blue { background: var(--blue); }
 .legend .ghost { background: transparent; border: 1px dashed var(--muted); }
 .legend .ipr { background: var(--ipr); }
+.legend .ipr-face { background: var(--ipr-face); }
 
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }

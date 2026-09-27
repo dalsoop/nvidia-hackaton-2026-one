@@ -13,6 +13,8 @@ const fdiList = (ids) => [...(ids ?? [])].map(fdi).join("·");
 // teeth are ivory, movement is a heat tint, collisions red, limit breaches amber, locked teeth blue.
 const IVORY = new THREE.Color(0xe9e3d6);
 const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.error, warning, locked
+const IPR_FACE = 0x2f8ae8;   // the IPR cut planes on a crown (#22, DESIGN.md colors.ipr-face)
+const IPR_FACE_MAT = new THREE.MeshStandardMaterial({ color: IPR_FACE, roughness: 0.45, metalness: 0.02, side: THREE.FrontSide });
 
 // ------------------------------------------------------------------ state
 const state = {
@@ -33,6 +35,7 @@ const state = {
   teeth: {},             // tooth_id -> THREE.Mesh
   center: {},            // tooth_id -> rest centroid (THREE.Vector3)
   archOrder: [],         // tooth ids along the arch (for IPR contact labels)
+  cutPlanId: null,       // the plan whose IPR-cut crowns (mesh teeth_cut) the teeth carry in userData.cut (#22)
   plan: null,            // GET /api/plans/{id} payload
   stage: 0,
   playing: null,         // interval handle
@@ -247,7 +250,12 @@ function buildTeeth(mesh) {
     const shell = new THREE.Mesh(geo.clone().translate(-c.x, -c.y, -c.z), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, opacity: 0.6, depthWrite: false }));
     shell.position.copy(c); shell.scale.setScalar(1.04); shell.visible = false;
     m.add(shell); m.userData.shell = shell;
+    // the IPR cut (#22): the scan's crown stays as `full`; setCut fills `cut` {geo, faces} and applyStage swaps them in from 셋업 on
+    m.userData.full = geo; m.userData.cut = null;
+    const cutMesh = new THREE.Mesh(new THREE.BufferGeometry(), IPR_FACE_MAT); cutMesh.visible = false;
+    m.add(cutMesh); m.userData.cutMesh = cutMesh;
   }
+  setCut(mesh);
   const gumMesh = mesh.gum_filled ?? mesh.gum;   // the sockets filled by the server when it sends gum_filled (contract 11-gum-server.md)
   if (gumMesh) {
     const geo = new THREE.BufferGeometry();
@@ -265,6 +273,24 @@ function buildTeeth(mesh) {
   setView("occlusal");
 }
 
+// The mesh response carries the crowns the plan's IPR cuts (#22, #140): `teeth_cut` {tooth: {v, f}} for the cut
+// teeth only and `ipr_cut` {tooth: {mm, faces}} with the indices of the faces on the cut planes; `plan_id` says whose.
+// Each cut tooth gets a crown geometry without those faces and a second one of only them (shared positions), so the
+// planes shade in their own colour with no z-fighting. A response with no cuts (no plan, an extraction plan) clears them.
+function setCut(view) {
+  state.cutPlanId = view?.plan_id ?? null;
+  for (const [id, m] of Object.entries(state.teeth)) {
+    const t = view?.teeth_cut?.[id], c = view?.ipr_cut?.[id];
+    if (m.userData.cut) { m.userData.cut.geo.dispose(); m.userData.cut.faces.dispose(); m.userData.cut = null; }
+    if (!t) continue;
+    const pos = new THREE.Float32BufferAttribute(t.v.flat(), 3), onPlane = new Set(c?.faces ?? []);
+    const body = [], planes = [];
+    t.f.forEach((f, k) => (onPlane.has(k) ? planes : body).push(...f));
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", pos); geo.setIndex(body); geo.computeVertexNormals(); geo.computeBoundingBox();
+    const faces = new THREE.BufferGeometry(); faces.setAttribute("position", pos); faces.setIndex(planes); faces.computeVertexNormals();
+    m.userData.cut = { geo, faces, mm: c?.mm ?? 0 };
+  }
+}
 function setView(kind) {
   const box = new THREE.Box3().setFromObject(group);
   if (box.isEmpty()) return;
@@ -419,8 +445,13 @@ function applyStage(k) {
   const removed = new Set(setup ? setupSource()?.removed ?? [] : (plan?.target?.removed ?? []).map(String));
   // the gum follows the crowns, turning with them; from the target on, the removed crowns are gone for it too
   deformGum(st, rot, plan?.pivots ?? {}, k > 0 && !plain && !setup ? removed : new Set());
+  // IPR-cut crowns (#22): 초기 shows the scan; 셋업·목표·단계 show the crowns as the case's plan cuts them
+  const cutOn = !plain && !!state.plan && state.plan.plan_id === state.cutPlanId;
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
+    const cut = cutOn ? m.userData.cut : null;
+    m.geometry = cut ? cut.geo : m.userData.full;
+    if (cut) m.userData.cutMesh.geometry = cut.faces;
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
@@ -434,6 +465,7 @@ function applyStage(k) {
     m.material.opacity = gone ? 0.45 : 1;
     m.material.depthWrite = !gone;
     m.userData.shell.visible = gone;
+    m.userData.cutMesh.visible = !!cut && !gone && m.visible;
     const moved = d ? Math.hypot(...d) : 0;
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
@@ -1423,11 +1455,13 @@ async function loadPlan(planId) {
   state.loading = true; updateActions();
   $("planNotice").textContent = "계획 불러오는 중 — 다운로드 잠김";
   try {
-    const plan = await api("/api/plans/" + encodeURIComponent(planId));
+    const [plan, cut] = await Promise.all([api("/api/plans/" + encodeURIComponent(planId)),
+      state.cutPlanId === planId ? null : api(`/api/cases/${encodeURIComponent(caseId)}/mesh?plan_id=${encodeURIComponent(planId)}`)]);   // #22
     if (version !== state.selectionVersion || caseId !== state.meshCase) return;
     if (plan.case_id !== caseId) throw new Error("선택 케이스와 계획이 다릅니다.");
     stopPlay();
     state.plan = plan;
+    if (cut) setCut(cut);
     fillConstraints(plan.constraints);
     const slider = $("stageSlider");
     slider.max = plan.stages.length;
@@ -1470,7 +1504,8 @@ function renderResult(plan) {
 function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
-                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: (t.ipr_mm_per_surface ?? 0) > 0 };
+                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: (t.ipr_mm_per_surface ?? 0) > 0,
+                 ipr_face: !!plan && plan.plan_id === state.cutPlanId && Object.values(state.teeth).some((m) => m.userData.cut) };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
 }

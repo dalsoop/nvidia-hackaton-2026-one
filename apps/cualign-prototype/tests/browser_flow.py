@@ -29,6 +29,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_patients import _scan_files   # noqa: E402  synthetic per-tooth scans, as the API tests use
 
 
+# the newest plan of 000131 whose mesh the server cuts (#22): the plan list is newest first, so the run's own IPR plan comes first
+FIND_CUT_PLAN = """(async () => {
+  const plans = (await (await fetch('/api/plans?case_id=poseidon-000131')).json()).plans;
+  for (const p of plans.filter((p) => /ipr/.test(p.strategy))) {
+    const m = await (await fetch(`/api/cases/poseidon-000131/mesh?plan_id=${p.plan_id}`)).json();
+    if (Object.keys(m.teeth_cut).length) return p.plan_id;
+  }
+  return null;
+})()"""
+
+
 def document_has_plan(body_class: str) -> bool:
     return "has-plan" in body_class.split()
 
@@ -474,6 +485,24 @@ async def main():
             # The notice shows as the server wrote it, with 다시 보내기 like an overload (server fix 2026-09-28).
             await page.goto(url + f"/ui/#case=poseidon-000131&plan={plan131}&step=stages")      # a case opens as its scan (#20); the plan and step in the address bring the stages back
             await page.wait_for_function("document.body.classList.contains('has-plan') && document.body.classList.contains('step-stages') && !document.querySelector('#sendBtn').disabled", timeout=120000)
+            # IPR faces (#22): an IPR plan of this case cuts crowns (000131 prescribes IPR on the anterior; the fallback's
+            # chosen plan is 확장, so pick one of the case's plans the server cuts). In the stages the cut teeth carry the cut
+            # geometry with their planes blue and the legend says IPR 면; 초기 shows the scan's crowns again
+            ipr_plan = await page.evaluate(FIND_CUT_PLAN)
+            assert ipr_plan, "no plan of 000131 with teeth_cut"
+            await page.evaluate(f"window.__cualign.loadPlan('{ipr_plan}')")
+            await page.wait_for_function(f"window.__cualign.state.plan?.plan_id === '{ipr_plan}' && !window.__cualign.state.loading", timeout=60000)
+            cut_ids = await page.evaluate("Object.entries(window.__cualign.state.teeth).filter(([, m]) => m.userData.cut).map(([id]) => id)")
+            assert cut_ids and await page.evaluate("window.__cualign.state.cutPlanId") == ipr_plan, cut_ids
+            assert await page.evaluate("Object.values(window.__cualign.state.teeth).filter((m) => m.userData.cut).every((m) => m.geometry === m.userData.cut.geo && m.userData.cutMesh.visible && m.userData.cutMesh.geometry.index.count > 0)")
+            assert await page.locator('.legend [data-key="ipr_face"]').is_visible()
+            await page.locator('#flow button[data-step="initial"]').click()
+            assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full && !m.userData.cutMesh.visible)")
+            await page.locator('#flow button[data-step="stages"]').click()
+            assert await page.evaluate("Object.values(window.__cualign.state.teeth).filter((m) => m.userData.cut).every((m) => m.geometry === m.userData.cut.geo)")
+            await page.evaluate(f"window.__cualign.loadPlan('{plan131}')")     # back to the fallback's plan for the steps below
+            await page.wait_for_function(f"window.__cualign.state.plan?.plan_id === '{plan131}' && !window.__cualign.state.loading", timeout=60000)
+            assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full)")   # 확장: nothing cut
             async def no_answer_stream(route):
                 rid = route.request.post_data_json["cualign"]["request_id"]
                 nl = chr(10)
