@@ -229,7 +229,7 @@ function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
 // `dups` pairs [copy, original] so the skin can keep the copies on the rim when the gum deforms.
 function splitGumBase(gumMesh, zBase) {
   const v = gumMesh.v.flat(), f = gumMesh.f.flat(), dups = [];
-  if (zBase == null) return { v, f, dups };
+  if (zBase == null) return { v, f, dups, wall: [], floorVerts: new Set(), wallVerts: new Set() };   // no closed base (procedural gum): nothing to split
   const onBase = (i) => Math.abs(v[3 * i + 2] - zBase) < 0.02;   // the server rounds z_base to 2 decimals
   // face class: 0 surface (no vertex on the floor plane), 1 wall (some), 2 floor (all three)
   const cls = new Uint8Array(f.length / 3), used = [new Uint8Array(v.length / 3), new Uint8Array(v.length / 3), new Uint8Array(v.length / 3)];
