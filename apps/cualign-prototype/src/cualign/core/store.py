@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 import hashlib
-import uuid
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,6 +19,16 @@ from .constraints import Constraints
 from .synth import PRESETS
 
 OUT_DIR = Path(os.environ.get("CUALIGN_OUT", "out"))
+
+
+ID_HEX = 8  # id length after the "p"/"t" prefix: 32 (uuid4) was long enough for the model to miscopy between tool calls (#126)
+
+
+def _new_id(prefix: str, taken) -> str:
+    """A fresh id not in `taken` (plans loaded from disk are in it too, so a restart cannot reuse one)."""
+    while (new := prefix + secrets.token_hex(ID_HEX // 2)) in taken:
+        pass
+    return new
 
 
 class _Stage(dict):
@@ -170,7 +180,7 @@ class Store:
         return gone
 
     def put_target(self, case_id: str, target: dict, info: dict, constraints: Constraints | None = None) -> str:
-        tid = "t" + uuid.uuid4().hex
+        tid = _new_id("t", self.targets)
         st = patients.input_state(case_id)
         self.targets[tid] = {"case_id": case_id, "target": target, "info": info,
                             "constraints": constraints or self.constraints_for(case_id),
@@ -182,7 +192,7 @@ class Store:
                  constraints: Constraints | None = None, parent_plan_id: str | None = None) -> str:
         inherited = self.constraints_for(case_id, parent_plan_id)
         c = constraints or inherited.patched({"stage_cap": stage_cap, "order": info.get("order", inherited.order)})
-        pid = "p" + uuid.uuid4().hex
+        pid = _new_id("p", self.plans)
         self.plans[pid] = {"plan_id": pid, "case_id": case_id, "target_id": target_id, "stages": stages,
             "info": info, "violations": violations, "stage_cap": c.stage_cap, "strategy": strategy,
             "constraints": c, "parent_plan_id": parent_plan_id,

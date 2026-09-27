@@ -4,7 +4,7 @@ The reference agent and the checks share an author, so passing the reference pro
 reference never produces. These cases pin the judge on phrasings an LLM might use, including the counter-examples
 found in the independent review (2026-09-24).
 
-Tool results follow the current register.py contract: plan ids are "p" + uuid4 hex, a plan summary nests its stage
+Tool results follow the current register.py contract: plan ids are "p" + 8 hex (#126; the fixtures below keep the older 32-hex form, which the judge still reads), a plan summary nests its stage
 figures under "info" and carries the constraints it was computed with, the reviewer returns a status dict, and
 export_stl only works for a plan the dentist approved. test_tool_contract_matches_checks pins that contract against
 the real tools, so drift fails there first.
@@ -149,6 +149,7 @@ def test_plan_ids_are_matched_whole():
     assert PLAN_ID_RE.findall(f"plan_id: {P1}, 비교 {P2}") == [P1, P2]
     assert PLAN_ID_RE.findall(f"plan_id: {P1[:-1]}") == []          # 31 hex digits is not an id (no prefix match)
     assert PLAN_ID_RE.findall("legacy p3 and p12") == ["p3", "p12"]  # hand-written traces and old NAT logs
+    assert PLAN_ID_RE.findall("plan_id: p3e49f44d 와 p3e49f44") == ["p3e49f44d"]  # 8 hex since #126; 7 hex is not an id
 
 
 def test_legacy_numeric_ids_still_judged():
@@ -513,7 +514,7 @@ def test_tool_contract_matches_checks(tmp_path, monkeypatch):
     # propose_target: the target id plan_stages takes, the strategy never_strategy reads, the constraints it carries
     assert target["target_id"] and target["strategy"] == "ipr" and target["constraints"]["lock"] == [3]
     # validate: a plan summary (register.summary)
-    assert PLAN_ID_RE.fullmatch(valid["plan_id"]) and len(valid["plan_id"]) == 33
+    assert PLAN_ID_RE.fullmatch(valid["plan_id"]) and len(valid["plan_id"]) == 9
     assert isinstance(valid["passed"], bool) and isinstance(valid["violations"], list)
     assert valid["constraints"]["stage_cap"] == 52 and valid["constraints"]["lock"] == [3]
     assert isinstance(valid["info"]["n_stages"], int) and isinstance(valid["info"]["months"], (int, float))
