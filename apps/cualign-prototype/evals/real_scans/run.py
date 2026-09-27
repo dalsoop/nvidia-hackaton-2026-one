@@ -31,7 +31,8 @@ def run_case(case: Case, extraction: tuple[int, ...] = (), stage_cap: int | None
         target, info = planner.propose_target(case, s, extraction=tuple(extraction))
         stages, sinfo = planner.plan_stages(case, target)
         viol = planner.validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"],
-                                constraints=Constraints(extraction=tuple(extraction)))   # checks the prescription too
+                                constraints=Constraints(extraction=tuple(extraction), stage_cap=stage_cap),
+                                target_info=info)   # the prescription and the cap, as the service checks them
         row = {"strategy": s, "n_stages": sinfo["n_stages"], "months": sinfo["months"], "by_type": planner.summarize(viol),
                "deficit": info["space_deficit_mm"], "notes": info["notes"], "viol": viol}
         tried.append(row)

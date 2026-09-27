@@ -35,7 +35,12 @@ def _plan_from_file(data: dict) -> dict:
     data["stages"] = [_Stage(st, rotations[i] if i < len(rotations) else None) for i, st in enumerate(data.get("stages") or [])]
     if isinstance(data.get("constraints"), dict):
         removed = (data.get("target") or {}).get("removed") or (data.get("info") or {}).get("removed") or ()
+        legacy = "extraction" not in data["constraints"]
         data["constraints"] = Constraints.from_saved(data["constraints"], removed)   # files from before #56 too
+        if legacy and data.get("approval"):
+            # approved under conditions without the extraction teeth: the approval does not carry over (#98 review);
+            # shown as not approved, so the screen asks for a new approval instead of offering an export it refuses
+            data["approval"] = None
     data["_from_disk"] = True
     return data
 

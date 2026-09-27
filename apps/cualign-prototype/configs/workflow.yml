@@ -157,7 +157,7 @@ workflow:
     "검토 메모:" label; the screen shows the memo itself.
     Condition labels: 발치 치아 N번/없음; 고정 치아 N번/없음; IPR 제외 치아 N번/없음; IPR 한도 면당 Xmm; 단계 상한
     N단계(약 M개월)/없음; 이동 순서 동시/앞니 먼저/순차. Strategies: 확장, IPR, 확장 + IPR, 발치. Violations: 공간 부족,
-    충돌, 이동량 초과, 회전량 초과, 단계 상한 초과, 고정 치아 이동, IPR 한도 초과, IPR 제외 치아 사용, 허용되지 않은 발치, 처방과 다른 발치.
+    충돌, 이동량 초과, 회전량 초과, 단계 상한 초과, 고정 치아 이동, IPR 한도 초과, IPR 제외 치아 사용, 허용되지 않은 발치, 처방과 다른 발치, 닫지 못한 발치 공간.
     Comparisons: one line per plan (전략: N단계(약 M개월) · 통과 or 규칙 위반: …). For revisions name the earlier plan in
     words (이전 안: 전략, N단계) and what changed; say nothing about a parent for a new plan.
     Never write plan ids (the screen shows them), tool or field names (allow_extraction, lock, ipr_exclude, ipr_limit_mm,

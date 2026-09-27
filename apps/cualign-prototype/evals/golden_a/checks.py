@@ -59,20 +59,25 @@ EXTRACTION_YES_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*\d|\d+\s
 # the prescribed teeth an answer names: "발치 치아 5, 12번", "5번과 12번 발치", "발치: 4·13번" (#56)
 EXTRACTION_TEETH_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
                                  r"|((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번\s*(?:을|를)?\s*(?:치아\s*)?발치")
-APP_NUMBERS_RE = re.compile(r"앱\s*번호\s*([\d\s·,]+)")
+# FDI with the app numbers, tied to the extraction phrase: "발치 14·24(앱 번호 5·12)", "14·24(FDI · 앱 번호 5·12) 발치"
+_FDI_APP = r"(?:\d{1,2}\s*[·,]\s*)*\d{1,2}\s*번?\s*\(\s*(?:FDI\s*·\s*)?앱\s*번호\s*([\d\s·,]+)\)"
+EXTRACTION_APP_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*" + _FDI_APP + r"|" + _FDI_APP.replace("([", "(?P<b>[", 1) + r"\s*발치")
+NEGATED_RE = re.compile(r"아닙니다|아니|않|없습니다|제외")
 
 
 def stated_extraction_teeth(body: str) -> set[int]:
-    """The extraction teeth an answer names, in the app's numbers: in a sentence about extraction that gives FDI with
-    the app numbers ("14·24(앱 번호 5·12)"), only the app numbers count."""
+    """The extraction teeth an answer names, in the app's numbers. App numbers count only where they belong to the
+    extraction phrase (an IPR contact's "앱 번호" beside it is not a tooth to extract); FDI numbers beside them are not
+    read again. A sentence that negates ("5·12번은 처방이 아닙니다") names no prescription."""
     teeth: set[int] = set()
     for s in re.split(r"(?<=[.?？!])\s+|\n", body):
-        if "발치" not in s:
+        if "발치" not in s or NEGATED_RE.search(s):
             continue
-        if "앱 번호" in s.replace("  ", " "):
-            teeth |= {int(n) for m in APP_NUMBERS_RE.finditer(s) for n in re.findall(r"\d{1,2}", m.group(1))}
-        else:
-            teeth |= {int(n) for m in EXTRACTION_TEETH_RE.finditer(s) for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2))}
+        for m in EXTRACTION_APP_RE.finditer(s):
+            teeth |= {int(n) for n in re.findall(r"\d{1,2}", m.group(1) or m.group("b"))}
+        rest = EXTRACTION_APP_RE.sub(" ", s)
+        rest = re.sub(r"\([^)]*앱\s*번호[^)]*\)", " ", rest)     # other app-number notes (IPR contacts) are not teeth
+        teeth |= {int(n) for m in EXTRACTION_TEETH_RE.finditer(rest) for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2))}
     return teeth
 
 
@@ -97,7 +102,7 @@ ORDER_KO = {"simultaneous": "동시", "anterior_first": "앞니 먼저", "sequen
 VIOLATION_KO = {"space_deficit": "공간 부족", "collision": "충돌", "move_limit": "이동량 초과", "rotation_limit": "회전량 초과",
                 "stage_cap": "단계 상한 초과", "locked_tooth": "고정 치아 이동", "ipr_limit": "IPR 한도 초과",
                 "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치",
-                "extraction_mismatch": "처방과 다른 발치"}
+                "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간"}
 # A strategy named as a plan ("확장 전략", "확장 안", "- 확장:", "확장(위반)"), not a word inside a condition such as
 # "IPR 한도", "발치 허용" or "비발치". Longest first; a match is consumed so "확장 + IPR" is not also 확장 and IPR.
 _NAMED = r"(?=\s*(?:전략|안|[:：(（·→,]|$))"

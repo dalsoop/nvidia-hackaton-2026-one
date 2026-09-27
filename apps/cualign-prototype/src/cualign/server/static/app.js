@@ -1045,7 +1045,10 @@ function renderResult(plan) {
     const val = v.type === "collision" ? `${v.overlap_mm3} mm³ (기준 ${v.baseline})`
       : v.type === "move_limit" ? `${v.mm} mm > ${v.limit}`
       : v.type === "stage_cap" ? `${v.n}장 > 상한 ${v.limit}`
-      : v.type === "space_deficit" ? `${v.mm} mm 부족 (허용 ${v.limit})` : JSON.stringify(v);
+      : v.type === "space_deficit" ? `${v.mm} mm 부족 (허용 ${v.limit})`
+      : v.type === "extraction_mismatch" ? `처방 ${(v.prescribed ?? []).join(", ") || "없음"} · 뺀 치아 ${(v.removed ?? []).join(", ") || "없음"}`
+      : v.type === "extraction_space_open" ? `닫지 못한 발치 공간 ${v.mm} mm (허용 ${v.limit})`
+      : JSON.stringify(v);
     tr.innerHTML = `<td>${v.stage ?? "전체"}</td><td>${(v.teeth ?? []).join(", ") || "—"}</td><td class="type">${v.type}</td><td>${val}</td>`;
     tb.appendChild(tr);
   }

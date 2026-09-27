@@ -31,7 +31,8 @@ def ladder(case: Case, allowed, stage_cap=None, order="simultaneous"):
         target, info = planner.propose_target(case, s, extraction=BENCH_EXTRACTION if s == "extraction" else ())
         stages, sinfo = planner.plan_stages(case, target, order=order)
         viol = planner.validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"],
-                                constraints=Constraints(extraction=BENCH_EXTRACTION if s == "extraction" else ()))
+                                constraints=Constraints(extraction=BENCH_EXTRACTION if s == "extraction" else (),
+                                                        stage_cap=stage_cap), target_info=info)
         tried.append((s, sinfo["n_stages"], sinfo["months"], viol))
         if not viol:
             break

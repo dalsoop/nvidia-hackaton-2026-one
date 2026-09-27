@@ -192,7 +192,7 @@ def test_a_locked_tooth_does_not_leave_the_extraction_space_open(tooth, lock):
 
 
 @pytest.mark.parametrize("text, teeth", [
-    ("이전 안은 비발치였고 이번엔 5번과 12번 발치로 다시 짜줘", [5, 12]),     # teeth win over a mentioned 비발치
+    ("5번과 12번 발치, 기간 제한 없이", [5, 12]),                         # "없이" about the time, not extraction
     ("발치 치아 5, 12번으로 계획해줘", [5, 12]),
     ("처방은 비발치, IPR 11-21·11-12·21-22(앱 번호 8-9·7-8·9-10) 접촉면에 각 0.4mm입니다.", []),   # IPR numbers are not teeth
 ])
@@ -241,3 +241,76 @@ def test_a06_catches_a_claimed_extraction_plan():
     claim = "5·12번 발치 계획을 만들었습니다. 발치할 치아 번호를 알려 주세요."
     ask = "발치안을 만들려면 발치할 치아 번호가 필요합니다. 어느 치아를 발치할까요? (예: 5번과 12번)"
     assert any(re.search(p, claim) for p in pats) and not any(re.search(p, ask) for p in pats)
+
+
+# ------------------------------------------------------------------------------------------------ PR #98 re-review
+@pytest.mark.parametrize("text", ["5번과 12번 발치 금지", "이전에는 5번과 12번 발치였고 이번엔 비발치로",
+                                  "이전 안은 비발치였고 이번엔 5번과 12번 발치"])
+def test_cli_does_not_guess_a_prescription_from_a_refusal_or_a_change(text):
+    from cualign.cli import parse_constraints
+    assert parse_constraints(text)["extraction"] == "ambiguous"
+
+
+@pytest.mark.parametrize("teeth, lock", [((4,), (13,)), ((4, 13), (8,)), ((4,), (3,)), ((12,), (13,)), ((5,), (2,))])
+def test_the_space_goes_to_a_molar_that_can_close_it(teeth, lock):
+    # re-review: the room was left in front of the locked tooth (4 out + 13 locked: 3.8 mm at 12-13; 4, 13 out + 8
+    # locked: 5.8 mm at 7-8), and a locked molar left 3.9 mm open with no violation
+    c = Case.synthetic("mild")
+    cons = Constraints(extraction=teeth, lock=lock)
+    target, info = propose_target(c, "extraction", constraints=cons)
+    assert _max_neighbour_gap(c, target) < 2.0 and info["open_space_mm"] == 0
+    stages, _ = plan_stages(c, target)
+    assert not validate(c, stages, space_deficit_mm=info["space_deficit_mm"], constraints=cons, target_info=info)
+
+
+def test_space_no_molar_can_close_is_a_violation():
+    c = Case.synthetic("mild")
+    cons = Constraints(extraction=(5,), lock=(3, 14))           # both first molars locked
+    target, info = propose_target(c, "extraction", constraints=cons)
+    stages, _ = plan_stages(c, target)
+    viol = validate(c, stages, space_deficit_mm=info["space_deficit_mm"], constraints=cons, target_info=info)
+    assert info["open_space_mm"] > 0.5 and any(v["type"] == "extraction_space_open" for v in viol)
+
+
+def test_runner_keeps_the_stage_cap():
+    from evals.real_scans.run import run_case
+    r = run_case(Case.synthetic("mild"), extraction=(5, 12), stage_cap=1)
+    assert r["outcome"] == "fail" and "stage_cap" in r["tried"][-1]["by_type"]
+
+
+def test_a_migrated_plan_is_not_shown_as_approved():
+    from cualign.core.store import _plan_from_file
+    old = {"plan_id": "p1", "case_id": "moderate", "stages": [], "target": {"removed": [5, 12]},
+           "constraints": {"allow_extraction": True, "lock": [], "ipr_exclude": [], "ipr_limit_mm": 0.25,
+                           "stage_cap": None, "order": "simultaneous"},
+           "approval": {"status": "approved", "fingerprint": "old"}}
+    p = _plan_from_file(old)
+    assert p["constraints"].extraction == (5, 12) and p["approval"] is None
+
+
+@pytest.mark.parametrize("text, teeth", [
+    ("발치 치아 5, 12번 · 단계 상한 52단계", {5, 12}),
+    ("발치 14·24(앱 번호 5·12) · 단계 상한 52단계", {5, 12}),
+    ("발치 치아 4·13번 · IPR 대상(앱 번호 5·12)", {4, 13}),        # the IPR contact's app numbers are not extraction teeth
+    ("발치 치아 5·12번 · IPR 대상(앱 번호 7·8)", {5, 12}),
+    ("발치 치아 5·12번은 처방이 아닙니다.", set()),                  # a negation names no prescription
+])
+def test_answer_extraction_teeth_are_read_from_the_extraction_phrase(text, teeth):
+    from evals.golden_a.checks import stated_extraction_teeth
+    assert stated_extraction_teeth(text) == teeth
+
+
+@pytest.mark.parametrize("answer, bad", [
+    ("5·12번 발치 계획을 만들었습니다.", True),
+    ("5·12번을 제거한 발치안을 생성했습니다. 발치할 치아 번호를 알려 주세요.", True),
+    ("5번과 12번을 뺀 계획을 만들었습니다.", True),
+    ("발치할 치아 번호를 알려 주세요. 처방을 받으면 발치 계획을 만들겠습니다.", False),
+    ("비발치 계획을 만들었습니다.", False),
+])
+def test_a06_patterns_catch_claims_not_correct_answers(answer, bad):
+    import re
+    import yaml
+    from pathlib import Path
+    spec = yaml.safe_load((Path(__file__).resolve().parents[1] / "evals/golden_a/specs/A06_compare.yaml").read_text())
+    pats = next(c for c in spec["checks"] if c["id"] == "A06-no-picked-teeth")["patterns"]
+    assert any(re.search(p, answer) for p in pats) is bad

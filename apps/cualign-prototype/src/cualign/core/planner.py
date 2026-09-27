@@ -232,7 +232,8 @@ def _isotonic(y: list[float]) -> list[float]:
 def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float, extra: dict,
                      lock=frozenset(), close: bool = False,
                      close_sides: tuple[bool, bool] = (True, True),
-                     removed=()) -> tuple[list, dict, bool, tuple[float, float]]:
+                     removed=(), closable: tuple[bool, bool] = (True, True)
+                     ) -> tuple[list, dict, bool, tuple[float, float], float]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
     Returns (arc position per active tooth, None for the anchors; lateral offset kept per span tooth; whether the span
@@ -263,10 +264,12 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
     D = np.concatenate([[0.0], np.cumsum(gaps)])
     y = np.array([s_cur[i] - D[m] for m, i in enumerate(span)])
     top = hi - D[-1]
+    open_mm = 0.0                    # extraction space left that no molar can close (reported by the validator)
     if close and not fixed:
-        # the chain closes toward the side without an extraction, so only the extraction side's molars move to close
-        # what is left (one-sided extraction); both sides: centred, as before
-        at = {(True, True): float(np.mean(y)), (True, False): top, (False, True): lo}.get(tuple(close_sides), float(np.mean(y)))
+        # the room left goes to molars that can close it: the extraction side's if they can move, else the other
+        # side's; both: centred. The chain closes toward the other side (one-sided extraction moves only one side).
+        sides = [i for i in (0, 1) if close_sides[i] and closable[i]] or [i for i in (0, 1) if closable[i]]
+        at = {(0,): top, (1,): lo}.get(tuple(sides), float(np.mean(y)))
         t = np.full(len(span), float(np.clip(at, lo, max(lo, top))))
     else:
         t = y.copy()
@@ -277,22 +280,29 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
             L = t[a] if a >= 0 else lo
             R = t[b] if b < len(span) else top
             fits = fits and L <= R
-            at = _closing_position(span, removed, a, b, L, R, y) if close else None
+            at = _closing_position(span, removed, a, b, L, R, y, closable) if close else None
             t[a + 1:b] = np.clip(_isotonic(list(y[a + 1:b])) if at is None else np.full(b - a - 1, at), L, max(L, R))
+            if at is not None and not ((a == -1 and at >= R and closable[0]) or (b == len(span) and at <= L and closable[1])):
+                open_mm += max(R - L, 0.0)   # the run's slack stays between it and a locked tooth
     pos = {i: float(t[m] + D[m]) for m, i in enumerate(span)}
     lateral = {}
     for i in span:
         s0 = arch.s_of(case.anchor[i])
         e = float((case.anchor[i][:2] - arch.point(s0)) @ arch.normal(s0))
         lateral[i] = e if abs(e) < LATERAL_TOL_MM or i in lock else 0.0
-    return [pos.get(i) for i in active], lateral, fits, (float(t[0] - lo), float(top - t[-1]))
+    room = (float(t[0] - lo), float(top - t[-1]))
+    if close and not fixed:
+        open_mm += sum(max(r, 0.0) for r, ok in zip(room, closable) if not ok)
+    return [pos.get(i) for i in active], lateral, fits, room, open_mm
 
 
-def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y) -> float | None:
+def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y,
+                      closable: tuple[bool, bool] = (True, True)) -> float | None:
     """Where a free run (span[a+1:b], between locked teeth or the molars) sits as one closed chain after an extraction,
-    or None when no extraction space touches it (least movement, as without an extraction). The run closes onto the
-    extraction space: a space at one edge pulls the run to that edge; a space inside it packs the run against the
-    side away from the molars that can close what is left (the run's outer edge), else it is centred."""
+    or None when no extraction space touches it (least movement, as without an extraction). The room left over goes
+    where a molar can close it: a run next to a movable molar packs against the locked tooth on its other side (the
+    molar closes the rest); next to a locked molar it packs toward that molar. A run between two locked teeth closes
+    onto the extraction space (its slack stays open and is reported)."""
     def index(tooth, side):          # index in span of the nearest remaining tooth on that side of an extracted one
         near = [m for m, i in enumerate(span) if (i < tooth if side < 0 else i > tooth)]
         return (max(near) if side < 0 else min(near)) if near else (-1 if side < 0 else len(span))
@@ -307,11 +317,11 @@ def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y
             right = True
     if not (inside or left or right):
         return None
+    if a == -1 and b < len(span):
+        return R if closable[0] else L
+    if b == len(span) and a >= 0:
+        return L if closable[1] else R
     if inside:
-        if a == -1 and b < len(span):
-            return R                  # the molars before the run close the space left
-        if b == len(span) and a >= 0:
-            return L
         return float(np.mean(y[a + 1:b]))
     return L if left else R
 
@@ -423,12 +433,13 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     s_cur = {i: arch.s_of(case.anchor[i], offset) for i in active}
     active.sort(key=lambda i: s_cur[i])
     lateral: dict[int, float] = {}
-    fits, closing = True, (0.0, 0.0)
+    fits, closing, open_mm = True, (0.0, 0.0), 0.0
     if anchored:
         sides = (any(i < 9 for i in extraction), any(i >= 9 for i in extraction))
-        s_new, lateral, fits, room = _anchored_layout(case, active, width, s_cur, offset, extra, lock,
-                                                      close=strategy == "extraction", close_sides=sides,
-                                                      removed=tuple(extraction) if strategy == "extraction" else ())
+        closable = (not lock & {2, 3}, not lock & {14, 15})
+        s_new, lateral, fits, room, open_mm = _anchored_layout(
+            case, active, width, s_cur, offset, extra, lock, close=strategy == "extraction", close_sides=sides,
+            removed=tuple(extraction) if strategy == "extraction" else (), closable=closable)
         if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
             # the molars close whatever room is left on their side (unless one of them is locked): the layout leaves it
             # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
@@ -487,6 +498,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             "mean_move_mm": round(float(np.mean(disp)), 2), "max_move_mm": round(float(np.max(disp)), 2),
             "notes": notes, "removed": [i for i in ids if target[i] is None], "locked": sorted(lock),
             "extraction": list(extraction) if strategy == "extraction" else [],
+            "open_space_mm": round(open_mm, 2),
             "ipr_mm_per_surface": ipr_limit_mm if strategy in ("ipr", "expansion_ipr") else 0.0,
             "ipr_applied_teeth": sorted(red) if ipr_limit_mm > 0 else [],
             "ipr_exclude": sorted(ipr_exclude), "expansion_mm_per_side": round(float(offset), 2),
@@ -630,6 +642,10 @@ def validate(case: Case, stages: list[dict], stage_cap: int | None = None,
         excluded = set(info.get("ipr_applied_teeth", [])) & set(constraints.ipr_exclude)
         if excluded:
             viol.append({"stage": None, "type": "ipr_excluded", "teeth": sorted(excluded)})
+        if info.get("open_space_mm", 0.0) > SPACE_DEFICIT_TOLERANCE_MM:
+            # extraction space that no molar can close (a locked molar or locked teeth around it): not a finished plan
+            viol.append({"stage": None, "type": "extraction_space_open", "mm": info["open_space_mm"],
+                         "limit": SPACE_DEFICIT_TOLERANCE_MM})
     if space_deficit_mm is not None and space_deficit_mm > SPACE_DEFICIT_TOLERANCE_MM:
         viol.append({"stage": None, "type": "space_deficit", "mm": round(space_deficit_mm, 2),
                      "limit": SPACE_DEFICIT_TOLERANCE_MM})
