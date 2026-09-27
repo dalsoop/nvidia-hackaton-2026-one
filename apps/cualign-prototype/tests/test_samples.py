@@ -94,17 +94,23 @@ def test_the_note_states_the_ipr_the_core_computes():
             assert f"총 {got:.1f}mm" in s.note, s.case_id
 
 
-def test_prescriptions_show_fdi_and_the_app_numbers():
+def test_prescriptions_are_fdi_only():
+    """#113: the dentist reads one numbering. No "(앱 번호 …)" tail, no Universal number, on the card or in the request."""
+    import re
     for s in samples.SAMPLES.values():
-        assert "FDI" in s.prescription and "앱 번호" in s.prescription and "앱 번호" in s.request
+        for text in (s.prescription, s.request, s.summary, s.note):
+            assert "앱 번호" not in text and "FDI" not in text and "Universal" not in text, (s.case_id, text)
+            assert all(11 <= int(n) <= 18 or 21 <= int(n) <= 28 for n in re.findall(r"(?<![\d.])\d{2}(?![\d.])", text)
+                       if not re.search(rf"{n}\s*(?:단계|개월|mm|%)", text)), (s.case_id, text)
 
 
 def test_cli_keeps_the_sample_prescription_unless_the_request_says_otherwise():
     from cualign.cli import parse_constraints
     assert parse_constraints(samples.get("poseidon-000131").request)["extraction"] == []
     assert parse_constraints(samples.get("poseidon-000001").request)["extraction"] == []
-    assert parse_constraints(samples.get("poseidon-000097").request)["extraction"] == [5, 12]   # the app numbers
+    assert parse_constraints(samples.get("poseidon-000097").request)["extraction"] == [5, 12]   # FDI 14·24 -> Universal
     assert parse_constraints("12개월 안에")["extraction"] is None           # not said: the case decides
     assert parse_constraints("발치 없이 12개월 안에")["extraction"] == []
-    assert parse_constraints("4번과 13번 발치로 짜줘")["extraction"] == [4, 13]
+    assert parse_constraints("15번과 25번 발치로 짜줘")["extraction"] == [4, 13]
+    assert parse_constraints("5번과 12번 발치로 짜줘")["extraction"] == "not-fdi"   # app numbers are not a prescription
     assert parse_constraints("발치 허용해서 짜줘")["extraction"] == "teeth-needed"   # the app does not pick teeth (#56)

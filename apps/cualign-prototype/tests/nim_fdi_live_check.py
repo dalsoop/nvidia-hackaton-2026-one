@@ -1,6 +1,7 @@
 """#113 / leak: two real conversations through `nat serve` + /chat/stream, as the screen sends them.
 
 A. Sample poseidon-000131, the card's «에이전트에게 계획 맡기기» sentence (sample.request) with the sample's constraints.
+C. Sample poseidon-000097, its FDI-only card sentence (제1소구치 14·24 발치) with extraction cleared in the context: the model must convert 14·24 to [5, 12] itself.
    Observed on main #115: no tool call, English reasoning streamed as the answer, no plan_selected.
 B. Case moderate, «14번과 24번 발치로 계획 짜줘.» — the tools must receive extraction [5, 12] (Universal).
 Never prints the API key. Writes out/nim-live/fdi-leak.json (events, tool args, answers) and prints a verdict.
@@ -82,6 +83,21 @@ async def main():
                 b["constraints_extraction"] = d["constraints"]["extraction"]
                 b["removed"] = d["target"].get("removed")
                 b["tools_got_5_12"] = d["constraints"]["extraction"] == [5, 12]
+            # --- C: the sample card's FDI-only prescription (no app-number tail) with no extraction preset -----
+            s97 = SAMPLES["poseidon-000097"]
+            await client.post(url + f"/api/cases/{s97.case_id}/activate", timeout=60)
+            ctx = {"request_id": "fdi-C", "case_id": s97.case_id, "base_plan_id": None, "constraints": {"extraction": []}}
+            events, answer, elapsed = await converse(client, url, s97.request, ctx, log)
+            c = verdict["C_sample_000097_fdi_only"] = {"request": s97.request, "elapsed_s": round(elapsed, 1), "tools": tool_steps(events),
+                                                        "set_constraints_args": tool_args(events, "set_constraints"),
+                                                        "plan_selected": bool(pick(events, "plan_selected")), "plan_error": pick(events, "plan_error"),
+                                                        "stream_error": pick(events, "error"), "answer_head": answer[:400],
+                                                        "universal_in_answer": re.findall(r"(?<![\d.])(?:[1-9]|1[0-6])번", answer)}
+            if c["plan_selected"]:
+                d = (await client.get(url + f"/api/plans/{pick(events, 'plan_selected')['plan_id']}", timeout=30)).json()
+                c["constraints_extraction"] = d["constraints"]["extraction"]
+                c["removed"] = d["target"].get("removed")
+                c["tools_got_5_12"] = d["constraints"]["extraction"] == [5, 12]
     finally:
         proc.terminate()
         try:

@@ -31,8 +31,10 @@ the returned conditions and state in the final answer which change was not appli
 Ask one concise question if a requested condition is ambiguous or unsupported. A prescription that asks for
 more IPR than the app allows (above 0.25 mm per surface, e.g. 0.4 mm per contact) is NOT a reason to ask: the
 confirmed constraints already carry the app's cap, so plan with them and say in the answer that IPR was
-capped at 0.25 mm per surface. When you do ask instead of planning, the final answer is the Korean question
-itself (one or two sentences): never write your deliberation, never English.
+capped at 0.25 mm per surface. The IPR contacts a prescription names (11-21, 14-15·24-25, "앞쪽으로") are already
+in the confirmed constraints as IPR 제외 치아 and the cap: never map contacts to teeth yourself and never reason about
+the numbering; plan with the constraints as given. When you do ask instead of planning, the final answer is the Korean
+question itself (one or two sentences): never write your deliberation, never English.
 The case is the one in the server context; do not switch cases in tools. load_case only if the
 context has no case summary.
 Skill: the Agent Skill `cualign-clinical-rules` (skills/cualign-clinical-rules/SKILL.md) holds the clinical limits and

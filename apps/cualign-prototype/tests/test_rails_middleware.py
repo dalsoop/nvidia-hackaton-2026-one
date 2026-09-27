@@ -562,6 +562,23 @@ def test_overload_crash_reaches_the_ui_as_a_nim_overload_event(store, tmp_path, 
 
 
 ENGLISH_ONLY = "We need to parse the user's request... universal numbering... So we should respond with a question."
+QUOTING_KOREAN = ('We need to parse the user\'s request: "처방은 비발치, IPR 11-21·11-12·21-22 접촉면에 각 0.4mm입니다. 이 처방으로 '
+                  '단계 계획을 짜 주세요."\n\nInterpretation: The dentist prescribes non-extraction, IPR on contacts: 11-21 (likely '
+                  'between teeth 11 and 21? Actually FDI: 11 is upper right central incisor, 21 is upper left central incisor? '
+                  'So 11-21 is across midline? universal numbering...')
+
+
+def test_deliberation_that_quotes_the_korean_request_is_still_no_answer():
+    """2026-09-28 live (sample 000131 after the FDI-only card text): the deliberation quoted the Korean request, so it
+    held Hangul and passed the old no-Hangul guard. Hangul share and the opener catch it; real answers pass."""
+    from cualign.server.rails_middleware import NO_ANSWER, _no_korean
+    assert _no_korean(QUOTING_KOREAN) == NO_ANSWER
+    assert _no_korean("Thought: 조건을 확인해야 합니다. Action: none") == NO_ANSWER
+    assert _no_korean("**확장 전략으로 9단계(약 2.1개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\n\n- 조건: 발치 치아 없음 · "
+                      "IPR 제외 치아 17, 16, 15, 14, 13, 23, 24, 25, 26, 27번 · IPR 한도 면당 0.25mm\n- 검토: 단계당 이동량 0.232mm, "
+                      "IPR 면당 0.0mm\n\n이 계획은 초안입니다. 최종 판단은 의사가 합니다.") is None
+    assert _no_korean("발치할 치아 번호가 필요합니다(예: 14번과 24번). 어느 치아를 발치할까요?") is None
+    assert _no_korean("") is None
 
 
 def test_answer_without_korean_is_replaced_and_reported(store, tmp_path, monkeypatch):

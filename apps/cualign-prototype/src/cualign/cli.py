@@ -22,20 +22,24 @@ ROOT = Path(__file__).resolve().parents[2]
 def parse_constraints(text: str) -> dict:
     """Rule-based reading of the request (the agent does this with Nemotron; this is the offline stand-in).
     extraction: None when the request does not say (the case's own prescription decides, #46), [] for non-extraction,
-    the prescribed teeth ("5번과 12번 발치", "14·24(앱 번호 5·12) 발치"; Universal numbers, #56), or "teeth-needed"
-    when extraction is mentioned without teeth — the app does not pick them — or "ambiguous" when teeth come with a
-    refusal or a change ("5번과 12번 발치 금지", "이전엔 5번 발치였고 이번엔 비발치"): a prescription is never guessed."""
+    the prescribed teeth ("14번과 24번 발치", "14·24 발치"; the dentist writes FDI, stored as Universal [5, 12], #56 #113),
+    "teeth-needed" when extraction is mentioned without teeth — the app does not pick them — "not-fdi" when a named
+    tooth is not an upper-arch FDI number (11..18, 21..28), or "ambiguous" when teeth come with a refusal or a change
+    ("14번과 24번 발치 금지", "이전엔 14번 발치였고 이번엔 비발치"): a prescription is never guessed."""
     c = {"extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
-    # teeth first: "이전 안은 비발치였고 이번엔 5번과 12번 발치" is a prescription of 5 and 12, not non-extraction
+    # teeth first: "이전 안은 비발치였고 이번엔 14번과 24번 발치" is a prescription of 14 and 24, not non-extraction
+    from cualign.core.fdi import from_fdi
     teeth_list = r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
-    m = re.search(r"앱 번호\s*([\d\s·,]+)\)?\s*발치", text)     # "14·24(앱 번호 5·12) 발치": the app numbers
-    m = m or re.search(teeth_list + r"번?\s*(?:치아\s*)?발치", text) or re.search(r"발치\s*치아\s*[:：]?\s*" + teeth_list, text)
-    teeth = sorted({int(n) for n in re.findall(r"\d{1,2}", m.group(1))}) if m else []
+    m = re.search(teeth_list + r"번?\s*(?:치아\s*)?발치", text) or re.search(r"발치\s*치아\s*[:：]?\s*" + teeth_list, text)
+    fdi = sorted({int(n) for n in re.findall(r"\d{1,2}", m.group(1))}) if m else []
     negated = re.search(r"비발치|금지|말고|취소|대신|이전|예전|전에는|발치\s*(?:는\s*)?(?:없이|하지\s*마|안\s*(?:돼|함))", text)
-    if teeth and negated:
+    if fdi and negated:
         c["extraction"] = "ambiguous"
-    elif teeth:
-        c["extraction"] = teeth
+    elif fdi:
+        try:
+            c["extraction"] = sorted(from_fdi(f) for f in fdi)
+        except ValueError:                      # "5번과 12번": not FDI, so not a prescription the app can read
+            c["extraction"] = "not-fdi"
     elif "비발치" in text or ("발치" in text and any(k in text for k in ("없", "피", "싫", "안 돼", "안돼", "금지"))):
         c["extraction"] = []
     elif "발치" in text:
@@ -69,9 +73,11 @@ def cmd_plan(args):
     print(f"[요청] {args.request}\n[제약] {json.dumps(c, ensure_ascii=False)}")
     if c["extraction"] == "ambiguous":
         raise SystemExit("[확인 필요] 발치할 치아와 금지·변경 표현이 함께 있어 처방을 판단할 수 없습니다. "
-                         "\"5번과 12번 발치\" 또는 \"발치 없이\"처럼 처방만 적어 주세요.")
+                         "\"14번과 24번 발치\" 또는 \"발치 없이\"처럼 처방만 적어 주세요.")
     if c["extraction"] == "teeth-needed":
-        raise SystemExit("[확인 필요] 발치할 치아 번호를 함께 적어 주세요(Universal, 예: \"5번과 12번 발치\"). 앱은 발치 치아를 고르지 않습니다.")
+        raise SystemExit("[확인 필요] 발치할 치아 번호를 함께 적어 주세요(FDI, 예: \"14번과 24번 발치\"). 앱은 발치 치아를 고르지 않습니다.")
+    if c["extraction"] == "not-fdi":
+        raise SystemExit("[확인 필요] 발치 치아는 상악 FDI 번호(11~18, 21~28)로 적어 주세요(예: \"14번과 24번 발치\").")
     res = rule_based_plan(args.case, extraction=c["extraction"], stage_cap=c["stage_cap"], order=c["order"])
     for r in res["tried"]:
         flag = "통과" if r["passed"] else f"실패 {r['by_type']}"
