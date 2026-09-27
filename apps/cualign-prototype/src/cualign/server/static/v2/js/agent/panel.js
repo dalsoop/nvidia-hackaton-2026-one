@@ -135,17 +135,21 @@ export function mountAgent(el, ctx) {
           );
         }
 
-        const resendBtn = h('button', {
-          type: 'button',
-          class: 'btn-resend',
-          disabled: isBusy,
-          onClick: () => {
-            const req = item.originalRequest || {};
-            handleSend(req.text, { isResend: true, constraints: req.constraints });
-          }
-        }, STRINGS.resend);
+        const elements = [bubble];
+        if (item.canResend !== false) {
+          const resendBtn = h('button', {
+            type: 'button',
+            class: 'btn-resend',
+            disabled: isBusy,
+            onClick: () => {
+              const req = item.originalRequest || {};
+              handleSend(req.text, { isResend: true, constraints: req.constraints });
+            }
+          }, STRINGS.resend);
+          elements.push(resendBtn);
+        }
 
-        const wrap = h('div', { class: 'agent-error-wrap' }, bubble, resendBtn);
+        const wrap = h('div', { class: 'agent-error-wrap' }, ...elements);
         transcript.appendChild(wrap);
       } else if (item.role === 'system') {
         const noticeEl = h('div', { class: 'agent-system-notice' },
@@ -212,6 +216,11 @@ export function mountAgent(el, ctx) {
     isBusy = true;
     updateControls();
 
+    const storeState = ctx.store ? ctx.store.get() : {};
+    const rawPlans = storeState.plans;
+    const currentPlans = Array.isArray(rawPlans) ? rawPlans : (rawPlans?.plans || []);
+    const nextPlanNumber = currentPlans.length + 1;
+
     const noticeItem = {
       role: 'system',
       content: STRINGS.ruleFallbackNotice
@@ -221,6 +230,15 @@ export function mountAgent(el, ctx) {
       const currentChat = ctx.store.get().chat || [];
       ctx.store.set({ chat: [...currentChat, noticeItem] });
     }
+
+    activeTurn = {
+      requestId: 'rule-' + Date.now(),
+      status: 'streaming',
+      nextPlanNumber,
+      steps: [],
+      userMessage: ''
+    };
+    renderTranscript();
 
     try {
       await executeRulePlan({ ctx });
@@ -240,6 +258,7 @@ export function mountAgent(el, ctx) {
         });
       }
     } finally {
+      activeTurn = null;
       isBusy = false;
       updateControls();
       renderTranscript();

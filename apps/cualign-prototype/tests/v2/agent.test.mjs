@@ -525,3 +525,153 @@ test('executeChatStream: handles nim_overload stream error and formats error tur
   assert.equal(errorItem.canResend, true);
 });
 
+test('turnToChatItems: omits user and trace items when empty', () => {
+  const turn = createTurnState({
+    requestId: 'req-empty-items',
+    caseId: 'case-100',
+    nextPlanNumber: 1,
+    userMessage: ''
+  });
+  turn.status = 'completed';
+  turn.assistantText = '결과가 준비되었습니다.';
+
+  const items = turnToChatItems(turn);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].role, 'assistant');
+  assert.equal(items[0].content, '결과가 준비되었습니다.');
+});
+
+test('applyStreamEvent: keeps done steps as done when plan_error arrives', () => {
+  const turn = createTurnState({
+    requestId: 'req-mixed-steps',
+    caseId: 'case-100',
+    nextPlanNumber: 2
+  });
+
+  applyStreamEvent(turn, { type: 'intermediate_data', data: { name: 'step_one' } });
+  applyStreamEvent(turn, { type: 'intermediate_data', data: { name: 'step_two' } });
+
+  assert.equal(turn.steps[0].state, 'done');
+  assert.equal(turn.steps[1].state, 'running');
+
+  applyStreamEvent(turn, {
+    type: 'plan_error',
+    data: { message: 'Engine failure on step two' }
+  });
+
+  assert.equal(turn.steps[0].state, 'done');
+  assert.equal(turn.steps[1].state, 'failed');
+  assert.equal(turn.hasStreamError, true);
+});
+
+test('eventsToTurn: full multi-step workflow with plan_context and final plan selection', () => {
+  const events = [
+    { type: 'intermediate_data', data: { name: 'set_constraints' } },
+    {
+      type: 'plan_context',
+      data: {
+        request_id: 'req-full-flow',
+        case_id: 'case-full',
+        constraints: { lock: [11, 21], ipr_limit_mm: 0.3 }
+      }
+    },
+    { type: 'intermediate_data', data: { name: 'propose_target' } },
+    { type: 'data', data: { choices: [{ delta: { content: '목표 배열 생성 완료. ' } }] } },
+    { type: 'intermediate_data', data: { name: 'plan_stages' } },
+    { type: 'data', data: { choices: [{ delta: { content: '총 14단계 계획입니다.' } }] } },
+    {
+      type: 'plan_selected',
+      data: {
+        schema_version: 1,
+        request_id: 'req-full-flow',
+        case_id: 'case-full',
+        plan_id: 'plan-success-99'
+      }
+    }
+  ];
+
+  const turn = eventsToTurn(events, {
+    requestId: 'req-full-flow',
+    caseId: 'case-full',
+    nextPlanNumber: 5,
+    userMessage: '처방 조건대로 계획해 주세요'
+  });
+
+  assert.equal(turn.status, 'completed');
+  assert.equal(turn.hasStreamError, false);
+  assert.deepEqual(turn.constraints, { lock: [11, 21], ipr_limit_mm: 0.3 });
+  assert.equal(turn.assistantText, '목표 배열 생성 완료. 총 14단계 계획입니다.');
+  assert.equal(turn.steps.length, 3);
+  assert.equal(turn.steps.every((s) => s.state === 'done'), true);
+
+  const items = turnToChatItems(turn);
+  assert.equal(items.length, 3);
+  assert.equal(items[0].role, 'user');
+  assert.equal(items[0].content, '처방 조건대로 계획해 주세요');
+  assert.equal(items[1].role, 'trace');
+  assert.equal(items[1].steps.length, 3);
+  assert.equal(items[2].role, 'assistant');
+  assert.equal(items[2].content, '목표 배열 생성 완료. 총 14단계 계획입니다.');
+  assert.equal(items[2].planId, 'plan-success-99');
+});
+
+test('executeChatStream: isResend replaces previous user message in transcript', async () => {
+  const store = createStore({
+    caseId: 'case-resend-01',
+    viewingPlanId: null,
+    chat: [
+      { role: 'user', content: '처음 실패한 메시지' }
+    ],
+    plans: []
+  });
+
+  let capturedChatBody = null;
+  const mockApi = {
+    async chatStream(body) {
+      capturedChatBody = body;
+      const ssePayload = `data: [DONE]\n\n`;
+      const encoder = new TextEncoder();
+      return {
+        body: {
+          getReader() {
+            let done = false;
+            return {
+              async read() {
+                if (done) return { value: undefined, done: true };
+                done = true;
+                return { value: encoder.encode(ssePayload), done: false };
+              }
+            };
+          }
+        }
+      };
+    }
+  };
+
+  await executeChatStream({
+    ctx: { store, api: mockApi },
+    text: '처음 실패한 메시지',
+    isResend: true
+  });
+
+  // Verify only 1 user message exists in the sent body messages (not duplicated)
+  assert.equal(capturedChatBody.messages.length, 1);
+  assert.equal(capturedChatBody.messages[0].role, 'user');
+  assert.equal(capturedChatBody.messages[0].content, '처음 실패한 메시지');
+});
+
+test('executeRulePlan: throws error when caseId is missing', async () => {
+  const store = createStore({
+    caseId: null,
+    viewingPlanId: null
+  });
+
+  await assert.rejects(
+    async () => {
+      await executeRulePlan({ ctx: { store, api: {} } });
+    },
+    /No active case selected/
+  );
+});
+
+
