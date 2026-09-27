@@ -81,6 +81,10 @@ def test_parse_drops_choices_the_screen_does_with_buttons():
     assert [o["label"] for o in followup.parse(text)["options"]] == ["14번 고정", "비교"]
     one_left = '{"question": "q", "options": [{"label": "승인", "message": "승인"}, {"label": "고정", "message": "고정해줘"}]}'
     assert followup.parse(one_left) is None
+    english = '{"question": "What next?", "options": [{"label": "a", "message": "A"}, {"label": "b", "message": "B"}]}'
+    assert followup.parse(english) is None   # live case 6 answered in English: no card
+    junk = "{\nellsellsion\n" + GOOD   # live case 4: a stray brace and garbage before the JSON
+    assert followup.parse(junk)["question"] == "발치 없이 갈까요?"
     assert "Never offer approval, export, download, hold" in followup.INSTRUCTIONS
 
 

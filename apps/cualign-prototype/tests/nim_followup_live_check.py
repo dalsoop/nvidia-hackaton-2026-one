@@ -47,7 +47,10 @@ async def main():
             # the same chat next_question builds, but keeping the model's raw text to see what it wrote before parse filters
             chat = [{"role": "system", "content": followup.INSTRUCTIONS},
                     {"role": "user", "content": "Conversation:\n" + json.dumps(followup.tail(messages), ensure_ascii=False) + "\n\nJSON:"}]
-            text = response_text(await asyncio.wait_for(llm.ainvoke(chat), timeout=30))
+            try:
+                text = response_text(await asyncio.wait_for(llm.ainvoke(chat), timeout=60))
+            except Exception as e:   # noqa: BLE001 - the screen would show no card; record why and go on
+                text = f"(no answer: {type(e).__name__})"
             raw[sentence] = {"raw": text, "card": followup.parse(text)}
             card = raw[sentence]["card"]
             leak = [w for w in ("승인", "내보내", "보류", "다운로드", "STL", "검토 다시") if w in text]

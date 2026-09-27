@@ -22,8 +22,13 @@ INSTRUCTIONS = (
     "does those with buttons, and every choice must be a planning request the assistant can carry out in the next turn "
     "(a condition change, a comparison, a revision). If the dentist's last message is off topic (not about this plan), "
     "still ask about the plan just made. Ask about the plan just made (its strategy, months, violations), not in "
-    "general. Tooth numbers in FDI (11..28), never the app's 1..16. Never diagnose, never prescribe, never mention plan "
-    "ids, tool or field names. "
+    "general, and never ask again what the dentist's last message already decided: move to the next decision. Korean "
+    "only, question and choices alike. Stay inside the app's limits: IPR is at most 0.25 mm per surface (never offer "
+    "more), strategies are 확장, IPR, 확장 + IPR, 발치; a choice names concrete teeth or values. Tooth numbers in FDI, "
+    "upper arch only (11..18, 21..28), never the app's 1..16 and never lower teeth. If the dentist asks about pain, "
+    "symptoms, medication or anything clinical, do not answer it: the choices stay plan conditions (never advise "
+    "medication, wear time or treatment management). Never diagnose, never prescribe, never mention plan ids, tool or "
+    "field names. "
     'Answer with JSON only: {"question": "...", "options": [{"label": "...", "message": "..."}, ...]}'
 )
 
@@ -31,19 +36,25 @@ MAX_TURNS = 6           # the model sees only the tail of the conversation
 MAX_CHARS = 1500        # per message
 MAX_OPTIONS = 3
 # What the screen does with buttons, never a chip (#107): approving, exporting, holding, downloading, re-reviewing.
-SCREEN_ACTION_RE = re.compile(r"승인|내보내|export|보류|다운로드|STL|ZIP|검토 다시|재검토|approve", re.I)
+HANGUL_RE = re.compile(r"[가-힣]")
+SCREEN_ACTION_RE = re.compile(r"승인|확정|내보내|export|보류|다운로드|STL|ZIP|검토 다시|재검토|approve", re.I)
 
 
 def parse(text: str) -> dict | None:
     """The JSON object in the model's text, trimmed to what the card shows; None when it is not a usable question."""
-    m = re.search(r"\{[\s\S]*\}", text or "")
-    if not m:
-        return None
-    try:
-        data = json.loads(m.group(0))
-    except json.JSONDecodeError:
+    text = text or ""
+    data = None
+    for start in sorted({m.start() for m in re.finditer(r"\{", text)}, reverse=True):   # the last object that parses
+        try:
+            data = json.loads(text[start:text.rindex("}") + 1])
+            break
+        except (json.JSONDecodeError, ValueError):
+            continue
+    if not isinstance(data, dict):
         return None
     question = str(data.get("question") or "").strip()
+    if not HANGUL_RE.search(question):   # an English question is no card for a Korean screen (#107, live case 6)
+        return None
     options = []
     for o in data.get("options") or []:
         if not isinstance(o, dict):
