@@ -6,8 +6,8 @@ install; they were made with scripts/import_poseidon.py (per-tooth crowns and th
 gingiva_raw.stl). The dentist writes tooth numbers in FDI, so the texts here do too; the planner uses Universal.
 
 A sample opens with its prescription already in the planning constraints: the app starts where diagnosis and
-prescription end, and plans inside them. The prescriptions are written in FDI with the app's (Universal) numbers
-beside them, because the constraint fields and the agent use Universal.
+prescription end, and plans inside them. The prescriptions are written in FDI only (#113); the constraint fields
+and the agent still use Universal internally, converted at the screen boundary (app.js fdi()/universal()).
 
 The constraint model cannot state every prescription exactly: IPR is per tooth (both surfaces of an allowed tooth,
 so the contacts at the ends of an allowed run get half) and at most IPR_PER_SURFACE, of which the core takes half
@@ -50,14 +50,14 @@ class Sample:
 
 SAMPLES: dict[str, Sample] = {s.case_id: s for s in (
     Sample("poseidon-000097", "심한 덧니, 발치 필요",
-           "제1소구치 14·24 발치 (FDI · 앱 번호 5·12)",
-           "처방은 제1소구치 14·24(앱 번호 5·12) 발치입니다. 이 처방으로 단계 계획을 짜 주세요.",
+           "제1소구치 14·24 발치",
+           "처방은 제1소구치 14·24 발치입니다. 이 처방으로 단계 계획을 짜 주세요.",
            summary="작은어금니 두 개(14·24)를 빼서 자리를 만들고 정렬",
            badges=("총생 7.9 mm", "발치"),
            constraints={"extraction": [5, 12]}),
     Sample("poseidon-000001", "중간 덧니, IPR 필요",
-           "비발치 · 14-15·24-25부터 앞쪽으로 IPR 총 3.6mm + 악궁 확장 (FDI · 앱 번호 4-5·12-13부터)",
-           "처방은 비발치, 14-15·24-25(앱 번호 4-5·12-13) 접촉면부터 앞쪽으로 IPR 총 3.6mm와 악궁 확장입니다. "
+           "비발치 · 14-15·24-25부터 앞쪽으로 IPR 총 3.6mm + 악궁 확장",
+           "처방은 비발치, 14-15·24-25 접촉면부터 앞쪽으로 IPR 총 3.6mm와 악궁 확장입니다. "
            "이 처방으로 단계 계획을 짜 주세요.",
            summary="어금니 앞쪽 치아 사이를 갈고(총 3.6 mm) 치열 폭을 넓혀 정렬",
            badges=("총생 4.2 mm", "비발치", "IPR + 확장"),
@@ -67,8 +67,8 @@ SAMPLES: dict[str, Sample] = {s.case_id: s for s in (
                 "계산합니다(처방 3.6mm).",
            ipr_total_mm=2.5),
     Sample("poseidon-000131", "가벼운 덧니, IPR 필요",
-           "비발치 · IPR 11-21·11-12·21-22 각 0.4mm (FDI · 앱 번호 8-9·7-8·9-10)",
-           "처방은 비발치, IPR 11-21·11-12·21-22(앱 번호 8-9·7-8·9-10) 접촉면에 각 0.4mm입니다. "
+           "비발치 · IPR 11-21·11-12·21-22 각 0.4mm",
+           "처방은 비발치, IPR 11-21·11-12·21-22 접촉면에 각 0.4mm입니다. "
            "이 처방으로 단계 계획을 짜 주세요.",
            summary="앞니 사이를 조금씩(0.4 mm) 갈아 자리를 만들고 정렬",
            badges=("총생 1.6 mm", "비발치", "IPR"),

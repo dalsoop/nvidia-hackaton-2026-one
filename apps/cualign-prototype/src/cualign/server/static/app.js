@@ -5,6 +5,11 @@ import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const $ = (id) => document.getElementById(id);
+// FDI ↔ Universal (upper arch only, #113): the dentist reads and writes FDI on screen; the core, planner and API
+// keep Universal. Convert at the screen boundary only — never show Universal alongside FDI (decision 2026-09-27).
+const fdi = (u) => { u = Number(u); return u <= 8 ? 19 - u : 12 + u; };
+const universal = (f) => { f = Number(f); return f <= 18 ? 19 - f : f - 12; };
+const fdiList = (ids) => [...ids].map(fdi).join("·");
 // Colours follow clinical software conventions (docs/research/2026-09-23-원내-얼라이너-SW-화면-역설계.md):
 // teeth are ivory, movement is a heat tint, collisions red, limit breaches amber, locked teeth blue.
 const IVORY = new THREE.Color(0xe9e3d6);
@@ -290,7 +295,7 @@ function onPointerMove(e) {
   const tip = $("tip");
   if (!hit) { tip.hidden = true; return; }
   const m = hit.object, id = m.userData.id;
-  const parts = [`치아 ${id}`];
+  const parts = [`치아 ${fdi(id)}`];
   if (state.plan) parts.push(`누적 이동 ${m.userData.moved.toFixed(2)} mm`);
   if (m.userData.viol?.length) parts.push(`위반: ${m.userData.viol.join(", ")}`);
   if ((state.plan?.target?.locked ?? []).map(String).includes(id)) parts.push("고정");
@@ -315,9 +320,9 @@ function renderSelection() {
   box.hidden = !state.selected.size;
   if (!state.selected.size) return;
   box.append("선택한 치아 · 다음 메시지에 함께 보냅니다");
-  for (const id of [...state.selected].sort((a, b) => a - b)) {
+  for (const id of [...state.selected].sort((a, b) => fdi(a) - fdi(b))) {
     const b = document.createElement("button");
-    b.type = "button"; b.dataset.id = id; b.textContent = `${id}번 ✕`; b.title = "선택 해제";
+    b.type = "button"; b.dataset.id = id; b.textContent = `${fdi(id)}번 ✕`; b.title = "선택 해제";
     box.append(b);
   }
   const clear = document.createElement("button");
@@ -426,12 +431,14 @@ async function api(path, opts) {
 }
 
 
+// FDI valid range on this upper-arch-only app (Universal 2..15, third molars excluded): quadrant 1 11..17, quadrant 2 21..27.
+const isFdiTooth = (f) => (f >= 11 && f <= 17) || (f >= 21 && f <= 27);
 function readConstraints() {
   const teeth = (id) => {
     const raw = $(id).value.trim();
     const values = raw ? raw.split(/[ ,]+/).map(Number) : [];
-    if (values.some(v => !Number.isInteger(v) || v < 2 || v > 15)) throw new Error("치아 번호는 2~15 정수로 입력하세요.");
-    return [...new Set(values)].sort((a,b) => a-b);
+    if (values.some(v => !Number.isInteger(v) || !isFdiTooth(v))) throw new Error("치아 번호는 FDI로 입력하세요 (11~17, 21~27).");
+    return [...new Set(values.map(universal))].sort((a,b) => a-b);
   };
   const ipr = Number($("cIpr").value), cap = $("cCap").value === "" ? null : Number($("cCap").value);
   if (!Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("IPR은 면당 0~0.25mm입니다.");
@@ -441,9 +448,9 @@ function readConstraints() {
     ipr_limit_mm: ipr, stage_cap: cap, clear_stage_cap: cap === null, order: $("cOrder").value };
 }
 function fillConstraints(c) {
-  $("cExtract").value = (c.extraction || []).join(", ");
-  $("cLock").value = (c.lock || []).join(", ");
-  $("cExclude").value = (c.ipr_exclude || []).join(", ");
+  $("cExtract").value = (c.extraction || []).map(fdi).sort((a,b) => a-b).join(", ");
+  $("cLock").value = (c.lock || []).map(fdi).sort((a,b) => a-b).join(", ");
+  $("cExclude").value = (c.ipr_exclude || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cIpr").value = c.ipr_limit_mm;
   $("cCap").value = c.stage_cap ?? "";
   $("cOrder").value = c.order;
@@ -743,7 +750,7 @@ async function openCheck(caseId, check) {
   for (const [id, m] of Object.entries(state.teeth)) {
     const el = document.createElement("div");
     el.className = "num-label";
-    el.textContent = id;
+    el.textContent = fdi(id);
     const obj = new CSS2DObject(el);
     obj.position.copy(state.center[id]);
     obj.position.z = m.geometry.boundingBox.max.z + 1.5;
@@ -752,11 +759,11 @@ async function openCheck(caseId, check) {
   }
   // the check facts in one line, in the dentist's words
   const o = check.orientation;
-  const facts = [["입력 확인"], [`치아 ${check.n_teeth}개` + (check.missing.length ? ` (빠진 치아 ${check.missing.join(", ")}번)` : "")],
+  const facts = [["입력 확인"], [`치아 ${check.n_teeth}개` + (check.missing.length ? ` (빠진 치아 ${check.missing.map(fdi).join(", ")}번)` : "")],
     [check.scanned_gingiva ? "잇몸 포함" : "잇몸 없음 · 표시용 잇몸"]];
-  if (check.outside.length) facts.push([`스캔에 없는 끝 치아 ${check.outside.join(", ")}번`]);
-  if (Object.keys(rot).length) facts.push([`회전 보정 ${Object.keys(rot).join("·")}번 (주황)`]);
-  if (Object.keys(vert).length) facts.push([`높이 보정 ${Object.keys(vert).join("·")}번 (파랑)`]);
+  if (check.outside.length) facts.push([`스캔에 없는 끝 치아 ${check.outside.map(fdi).join(", ")}번`]);
+  if (Object.keys(rot).length) facts.push([`회전 보정 ${fdiList(Object.keys(rot))}번 (주황)`]);
+  if (Object.keys(vert).length) facts.push([`높이 보정 ${fdiList(Object.keys(vert))}번 (파랑)`]);
   if (o?.basis === "none") facts.push(["방향 근거 없음 — 교합면 방향 확인 필요", "warn"]);
   if (o?.side === "reversed") facts.push(["치아 번호가 좌우 반대로 보임", "warn"]);
   if (check.confirmed) facts.push([`번호 확인됨 ${fmtDate(check.confirmed_at)}`]);
@@ -856,8 +863,8 @@ function renderChips() {
   let chips = state.followup?.options?.length
     ? state.followup.options
     : state.messages.some((m) => m.role === "user")
-    ? [{ label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
-       { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." },
+    ? [{ label: "25번 고정하고 재계획", message: "25번은 움직이지 말고 다시 짜줘." },
+       { label: "앞니 IPR 제외", message: "IPR은 앞니(12·11·21·22) 빼고 해줘." },
        { label: "전략 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }]
     : [sample ? { label: "에이전트 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
        sample ? { label: "12개월 안에", message: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." }
@@ -918,7 +925,7 @@ async function activateCase(caseId, { greet = true } = {}) {
                     { label: "확장안과 IPR안 비교", hint: "두 전략을 나란히 계산해 차이를 보여 줍니다", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
       : { question: "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.",
           options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
-                    { label: "발치 치아 정하기", fill: "5번과 12번 발치로 계획을 짜줘." },
+                    { label: "발치 치아 정하기", fill: "14번과 24번 발치로 계획을 짜줘." },
                     { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘." }] };
     state.messages.push({ role: "assistant", content: text + " " + q.question });
     addQuestion(q);
@@ -1052,10 +1059,10 @@ function renderResult(plan) {
       : v.type === "move_limit" ? `${v.mm} mm > ${v.limit}`
       : v.type === "stage_cap" ? `${v.n}장 > 상한 ${v.limit}`
       : v.type === "space_deficit" ? `${v.mm} mm 부족 (허용 ${v.limit})`
-      : v.type === "extraction_mismatch" ? `처방 ${(v.prescribed ?? []).join(", ") || "없음"} · 뺀 치아 ${(v.removed ?? []).join(", ") || "없음"}`
+      : v.type === "extraction_mismatch" ? `처방 ${(v.prescribed ?? []).map(fdi).join(", ") || "없음"} · 뺀 치아 ${(v.removed ?? []).map(fdi).join(", ") || "없음"}`
       : v.type === "extraction_space_open" ? `닫지 못한 발치 공간 ${v.mm} mm (허용 ${v.limit})`
       : JSON.stringify(v);
-    tr.innerHTML = `<td>${v.stage ?? "전체"}</td><td>${(v.teeth ?? []).join(", ") || "—"}</td><td class="type">${v.type}</td><td>${val}</td>`;
+    tr.innerHTML = `<td>${v.stage ?? "전체"}</td><td>${(v.teeth ?? []).map(fdi).join(", ") || "—"}</td><td class="type">${v.type}</td><td>${val}</td>`;
     tb.appendChild(tr);
   }
 }
@@ -1284,8 +1291,8 @@ const SCRIPT = [
   { when: (t) => /^(확장안|IPR안)으로 계획해줘/.test(t) || /앞니 총생부터 먼저/.test(t),
     q: { question: "이 안으로 진행할까요?",
          options: [{ label: "이대로 내보내기", action: "export" },
-                   { label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
-                   { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." }] } },
+                   { label: "25번 고정하고 재계획", message: "25번은 움직이지 말고 다시 짜줘." },
+                   { label: "앞니 IPR 제외", message: "IPR은 앞니(12·11·21·22) 빼고 해줘." }] } },
 ];
 function scriptedFollowup() {
   const last = [...state.messages].reverse().find((m) => m.role === "user")?.content?.replace(/^\[선택한 치아:[^\]]*\]\s*/, "").trim() ?? "";
@@ -1335,7 +1342,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   }
   if (state.selected.size && !resend) {
-    text = `[선택한 치아: ${[...state.selected].sort((a, b) => a - b).join(", ")}번] ` + text;
+    text = `[선택한 치아: ${[...state.selected].map(fdi).sort((a, b) => a - b).join(", ")}번] ` + text;
     state.selected.clear(); renderSelection();
   }
   const requestId = crypto.randomUUID(), caseId = state.meshCase, prevPlanId = state.plan?.plan_id ?? null;
@@ -1540,7 +1547,7 @@ $("startPlan").addEventListener("click", async () => {
 $("mirrorBtn").addEventListener("click", async () => {
   const caseId = state.checkCase;
   const [pid, sid] = (caseId ?? "").split("-");
-  if (!confirm("치아 파일 번호를 좌우로 뒤집습니다 (2↔15, 3↔14 …). 계속할까요?")) return;
+  if (!confirm("치아 파일 번호를 좌우로 뒤집습니다 (17↔27, 16↔26 …). 계속할까요?")) return;
   try {
     const check = await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}/mirror`, { method: "POST" });
     if (state.checkCase === caseId) await openCheck(caseId, check);

@@ -37,7 +37,7 @@
         <label>메모 <input id="pMemo" maxlength="200" placeholder="선택"></label>
         <label class="drop" for="pScans">
           <b>상악 스캔 파일 고르기</b>
-          <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
+          <span>치아별 STL(<code>11.stl</code> … <code>27.stl</code>, 선택: <code>gingiva.stl</code>)</span>
           <span id="pScansName" class="muted">누르면 파일 선택 창이 열립니다. 나중에 올려도 됩니다.</span>
         </label>
         <input id="pScans" type="file" accept=".stl" multiple hidden />
@@ -51,7 +51,7 @@
         <div id="scanList" class="scan-list"></div>
         <label id="dropZone" class="drop" for="scanInput">
           <b>이 환자에게 상악 스캔 올리기</b>
-          <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
+          <span>치아별 STL(<code>11.stl</code> … <code>27.stl</code>, 선택: <code>gingiva.stl</code>)</span>
           <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
         </label>
         <input id="scanInput" type="file" accept=".stl" multiple hidden />
@@ -116,9 +116,9 @@
             <summary>조건 <span id="condSummary" class="cond-chips">—</span></summary>
             <fieldset id="constraints" class="constraints">
               <legend>대화로도 바꿀 수 있습니다</legend>
-              <label>발치 치아 (빈칸: 비발치) <input id="cExtract" placeholder="예: 5, 12"></label>
-              <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
-              <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
+              <label>발치 치아 (빈칸: 비발치) <input id="cExtract" placeholder="예: 14, 24"></label>
+              <label>고정 치아 <input id="cLock" placeholder="예: 25, 26"></label>
+              <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 11, 12, 21, 22"></label>
               <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
               <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
               <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
@@ -128,7 +128,7 @@
           <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
           <div id="checkBar" class="check-bar" hidden>
             <span id="checkFacts" class="facts"></span>
-            <button id="mirrorBtn" class="btn ghost small" type="button" hidden title="2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다">좌우 번호 뒤집기</button>
+            <button id="mirrorBtn" class="btn ghost small" type="button" hidden title="17번이 환자 오른쪽(화면 왼쪽)에 와야 합니다">좌우 번호 뒤집기</button>
             <button id="startPlan" class="btn primary small" type="button">이 스캔으로 계획</button>
             <button id="otherScan" class="btn ghost small" type="button">다른 스캔</button>
           </div>

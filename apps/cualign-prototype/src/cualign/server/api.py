@@ -44,15 +44,28 @@ MAX_UPLOAD_BYTES = 400 * 1024 * 1024    # one scan upload
 
 
 def _scan_file_name(name: str) -> tuple[str | None, str]:
-    """(stored name, kind): kind is "tooth", "gum", "lower" (Universal 17..32, not supported) or "other"."""
+    """(stored name, kind): kind is "tooth", "gum", "lower" (FDI 31..48 lower arch, not supported) or "other".
+
+    Accepts the legacy Universal stems (1..16) the app stored before, unchanged, and the dentist's FDI stems
+    (#113) where those do not collide with a legacy one: 17·18 (upper right) and 21..28 (upper left) — 11..16 stay
+    Universal, since existing scans on disk already use those names (see mirror_scan_numbers for renumbering).
+    """
     name = Path(name or "").name
     if name.lower() == "gingiva.stl":
         return "gingiva.stl", "gum"
-    # a tooth number is 1..32 without padding: "000018.stl" is a scan id, not tooth 18
-    if name.lower().endswith(".stl") and re.fullmatch(r"[1-9]|[12]\d|3[0-2]", Path(name).stem):
-        n = int(Path(name).stem)
-        return (f"{n}.stl", "tooth") if n <= 16 else (None, "lower")
-    return None, "other"
+    # a tooth number is 1..49 without padding: "000018.stl" is a scan id, not tooth 18
+    if not (name.lower().endswith(".stl") and re.fullmatch(r"[1-9]|[1-4]\d", Path(name).stem)):
+        return None, "other"
+    n = int(Path(name).stem)
+    if n <= 16:            # legacy Universal upper stems, unchanged (and 11..16 read as Universal, not FDI)
+        return f"{n}.stl", "tooth"
+    if n in (17, 18):      # FDI upper right (quadrant 1) tail -> Universal 2, 1
+        return f"{19 - n}.stl", "tooth"
+    if 21 <= n <= 28:      # FDI upper left (quadrant 2) -> Universal 9..16
+        return f"{n - 12}.stl", "tooth"
+    if 31 <= n <= 48:      # FDI lower arch, not supported
+        return None, "lower"
+    return None, "lower"  # legacy Universal lower (19, 20, 29..32), not supported
 
 
 def _patient_json(pid: str) -> dict:
@@ -226,10 +239,10 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
                 raise HTTPException(413, f"파일이 너무 큽니다(파일당 {MAX_FILE_BYTES >> 20}MB, 한 번에 {MAX_UPLOAD_BYTES >> 20}MB까지).")
             data[name] = blob
         if lower:
-            raise HTTPException(400, f"{', '.join(lower[:3])}: 하악(Universal 17~32) 번호입니다. 지금은 상악 스캔만 받습니다.")
+            raise HTTPException(400, f"{', '.join(lower[:3])}: 하악(FDI 31~48) 번호입니다. 지금은 상악 스캔만 받습니다.")
         if other and not any(Path(n).stem.isdigit() for n in data):
             raise HTTPException(400, f"{', '.join(other[:3])}: 한 덩어리 악궁 스캔으로 보입니다. 지금은 치아별로 나뉜 파일"
-                                     "(2.stl … 15.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.")
+                                     "(11.stl … 27.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.")
         try:
             scan = patients.add_scan(pid, data)
         except KeyError as e:

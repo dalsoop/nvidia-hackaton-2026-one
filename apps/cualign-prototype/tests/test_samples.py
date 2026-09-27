@@ -94,16 +94,17 @@ def test_the_note_states_the_ipr_the_core_computes():
             assert f"총 {got:.1f}mm" in s.note, s.case_id
 
 
-def test_prescriptions_show_fdi_and_the_app_numbers():
+def test_prescriptions_show_fdi_only():
+    # FDI only on screen (#113): no parallel Universal ("앱 번호") wording anywhere the dentist reads
     for s in samples.SAMPLES.values():
-        assert "FDI" in s.prescription and "앱 번호" in s.prescription and "앱 번호" in s.request
+        assert "앱 번호" not in s.prescription and "앱 번호" not in s.request
 
 
 def test_cli_keeps_the_sample_prescription_unless_the_request_says_otherwise():
     from cualign.cli import parse_constraints
     assert parse_constraints(samples.get("poseidon-000131").request)["extraction"] == []
     assert parse_constraints(samples.get("poseidon-000001").request)["extraction"] == []
-    assert parse_constraints(samples.get("poseidon-000097").request)["extraction"] == [5, 12]   # the app numbers
+    assert parse_constraints(samples.get("poseidon-000097").request)["extraction"] == [5, 12]   # FDI 14·24 -> Universal
     assert parse_constraints("12개월 안에")["extraction"] is None           # not said: the case decides
     assert parse_constraints("발치 없이 12개월 안에")["extraction"] == []
     assert parse_constraints("4번과 13번 발치로 짜줘")["extraction"] == [4, 13]
