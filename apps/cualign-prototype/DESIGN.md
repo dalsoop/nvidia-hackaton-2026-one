@@ -344,7 +344,7 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 - **시작 상태** [목표, #46·#90]: 모달 없이 작업 화면에서 시작한다. 왼쪽 대화 패널 자리에 서비스가 무엇인지 한 문단으로 설명하고, 오른쪽 3D 자리에 샘플 케이스 카드를 둔다. 처방 폼·칩·범례·결과는 케이스를 연 뒤에 보인다. 케이스 카드마다 교합면 썸네일, 케이스 번호, 한 줄 설명, 진단 처방 요약. 작은 링크 "내 스캔 올리기". [현재] 그렇게 한다(#95). 소개는 악궁 라인아트 + 한 줄 + 「샘플 케이스 고르기」이고, 케이스를 열면 패널 맨 위에 케이스 카드(썸네일·소견·처방·바꾸기), 그 아래 접힌 「조건 · …」 줄이 온다.
 - **입력 확인 화면은 없앤다** [목표, #53]: 3D 위 치아 번호와 `status-check` 라벨이 대신한다.
 - **목표 배열과 단계를 나눈다** [목표]: [현재] 에이전트 도구는 나뉘어 있지만(`propose_target`, `plan_stages`) 한 요청에서 이어서 부르고 화면은 계획만 보여준다.
-- **승인과 내보내기는 한 버튼** [목표, #53]: [현재] "의사 승인"과 "STL 다운로드"가 따로 있다.
+- **승인과 내보내기는 한 버튼** [목표, #53]: [현재] 「내보내기」 하나다. 팝오버에서 확정하면 승인 뒤 단계별 STL(zip)을 내려받고, 승인 취소는 결과 패널 「자세히」 안에 있다(#90).
 
 ## 3D 레이어
 
@@ -388,6 +388,28 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | `validate` | 규칙 검사 중 (충돌·이동량·공간) |
 | `export_stl` | 출력 파일을 만드는 중 |
 | 그 밖의 도구 | 표시하지 않음 |
+
+## 화면 요소 지도 (에이전트·테스트용)
+
+`static/index.html`의 id와 `body` 상태 클래스. 화면을 고치거나 브라우저 검증을 쓰기 전에 이 표를 보고, 바꾸면 표도 같이 고친다.
+
+| 영역 | id·클래스 |
+|---|---|
+| 상단 바 | `#homeBtn`(로고, 처음 화면) |
+| 시작 상태 | `body.start` · `#intro` `#introPick` · `#screenStart` `#sampleCards .case-card[data-id]` `#toPatients` · 입력창은 잠김 |
+| 케이스 카드 | `#caseCard` `#caseThumb` `#caseName` `#caseKind` `#caseSub` `#caseBadges` `#caseBtn`(바꾸기) `#casePop` `#popCases .item[data-id]` `#popPatients` |
+| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(질문 카드, `.opts button[data-message|data-fill|data-action]`, `.pending`은 자리 표시) · 「검토 질문」 블록 · `.decision [data-act=keep|revert]` · `.plan-card`(여러 계획이 나온 턴) · `.done`(내려받기 완료) · `#retryBar` `#resendBtn` `#retryFallback` |
+| 입력 | `#chips .chip[data-message]` · `#selChips` · `#chatForm` `#chatInput` `#sendBtn` |
+| 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#condBox`, 오른쪽 `.view-actions`) · `.view-rail button[data-view=occlusal|frontal|left|right|back|base]` `#overlayBtn` `#focusBtn` · `.legend` `#overlayLegend` |
+| 조건 | `#condBox`(details) `#condSummary` `#constraints` `#cExtraction` `#cLock` `#cExclude` `#cIpr` `#cCap` `#cOrder` `#fallbackBtn`(규칙 기반 계산) |
+| 입력 확인 | `body.checking` · `#checkBar` `#checkFacts` `#mirrorBtn` `#startPlan` `#otherScan` |
+| 내보내기 | `#exportBtn` `#exportWhy`(잠긴 이유) `#exportPop` `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
+| 단계 | `body.has-plan` · `.stage-bar` `#firstBtn` `#playBtn` `#stageMarks` `#stageSlider` `#lastBtn` `#stageLabel` |
+| 결과 | `.result` `#statusBadge` `#planSelect` `#reviewBtn` · `.plan-meta`(자세히) 안 `#planNotice` `#resultCard` `#rStrategy` `#rStages` `#rMonths` `#rViol` `#rApproval` `#rPlan` `#rParent` `#rReview` `#revokeBtn` · `#reviewMemo` `#violTable` |
+| 내 스캔 | `#caseGate` `#gateClose` `#screenPatients` `#patientForm` `#pAlias` `#pMemo` `#pScans` `#pScansName` `#patientCards` `#patientBody` `#scanList` `#dropZone` `#scanInput` `#uploadStatus` `#deletePatient` |
+| 기타 상태 | `body.focus3d`(3D 크게) `body.leaving`(카드 선택 전환) `body.resizing`(경계 끌기) · 주소 `#start` `#case=<id>` `#patients` `#patient=<id>` `#check=<case>` |
+
+브라우저 검증은 `tests/browser_flow.py`(가짜 모델, 자체 서버)에 단계를 더해 쓴다. 묶음마다 새 스크립트를 만들지 않는다.
 
 ## 출처
 

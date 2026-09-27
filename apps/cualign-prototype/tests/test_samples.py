@@ -10,7 +10,7 @@ from cualign.core.store import Store
 from cualign.server import api
 
 STATIC = Path(api.__file__).resolve().parent / "static"
-IDS = ["poseidon-000097", "poseidon-000131", "poseidon-000001"]
+IDS = ["poseidon-000097", "poseidon-000001", "poseidon-000131"]   # card order: severe → moderate → mild (#90)
 
 
 def test_samples_ship_with_the_package():
