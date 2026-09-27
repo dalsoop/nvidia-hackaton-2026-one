@@ -199,7 +199,7 @@ def test_renumbering_makes_earlier_plans_stale(client):
 def test_bad_uploads_are_refused_before_anything_is_stored(client):
     client.post("/api/patients", json={"alias": "입력 검사"})
     files = _scan_files()
-    lower = files + [("files", ("24.stl", files[0][1][1], "model/stl"))]
+    lower = files + [("files", ("36.stl", files[0][1][1], "model/stl"))]   # FDI lower left first molar (#113)
     assert "하악" in client.post("/api/patients/P0001/scans", files=lower).json()["detail"]
     dup = files + [files[0]]
     assert client.post("/api/patients/P0001/scans", files=dup).status_code == 400

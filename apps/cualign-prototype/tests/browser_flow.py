@@ -200,7 +200,7 @@ async def main():
             assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == child
             assert "검토 실패" in await page.locator("#reviewLine").inner_text()
             assert await page.locator("#cLock").input_value() == "13"
-            assert await page.locator("#cExclude").input_value() == "7, 8, 9, 10"
+            assert await page.locator("#cExclude").input_value() == "11, 12, 21, 22"      # Universal 7,8,9,10 in FDI (#113)
             assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
             # a comparison turn adds one card per plan it made; the selected one is 보는 중
@@ -341,6 +341,14 @@ async def main():
             await page.wait_for_function("document.querySelector('#planFail').hidden && document.body.classList.contains('has-plan')", timeout=120000)
             assert await page.locator("#planList .plan-row").count() >= 1
             await page.unroute("**/api/cases/poseidon-000131/activate")
+            # The 3D shows FDI numbers, never Universal (#113): the input-check screen's tooth-number labels.
+            # This sample's prescription extracts Universal 5·12 = FDI 14·24.
+            await page.goto(url + "/ui/#check=poseidon-000097")
+            await page.wait_for_function("document.querySelectorAll('.num-label').length > 0")
+            labels = await page.locator(".num-label").all_inner_texts()
+            assert "14" in labels and "24" in labels, labels     # FDI for this sample's extraction (Universal 5·12)
+            assert "5" not in labels, labels                     # never the bare Universal number
+
             assert not errors, errors
             print("PASS: browser rule-based plan, export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "

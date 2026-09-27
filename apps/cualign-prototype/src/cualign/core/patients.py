@@ -137,7 +137,7 @@ def add_scan(pid: str, files: dict[str, bytes]) -> dict:
     p = _read(pid)
     teeth = [n for n in files if Path(n).stem.isdigit()]
     if not teeth:
-        raise ValueError("치아별 STL(<치아번호>.stl, Universal 상악 2~15)을 한 개 이상 올려 주세요. 잇몸 파일만으로는 계획할 수 없습니다.")
+        raise ValueError("치아별 STL(<치아번호>.stl, FDI 11~17·21~27)을 한 개 이상 올려 주세요. 잇몸 파일만으로는 계획할 수 없습니다.")
     scans = _pdir(pid) / "scans"
     scans.mkdir(parents=True, exist_ok=True)
     incoming = scans / f".incoming-{uuid.uuid4().hex}"

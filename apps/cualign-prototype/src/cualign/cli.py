@@ -19,18 +19,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _fdi_to_universal(f: int) -> int:
+    """FDI upper tooth -> this app's Universal (1..16), same formula as app.js universal()."""
+    return 19 - f if f <= 18 else f - 12
+
+
 def parse_constraints(text: str) -> dict:
     """Rule-based reading of the request (the agent does this with Nemotron; this is the offline stand-in).
     extraction: None when the request does not say (the case's own prescription decides, #46), [] for non-extraction,
-    the prescribed teeth ("5번과 12번 발치", "14·24(앱 번호 5·12) 발치"; Universal numbers, #56), or "teeth-needed"
-    when extraction is mentioned without teeth — the app does not pick them — or "ambiguous" when teeth come with a
-    refusal or a change ("5번과 12번 발치 금지", "이전엔 5번 발치였고 이번엔 비발치"): a prescription is never guessed."""
+    the prescribed teeth ("5번과 12번 발치", Universal numbers, #56, or "14·24 발치", FDI numbers, #113 — a value
+    over 16 cannot be this app's Universal, so it is read as FDI and converted), or "teeth-needed" when extraction is
+    mentioned without teeth — the app does not pick them — or "ambiguous" when teeth come with a refusal or a
+    change ("5번과 12번 발치 금지", "이전엔 5번 발치였고 이번엔 비발치"): a prescription is never guessed."""
     c = {"extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
     # teeth first: "이전 안은 비발치였고 이번엔 5번과 12번 발치" is a prescription of 5 and 12, not non-extraction
     teeth_list = r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
-    m = re.search(r"앱 번호\s*([\d\s·,]+)\)?\s*발치", text)     # "14·24(앱 번호 5·12) 발치": the app numbers
-    m = m or re.search(teeth_list + r"번?\s*(?:치아\s*)?발치", text) or re.search(r"발치\s*치아\s*[:：]?\s*" + teeth_list, text)
+    m = re.search(teeth_list + r"번?\s*(?:치아\s*)?발치", text) or re.search(r"발치\s*치아\s*[:：]?\s*" + teeth_list, text)
     teeth = sorted({int(n) for n in re.findall(r"\d{1,2}", m.group(1))}) if m else []
+    if teeth and max(teeth) > 16:   # not a valid Universal tooth on this (upper-arch) app: read as FDI (#113)
+        teeth = sorted({_fdi_to_universal(f) for f in teeth})
     negated = re.search(r"비발치|금지|말고|취소|대신|이전|예전|전에는|발치\s*(?:는\s*)?(?:없이|하지\s*마|안\s*(?:돼|함))", text)
     if teeth and negated:
         c["extraction"] = "ambiguous"
