@@ -193,6 +193,7 @@ def test_renumbering_makes_earlier_plans_stale(client):
     assert client.post("/api/patients/P0001/scans/S1/confirm", json={"revision": 1}).status_code == 409
     assert client.post("/api/patients/P0001/scans/S1/confirm", json={"revision": 2}).status_code == 200
     assert client.get(f"/api/plans/{plan_id}").json()["input_stale"]      # still the old numbering
+    assert [p["input_stale"] for p in client.get("/api/plans", params={"case_id": "P0001-S1"}).json()["plans"]] == [True]
     assert target["input_revision"] == 1
 
 

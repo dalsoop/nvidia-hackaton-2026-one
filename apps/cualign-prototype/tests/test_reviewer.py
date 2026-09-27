@@ -223,6 +223,10 @@ def test_reviewer_gets_what_each_number_means(tmp_path, monkeypatch):
     sent = json.loads(user["content"])
     assert sent["field_notes"] == FIELD_NOTES
     assert sent["plan"]["plan_id"] == pid and "stages" not in sent["plan"] and "approval" not in sent["plan"]
+    # #113: the reviewer reads FDI numbers, converted by the server (Universal 5, 12 -> FDI 14, 24), not by the model
+    assert sent["plan"]["constraints"]["extraction"] == [14, 24] and sent["plan"]["target"]["removed"] == [14, 24]
+    assert plan["constraints"]["extraction"] == [5, 12]                       # the stored plan keeps Universal
+    assert all(11 <= int(t) <= 28 for t in sent["plan"]["target"]["rotation_deg"])
 
 
 def test_reviewer_instructions_name_every_field_in_korean(tmp_path, monkeypatch):

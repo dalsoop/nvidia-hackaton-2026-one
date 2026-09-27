@@ -13,6 +13,7 @@ from nat.data_models.component_ref import LLMRef
 from pydantic import BaseModel
 
 from cualign.core import limits as L
+from cualign.core.fdi import teeth_to_fdi
 from cualign.core.store import STORE
 from .context import CURRENT_RUN
 
@@ -25,9 +26,8 @@ class ReviewInput(BaseModel):
 # live there, next to the planner's); this default is the text from before that key existed, so an absent key
 # changes nothing.
 DEFAULT_INSTRUCTIONS = ("You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: "
-                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Tooth numbers: "
-                        "the plan data holds Universal numbers (1..16); write every tooth number in the memo as FDI (FDI = 19 - "
-                        "Universal for 1..8, 12 + Universal for 9..16; e.g. 5 -> 14, 12 -> 24), never a Universal number. Each number "
+                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Every tooth "
+                        "number in the plan data is already FDI (11..18, 21..28): copy them as given, never convert or renumber. Each number "
                         "means what field_notes says: never call a total movement a per-aligner value or a tooth-width sum a "
                         "space shortage. The dentist reads this memo: never write a field name, a JSON key, an English enum "
                         "value or any snake_case token (no word ending in _mm or _deg); use the Korean names in "
@@ -92,16 +92,18 @@ FIELD_NOTES = {
     "rotation_deg": "회전 보정: derotation per tooth in degrees",
     "vertical_mm": "수직 보정: vertical correction per tooth",
     "locked": "고정 치아: teeth the dentist locked; they do not move",
-    "extraction": "발치 치아: teeth the dentist prescribed to extract (Universal numbers); the plan removes exactly these, "
+    "extraction": "발치 치아: teeth the dentist prescribed to extract (FDI numbers); the plan removes exactly these, "
                   "the app never chooses them; empty means non-extraction",
     "removed": "발치 치아: teeth this plan removes (must equal the prescribed extraction)",
 }
 
 
 def review_messages(snapshot: dict, instructions: str = DEFAULT_INSTRUCTIONS) -> list[dict]:
+    """The reviewer reads the plan with FDI tooth numbers (#113): the conversion is done here, not by the model
+    (a live memo asked to convert wrote lower-arch numbers 31..35 for upper teeth)."""
     return [
         {"role": "system", "content": instructions},
-        {"role": "user", "content": json.dumps({"plan": snapshot, "field_notes": FIELD_NOTES}, ensure_ascii=False)},
+        {"role": "user", "content": json.dumps({"plan": teeth_to_fdi(snapshot), "field_notes": FIELD_NOTES}, ensure_ascii=False)},
     ]
 
 

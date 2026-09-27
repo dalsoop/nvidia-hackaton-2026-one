@@ -67,7 +67,8 @@ def _summary(pid):
     return {"plan_id": pid, "case_id": p["case_id"], "parent_plan_id": p["parent_plan_id"],
             "strategy": p["strategy"], "n_stages": p["info"]["n_stages"], "months": p["info"]["months"],
             "passed": p["passed"], "violations": len(p["violations"]), "by_type": planner.summarize(p["violations"]),
-            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"]}
+            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"],
+            "input_stale": p["input_stale"]}   # same rule as GET /api/plans/{id}: the scan was renumbered since
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
