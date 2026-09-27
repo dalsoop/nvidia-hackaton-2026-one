@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from nat.builder.builder import Builder
 from nat.builder.function import FunctionGroup
 from nat.cli.register_workflow import register_function_group
@@ -67,7 +67,18 @@ class CuAlignToolConfig(FunctionGroupBaseConfig, name="cualign"):
         "clinical_limits", "list_cases", "load_case", "get_constraints", "set_constraints",
         "propose_target", "plan_stages", "validate", "compare_strategies", "select_plan", "export_stl", "get_plan",
         "load_skill"])
+    # The skills load_skill may read, with OpenClaw's agent-allowlist rules: None = every skill under
+    # workspace/skills, [] = none, a list = exactly these. The workspace also holds the OpenClaw desk's skill.
+    skills: list[str] | None = None
     context_preload: ContextPreload = Field(default_factory=ContextPreload)
+
+    @model_validator(mode="after")
+    def _preload_skill_allowed(self):
+        """A preloaded skill outside the allowlist would hand the agent what load_skill refuses; fail at startup."""
+        s = self.context_preload.skill
+        if s and self.skills is not None and s not in self.skills:
+            raise ValueError(f"context_preload.skill {s!r} is not in skills {self.skills}")
+        return self
 
 
 def limits_view() -> dict:
@@ -227,6 +238,7 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         if run:
             run.plan_ids.update(ids)
             run.target_ids.update(STORE.plans[pid]["target_id"] for pid in ids)
+            run.compared = True
         return {"case_id": cid, "constraints": constraints_for(cid).model_dump(mode="json"),
                 "plans": [summary(pid) for pid in ids]}
 
@@ -266,9 +278,9 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return summary(inp.plan_id)
 
     async def _load_skill(inp: SkillInput) -> dict:
-        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 서버 문맥에 skill 이 있으면 다시 부르지 않는다.
+        """설치된 Agent Skill 의 지시문(workspace/skills/<name>/SKILL.md)을 읽는다. 서버 문맥에 skill 이 있으면 다시 부르지 않는다.
         없으면 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
-        return S.read_skill(inp.name)
+        return S.read_skill(inp.name, allowed=config.skills)
 
     fns = {"clinical_limits": _clinical_limits, "list_cases": _list_cases, "load_case": _load_case,
            "get_constraints": _get_constraints, "set_constraints": _set_constraints,

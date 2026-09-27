@@ -1,0 +1,5 @@
+# Tests pin these files by sha256; keep LF on every checkout (Windows core.autocrlf).
+workspace/** text eol=lf
+nemoclaw/openclaw-*/** text eol=lf
+# SkillSpector snapshots were committed with CRLF and nothing pins them; keep their bytes as they are.
+workspace/skills/skillspector-report*.md -text

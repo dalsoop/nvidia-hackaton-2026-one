@@ -1,4 +1,4 @@
-"""SkillSpector scans of skills/cualign-clinical-rules: static (--no-llm) and semantic on Nemotron via NIM.
+"""SkillSpector scans of workspace/skills/cualign-clinical-rules: static (--no-llm) and semantic on Nemotron via NIM.
 
     python scripts/scan_skill.py [--skillspector <path to skillspector executable>]
 
@@ -30,9 +30,9 @@ def main() -> int:
     env.setdefault("NVIDIA_INFERENCE_KEY", env.get("NVIDIA_API_KEY", ""))
     env["SKILLSPECTOR_PROVIDER"] = "nv_build"
     env["SKILLSPECTOR_MODEL"] = args.model
-    skill = str(ROOT / "skills" / "cualign-clinical-rules")
-    runs = [("static", ["--no-llm", "--output", str(ROOT / "skills" / "skillspector-report-static.md")]),
-            ("semantic", ["--output", str(ROOT / "skills" / "skillspector-report.md")])]
+    skill = str(ROOT / "workspace" / "skills" / "cualign-clinical-rules")
+    runs = [("static", ["--no-llm", "--output", str(ROOT / "workspace" / "skills" / "skillspector-report-static.md")]),
+            ("semantic", ["--output", str(ROOT / "workspace" / "skills" / "skillspector-report.md")])]
     rc = 0
     for tag, extra in runs:
         cmd = [args.skillspector, "scan", skill, "--format", "markdown", *extra]

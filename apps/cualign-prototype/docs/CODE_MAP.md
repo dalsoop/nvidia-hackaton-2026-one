@@ -25,7 +25,7 @@
 | `src/cualign/core/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`). `scripts/import_poseidon.py`로 만들었고 패키지에 포함 |
 | `src/cualign/core/samples/ATTRIBUTION.md` | 샘플 스캔의 출처·라이선스(CC-BY-4.0)·변경 내용. 자산과 함께 보존 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
-| `src/cualign/core/skills.py` | `skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
+| `src/cualign/core/skills.py` | `workspace/skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증. 발치는 처방된 치아 목록(`extraction`, #56); `allow_extraction`은 계산값 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
 | `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
@@ -41,20 +41,20 @@
 | 파일 | 목적·내용 |
 |---|---|
 | `src/cualign/agent/register.py` | 조건 수정·계산·최종 계획 선택·승인된 출력 도구. `context_preload` 설정(케이스 요약·한도·스킬을 서버 문맥에 미리 실음, #48)과 그 값을 만드는 `case_view`·`limits_view`·`context_preload` |
-| `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·검토 예산 컨텍스트 |
+| `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·비교 여부·검토 예산 컨텍스트 |
 | `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`), 수치의 뜻을 알려주는 필드 설명(`FIELD_NOTES`) |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
 | `src/cualign/agent/react_history_patch.py` | NAT ReAct 네이티브 도구 호출 모드가 다음 프롬프트에서 빠뜨리는 «실제로 부른 도구·인자»를 기록에 붙이는 호환 가드(같은 도구 반복 방지) |
 | `src/cualign/agent/nim_stream_patch.py` | NIM 스트림 첫 줄의 오류(과부하 503 등)와 스트림 요청의 HTTP 429·5xx 를 빈 답·즉시 실패 대신 재요청·예외로 바꾸고, 스트림이 아닌 호출(검토)의 429·5xx 를 짧게 재요청하는 호환 가드. 간격·코드·대체 모델은 `configs/workflow.yml` 의 `nim_retry` 에서 읽음(`NimRetryConfig`) |
 | `src/cualign/agent/overload.py` | 실패가 NVIDIA API 과부하인지 판정하는 하나의 기준(서버의 화면 안내와 골든셋 A 의 «판정 불가» 가 같이 씀) |
-| `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구, 지시문 연결 |
+| `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구 연결. 계획 에이전트 지시문은 `workspace/AGENTS.md` 를 `file://` 로 그대로 읽음 |
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트(과부하로 죽은 턴의 `plan_error` `kind`·안내 문장 포함), 에이전트가 건너뛴 검토의 서버 실행. `open_run` 이 서버 문맥 시스템 메시지를 만들고 `preload` 로 케이스 요약·한도·스킬을 덧붙임(#48) |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
 | `src/cualign/server/mcp_server.py` | NemoClaw용 MCP 서버(`/mcp`): 토큰 확인, `cualign_plan`은 서버 안에서 `/chat/stream`으로 요청해 UI와 같은 경로를 탐, 승인 도구는 승인하지 않고 내보내기 도구는 의사 승인을 요구 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
-| `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공 |
+| `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공. 레일이 꺼져 있어도, 선택한 계획이 규칙 검증에 실패했는데 답의 첫머리가 위반이 없다고 하면 그 구절을 실제 규칙 상태로 바꿈(비교 턴 제외, #91) |
 | `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
 | `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
@@ -93,6 +93,7 @@
 | `tests/test_patients.py` | 환자 등록(식별정보 거부)→업로드→입력 확인→번호 확인 뒤에만 계획, 스캐너 좌표 정렬, 좌우 번호 경고·뒤집기, 번호 변경 뒤 이전 계획 차단, ID 비재사용, 삭제 시 파생물 제거, 입력 검증, 경로 ID 거부 |
 | `tests/test_ui_flow.py`, `tests/fixtures/ui_flow.json` | 화면 순서 그대로: 환자 등록→번호 뒤집힌 스캔 업로드→입력 확인(뒤집기·revision)→활성화→규칙 폴백→조건 폼으로 `/chat/stream` 까지, 가짜 계획 모델로 키 없이 검사 (#49). 입력·기대값은 JSON 에서 읽음 |
 | `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
+| `tests/test_rule_status.py` | 실패한 계획을 «규칙 위반은 없습니다» 로 연 답이 실제 상태로 바뀌어 나가는지(레일 켬·끔, UI 스트림·골든셋 실행기), 통과한 계획·계획 없는 답·비교 답은 그대로인지, `core/planner.py` 의 모든 위반 종류에 지시문과 같은 한국어 이름이 있는지(#91) |
 | `tests/test_context_preload.py` | 서버 문맥에 미리 싣는 케이스 요약·한도·스킬이 설정대로 들어가고, 끄거나 블록이 없으면 전과 같은지(#48) |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/검토 재요청/승인·지연 응답 검사 |
 | `tests/nim_review_live_check.py` | 실제 워크플로(NIM 검토·Guardrails)로 미실행·실패 계획의 검토 재요청 확인. 원격 사용량 발생 |
@@ -110,9 +111,11 @@
 | `openshell/policy.yaml` | 도구 실행의 네트워크·파일 접근 경계 정책 |
 | `openshell/server-policy.yaml` | 서버 전체 샌드박스 정책(쓰기 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만) |
 | `docs/openshell.md` | 정책 검증 수준, 서버 샌드박스 실행 절차와 기록 |
-| `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차, OpenClaw 스킬 |
-| `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
-| `skills/skillspector-report-static.md`, `skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
+| `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차 |
+| `workspace/` | 에이전트 정의의 유일한 원천(OpenClaw 워크스페이스 규약). 파일별 독자·독자 과제는 `workspace/README.md` |
+| `workspace/skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
+| `workspace/skills/cualign-planner/SKILL.md` | OpenClaw 창구 스킬(NemoClaw) |
+| `workspace/skills/skillspector-report-static.md`, `workspace/skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
 | `scripts/scan_skill.py` | 위 스캔 재실행 스크립트 |
 | `scripts/import_tooth_templates.py` | 형상 원본에서 템플릿을 준비한 변환 과정 |
 | `docs/segmentation.md` | 선택적 분리 어댑터의 연결·미검증 상태 |

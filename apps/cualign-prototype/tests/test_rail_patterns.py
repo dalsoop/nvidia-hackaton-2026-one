@@ -53,14 +53,14 @@ def test_refusal_defers_to_dentist():
 
 def test_prescriptive_list_skill_body():
     """If the skill body is ever loaded into the context (#7 proposes it), an answer quoting it must not be blocked."""
-    body = (ROOT / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
+    body = (ROOT / "workspace" / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
     assert [line for line in body.splitlines() if matches(PRESCRIPTIVE, line)] == []
 
 
 def test_pii_list_skill_body():
     """The skill body rides in every request's system message (#48), and the input rail checks system messages for
     identifiers before any model: a phone- or id-shaped number in SKILL.md would refuse every turn."""
-    body = (ROOT / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
+    body = (ROOT / "workspace" / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
     assert [line for line in body.splitlines() if matches(PII, line)] == []
 
 

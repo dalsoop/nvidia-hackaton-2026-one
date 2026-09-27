@@ -163,7 +163,7 @@ def test_openclaw_skill_and_proxy_name_the_served_tools():
     import re
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    skill = (root / "nemoclaw" / "cualign-planner" / "SKILL.md").read_text(encoding="utf-8")
+    skill = (root / "workspace" / "skills" / "cualign-planner" / "SKILL.md").read_text(encoding="utf-8")
     assert set(re.findall(r"`(cualign_[a-z_]+)`", skill)) == TOOLS
     doc = (root / "docs" / "nemoclaw.md").read_text(encoding="utf-8")
     assert set(re.findall(r"--deny-tool (cualign_[a-z_]+)", doc)) == {"cualign_approve_plan", "cualign_export_stl"}
