@@ -1,7 +1,7 @@
 // cuAlign web UI — patient → scan upload → input check → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const $ = (id) => document.getElementById(id);
@@ -47,8 +47,11 @@ const labelRenderer = new CSS2DRenderer({ element: $("labels") });
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
 camera.up.set(0, 1, 0);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
+// Trackball, not orbit: the views set camera.up to +y or -z, and OrbitControls fixes its pole axis once at
+// construction, so after a view change it blocked near the poles and turned the wrong way (#90).
+const controls = new TrackballControls(camera, canvas);
+controls.rotateSpeed = 3.5; controls.zoomSpeed = 1.2; controls.panSpeed = 0.6;
+controls.dynamicDampingFactor = 0.18;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
@@ -62,6 +65,7 @@ function resize() {
   labelRenderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  controls.handleResize();
 }
 new ResizeObserver(resize).observe($("canvasWrap"));
 
@@ -131,7 +135,6 @@ function buildTeeth(mesh) {
     group.add(gum);
   }
   state.archOrder = (mesh.arch_order ?? mesh.ids ?? []).map(String);
-  $("archLabel").textContent = `${mesh.arch === "upper" ? "상악" : mesh.arch ?? "?"} · 치아 ${Object.keys(mesh.teeth).length}개 · 교합면에서 본 모습`;
   setView("occlusal");
 }
 
@@ -160,8 +163,6 @@ function setView(kind) {
   }
   controls.target.copy(c);
   controls.update();
-  const label = $("archLabel").textContent.replace(/[^·]+에서 본 모습$/, ` ${VIEWS[kind]}에서 본 모습`);
-  $("archLabel").textContent = label;
 }
 
 // ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
@@ -236,7 +237,7 @@ function applyStage(k) {
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
     else m.material.color.copy(IVORY).lerp(HEAT, hasPlan ? Math.min(1, moved / maxMove) * 0.75 : 0);
-    m.material.emissive.setHex(state.selected.has(id) ? 0x2f4a00 : 0x000000);
+    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   }
   placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
@@ -289,7 +290,7 @@ function toothAt(e) {
   return raycaster.intersectObjects(group.children.filter((o) => o.isMesh && o.visible && !o.userData.gum))[0]?.object.userData.id ?? null;
 }
 function renderSelection() {
-  for (const [id, m] of Object.entries(state.teeth)) m.material.emissive.setHex(state.selected.has(id) ? 0x2f4a00 : 0x000000);
+  for (const [id, m] of Object.entries(state.teeth)) m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   const box = $("selChips");
   box.innerHTML = "";
   box.hidden = !state.selected.size;
@@ -802,6 +803,7 @@ async function activateCase(caseId, { greet = true } = {}) {
 function resetPlanPanel() {
   stopPlay();
   state.plan = null;
+  document.body.classList.remove("has-plan");
   clearLabels(); applyStage(0);
   $("planSelect").innerHTML = '<option value="">계획 선택…</option>';
   for (const id of ["rPlan", "rParent", "rReview", "rApproval", "rStrategy", "rStages", "rMonths", "rViol"]) $(id).textContent = "—";
@@ -858,6 +860,7 @@ async function loadPlan(planId) {
     slider.max = plan.stages.length;
     slider.disabled = false;
     buildIprLabels(); applyStage(0); renderResult(plan); renderStageMarks();
+    document.body.classList.add("has-plan");
     $("planSelect").value = planId;
     $("viewCanvas").dataset.planId = planId;
     $("resultCard").dataset.planId = planId;
@@ -922,10 +925,22 @@ function toolKo(name) {
   return TOOL_KO[n] ?? n;
 }
 
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function renderMd(text) {
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const out = [];
+  for (const block of (text ?? "").split(/\n{2,}/)) {
+    const lines = block.split("\n").filter((l) => l.trim() !== "");
+    if (!lines.length) continue;
+    if (lines.every((l) => /^\s*[-*•]\s+/.test(l))) out.push("<ul>" + lines.map((l) => "<li>" + inline(l.replace(/^\s*[-*•]\s+/, "")) + "</li>").join("") + "</ul>");
+    else out.push("<p>" + lines.map(inline).join("<br>") + "</p>");
+  }
+  return out.join("");
+}
 function addMsg(role, text = "") {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
-  div.textContent = text;
+  if (role === "assistant") div.innerHTML = renderMd(text); else div.textContent = text;
   $("transcript").appendChild(div);
   $("transcript").scrollTop = $("transcript").scrollHeight;
   return div;
@@ -1019,7 +1034,7 @@ function addQuestion(q) {
   div.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b || state.streaming || state.loading) return;
-    if (b.dataset.fill) { $("chatInput").value = b.dataset.fill; $("chatInput").focus(); return; }
+    if (b.dataset.fill) { $("chatInput").value = b.dataset.fill; autosize(); $("chatInput").focus(); return; }
     const picked = document.createElement("span");
     picked.className = "picked"; picked.textContent = b.textContent;
     div.querySelector(".opts").replaceWith(picked);
@@ -1075,7 +1090,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
   state.streaming = true; updateActions();
   $("retryBar").hidden = true;
   $("planNotice").textContent = state.plan ? "재계획 중 — 현재 3D는 이전 계획입니다." : "계획 생성 중";
-  $("chatInput").value = "";
+  $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
   state.lastRequest = { text, constraints };
@@ -1095,7 +1110,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
       const ch = obj.choices?.[0], delta = ch?.delta?.content ?? ch?.message?.content ?? obj.value ?? "";
-      if (typeof delta === "string") { answer += delta; bubble.textContent = answer; }
+      if (typeof delta === "string") { answer += delta; bubble.innerHTML = renderMd(answer); }
     }
   };
   try {
@@ -1175,6 +1190,13 @@ function togglePlay() {
 
 // ------------------------------------------------------------------ wiring
 $("chatForm").addEventListener("submit", (e) => { e.preventDefault(); send($("chatInput").value); });
+function autosize() {
+  const ta = $("chatInput");
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, innerHeight * 0.4) + "px";
+}
+$("chatInput").addEventListener("input", autosize);
+$("homeBtn").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
 $("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) { $("plusMenu").open = false; send(e.target.textContent); } });
 $("resendBtn").addEventListener("click", () => {

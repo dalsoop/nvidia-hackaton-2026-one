@@ -19,10 +19,10 @@
 </head>
 <body class="start">
   <header class="topbar">
-    <div class="brand">
+    <button id="homeBtn" class="brand" type="button" title="처음 화면으로">
       <span class="logo">cu<b>Align</b></span>
       <span class="tagline">투명교정 에이전트</span>
-    </div>
+    </button>
   </header>
 
   <!-- 내 스캔: 환자 → 스캔 업로드 → 입력 확인 → 계획. 샘플 케이스는 작업 화면의 시작 상태에서 고른다 (#90) -->
@@ -133,7 +133,7 @@
             </div>
           </div>
         </details>
-        <textarea id="chatInput" rows="2" placeholder="처방과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
+        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
         <button id="sendBtn" type="submit" class="btn primary">전송</button>
       </form>
     </section>
@@ -159,7 +159,6 @@
         </div>
         <div id="labels" class="labels"></div>
         <div class="view-head">
-          <span id="archLabel" class="arch">상악 · 교합면에서 본 모습</span>
           <span class="view-bar">
             <span class="view-btns">
               <button class="btn ghost small" data-view="occlusal" title="교합면(위에서)">교합면</button>

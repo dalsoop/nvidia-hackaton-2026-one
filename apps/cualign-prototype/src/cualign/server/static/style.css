@@ -40,7 +40,8 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   height: 48px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel);
 }
-.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 12px; font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.brand:hover .tagline { color: var(--text); }
 .logo { font-size: 20px; font-weight: 700; }
 .logo b { color: var(--green); }
 .tagline { color: var(--muted); font-size: 12px; }
@@ -89,7 +90,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .transcript { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 240px; }
 .msg { max-width: 92%; padding: 8px 12px; border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; }
 .msg.user { align-self: flex-end; background: var(--hover); border: 1px solid var(--line); }
-.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); white-space: normal; }
+.msg.assistant p { margin: 0; }
+.msg.assistant p + p, .msg.assistant p + ul, .msg.assistant ul + p { margin-top: 8px; }
+.msg.assistant ul { margin: 0; padding-left: 18px; }
+.msg.assistant li + li { margin-top: 2px; }
 .msg.error { align-self: flex-start; background: var(--red-surface); border: 1px solid var(--line); border-left: 3px solid var(--red); color: var(--red-text); }
 .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: none; }
 .msg .cursor { display: inline-block; width: 7px; height: 1em; background: var(--green); vertical-align: text-bottom; animation: blink 1s steps(2) infinite; margin-left: 2px; }
@@ -138,7 +143,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 12px; }
 .decision span { flex: 1; min-width: 180px; }
 .decision.done { border-left-color: var(--line-strong); color: var(--muted); }
-.composer textarea { flex: 1; }
+.composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: auto; line-height: 1.5; }
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
 .trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -181,7 +186,6 @@ body.resizing { cursor: col-resize; user-select: none; }
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 .view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
-.view-head .arch { color: var(--muted); font-size: 12px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: var(--radius); }
 .view-head .view-btns { display: flex; gap: 4px; pointer-events: auto; }
 /* floating toolbar over the 3D (#90): views | tools | decision, one place like a CAD viewport */
 .view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; }
@@ -235,6 +239,8 @@ body.focus3d .chat, body.focus3d .splitter { display: none; }
 .stage-label { min-width: 190px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- result ---------- */
+/* the stage bar and the result panel appear with the first plan (#90) */
+body:not(.has-plan) .stage-bar, body:not(.has-plan) .result { display: none; }
 .result { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; max-height: 40vh; overflow-y: auto; }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .plan-pick { display: flex; align-items: center; gap: 8px; }
