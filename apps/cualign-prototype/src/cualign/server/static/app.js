@@ -9,6 +9,7 @@ const $ = (id) => document.getElementById(id);
 // teeth are ivory, movement is a heat tint, collisions red, limit breaches amber, locked teeth blue.
 const IVORY = new THREE.Color(0xe9e3d6), HEAT = new THREE.Color(0x76b900);
 const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.error, warning, locked
+const GHOST_GREY = 0xb3b3b3;   // colors.text-mute, the legend's dashed 「발치」 outline
 
 // ------------------------------------------------------------------ state
 const state = {
@@ -38,6 +39,9 @@ const state = {
   overlay: false,        // 전후 겹쳐 보기: the untreated arch drawn as a white ghost (#90)
   violLabels: [],        // CSS2DObject collision labels of the stage on screen
   numLabels: [],         // CSS2DObject tooth numbers shown during the input check
+  planRows: {},          // plan_id -> /api/plans row of the case on screen (the decision bar names plans by these)
+  planRowsCase: null,
+  newPlans: 0,           // plans added by the last refreshPlans: more than one means the turn compared strategies
 };
 
 // ------------------------------------------------------------------ three.js
@@ -201,11 +205,15 @@ function applyStage(k) {
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
     const gone = hasPlan && removed.has(id);
     m.visible = !gone || k === 0;
-    m.material.opacity = gone ? 0.25 : 1;
+    // extracted teeth at stage 0: a wireframe ghost like the legend's dashed swatch; materials are per tooth and
+    // reused across plans, so every other tooth gets its solid look back
+    m.material.opacity = gone ? 0.6 : 1;
+    m.material.wireframe = gone;
     const moved = d ? Math.hypot(...d) : 0;
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
-    if (bad[id]?.has("collision")) m.material.color.setHex(RED);
+    if (gone) m.material.color.setHex(GHOST_GREY);
+    else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
     else m.material.color.copy(IVORY).lerp(HEAT, hasPlan ? Math.min(1, moved / maxMove) * 0.75 : 0);
@@ -324,23 +332,32 @@ function addDecision(prevId, newId) {
   bar.innerHTML = `<span></span><button class="btn primary small" type="button" data-act="keep">이 안 유지</button>
     <button class="btn ghost small" type="button" data-act="revert">이전 안으로 되돌리기</button>`;
   const say = (t) => { bar.querySelector("span").textContent = t; };
-  say(`새 계획 ${newId.slice(0, 9)} · 이전 계획 ${prevId.slice(0, 9)}`);
+  // the dentist reads strategy and stages; the ids stay in the tooltip (DESIGN.md: no plan ids on screen)
+  const newText = planWords(state.plan?.plan_id === newId ? { strategy: state.plan.strategy, n_stages: state.plan.info?.n_stages } : state.planRows[newId]);
+  const prevText = planWords(state.planRows[prevId]);
+  bar.title = `새 계획 ${newId} · 이전 계획 ${prevId}`;
+  say(`새 계획(${newText}) · 이전 계획(${prevText})`);
   bar.addEventListener("click", async (e) => {
     const act = e.target.dataset?.act;
     if (!act || state.streaming || state.loading) return;
     if (act === "revert") {
       try {
         await loadPlan(prevId);
-        say(`이전 계획 ${prevId.slice(0, 9)}로 되돌렸습니다. 다음 요청은 이 계획에서 이어집니다.`);
+        say(`이전 계획(${prevText})으로 되돌렸습니다. 다음 요청은 이 계획에서 이어집니다.`);
         // the model hears about it too, so the next revision starts from the plan on screen
         state.messages.push({ role: "user", content: `[화면 조작] 새 계획을 버리고 이전 계획(${prevId})으로 되돌렸습니다. 다음 요청은 이 계획을 기준으로 해 주세요.` });
       } catch (err) { addMsg("error", "되돌리기 실패: " + err.message); return; }
-    } else say(`새 계획 ${newId.slice(0, 9)}를 유지합니다.`);
+    } else say(`새 계획(${newText})을 유지합니다.`);
     bar.querySelectorAll("button").forEach((b) => b.remove());
     bar.classList.add("done");
   });
   $("transcript").appendChild(bar);
   $("transcript").scrollTop = $("transcript").scrollHeight;
+}
+
+// 「발치 20단계」: a plan in the dentist's words, from a /api/plans row or the plan on screen
+function planWords(p) {
+  return p ? `${STRATEGY_KO[p.strategy] ?? p.strategy} ${p.n_stages}단계` : "—";
 }
 
 function toggle(btn, cls, on) {
@@ -350,7 +367,8 @@ function toggle(btn, cls, on) {
 $("focusBtn").addEventListener("click", (e) => {
   const on = !document.body.classList.contains("focus3d");
   toggle(e.currentTarget, "focus3d", on);
-  e.currentTarget.textContent = on ? "대화 보기" : "3D 크게";
+  e.currentTarget.textContent = on ? "대화" : "크게";
+  e.currentTarget.title = on ? "대화 패널을 다시 엽니다" : "대화 패널을 접고 3D를 크게 봅니다";
 });
 $("overlayBtn").addEventListener("click", (e) => {
   state.overlay = !state.overlay;
@@ -402,10 +420,12 @@ function renderCondSummary() {
   if ($("cCap").value) parts.push("상한 " + $("cCap").value + "단계");
   parts.push($("cOrder").options[$("cOrder").selectedIndex]?.textContent ?? "");
   const text = parts.join(" · "), el = $("condSummary");
-  if (el.textContent !== "—" && el.textContent !== text) {
+  if (el.title && el.title !== text) {
     $("condBox").classList.remove("changed"); void $("condBox").offsetWidth; $("condBox").classList.add("changed");
   }
-  el.textContent = text;
+  // folded over the 3D: one small chip per condition; the full line stays in the tooltip
+  el.title = text;
+  el.replaceChildren(...text.split(" · ").map((t) => { const c = document.createElement("span"); c.className = "tag"; c.textContent = t; return c; }));
 }
 function constraintsDirty() {
   if (!state.plan) return false;
@@ -712,8 +732,14 @@ function renderCaseCard(caseId, info) {
   const s = sampleOf(caseId), thumb = $("caseThumb");
   thumb.hidden = !s; $("caseKind").hidden = !s;
   if (s) thumb.src = `samples/${encodeURIComponent(caseId)}.png`;
-  $("caseName").textContent = s ? s.title.split(" — ")[0] : caseTitle(caseId, info.crowding_mm);
-  $("caseSub").textContent = (s ? "처방 · " + s.prescription.replace(/\s*\(FDI[^)]*\)/, "") + " · " : "") + `총생 ${info.crowding_mm} mm`;
+  $("caseName").textContent = s ? s.title : caseTitle(caseId, info.crowding_mm);
+  $("caseSub").textContent = s ? s.summary : `총생 ${info.crowding_mm} mm`;
+  $("caseSub").title = s ? "처방 · " + s.prescription : "";
+  $("caseBadges").replaceChildren(...(s ? badgeTags(s.badges) : []));
+}
+// the sample's short facts (총생 7.9 mm, 발치 …) as small outlined chips
+function badgeTags(badges) {
+  return (badges ?? []).map((t) => { const c = document.createElement("span"); c.className = "tag"; c.textContent = t; return c; });
 }
 function caseTitle(caseId, crowding) {
   const sc = state.patient?.scans?.find((x) => x.case_id === caseId);
@@ -732,7 +758,7 @@ async function loadCases() {
     const b = document.createElement("button");
     b.className = "case-card";
     b.dataset.id = c.case_id;
-    b.innerHTML = `<span class="cid"></span><span class="sev"></span><span class="rx"></span><span class="meta"></span>`;
+    b.innerHTML = `<span class="cid"></span><span class="rx"></span><span class="badges"></span><span class="meta"></span>`;
     if (c.kind === "sample") {
       const img = document.createElement("img");
       img.className = "thumb";
@@ -740,8 +766,10 @@ async function loadCases() {
       img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
       b.prepend(img);
       // the card shows the finding and the prescription only; the case number and tooth numbering come after it opens (#90)
-      b.querySelector(".cid").textContent = c.title.split(" — ")[0];
-      b.querySelector(".rx").textContent = "처방 · " + c.prescription.replace(/\s*\(FDI[^)]*\)/, "");
+      b.querySelector(".cid").textContent = c.title;
+      b.querySelector(".rx").textContent = c.summary;
+      b.querySelector(".badges").replaceChildren(...badgeTags(c.badges));
+      b.title = "처방 · " + c.prescription;
       b.querySelector(".meta").textContent = c.available ? "" : "샘플 파일이 설치되지 않았습니다";
       b.disabled = !c.available;
     } else {
@@ -767,13 +795,22 @@ function sampleOf(caseId) {
 // go on; once a plan exists, revisions instead.
 function renderChips() {
   const sample = sampleOf(state.meshCase);
-  const texts = state.plan
-    ? ["13번은 움직이지 말고 다시 짜줘.", "IPR은 앞니(7~10번) 빼고 해줘.", "이 처방 안에서 확장안과 IPR안을 비교해줘."]
-    : [sample?.request ?? "발치 없이 계획을 짜줘.", "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.", "이 처방 안에서 확장안과 IPR안을 비교해줘."];
+  // short labels on the chip; the full sentence is what gets sent
+  const chips = state.plan
+    ? [{ label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
+       { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." },
+       { label: "전략 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }]
+    : [sample ? { label: "처방대로 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
+       { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
+       { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
   const box = $("chips");
-  if ([...box.children].map((c) => c.textContent).join("|") === texts.join("|")) return;
+  if ([...box.children].map((c) => c.dataset.message).join("|") === chips.map((c) => c.message).join("|")) return;
   box.innerHTML = "";
-  for (const t of texts) { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = t; box.appendChild(b); }
+  for (const c of chips) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = c.label; b.dataset.message = c.message; b.title = c.message;
+    box.appendChild(b);
+  }
 }
 
 async function activateCase(caseId, { greet = true } = {}) {
@@ -806,7 +843,8 @@ async function activateCase(caseId, { greet = true } = {}) {
         ? `의사 처방(${sample.prescription})을 계획 조건에 넣어 두었습니다.` + (sample.note ? ` ${sample.note}` : "")
         : `이 케이스에서 전에 바꾼 계획 조건이 남아 있습니다. 처방(${sample.prescription})과 다르니 조건 칸을 확인해 주세요.`)
       : `계획을 시작하려면 제약을 알려 주세요.`);
-    addMsg("assistant", text);
+    // no bubble: the case card on the panel top already says it; only a changed prescription is worth a line
+    if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 — 3D 왼쪽 위 조건을 확인해 주세요.");
     const q = sample
       ? { question: "이 처방으로 계획할까요? 기간 상한이나 먼저 풀 부위가 있으면 함께 정해 주세요.",
           options: [{ label: "처방대로 계획", message: sample.request },
@@ -865,10 +903,16 @@ async function refreshPlans(selectId) {
   if (caseId !== state.meshCase || generation !== state.selectionVersion) return;
   const sel = $("planSelect");
   sel.innerHTML = '<option value="">계획 선택…</option>';
+  // how many plans are new since the last refresh of this case: a turn that made several (a comparison) gets a plan card
+  const known = state.planRowsCase === caseId ? state.planRows : null;
+  state.newPlans = known ? plans.filter((p) => !(p.plan_id in known)).length : 0;
+  state.planRows = Object.fromEntries(plans.map((p) => [p.plan_id, p]));
+  state.planRowsCase = caseId;
   for (const p of plans) {
     const o = document.createElement("option");
     o.value = p.plan_id;
-    o.textContent = p.plan_id.slice(0,9) + " · " + p.strategy + " · " + p.n_stages + "장 · " + (p.passed ? "통과" : "위반");
+    o.textContent = `${STRATEGY_KO[p.strategy] ?? p.strategy} · ${p.n_stages}단계 · ${p.passed ? "통과" : "위반"}`;
+    o.title = p.plan_id;
     sel.appendChild(o);
   }
   const id = selectId ?? state.plan?.plan_id ?? preferredPlanId(plans);
@@ -1098,14 +1142,15 @@ async function askFollowup(caseId) {
 }
 // The plan a turn produced, as a card in the transcript; 열기 shows it in the 3D and the result panel.
 function addPlanCard(plan) {
-  if (!plan?.plan_id) return;
+  if (!plan?.plan_id || state.newPlans < 2) return;   // a single plan turn: the 3D and the decision bar say enough
   const viol = plan.violations ?? [];
   const review = ({ not_requested: "검토 미실행", running: "검토 중", passed: "검토 완료", failed: "검토 실패", skipped: "검토 생략(규칙 기반)" })[plan.review?.status] ?? "";
   const div = document.createElement("div");
   div.className = "plan-card";
   div.innerHTML = '<div class="t"><b></b><small></small></div><button class="btn ghost small" type="button">열기</button>';
   div.querySelector("b").textContent = `${STRATEGY_KO[plan.strategy] ?? plan.strategy ?? "계획"} · ${plan.info?.n_stages ?? "?"}단계 · 약 ${plan.info?.months ?? "?"}개월 · ${viol.length ? "위반 " + viol.length + "건" : "규칙 통과"}`;
-  div.querySelector("small").textContent = `${plan.plan_id.slice(0, 9)} · ${plan.parent_plan_id ? "이전 안 " + plan.parent_plan_id.slice(0, 9) : "최초 계획"} · ${review}`;
+  div.querySelector("small").textContent = `비교한 ${state.newPlans}개 중 선택 · ${plan.parent_plan_id ? "이전 안에서 수정" : "최초 계획"} · ${review}`;
+  div.title = plan.plan_id + (plan.parent_plan_id ? " ← " + plan.parent_plan_id : "");
   div.querySelector("button").addEventListener("click", () => {
     loadPlan(plan.plan_id).then(() => document.querySelector(".result").scrollIntoView({ behavior: "smooth" }))
       .catch((err) => addMsg("error", err.message));
@@ -1244,7 +1289,7 @@ function autosize() {
 $("chatInput").addEventListener("input", autosize);
 $("homeBtn").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
-$("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) send(e.target.textContent); });
+$("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c) send(c.dataset.message); });
 $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
@@ -1348,10 +1393,12 @@ function renderCasePop() {
   for (const c of state.cases.filter((x) => x.kind === "sample" && x.available)) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "item" + (c.case_id === state.activeCase ? " current" : ""); b.dataset.id = c.case_id;
-    b.innerHTML = '<img alt=""><span><b></b><small></small></span>';
+    b.innerHTML = '<img alt=""><span><b></b><small></small><span class="badges"></span></span>';
     b.querySelector("img").src = `samples/${encodeURIComponent(c.case_id)}.png`;
-    b.querySelector("b").textContent = c.title.split(" — ")[0];
-    b.querySelector("small").textContent = c.prescription.replace(/\s*\(FDI[^)]*\)/, "");
+    b.querySelector("b").textContent = c.title;
+    b.querySelector("small").textContent = c.summary;
+    b.querySelector(".badges").replaceChildren(...badgeTags(c.badges));
+    b.title = "처방 · " + c.prescription;
     wrap.appendChild(b);
   }
 }
@@ -1401,7 +1448,7 @@ $("reviewBtn").addEventListener("click", reviewCurrent);
 $("constraints").addEventListener("input", () => { renderCondSummary(); updateActions(); });
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
-for (const b of document.querySelectorAll(".view-btns button")) b.addEventListener("click", () => setView(b.dataset.view));
+for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
 
 (async function init() {
   resize();

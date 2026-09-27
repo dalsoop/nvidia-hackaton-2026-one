@@ -70,26 +70,13 @@
       </div>
       <div id="caseCard" class="case-head">
         <img id="caseThumb" class="thumb" alt="" hidden />
-        <div class="case-text"><span class="case-line"><b id="caseName">—</b><span id="caseKind" class="tag" hidden>샘플</span></span><span id="caseSub"></span></div>
+        <div class="case-text"><span class="case-line"><b id="caseName">—</b><span id="caseKind" class="tag" hidden>샘플</span></span><span id="caseSub"></span><span id="caseBadges" class="badges"></span></div>
         <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">바꾸기</button>
         <div id="casePop" class="case-pop" hidden>
           <div id="popCases"></div>
           <button id="popPatients" class="link-btn" type="button">내 스캔 올리기 →</button>
         </div>
       </div>
-      <details id="condBox" class="cond">
-        <summary>조건 · <span id="condSummary">—</span></summary>
-      <fieldset id="constraints" class="constraints">
-        <legend>대화로도 바꿀 수 있습니다</legend>
-        <label><input id="cExtraction" type="checkbox"> 발치 허용</label>
-        <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
-        <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
-        <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
-        <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
-        <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
-        <button id="fallbackBtn" class="btn ghost small cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 규칙 기반 계산 (모델 없이)</button>
-      </fieldset>
-      </details>
       <div id="transcript" class="transcript" aria-live="polite"></div>
       <div id="retryBar" class="retry-bar" hidden>
         <button id="resendBtn" class="btn primary small" type="button">다시 보내기</button>
@@ -122,6 +109,20 @@
         </div>
         <div id="labels" class="labels"></div>
         <div class="view-head">
+          <!-- 조건: 3D 왼쪽 위에 칩으로 접혀 있고, 펼치면 폼이 3D 위로 내려온다 (#90) -->
+          <details id="condBox" class="cond">
+            <summary>조건 <span id="condSummary" class="cond-chips">—</span></summary>
+            <fieldset id="constraints" class="constraints">
+              <legend>대화로도 바꿀 수 있습니다</legend>
+              <label><input id="cExtraction" type="checkbox"> 발치 허용</label>
+              <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
+              <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
+              <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
+              <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
+              <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
+              <button id="fallbackBtn" class="btn ghost small cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 규칙 기반 계산 (모델 없이)</button>
+            </fieldset>
+          </details>
           <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
           <div id="checkBar" class="check-bar" hidden>
             <span id="checkFacts" class="facts"></span>
@@ -130,14 +131,6 @@
             <button id="otherScan" class="btn ghost small" type="button">다른 스캔</button>
           </div>
           <span class="view-bar">
-            <span class="view-btns">
-              <button class="btn ghost small" data-view="occlusal" title="교합면(위에서)">교합면</button>
-              <button class="btn ghost small" data-view="frontal" title="정면">정면</button>
-            </span>
-            <span class="view-tools">
-              <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="치료 전 치열을 흰 윤곽으로 겹쳐 봅니다">전후 겹쳐 보기</button>
-              <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다">3D 크게</button>
-            </span>
             <span class="view-actions export">
               <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다">내보내기</button>
               <div id="exportPop" class="export-pop" hidden>
@@ -149,6 +142,19 @@
               </div>
               <a id="stlLink" hidden download></a>
             </span>
+          </span>
+        </div>
+        <!-- 오른쪽 세로 도구줄: 시점 여섯 개, 그 아래 겹쳐 보기·크게 보기 (#90) -->
+        <div class="view-rail">
+          <button class="btn ghost small" type="button" data-view="occlusal" title="교합면(위에서)">교합</button>
+          <button class="btn ghost small" type="button" data-view="frontal" title="정면">정면</button>
+          <button class="btn ghost small" type="button" data-view="left" title="환자 왼쪽">좌</button>
+          <button class="btn ghost small" type="button" data-view="right" title="환자 오른쪽">우</button>
+          <button class="btn ghost small" type="button" data-view="back" title="뒤쪽(입천장 쪽)">뒤</button>
+          <button class="btn ghost small" type="button" data-view="base" title="바닥(스캔 밑면)">바닥</button>
+          <span class="rail-tools">
+            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="전후 겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다">겹쳐</button>
+            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다">크게</button>
           </span>
         </div>
         <!-- view cube: click a face to look from that side (#90) -->

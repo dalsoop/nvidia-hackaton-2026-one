@@ -131,9 +131,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 .sel-chips button { font: inherit; font-size: 12px; color: #000000; background: var(--green); border: 0; border-radius: var(--radius); padding: 2px 6px; cursor: pointer; }
 .sel-chips button.clear { color: var(--muted); background: transparent; border: 1px solid var(--line-strong); }
 /* activity: only the step in progress (or the last one) shows unless the dentist opens the record */
-.decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 12px; }
+.decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; }
 .decision span { flex: 1; min-width: 180px; }
-.decision.done { border-left-color: var(--line-strong); color: var(--muted); }
+.decision.done { color: var(--muted); }
 .composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
@@ -176,12 +176,14 @@ body.resizing { cursor: col-resize; user-select: none; }
 
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
-.view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none; }
-.view-head .view-btns { display: flex; gap: 4px; pointer-events: auto; }
-/* floating toolbar over the 3D (#90): views | tools | decision, one place like a CAD viewport */
-.view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; }
-.view-tools, .view-actions { display: flex; gap: 4px; }
-.view-actions { padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none; z-index: 4; }
+/* floating toolbar over the 3D (#90): only the decision (내보내기) at the top right; views and tools are on the rail */
+.view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; margin-left: auto; }
+.view-actions { display: flex; gap: 4px; }
+/* vertical rail at the right edge of the 3D (Dentone style): six views, then 겹쳐 · 크게 (#90) */
+.view-rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 4px; }
+.view-rail .btn { width: 36px; height: 36px; padding: 0; font-size: 11px; }
+.rail-tools { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .export { position: relative; }
 .export-pop { position: absolute; right: 0; top: calc(100% + 6px); width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
 .export-pop p { margin: 0 0 8px; }
@@ -209,7 +211,6 @@ body.focus3d .chat, body.focus3d .splitter { display: none; }
 .case-card.current { border: 2px solid var(--green); padding: 15px; }
 .case-card.current .cid::after { content: " · 현재"; color: var(--muted); font-weight: 400; font-size: 12px; }
 .case-card .cid { font-weight: 700; font-size: 16px; margin-top: 4px; }
-.case-card .sev { color: var(--muted); font-size: 12px; }
 .case-card .meta { color: var(--faint); font-size: 12px; }
 .gate-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
 .gate-panel { position: relative; }
@@ -218,6 +219,8 @@ body.focus3d .chat, body.focus3d .splitter { display: none; }
 .sample-cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 .sample-cards .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
 .case-card .rx { font-size: 12px; color: var(--text); }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.badges:empty { display: none; }
 .case-card > span:empty { display: none; }
 .case-card:disabled { cursor: not-allowed; color: var(--faint); }
 .case-card:disabled::before { background: var(--line-strong); }
@@ -248,7 +251,7 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .result, body:not(.has-plan)
 .badge.ask { background: var(--hover); color: var(--text); border-color: var(--line-strong); }
 
 /* the case on the panel top (the design agent's artifact card) and the conditions folded under it (#90) */
-.case-head { position: relative; display: flex; align-items: center; gap: 12px; margin: 12px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.case-head { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--line); }
 .case-pop { position: absolute; right: 8px; top: calc(100% + 6px); width: 320px; max-width: calc(100% - 16px); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px; z-index: 6; display: flex; flex-direction: column; gap: 6px; }
 .case-pop[hidden] { display: none; }
 .case-pop .item { font: inherit; text-align: left; display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: none; border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; }
@@ -264,15 +267,17 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .result, body:not(.has-plan)
 .case-text b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag { flex: none; font-size: 11px; line-height: 1.4; color: var(--green); border: 1px solid var(--green); border-radius: var(--radius); padding: 0 4px; }
 .case-text span { font-size: 12px; color: var(--muted); }
-.cond { margin: 8px 16px 0; border: 1px solid var(--line); border-radius: var(--radius); }
-.cond > summary { list-style: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 8px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cond { position: relative; pointer-events: auto; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.cond > summary { list-style: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 6px 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.cond-chips { display: contents; }
+.cond[open] > .constraints { position: absolute; left: -1px; top: calc(100% + 4px); width: 360px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); z-index: 6; }
 .cond > summary::-webkit-details-marker { display: none; }
 .cond > summary::before { content: "\25B8"; margin-right: 6px; }
 .cond[open] > summary::before { content: "\25BE"; }
 .cond > summary:hover { color: var(--text); }
 @keyframes flash { from { background: rgba(118, 185, 0, 0.3); } to { background: transparent; } }
 .cond.changed > summary { animation: flash 1.2s ease-out; }
-.constraints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; border:0; border-top:1px solid var(--line); margin:0; padding: 8px 12px 12px; }
+.constraints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; border:0; margin:0; padding: 8px 12px 12px; }
 .constraints legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .constraints label { display:flex; flex-direction:column; gap:4px; font-size:12px; color: var(--muted); }
 .constraints input, .constraints select { min-width:0; color:var(--text); background:var(--panel-2); border:1px solid var(--line-strong); padding:6px 8px; border-radius:var(--radius); font: inherit; }
@@ -334,7 +339,7 @@ button:disabled { cursor:not-allowed; }
 .check-bar .facts > span:first-child { color: var(--text); font-weight: 700; }
 .check-bar .facts .warn { color: var(--amber-text); }
 .check-bar .facts .bad { color: var(--red-text); }
-body.checking .view-tools, body.checking .view-actions { display: none; }
+body.checking .rail-tools, body.checking .view-actions { display: none; }
 .num-label { font: 700 11px/1 var(--font); color: var(--muted); background: rgba(0,0,0,0.6); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 
 /* ---------- start state (#90): the work screen before a case is open ---------- */
@@ -346,7 +351,7 @@ body.checking .view-tools, body.checking .view-actions { display: none; }
 .link-btn:hover, .link-btn:focus-visible { color: var(--green); outline: none; }
 .start-pane { display: none; position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 24px; background: var(--bg); }
 .start-body { width: min(840px, 100%); margin: auto; }
-.start-pane h2 { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
+.start-pane h2 { margin: 0 0 16px; font-size: 20px; font-weight: 700; text-align: center; }
 .start-pane .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
@@ -366,7 +371,7 @@ body:not(.start) .stage-bar, body:not(.start) .legend { animation: rise 0.35s ea
 }
 body.start .case-head, body.start .cond, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar, body.start .result,
-body.start .sel-chips { display: none; }
+body.start .sel-chips, body.start .view-rail { display: none; }
 body.start .intro { flex: 1; }
 body.start .composer textarea, body.start .composer button { opacity: 0.5; pointer-events: none; }   /* the panel is a chat; input waits for a case */
 body.start .chips { display: none; }
