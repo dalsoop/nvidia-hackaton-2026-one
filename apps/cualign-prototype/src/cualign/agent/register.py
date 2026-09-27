@@ -233,7 +233,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         if run:
             run.plan_ids.update(ids)
             run.target_ids.update(STORE.plans[pid]["target_id"] for pid in ids)
-        return {"case_id": cid, "constraints": constraints_json(constraints_for(cid)),
+        c = constraints_for(cid)   # plans carry the same constraints (golden set tool contract); the FDI line beside them
+        return {"case_id": cid, "constraints": c.model_dump(mode="json"), "conditions_ko": c.describe_ko(),
                 "plans": [summary(pid) for pid in ids]}
 
     async def _select_plan(inp: PlanIdInput) -> dict:
