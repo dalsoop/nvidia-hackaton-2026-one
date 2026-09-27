@@ -165,7 +165,7 @@ class PlanningLLM(FakeLLM):
 
     def reply(self, req):
         seen = json.dumps(req.get("messages", []), ensure_ascii=False)
-        plan = re.findall(r"plan_id\W+(p[0-9a-f]{32})", seen)
+        plan = re.findall(r"plan_id\W+(p[0-9a-f]+)", seen)
         target = re.findall(r"target_id\W+(t[0-9a-f]+)", seen)
         if "plan_selected" in seen:
             return super().reply(req)
@@ -185,7 +185,7 @@ class ComparingLLM(PlanningLLM):
 
     def reply(self, req):
         seen = json.dumps(req.get("messages", []), ensure_ascii=False)
-        plan = re.findall(r"plan_id\W+(p[0-9a-f]{32})", seen)
+        plan = re.findall(r"plan_id\W+(p[0-9a-f]+)", seen)
         if "plan_selected" in seen:
             return FakeLLM.reply(self, req)
         name, args = ("cualign__select_plan", {"plan_id": plan[0]}) if plan else ("cualign__compare_strategies", {})

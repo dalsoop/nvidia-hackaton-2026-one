@@ -24,8 +24,8 @@ MEMO_HEAD_RE = re.compile(r"검토\s*메모[ \t*_]*(?:[:：]|[ \t*_]*$)", re.M)
 MEMO_ANY_RE = re.compile(r"검토\s*메모")
 DISCLAIMER_RE = re.compile(r"(이 계획은 초안입니다\.?|검토 메모도 초안입니다\.?)?\s*최종 판단은 의사가 합니다\.?")
 REVIEW_FAIL_RE = re.compile(r"검토.{0,12}(실패|오류|생성하지 못|받지 못|없습니다)")
-# register.py ids are "p" + uuid4 hex; short numeric ids (p3) stay readable for hand-written traces and old logs
-PLAN_ID = r"p(?:[0-9a-f]{32}|\d+)"
+# store.py ids are "p" + 8 hex (#126); 32 hex (uuid4, before #126) and short numeric ids (p3) stay readable for old logs and hand-written traces
+PLAN_ID = r"p(?:[0-9a-f]{8}|[0-9a-f]{32}|\d+)"
 PLAN_ID_RE = re.compile(rf"\b({PLAN_ID})\b")
 SUCCESS_RE = re.compile(r"(위반\s*(?:[:：]|[은는이가])?\s*(없|0\s*건)|통과|문제\s*없|성공|모든\s*(규칙|조건)을?\s*만족)")
 # negated / failed forms of the words above ("통과하지 못", "통과가 아닙니다", "성공으로 표시하지 않") are not success claims
