@@ -120,7 +120,7 @@ def test_vendored_openclaw_templates_match_their_record():
     # The OpenClaw version and the sha256 of each copy are recorded once, in nemoclaw/openclaw-2026.7.1/README.md.
     rows = re.findall(r"^\| `(templates/[^`]+)` \| `[^`]+` \| `([0-9a-f]{64})` \|", (OPENCLAW / "README.md").read_text(encoding="utf-8"),
                       flags=re.M)
-    assert {path for path, _ in rows} == {"templates/HEARTBEAT.md", "templates/AGENTS.md"}
+    assert {path for path, _ in rows} == {"templates/HEARTBEAT.md", "templates/AGENTS.template.md"}
     for path, digest in rows:
         assert hashlib.sha256((OPENCLAW / path).read_bytes()).hexdigest() == digest, path
 
