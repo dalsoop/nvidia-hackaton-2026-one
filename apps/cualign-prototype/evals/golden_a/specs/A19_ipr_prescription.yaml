@@ -1,6 +1,7 @@
 id: A19
 title: 접촉면별 IPR 처방은 그 접촉면에 그 양만 반영된다
 status: prd
+case: mild
 sources:
   - "#57 cualign-prototype: IPR을 접촉면별 위치와 양으로 처방받는다 — 처방된 접촉면에 처방된 양만, 처방에 없는 접촉면은 위반"
   - "PRD §4 진단·처방을 수행하지 않는다"
