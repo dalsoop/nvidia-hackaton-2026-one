@@ -40,10 +40,11 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   height: 48px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel);
 }
-.brand { display: flex; align-items: center; gap: 12px; font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.brand { display: flex; align-items: center; gap: 12px; font: inherit; color: inherit; text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; }
 .brand:hover .tagline { color: var(--text); }
 .logo { height: 22px; width: auto; display: block; }
-.tagline { color: var(--muted); font-size: 12px; }
+.tagline { color: var(--muted); font-size: 12px; text-decoration: none; }   /* inside the #start anchor: no underline, muted as before */
+.brand:visited .tagline { color: var(--muted); }
 .tagline em { font-style: normal; color: var(--faint); }
 
 select, textarea {
@@ -311,38 +312,44 @@ button:disabled { cursor:not-allowed; }
 .gate-panel h2 { margin: 16px 0 8px; font-size: 14px; color: var(--muted); font-weight: 700; }
 .gate-panel .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .new-patient { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
-.new-patient h2 { width: 100%; }
 .new-patient label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .new-patient input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px 12px; min-width: 200px; }
 .new-patient .hint { width: 100%; }
 .new-patient .drop { width: 100%; margin-top: 0; }
 .cards .empty, .patient-list .empty, .scan-list .empty { color: var(--muted); font-size: 13px; }
-.patient-list { display: flex; flex-direction: column; gap: 8px; }
-.patient { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
-.patient.open { border-color: var(--line-strong); }
-.p-head { width: 100%; display: flex; align-items: baseline; gap: 12px; padding: 12px 16px; font: inherit; color: var(--text); background: none; border: 0; text-align: left; cursor: pointer; }
+/* patients and scans as separated rows, not boxed cards: weight and colour carry the hierarchy */
+.patient-list { display: flex; flex-direction: column; }
+.patient { border-top: 1px solid var(--line); }
+.patient.open { background: var(--panel-2); }
+.p-head { width: 100%; display: flex; align-items: baseline; gap: 12px; padding: 12px 8px; font: inherit; color: var(--text); background: none; border: 0; text-align: left; cursor: pointer; }
 .p-head::before { content: "\25B8"; color: var(--muted); }
 .patient.open .p-head::before { content: "\25BE"; }
 .p-head:hover .alias { color: var(--green); }
 .p-head .alias { font-weight: 700; }
 .p-head .pid { flex: 1; color: var(--muted); font-size: 12px; }
 .p-head .meta { color: var(--faint); font-size: 12px; }
-.p-body { padding: 0 16px 16px; }
+.p-body { padding: 0 8px 16px; }
 .p-body[hidden] { display: none; }
 .p-body .danger { margin-top: 8px; }
-.scan-list { display: flex; flex-direction: column; gap: 8px; }
-.scan-row { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.scan-list { display: flex; flex-direction: column; }
+.scan-row { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-top: 1px solid var(--line); }
 .scan-row .sid { font-weight: 700; min-width: 90px; }
 .scan-row .meta { color: var(--muted); font-size: 12px; flex: 1; }
-.drop { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--radius); cursor: pointer; text-align: center; }
-.drop:hover, .drop.over { border-color: var(--green); background: var(--panel-2); }
+/* the file box: a flat block that takes a drop; the outline appears only while files hover over it */
+.drop { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; padding: 16px; background: var(--panel-2); cursor: pointer; text-align: center; color: var(--text); }
+.drop b { font-size: 13px; }
+.drop:hover b { color: var(--green); }
+.drop.over { outline: 2px solid var(--green); outline-offset: -2px; }
 .drop span { font-size: 12px; }
+.drop .muted { color: var(--muted); }
+#pScansName:empty { display: none; }
 .btn.danger { color: var(--red-text); border-color: var(--red); }
 .scan-row .del { color: var(--muted); }
 /* input check over the 3D (#53): the facts in one line, then 이 스캔으로 계획 / 다른 스캔 */
-.check-bar { margin-right: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; pointer-events: auto; max-width: 100%; padding: 6px 8px 6px 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; }
+/* no box around it: a dark strip over the 3D; a blocked scan is told by its red title, not by a border */
+.check-bar { margin-right: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; pointer-events: auto; max-width: 100%; padding: 6px 8px 6px 12px; background: rgba(0,0,0,0.75); font-size: 13px; }
 .check-bar[hidden] { display: none; }
-.check-bar.fail { border-left: 3px solid var(--red); }
+.check-bar.fail .check-title { color: var(--red-text); }
 .check-bar .facts { color: var(--muted); }
 .check-bar .facts > span:first-child { color: var(--text); font-weight: 700; }
 .check-bar .facts .warn { color: var(--amber-text); }
@@ -374,23 +381,22 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .start-sub { margin: 12px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); }
 .cl-head { display: flex; align-items: center; gap: 12px; }
 .cl-head h1 { margin: 0; font-size: 22px; flex: 1; }
-.cl-table { border: 1px solid var(--line); border-radius: var(--radius); }
-.cl-row { display: grid; grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr; gap: 16px; padding: 10px 16px; font-size: 13px; align-items: center; text-align: left; }
-.cl-thead { font-size: 12px; color: var(--faint); background: var(--panel); border-bottom: 1px solid var(--line); }
+/* four columns (환자 · 상태 · 처방 · 최근 계획), rows split by lines, no box around the table */
+.cl-row { display: grid; grid-template-columns: 2fr 1.2fr 3fr 1.6fr; gap: 16px; padding: 10px 12px; font-size: 13px; align-items: center; text-align: left; }
+.cl-thead { font-size: 12px; color: var(--faint); border-bottom: 1px solid var(--line); }
 .case-row { width: 100%; font: inherit; color: var(--text); background: none; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
-.case-row:last-child { border-bottom: 0; }
 .case-row:hover { background: var(--hover); }
 .case-row.on { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--green); }
 .case-row .c-case b { display: block; font-size: 14px; }
 .case-row .c-case small { color: var(--faint); font-size: 12px; }
 .case-row .c-rx { color: var(--muted); font-size: 12px; word-break: keep-all; }
-.case-row .c-viol.bad { color: var(--red-text); }
+.case-row .c-plan { color: var(--muted); }
 /* the detail sits under the pressed card (full grid width) or row */
-.cl-detail { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; }
+.cl-detail { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; }
 .cl-detail[hidden] { display: none; }
 .cl-detail.in-cards { grid-column: 1 / -1; }
 #clRows .cl-detail { margin: 8px 12px 12px; }
-.cl-dbody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 4px 24px; align-items: start; }
+.cl-dbody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 4px 24px; align-items: stretch; }   /* both columns full height: #dOpen (margin-top: auto) sits at the bottom */
 .cl-dbody > div { display: flex; flex-direction: column; gap: 8px; }
 #dArch { width: 100%; max-width: 300px; }
 @media (max-width: 1200px) { .cl-dbody { grid-template-columns: 1fr; } }
@@ -399,6 +405,10 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .cl-detail p { margin: 0; font-size: 13px; }
 .cl-detail .cl-label { padding: 8px 0 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 .cl-facts { font-size: 13px; font-weight: 700; }
+.cl-chips { font-size: 12px; color: var(--muted); }
+.cl-reason { color: var(--muted); }
+.cl-reason:empty { display: none; }
+.cl-chips:empty, .cl-detail .cl-label[hidden], .cl-detail p[hidden] { display: none; }
 #dArch { width: 100%; height: auto; }
 #dArch circle { fill: var(--panel-2); stroke: var(--line-strong); }
 #dArch circle.extract { stroke: var(--red); stroke-width: 2; }
@@ -427,8 +437,8 @@ body.start .sel-chips, body.start .view-rail { display: none; }
 body.start .side, body.checking .side, body.start .side-splitter, body.checking .side-splitter { display: none; }
 body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0 0; }
 body.start .intro { flex: 1; }
-body.start .composer textarea, body.start .composer button { opacity: 0.5; pointer-events: none; }   /* the panel is a chat; input waits for a case */
-body.start .chips { display: none; }
+body.no-case .composer { display: none; }   /* the panel is a chat; the input appears with a case (lockComposer) */
+body.no-case .chips { display: none; }   /* the example chips wait for a case too */
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 body.start .splitter { pointer-events: none; }

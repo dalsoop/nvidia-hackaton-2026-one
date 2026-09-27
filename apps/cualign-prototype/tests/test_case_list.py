@@ -36,6 +36,7 @@ def test_fresh_store_lists_the_three_samples_as_plan_needed(client):
     assert row["kind"] == "sample" and row["status"] == "plan_needed" and row["status_ko"] == "계획 필요"
     assert row["plan"] is None and row["n_plans"] == 0 and row["patient"] is None and row["confirmed"] is None
     assert row["title"] == "심한 덧니, 발치 필요" and row["prescription"].startswith("제1소구치")
+    assert row["reason"].startswith("총생 7.9 mm")      # the 「이유」 line under 처방 (samples only)
     assert row["badges"] == ["총생 7.9 mm", "발치"] and row["unsupported"] == []
     assert row["n_teeth"] == 14                                     # 15 STL files minus gingiva.stl
 

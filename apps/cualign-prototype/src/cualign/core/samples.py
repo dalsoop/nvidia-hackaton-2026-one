@@ -34,6 +34,7 @@ class Sample:
     badges: tuple[str, ...] = () # short facts on the card: crowding, extraction or not, strategy
     constraints: dict = field(default_factory=dict)
     note: str = ""               # where the app's constraints differ from the prescription
+    reason: str = ""             # why this prescription, in arch-space terms: one sentence under 처방 on the detail card
     ipr_total_mm: float = 0.0    # IPR the app computes with these constraints (checked against the core)
 
     @property
@@ -54,6 +55,7 @@ SAMPLES: dict[str, Sample] = {s.case_id: s for s in (
            "처방은 제1소구치 14·24 발치입니다. 이 처방으로 단계 계획을 짜 주세요.",
            summary="작은어금니 두 개(14·24)를 빼서 자리를 만들고 정렬",
            badges=("총생 7.9 mm", "발치"),
+           reason="총생 7.9 mm 는 IPR 과 확장으로 얻는 약 3 mm 를 훌쩍 넘어, 작은어금니 14·24 를 빼서 자리를 만듭니다.",
            constraints={"extraction": [5, 12]}),
     Sample("poseidon-000001", "중간 덧니, IPR 필요",
            "비발치 · 14-15·24-25부터 앞쪽으로 IPR 총 3.6mm + 악궁 확장",
@@ -61,6 +63,7 @@ SAMPLES: dict[str, Sample] = {s.case_id: s for s in (
            "이 처방으로 단계 계획을 짜 주세요.",
            summary="어금니 앞쪽 치아 사이를 갈고(총 3.6 mm) 치열 폭을 넓혀 정렬",
            badges=("총생 4.2 mm", "비발치", "IPR + 확장"),
+           reason="총생 4.2 mm 는 IPR 3.6 mm 와 악궁 확장으로 얻는 공간 안에 들어와, 치아를 빼지 않고 정렬합니다.",
            # IPR from the premolars forward, not on the molars, at the most the core allows
            constraints={"extraction": [], "ipr_exclude": [2, 3, 14, 15], "ipr_limit_mm": 0.25},
            note="앱의 IPR은 치아 단위로 접촉면당 최대 0.25mm라서, 대구치를 뺀 치아에 IPR을 허용해 총 2.5mm로 "
@@ -72,6 +75,7 @@ SAMPLES: dict[str, Sample] = {s.case_id: s for s in (
            "이 처방으로 단계 계획을 짜 주세요.",
            summary="앞니 사이를 조금씩(0.4 mm) 갈아 자리를 만들고 정렬",
            badges=("총생 1.6 mm", "비발치", "IPR"),
+           reason="총생 1.6 mm 는 앞니 접촉면 IPR 1.2 mm 로 거의 다 풀려, 어금니와 작은어금니는 건드리지 않습니다.",
            # IPR on 12..22 (Universal 7..10) only, at the most the core allows
            constraints={"extraction": [], "ipr_exclude": [2, 3, 4, 5, 6, 11, 12, 13, 14, 15], "ipr_limit_mm": 0.25},
            note="앱의 IPR은 치아 단위로 접촉면당 최대 0.25mm라서, 12~22번에 IPR을 허용해 총 1.0mm로 계산합니다"

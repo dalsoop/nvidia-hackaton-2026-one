@@ -27,6 +27,7 @@ def test_start_screen_lists_the_samples_not_the_synthetic_cases():
     rows = Store().available_cases()
     assert [r["case_id"] for r in rows[:3]] == IDS and all(r["kind"] == "sample" and r["available"] for r in rows[:3])
     assert all(r["prescription"] and r["request"] for r in rows[:3])
+    assert all(samples.get(i).reason.endswith("니다.") for i in IDS)   # the 「이유」 line under 처방 on the detail card
     assert all(r["constraints"] == samples.get(r["case_id"]).initial_constraints().model_dump(mode="json") for r in rows[:3])
     # the presets stay loadable by name (agent, tests, CLI); the screen filters them out
     assert {"moderate"} <= {r["case_id"] for r in rows if r["kind"] == "synthetic"}
@@ -98,7 +99,7 @@ def test_prescriptions_are_fdi_only():
     """#113: the dentist reads one numbering. No "(앱 번호 …)" tail, no Universal number, on the card or in the request."""
     import re
     for s in samples.SAMPLES.values():
-        for text in (s.prescription, s.request, s.summary, s.note):
+        for text in (s.prescription, s.request, s.summary, s.note, s.reason):
             assert "앱 번호" not in text and "FDI" not in text and "Universal" not in text, (s.case_id, text)
             assert all(11 <= int(n) <= 18 or 21 <= int(n) <= 28 for n in re.findall(r"(?<![\d.])\d{2}(?![\d.])", text)
                        if not re.search(rf"{n}\s*(?:단계|개월|mm|%)", text)), (s.case_id, text)
