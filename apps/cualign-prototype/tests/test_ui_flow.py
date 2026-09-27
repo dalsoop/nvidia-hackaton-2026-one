@@ -67,11 +67,12 @@ def test_patient_registration_to_plan_start(store, tmp_path, monkeypatch):
         assert info["n_teeth"] == EXPECT["n_teeth"]
         assert info["constraints"] == Constraints().model_dump(mode="json")
 
-        # 6. 규칙 폴백으로 단계 상한을 저장하면 다시 열 때 폼에 그 값이 채워진다
+        # 6. 규칙 폴백으로 단계 상한을 저장하면 다시 열 때 그 값은 활성 계획의 조건(active_plan)으로 오고, 케이스 조건은 처방이다 (다듬기 (8))
         fallback = client.post("/api/plan", json={"case_id": case_id, "stage_cap": DATA["fallback_stage_cap"]}).json()
         assert fallback["case_id"] == case_id and fallback["tried"]
         info = client.post(f"/api/cases/{case_id}/activate").json()
-        assert info["constraints"]["stage_cap"] == DATA["fallback_stage_cap"]
+        assert info["constraints"]["stage_cap"] is None
+        assert info["active_plan"]["constraints"]["stage_cap"] == DATA["fallback_stage_cap"]
 
         # 7. 조건 폼 편집 뒤 전송 (send: readConstraints → body.cualign). 상한 칸을 비우면 clear_stage_cap.
         form = {**info["constraints"], **DATA["form"]}

@@ -43,8 +43,11 @@ def test_rule_plan_after_activate_matches_the_plans_list_and_a_plan_selected(mon
     assert detail["constraints"] == selected["constraints"] and detail["parent_plan_id"] == shown["plan_id"]
     # what a plan_selected event carries (plan_id, parent_plan_id, review) is all in the summary
     assert {"plan_id", "parent_plan_id", "review"} <= set(selected)
-    # the case's current constraints are the ones planned with: the next agent turn continues from them
-    assert client.post("/api/cases/moderate/activate").json()["constraints"] == selected["constraints"]
+    # the next agent turn continues from the plan (base_plan_id); opening the case again shows the prescription as the
+    # case's conditions and the plan's own (cap included) under active_plan (answer-polish (8))
+    opened = client.post("/api/cases/moderate/activate").json()
+    assert opened["constraints"] == {**selected["constraints"], "stage_cap": None, "order": "simultaneous"}
+    assert opened["active_plan"]["constraints"] == selected["constraints"]
 
 
 def test_rule_plan_recovers_a_case_whose_activation_plan_failed(monkeypatch, tmp_path):

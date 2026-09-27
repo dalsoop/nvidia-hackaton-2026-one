@@ -94,7 +94,7 @@ def test_reopening_a_case_reuses_the_preview_under_the_same_conditions(monkeypat
     client = _client(monkeypatch, tmp_path)
     client.post("/api/cases/moderate/activate")
     assert set(_ids(client, "moderate")) == set(preview + capped)
-    # conditions nobody planned under still get a plan
-    api.STORE.case_constraints["moderate"] = api.STORE.constraints_for("moderate").patched({"stage_cap": 12})
+    # a prescription nobody planned under still gets a preview (a stage cap would not: opening drops plan conditions, (8))
+    api.STORE.case_constraints["moderate"] = api.STORE.constraints_for("moderate").patched({"lock": [3]})
     client.post("/api/cases/moderate/activate")
     assert len(_ids(client, "moderate")) == 2 * len(preview) + len(capped)   # one preview per strategy again
