@@ -236,11 +236,11 @@ def test_v2_rejections_and_blocks_use_the_design_wording(client, monkeypatch):
     client.post("/api/patients", json={"alias": "설계 문구"})
     post = lambda files: client.post("/api/patients/P0001/scans", files=files)   # noqa: E731
 
-    r = post(_scan_files() + [("files", ("18.stl", b"solid x\nendsolid x\n", "model/stl"))])
-    assert (r.status_code, r.json()["detail"]) == (400, "18.stl: 하악(Universal 17~32) 번호입니다. 지금은 상악 스캔만 받습니다.")
+    r = post(_scan_files() + [("files", ("38.stl", b"solid x\nendsolid x\n", "model/stl"))])   # FDI 38 = lower arch (#113)
+    assert (r.status_code, r.json()["detail"]) == (400, "38.stl: 하악 번호(31~48)입니다. 지금은 상악 스캔만 받습니다.")
     r = post([("files", ("upper_arch.stl", b"solid x\nendsolid x\n", "model/stl"))])
     assert (r.status_code, r.json()["detail"]) == (400, "upper_arch.stl: 한 덩어리 악궁 스캔으로 보입니다. 지금은 치아별로 나뉜 파일"
-                                                        "(2.stl … 15.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.")
+                                                        "(11.stl … 27.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.")
     assert (api.MAX_FILE_BYTES >> 20, api.MAX_UPLOAD_BYTES >> 20) == (60, 400)
     monkeypatch.setattr(api, "MAX_FILE_BYTES", 1 << 20)                       # same wording, a 1 MB limit for the test
     r = post([("files", ("8.stl", b"\0" * ((1 << 20) + 1), "model/stl"))])
