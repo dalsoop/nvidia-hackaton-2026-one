@@ -247,13 +247,13 @@
         <!-- 오른쪽 세로 아이콘 막대 (#90, #13 polish): 시점 넷 + 겹쳐 보기 + 크게. 아이콘은 static/icons/view-*.png(96px 회색 글리프, 26px 표시),
              hover 라벨(aria-label → ::after)이 원본 스캔에서 무엇을 보는지 짚는다 -->
         <div class="view-rail" aria-label="3D 보기">
-          <button class="btn ghost small" type="button" data-view="occlusal" aria-label="교합면 — 위에서 내려본 치열"><span class="vic" style="--icon: url(icons/view-occlusal.png)"></span></button>
-          <button class="btn ghost small" type="button" data-view="frontal" aria-label="정면 — 환자 앞에서 본 앞니"><span class="vic" style="--icon: url(icons/view-front.png)"></span></button>
-          <button class="btn ghost small" type="button" data-view="left" aria-label="좌측 — 환자 왼쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-left.png)"></span></button>
-          <button class="btn ghost small" type="button" data-view="right" aria-label="우측 — 환자 오른쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-right.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="occlusal" aria-label="교합면 · 위에서 내려본 치열"><span class="vic" style="--icon: url(icons/view-occlusal.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="frontal" aria-label="정면 · 환자 앞에서 본 앞니"><span class="vic" style="--icon: url(icons/view-front.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="left" aria-label="좌측 · 환자 왼쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-left.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="right" aria-label="우측 · 환자 오른쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-right.png)"></span></button>
           <span class="rail-tools">
-            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다"><span class="vic" style="--icon: url(icons/view-overlay.png)"></span></button>
-            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="크게 — 대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg></button>
+            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="겹쳐 보기 · 치료 전 치열을 흰 윤곽으로 겹칩니다"><span class="vic" style="--icon: url(icons/view-overlay.png)"></span></button>
+            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="크게 · 대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg></button>
           </span>
         </div>
         <div id="tip" class="tip" hidden></div>
@@ -322,7 +322,7 @@
         </fieldset>
         <p id="condState" class="cond-state" aria-live="polite"></p>
         <div class="pane-foot">
-          <button id="fallbackBtn" class="btn ghost cond-run" type="button" title="에이전트 없이 이 조건으로 계산합니다 — 주 동작은 대화">에이전트 없이 계산</button>
+          <button id="fallbackBtn" class="btn ghost cond-run" type="button" title="에이전트 없이 이 조건으로 계산합니다 · 주 동작은 대화">에이전트 없이 계산</button>
         </div>
       </section>
     </aside>

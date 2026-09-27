@@ -347,7 +347,8 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 - **입력 확인 화면은 없앤다** [목표, #53]: 3D 위 치아 번호와 `status-check` 라벨이 대신한다.
 - **목표 배열과 단계를 나눈다**: [현재] 화면이 초기·셋업·목표·단계로 나눠 드러낸다(#15). 에이전트 도구는 나뉘어 있지만(`propose_target`, `plan_stages`) 한 요청에서 이어서 부른다.
 - **화면 전환** [현재, #15]: 시작 → 디자인은 격자 열 폭이 한 번에 바뀌고 렌더러를 같은 작업에서 리사이즈한다(가로 흔들림 없음); 시작 패널은 케이스가 뜰 때까지 흐려진 채 남고 새 패널은 불투명도만으로 나타난다. 새로고침은 `<head>` 인라인 스크립트가 주소를 읽어 `html.booting.h-case|h-check` 를 붙이고 라우터가 그 화면을 열 때까지 `.layout` 을 숨긴다.
-- **3D 회전** [현재, #15]: OrbitControls, 위 축은 치근 쪽(−z) 고정 — 끌어도 기울지 않는다. 시점 버튼은 카메라 위치·목표만 맞춘다. 더블클릭 = 교합면 시점.
+- **발치 크라운** [현재, #18]: 치료 전(단계 0) 은 스캔 그대로 실제 크라운, 단계 1~n−1 은 흰 실루엣, 목표(단계 n) 는 실루엣 없이 메운 잇몸만.
+- **3D 회전** [현재, #18]: 자체 구현. 가로 드래그 = 치근 축(월드 z) 회전, 세로 드래그 = 카메라 오른쪽 축 회전을 쿼터니언에 누적 — 극점 멈춤 없이 어느 방향으로도 계속 돌고 롤 드리프트가 없다(OrbitControls 의 극점 클램프는 #132 로 돌아왔던 재발). 휠 = 줌, 오른쪽/가운데 버튼·Shift 드래그 = 팬, 놓으면 감속. 시점 버튼은 lookAt(위 = −z)으로 카메라를 놓고, 좁은 뷰어에선 종횡비만큼 물러선다. 더블클릭 = 교합면 시점.
 - **승인과 내보내기는 한 버튼** [목표, #53]: [현재] 「내보내기」 하나이고 왼쪽 레일에만 있다(승인 전 흐리게, 잠긴 이유는 툴팁). 팝오버에서 확정하면 승인 뒤 단계별 STL(zip)을 내려받고, 승인 취소는 계획 목록 아래 「계획 N · 아직 검토 전 …」 접이식 줄 안에 있다(#90, #111, #13 polish).
 
 ## 3D 레이어
@@ -428,6 +429,6 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 - 디자인 언어: VoltAgent/awesome-design-md의 NVIDIA 분석 `design-md/nvidia/DESIGN.md`(MIT), https://github.com/VoltAgent/awesome-design-md , 접근일 2026-09-26. 색 값·2px 모서리·모서리 사각형·위계 원칙을 가져와 어두운 작업 화면에 맞게 바꿨다.
 - 형식: Google Labs DESIGN.md 명세, https://github.com/google-labs-code/design.md , 접근일 2026-09-26.
 - 글꼴: Pretendard(SIL OFL 1.1), https://github.com/orioncactus/pretendard , 접근일 2026-09-26.
-- 3D: 치아·잇몸 재질은 FrontSide(안쪽 검은 면 없음), 발치 치아는 흰 실루엣 opacity 0.45 + 4% 부풀린 뒷면 껍질의 흰 윤곽선(opacity 0.6), 잇몸은 서버 `gum_filled`(메운 잇몸, 계약 server-policy `.report/11-gum-server.md`) 우선 · 없으면 `gum`; `deformGum` 은 회전(yaw)까지 따르고 제거된 크라운은 이웃에서 뺀다.
+- 3D: 치아 재질은 FrontSide(안쪽 검은 면 없음), 잇몸은 DoubleSide(#18: 열린 껍질이라 기저 시점에서 안쪽이 비어 보였다), 발치 치아는 흰 실루엣 opacity 0.45 + 4% 부풀린 뒷면 껍질의 흰 윤곽선(opacity 0.6), 잇몸은 서버 `gum_filled`(메운 잇몸, 계약 server-policy `.report/11-gum-server.md`) 우선 · 없으면 `gum`; `deformGum` 은 회전(yaw)까지 따르고 제거된 크라운은 이웃에서 빼며(이웃 4개 · σ 7 mm), 변위장을 인접 정점으로 3회 평균해 크라운 영역 경계의 이음선을 없앤다(#18).
 - 3D 보기 아이콘 5개: `static/icons/view-{occlusal,front,left,right,overlay}.png` — 자체 제작(2026-09-28), 96px RGBA, 회색 #D9D9D9 글리프 + 투명 배경, 26px 표시.
 - 아이콘: Lucide(ISC, 여기 쓴 것: users · layout-panel-left · download · table-2 · shield-check · sliders-horizontal · layers · maximize-2 · minimize-2 · play · pause · skip-back · skip-forward · x · user-plus · arrow-right · trash-2 · check · send-horizontal), https://lucide.dev , lucide-static v1.48.0 에서 쓰는 아이콘만 `index.html` 맨 위 `<symbol id="i-…">` 스프라이트로 복사(외부 요청 없음), 접근일 2026-09-27. 크기 18~20px, `stroke: currentColor`.
