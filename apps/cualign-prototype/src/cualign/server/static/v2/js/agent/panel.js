@@ -23,6 +23,8 @@ export function mountAgent(el, ctx) {
   let isBusy = false;
   let activeTurn = null;
   let unsubscribeStore = null;
+  let disposed = false;
+  let turnController = null;
 
   const panel = h('div', { class: 'agent-panel' });
   const header = h('div', { class: 'agent-header' },
@@ -108,6 +110,7 @@ export function mountAgent(el, ctx) {
 
     isBusy = true;
     updateControls();
+    turnController = new AbortController();
 
     try {
       const turnResult = await executeChatStream({
@@ -115,6 +118,7 @@ export function mountAgent(el, ctx) {
         text,
         constraints,
         isResend,
+        signal: turnController.signal,
         onTurnChange: (turn) => {
           activeTurn = turn;
           renderTranscript();
@@ -130,6 +134,8 @@ export function mountAgent(el, ctx) {
       }
     } catch (err) {
       activeTurn = null;
+      // Leaving the screen aborts the turn; nothing is left to report.
+      if (disposed) return;
       if (ctx.store) {
         const currentChat = ctx.store.get().chat || [];
         ctx.store.set({
@@ -240,6 +246,8 @@ export function mountAgent(el, ctx) {
   renderTranscript();
 
   return () => {
+    disposed = true;
+    turnController?.abort();
     if (unsubscribeStore) {
       unsubscribeStore();
       unsubscribeStore = null;

@@ -13,6 +13,7 @@ import {
   formatConstraintTags,
   FDI_COORDINATES
 } from '../../src/cualign/server/static/v2/js/screens/cases/data.js';
+import { stripPrescriptionNote } from '../../src/cualign/server/static/v2/js/domain/status.js';
 
 import { TCases } from '../../src/cualign/server/static/v2/js/domain/vocab/cases.js';
 import { universalToFdi } from '../../src/cualign/server/static/v2/js/domain/teeth.js';
@@ -243,4 +244,19 @@ test('Cases data: sortCases sorts by id, status, and plans count', () => {
   assert.deepEqual(sortCases(items, { sortBy: 'plans', order: 'desc' }).map((x) => x.case_id), ['c', 'a', 'b']);
   assert.deepEqual(sortCases(null), []);
   assert.deepEqual(sortCases([]), []);
+});
+
+test('Cases data: sample prescription drops the trailing numbering cross-reference', () => {
+  assert.equal(
+    stripPrescriptionNote('비발치 · IPR 11-21 각 0.4mm (FDI · 앱 번호 8-9)'),
+    '비발치 · IPR 11-21 각 0.4mm'
+  );
+  assert.equal(stripPrescriptionNote('발치'), '발치');
+  assert.equal(stripPrescriptionNote(null), '');
+  const [sample] = transformCasesData({
+    casesData: { cases: [{ case_id: 'sample-9', kind: 'sample', title: 't', prescription: '확장 (FDI · 앱 번호 4-5)' }] },
+    patientsData: { patients: [] },
+    plansData: { plans: [] }
+  });
+  assert.equal(sample.prescription, '확장');
 });

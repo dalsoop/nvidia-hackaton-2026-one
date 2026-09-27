@@ -1,6 +1,13 @@
 // Pure data transformation, grouping, filtering, and formatting for cases screen
 
-import { caseStatus, isScanConfirmed, preferredPlan, sampleCaseNumber } from '../../domain/status.js';
+import {
+  caseStatus,
+  isScanConfirmed,
+  patientCaseLabel,
+  preferredPlan,
+  sampleCaseNumber,
+  stripPrescriptionNote
+} from '../../domain/status.js';
 import { universalToFdi } from '../../domain/teeth.js';
 import { T as TCommon } from '../../domain/vocab.js';
 import { TCases } from '../../domain/vocab/cases.js';
@@ -66,7 +73,7 @@ export function transformCasesData({ casesData, patientsData, plansData }) {
         titleParts.push(TCases.confirmed);
       }
       const displayTitle = titleParts.join(' · ');
-      const displayId = patient.alias ? `${patient.alias} · ${scan.scan_id}` : caseId;
+      const displayId = patientCaseLabel(patient, { ...scan, case_id: caseId });
 
       result.push({
         case_id: caseId,
@@ -108,7 +115,7 @@ export function transformCasesData({ casesData, patientsData, plansData }) {
       scan_id: null,
       displayId: sampleCaseNumber(c),
       displayTitle: c.title || caseId,
-      prescription: c.prescription || '',
+      prescription: stripPrescriptionNote(c.prescription),
       note: c.note || '',
       constraints: c.constraints || null,
       scan: null,

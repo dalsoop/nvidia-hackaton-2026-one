@@ -103,6 +103,18 @@ export function sampleCaseNumber(value) {
   return match ? match[1] : String(value || '');
 }
 
+// The server prescription ends with a parenthetical numbering cross-reference
+// (FDI vs app numbering); the screen shows only the prescription itself.
+const TRAILING_PAREN = /\s*\([^()]*\)\s*$/;
+
+export function stripPrescriptionNote(text) {
+  return String(text || '').replace(TRAILING_PAREN, '').trim();
+}
+
+export function patientCaseLabel(patient, scan) {
+  return patient?.alias && scan?.scan_id ? `${patient.alias} · ${scan.scan_id}` : String(scan?.case_id || '');
+}
+
 export function caseStatus({ scan = null, plans = [] } = {}) {
   if (scan && scan.confirmed === false) {
     return 'scan_check';

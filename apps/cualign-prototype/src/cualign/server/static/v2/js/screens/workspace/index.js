@@ -5,6 +5,7 @@ import { mountAgent } from '../../agent/panel.js';
 import { mountSidebar } from './sidebar/index.js';
 import { fetchPlanDetails, mountPlans, planId } from './plans.js';
 import { calculateRailStage } from './plan-card.js';
+import { bindDrawers } from './drawers.js';
 import { preferredPlan } from '../../domain/status.js';
 
 export function mount(root, params, ctx) {
@@ -26,15 +27,13 @@ export function mount(root, params, ctx) {
   let lastStageIndex = 0;
   let requestToken = 0;
 
-  const previousCaseId = ctx.store.get().caseId;
   ctx.store.set({
     caseId,
     plans: [],
     viewingPlanId: null,
     viewingPlan: null,
     stageIndex: 0,
-    railStage: 'none',
-    chat: previousCaseId && previousCaseId !== caseId ? [] : ctx.store.get().chat
+    railStage: 'none'
   });
 
   function disposeScreen() {
@@ -53,6 +52,7 @@ export function mount(root, params, ctx) {
     const side = h('aside', { class: 'workspace-panel-sidebar' });
     const tabs = h('nav', { class: 'workspace-panel-tabrail', 'aria-label': W.planPanel });
     shell.append(left, center, side, tabs);
+    bindDrawers(shell, { left, tabs });
     root.appendChild(shell);
     return { left, center, side };
   }
@@ -137,7 +137,11 @@ export function mount(root, params, ctx) {
         plansView?.update(state.plans, state.viewingPlanId);
       }
       if (state.viewingPlanId && state.viewingPlanId !== lastViewingId) {
-        selectPlan(state.viewingPlanId).catch((err) => plansView?.showError(err));
+        // A panel that already fetched the full plan (conditions recalculation)
+        // hands it over; otherwise the detail is fetched once here.
+        const handed = planId(state.viewingPlan) === state.viewingPlanId && Array.isArray(state.viewingPlan?.stages);
+        if (handed) applyDetailedPlan(state.viewingPlan);
+        else selectPlan(state.viewingPlanId).catch((err) => plansView?.showError(err));
       }
       if (Number.isInteger(state.stageIndex) && state.stageIndex !== lastStageIndex) {
         lastStageIndex = state.stageIndex;

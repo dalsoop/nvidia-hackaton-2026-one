@@ -25,6 +25,7 @@ export function mount(root, params, ctx) {
   let selectedCaseId = params?.caseId || null;
   const checkCache = new Map();
   const checkErrorCache = new Map();
+  const checkPending = new Set();
 
   // Root screen container
   const screenEl = h('div', { class: 'screen-cases' });
@@ -100,15 +101,7 @@ export function mount(root, params, ctx) {
       cases: sorted,
       selectedCaseId,
       onCaseSelect: (caseId) => {
-        selectedCaseId = caseId;
-        if (ctx.store) {
-          ctx.store.set({ caseId });
-        }
-        if (ctx.navigate) {
-          ctx.navigate(`#/cases/${encodeURIComponent(caseId)}`);
-        }
-        ensureCheckData(caseId);
-        updateView();
+        ctx.navigate(`#/cases/${encodeURIComponent(caseId)}`);
       },
       onSort: (colKey) => {
         if (currentSortBy === colKey) {
@@ -128,14 +121,7 @@ export function mount(root, params, ctx) {
       checkData,
       checkError,
       onClose: () => {
-        selectedCaseId = null;
-        if (ctx.store) {
-          ctx.store.set({ caseId: null, caseDisplayId: null, caseTitle: null, currentScan: null });
-        }
-        if (ctx.navigate) {
-          ctx.navigate('#/cases');
-        }
-        updateView();
+        ctx.navigate('#/cases');
       },
       onNavigate: (route) => {
         if (ctx.navigate) {
@@ -146,9 +132,10 @@ export function mount(root, params, ctx) {
   }
 
   async function ensureCheckData(caseId) {
-    if (!caseId || checkCache.has(caseId)) {
+    if (!caseId || checkCache.has(caseId) || checkPending.has(caseId)) {
       return;
     }
+    checkPending.add(caseId);
     try {
       const data = await ctx.api.caseCheck(caseId);
       if (isMounted) {
@@ -165,6 +152,8 @@ export function mount(root, params, ctx) {
           updateView();
         }
       }
+    } finally {
+      checkPending.delete(caseId);
     }
   }
 
@@ -190,19 +179,7 @@ export function mount(root, params, ctx) {
         ctx.store.set({ cases: allCases });
       }
 
-      if (params?.caseId) {
-        selectedCaseId = params.caseId;
-      } else {
-        selectedCaseId = null;
-      }
-
-      if (selectedCaseId) {
-        if (ctx.store) {
-          ctx.store.set({ caseId: selectedCaseId });
-        }
-        ensureCheckData(selectedCaseId);
-      }
-
+      ensureCheckData(selectedCaseId);
       updateView();
     } catch (err) {
       if (!isMounted) {
@@ -215,10 +192,20 @@ export function mount(root, params, ctx) {
     }
   }
 
+  // Selecting or closing a case only changes the hash; the router calls
+  // update() instead of remounting, so the list is not fetched again.
+  function update(nextParams) {
+    selectedCaseId = nextParams?.caseId || null;
+    ensureCheckData(selectedCaseId);
+    updateView();
+  }
+
   loadData();
 
-  return () => {
+  const unmount = () => {
     isMounted = false;
     clear(root);
   };
+  unmount.update = update;
+  return unmount;
 }

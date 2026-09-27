@@ -709,7 +709,7 @@ test('executeRulePlan: throws error when caseId is missing', async () => {
     async () => {
       await executeRulePlan({ ctx: { store, api: {} } });
     },
-    /No active case selected/
+    { message: T_AGENT.noPlanCreated }
   );
 });
 
@@ -792,7 +792,7 @@ test('executeChatStream: throws error when caseId is null', async () => {
         text: 'hello'
       });
     },
-    /No active case selected/
+    { message: T_AGENT.noPlanCreated }
   );
 });
 

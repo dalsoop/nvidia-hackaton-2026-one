@@ -248,6 +248,7 @@ async def assert_cases_and_detail(
     telemetry.screen = "case-detail"
     mark = telemetry.mark()
     await open_route(page, base_url, f"#/cases/{SAMPLE_CASE_000131}", ".cases-detail-header")
+    await page.wait_for_selector(".cases-check-grid", timeout=10_000)
     detail = page.locator(".cases-panel-detail, .cases-detail-panel").first
     if await detail.count() == 0:
         detail = page.locator(".cases-detail-header").locator("xpath=..").first
@@ -322,14 +323,30 @@ async def assert_workspace_contracts(
         "작업대 단계 막대는 정확히 1개여야 한다",
         await stage_bars.count(),
     )
+    # Plans are numbered in creation order, so the stage count of 계획 3 comes
+    # from its own card (server summary n_stages) instead of a fixed number.
+    stages_badge = await viewing_card.locator(".plan-badge-stages").inner_text()
+    badge_match = re.search(r"([0-9]+)", stages_badge)
+    expected_stages = int(badge_match.group(1)) if badge_match else None
+    checks.check(
+        bool(expected_stages),
+        "J9-2",
+        "계획 3 카드는 단계 수를 표시해야 한다",
+        stages_badge,
+    )
     slider_max = await slider.first.get_attribute("max") if await slider.count() else None
-    checks.check(slider_max == "9", "J9-2", "000131 계획 3의 단계 막대 max는 9여야 한다", slider_max)
+    checks.check(
+        slider_max == str(expected_stages),
+        "J9-2",
+        "계획 3의 단계 막대 max는 getPlan 단계 수(카드의 n_stages)와 같아야 한다",
+        {"slider_max": slider_max, "card": stages_badge},
+    )
     stage_rows = await page.locator(".staging-table tbody .staging-row").count()
     checks.check(
-        stage_rows >= 9,
+        expected_stages is not None and stage_rows >= expected_stages,
         "J9-2",
-        "계획 3의 오른쪽 단계 표는 최소 9개 단계 행을 보여야 한다",
-        stage_rows,
+        "계획 3의 오른쪽 단계 표는 계획의 단계 수만큼 행을 보여야 한다",
+        {"rows": stage_rows, "expected": expected_stages},
     )
     sidebar_text = await page.locator(".workspace-panel-sidebar").inner_text()
     checks.check(
@@ -442,7 +459,14 @@ async def approve_and_download(
     confirm = viewing_card.locator(".plan-approve-confirm-step")
     await confirm.wait_for(state="visible", timeout=5_000)
     await viewing_card.locator(".plan-confirm-execute-btn").click()
-    await viewing_card.locator(".plan-approved-section").wait_for(state="visible", timeout=10_000)
+    await viewing_card.locator(".plan-approved-meta").wait_for(state="visible", timeout=10_000)
+    locked_after_approval = await page.locator("#rail .rail-step-locked").all_inner_texts()
+    checks.check(
+        not any("승인" in text or "내보내기" in text for text in locked_after_approval),
+        "J9 approval",
+        "승인 뒤 레일의 승인·내보내기 단계는 잠기지 않아야 한다",
+        locked_after_approval,
+    )
 
     download_link = viewing_card.locator(".plan-download-btn")
     async with page.expect_download(timeout=20_000) as download_info:

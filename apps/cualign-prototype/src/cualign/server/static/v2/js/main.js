@@ -6,11 +6,19 @@ import { renderTopbar } from './shell/topbar.js';
 import { renderRail } from './shell/rail.js';
 import { matchRoutePattern } from './shell/router.js';
 import { isPatientCase, isScanConfirmed } from './domain/status.js';
+import { loadCaseContext } from './state/case-context.js';
 
 import * as casesScreen from './screens/cases/index.js';
 import * as patientScreen from './screens/intake/patient.js';
 import * as checkScreen from './screens/intake/check.js';
 import * as workspaceScreen from './screens/workspace/index.js';
+
+const EMPTY_CASE_CONTEXT = Object.freeze({
+  caseDisplayId: null,
+  caseTitle: null,
+  currentScan: null,
+  currentCase: null
+});
 
 export const ROUTES = [
   { pattern: '#/cases', screen: casesScreen, nav: { active: 'cases', kind: 'none' } },
@@ -41,6 +49,7 @@ export function initApp() {
 
   const store = createStore();
   let currentUnmount = null;
+  let currentScreen = null;
   let currentNavConfig = { active: 'cases', kind: 'none' };
   let currentParams = {};
 
@@ -73,10 +82,21 @@ export function initApp() {
 
   store.subscribe(renderShell);
 
+  // The cases list fills the context itself; other case routes fetch it so a
+  // reload or a pasted URL shows the same topbar label and rail locks.
+  function restoreCaseContext(caseId) {
+    loadCaseContext(api, caseId)
+      .then((patch) => {
+        if (patch && store.get().caseId === caseId) store.set(patch);
+      })
+      .catch((err) => console.error(err));
+  }
+
   function handleRoute() {
     const { route, params } = matchRoute(window.location.hash);
+    const sameScreen = route.screen === currentScreen && typeof currentUnmount?.update === 'function';
 
-    if (currentUnmount) {
+    if (currentUnmount && !sameScreen) {
       currentUnmount();
       currentUnmount = null;
     }
@@ -85,24 +105,18 @@ export function initApp() {
     currentParams = params;
 
     if (params.caseId && params.caseId !== store.get().caseId) {
-      store.set({
-        caseId: params.caseId,
-        caseDisplayId: null,
-        caseTitle: null,
-        currentScan: null
-      });
+      store.set({ ...EMPTY_CASE_CONTEXT, caseId: params.caseId });
+      if (route.nav.active !== 'cases') restoreCaseContext(params.caseId);
     } else if (!params.caseId && (route.nav.active === 'intake' || route.nav.active === 'cases')) {
-      store.set({
-        caseId: null,
-        caseDisplayId: null,
-        caseTitle: null,
-        currentScan: null
-      });
+      store.set({ ...EMPTY_CASE_CONTEXT, caseId: null });
     } else {
       renderShell();
     }
 
-    if (route.screen && typeof route.screen.mount === 'function') {
+    if (sameScreen) {
+      currentUnmount.update(params);
+    } else if (route.screen && typeof route.screen.mount === 'function') {
+      currentScreen = route.screen;
       currentUnmount = route.screen.mount(screenEl, params, ctx);
     }
   }

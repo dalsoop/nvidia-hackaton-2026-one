@@ -17,6 +17,16 @@ function viewingPlanFrom(state) {
   return plansFrom(state).find((plan) => (plan.plan_id || plan.id) === state.viewingPlanId);
 }
 
+// Publishes a new plan only while its case is still open, so a turn that
+// finishes after the user moved to another case cannot switch that screen.
+async function showNewPlan(ctx, caseId, planId) {
+  const listFn = ctx.api?.listPlans || listPlans;
+  const freshPlansRes = await listFn(caseId);
+  if (ctx.store.get().caseId !== caseId) return;
+  const freshPlans = Array.isArray(freshPlansRes) ? freshPlansRes : (freshPlansRes?.plans || []);
+  ctx.store.set({ plans: freshPlans, viewingPlanId: planId });
+}
+
 export function resolvePlanConstraints(state, supplied) {
   if (supplied && typeof supplied === 'object' && !Array.isArray(supplied)) {
     return supplied;
@@ -52,14 +62,15 @@ export async function executeChatStream({
   text,
   constraints,
   isResend = false,
-  onTurnChange = null
+  onTurnChange = null,
+  signal = null
 }) {
   const store = ctx.store;
   const state = store.get();
   const caseId = state.caseId;
 
   if (!caseId) {
-    throw new Error('No active case selected');
+    throw new Error(T_AGENT.noPlanCreated);
   }
 
   const requestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -85,9 +96,9 @@ export async function executeChatStream({
   const body = buildChatRequest({ state, text, requestId, constraints: activeConstraints, isResend });
 
   try {
-    const response = await (ctx.api?.chatStream ? ctx.api.chatStream(body) : chatStream(body));
+    const response = await (ctx.api?.chatStream ? ctx.api.chatStream(body, signal) : chatStream(body, signal));
     if (!response.body) {
-      throw new Error('Streaming response body is missing');
+      throw new Error(T_AGENT.requestFailed);
     }
 
     const reader = response.body.getReader();
@@ -110,13 +121,7 @@ export async function executeChatStream({
     finalizeTurn(turnState);
 
     if (turnState.selectedPlan && !turnState.hasStreamError) {
-      const listFn = ctx.api?.listPlans || listPlans;
-      const freshPlansRes = await listFn(caseId);
-      const freshPlans = Array.isArray(freshPlansRes) ? freshPlansRes : (freshPlansRes?.plans || []);
-      store.set({
-        plans: freshPlans,
-        viewingPlanId: turnState.selectedPlan.plan_id
-      });
+      await showNewPlan(ctx, caseId, turnState.selectedPlan.plan_id);
     }
 
     if (onTurnChange) {
@@ -124,6 +129,7 @@ export async function executeChatStream({
     }
     return turnState;
   } catch (err) {
+    if (signal?.aborted) throw err;
     turnState.hasStreamError = true;
     turnState.status = 'error';
     const isOverload = turnState.hasOverload;
@@ -148,7 +154,7 @@ export async function executeRulePlan({
   const caseId = state.caseId;
 
   if (!caseId) {
-    throw new Error('No active case selected');
+    throw new Error(T_AGENT.noPlanCreated);
   }
 
   const viewingPlanId = state.viewingPlanId || null;
@@ -163,13 +169,7 @@ export async function executeRulePlan({
 
   const selected = res.chosen || res.best_failed;
   if (selected && selected.plan_id) {
-    const listFn = ctx.api?.listPlans || listPlans;
-    const freshPlansRes = await listFn(caseId);
-    const freshPlans = Array.isArray(freshPlansRes) ? freshPlansRes : (freshPlansRes?.plans || []);
-    store.set({
-      plans: freshPlans,
-      viewingPlanId: selected.plan_id
-    });
+    await showNewPlan(ctx, caseId, selected.plan_id);
   } else {
     const unsupported = Array.isArray(res.unsupported) ? res.unsupported.join('\n') : '';
     throw new Error(unsupported || T_AGENT.noPlanCreated);
