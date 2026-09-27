@@ -8,6 +8,8 @@ import zipfile
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.slow   # module fixture runs the whole set once: 15~30 s
 import trimesh
 from scipy.spatial import Delaunay, cKDTree
 

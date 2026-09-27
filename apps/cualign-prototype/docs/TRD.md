@@ -177,7 +177,7 @@ PoC 체크아웃에서 실행:
 
 ```sh
 uv sync --frozen --extra dev
-uv run pytest -q -p no:warnings
+uv run pytest -q -p no:warnings          # slow 시험 제외, 병렬. 전부 돌리려면 --slow (CI 는 항상 전부)
 uv run nat validate --config_file configs/workflow.yml
 uv run cualign plan "발치 없이 12개월 안에" --case moderate
 uv run cualign serve
