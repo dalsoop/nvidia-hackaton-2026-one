@@ -164,6 +164,12 @@ function buildTeeth(mesh) {
     ghost.add(new THREE.Mesh(geo, GHOST_MAT));   // the untreated position, shown by 전후 겹쳐 보기
     state.teeth[id] = m;
     state.center[id] = geo.boundingBox.getCenter(new THREE.Vector3());
+    // a thin white outline for an extracted crown (#14): the same crown inflated 4% about its centre, back faces only,
+    // as a child so it follows the crown; shown only while the crown is a silhouette
+    const c = state.center[id];
+    const shell = new THREE.Mesh(geo.clone().translate(-c.x, -c.y, -c.z), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, opacity: 0.6, depthWrite: false }));
+    shell.position.copy(c); shell.scale.setScalar(1.04); shell.visible = false;
+    m.add(shell); m.userData.shell = shell;
   }
   const gumMesh = mesh.gum_filled ?? mesh.gum;   // the sockets filled by the server when it sends gum_filled (contract 11-gum-server.md)
   if (gumMesh) {
@@ -272,8 +278,9 @@ function applyStage(k) {
     m.visible = !gone || k === 0;
     // extracted teeth at stage 0: a translucent white silhouette (#14); materials are per tooth and reused across
     // plans, so every other tooth gets its solid look back
-    m.material.opacity = gone ? 0.25 : 1;
+    m.material.opacity = gone ? 0.45 : 1;
     m.material.depthWrite = !gone;
+    m.userData.shell.visible = gone;
     const moved = d ? Math.hypot(...d) : 0;
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
@@ -282,7 +289,7 @@ function applyStage(k) {
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
     else m.material.color.copy(IVORY);
-    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
+    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : gone ? 0x777777 : 0x000000);   // the silhouette reads white, not lit grey
   }
   placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
@@ -1285,9 +1292,9 @@ function renderResult(plan) {
   const memo = splitNote((review.message ?? "") + (review.error ? " (" + review.error + ")" : ""));
   $("reviewMemo").innerHTML = esc(memo.body.trim()) + (memo.note ? `<small class="note">${esc(memo.note)}</small>` : "");
   if (plan.approval) $("reviewMemo").prepend(Object.assign(document.createElement("div"), { textContent: "승인됨 · " + fmtDate(plan.approval.approved_at) }));
-  // the fold shows when it has something: a memo, or an action (검토 다시 요청 · 승인 취소)
+  // the fold shows once a review result is in (passed · failed) or the plan is approved; an unreviewed plan has no fold
   $("reviewLine").textContent = memo.body.trim() ? "검토 메모" : "검토";
-  $("planReview").hidden = !memo.body.trim() && !plan.approval && !["not_requested", "failed"].includes(review.status);
+  $("planReview").hidden = !plan.approval && !["passed", "failed"].includes(review.status);
   renderSide(plan);
   renderLegend(plan);
 }
