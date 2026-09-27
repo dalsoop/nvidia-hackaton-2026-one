@@ -60,6 +60,22 @@ store_module.OUT_DIR = api.OUT_DIR = OUT
 app = FastAPI()
 
 
+@app.get("/api/cases/{case_id}/mesh")
+async def fake_mesh(case_id: str, plan_id: str | None = None, target_id: str | None = None):
+    """The mesh route with `target_id` (server round 15, not on main yet): the target's cut dentition — shaped here as the
+    case's latest plan's cut with plan_id None and the target_id. Without target_id it is the server's own route."""
+    cid, case = store_module.STORE.load_case(case_id)
+    data = case.viewer_json()
+    data.update(api.gum_filled_view(cid, case, data["gum"]))
+    if target_id:
+        pid = next((pid for pid in reversed(list(store_module.STORE.plans)) if store_module.STORE._record(pid)["case_id"] == cid), None)
+        data.update(api.ipr_cut_view(cid, case, pid))
+        data.update({"plan_id": None, "target_id": target_id})
+    else:
+        data.update(api.ipr_cut_view(cid, case, plan_id))
+    return data
+
+
 async def fake_manual_review(plan_id):
     class Memo:
         async def ainvoke(self, messages):
@@ -492,14 +508,15 @@ async def main():
             assert ipr_plan, "no plan of 000131 with teeth_cut"
             await page.evaluate(f"window.__cualign.loadPlan('{ipr_plan}')")
             await page.wait_for_function(f"window.__cualign.state.plan?.plan_id === '{ipr_plan}' && !window.__cualign.state.loading", timeout=60000)
-            cut_ids = await page.evaluate("Object.entries(window.__cualign.state.teeth).filter(([, m]) => m.userData.cut).map(([id]) => id)")
-            assert cut_ids and await page.evaluate("window.__cualign.state.cutPlanId") == ipr_plan, cut_ids
-            assert await page.evaluate("Object.values(window.__cualign.state.teeth).filter((m) => m.userData.cut).every((m) => m.geometry === m.userData.cut.geo && m.userData.cutMesh.visible && m.userData.cutMesh.geometry.index.count > 0)")
+            cut_set = f"window.__cualign.state.cutSets['plan:{ipr_plan}']"
+            cut_ids = await page.evaluate(f"Object.keys({cut_set} ?? {{}})")
+            assert cut_ids and await page.evaluate("window.__cualign.cutKeyNow()") == f"plan:{ipr_plan}", cut_ids
+            assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => window.__cualign.state.teeth[id].geometry === c.geo && window.__cualign.state.teeth[id].userData.cutMesh.visible && c.faces.index.count > 0)")
             assert await page.locator('.legend [data-key="ipr_face"]').is_visible()
             await page.locator('#flow button[data-step="initial"]').click()
             assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full && !m.userData.cutMesh.visible)")
             await page.locator('#flow button[data-step="stages"]').click()
-            assert await page.evaluate("Object.values(window.__cualign.state.teeth).filter((m) => m.userData.cut).every((m) => m.geometry === m.userData.cut.geo)")
+            assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => window.__cualign.state.teeth[id].geometry === c.geo)")
             await page.evaluate(f"window.__cualign.loadPlan('{plan131}')")     # back to the fallback's plan for the steps below
             await page.wait_for_function(f"window.__cualign.state.plan?.plan_id === '{plan131}' && !window.__cualign.state.loading", timeout=60000)
             assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full)")   # 확장: nothing cut
@@ -575,6 +592,8 @@ async def main():
             assert await page.locator("#cIpr").input_value() == "0.2" and await page.locator('#flow button[data-step="stages"]').is_disabled()
             assert await page.locator(".next:not(.done) button", has_text="단계 만들기").count() == 1      # the chips continue from the restored step
             assert "목표 배열까지" in await page.locator(".msg.assistant").last.inner_text()
+            assert await page.evaluate("window.__cualign.cutKeyNow() === 'target:t-fake'")   # #22: the target's cut comes after it, under its key
+            await page.wait_for_function("'target:t-fake' in window.__cualign.state.cutSets", timeout=60000)
             await page.unroute("**/api/cases/poseidon-000097/activate")
 
             assert not errors, errors

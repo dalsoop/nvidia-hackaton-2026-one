@@ -35,7 +35,7 @@ const state = {
   teeth: {},             // tooth_id -> THREE.Mesh
   center: {},            // tooth_id -> rest centroid (THREE.Vector3)
   archOrder: [],         // tooth ids along the arch (for IPR contact labels)
-  cutPlanId: null,       // the plan whose IPR-cut crowns (mesh teeth_cut) the teeth carry in userData.cut (#22)
+  cutSets: {},           // IPR-cut crowns per source (#22): "plan:<id>" / "target:<id>" → {tooth: {geo, faces, mm}}; cutKeyNow() picks
   plan: null,            // GET /api/plans/{id} payload
   stage: 0,
   playing: null,         // interval handle
@@ -237,7 +237,7 @@ function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
 // `dups` pairs [copy, original] so the skin can keep the copies on the rim when the gum deforms.
 function splitGumBase(gumMesh, zBase) {
   const v = gumMesh.v.flat(), f = gumMesh.f.flat(), dups = [];
-  if (zBase == null) return { v, f, dups };
+  if (zBase == null) return { v, f, dups, wall: [], floorVerts: new Set(), wallVerts: new Set() };   // no floor: nothing to split (#141 guard)
   const onBase = (i) => Math.abs(v[3 * i + 2] - zBase) < 0.02;   // the server rounds z_base to 2 decimals
   // face class: 0 surface (no vertex on the floor plane), 1 wall (some), 2 floor (all three)
   const cls = new Uint8Array(f.length / 3), used = [new Uint8Array(v.length / 3), new Uint8Array(v.length / 3), new Uint8Array(v.length / 3)];
@@ -314,11 +314,13 @@ function buildTeeth(mesh) {
     shell.position.copy(c); shell.scale.setScalar(1.04); shell.visible = false;
     m.add(shell); m.userData.shell = shell;
     // the IPR cut (#22): the scan's crown stays as `full`; setCut fills `cut` {geo, faces} and applyStage swaps them in from 셋업 on
-    m.userData.full = geo; m.userData.cut = null;
+    m.userData.full = geo;
     const cutMesh = new THREE.Mesh(new THREE.BufferGeometry(), IPR_FACE_MAT); cutMesh.visible = false;
     m.add(cutMesh); m.userData.cutMesh = cutMesh;
   }
-  setCut(mesh);
+  for (const set of Object.values(state.cutSets)) for (const c of Object.values(set)) { c.geo.dispose(); c.faces.dispose(); }
+  state.cutSets = {};
+  if (mesh.plan_id) setCut(mesh, "plan:" + mesh.plan_id);   // the representative plan's cut comes with the scan
   const gumMesh = mesh.gum_filled ?? mesh.gum;   // the sockets filled by the server when it sends gum_filled (contract 11-gum-server.md)
   if (gumMesh) {
     const geo = new THREE.BufferGeometry();
@@ -340,23 +342,42 @@ function buildTeeth(mesh) {
   setView("occlusal");
 }
 
-// The mesh response carries the crowns the plan's IPR cuts (#22, #140): `teeth_cut` {tooth: {v, f}} for the cut
-// teeth only and `ipr_cut` {tooth: {mm, faces}} with the indices of the faces on the cut planes; `plan_id` says whose.
-// Each cut tooth gets a crown geometry without those faces and a second one of only them (shared positions), so the
-// planes shade in their own colour with no z-fighting. A response with no cuts (no plan, an extraction plan) clears them.
-function setCut(view) {
-  state.cutPlanId = view?.plan_id ?? null;
-  for (const [id, m] of Object.entries(state.teeth)) {
+// The mesh response carries the crowns an IPR cuts (#22, #140): `teeth_cut` {tooth: {v, f}} for the cut teeth only and
+// `ipr_cut` {tooth: {mm, faces}} with the indices of the faces on the cut planes; `plan_id` (mesh?plan_id=) or
+// `target_id` (mesh?target_id=, server round 15) says whose. Each cut tooth gets a crown geometry without those faces
+// and a second one of only them (shared positions), so the planes shade in their own colour with no z-fighting.
+// The set is kept under its key; a response with no cuts (an extraction plan) is an empty set.
+function setCut(view, key) {
+  const old = state.cutSets[key];
+  if (old) for (const c of Object.values(old)) { c.geo.dispose(); c.faces.dispose(); }
+  const set = state.cutSets[key] = {};
+  for (const id of Object.keys(state.teeth)) {
     const t = view?.teeth_cut?.[id], c = view?.ipr_cut?.[id];
-    if (m.userData.cut) { m.userData.cut.geo.dispose(); m.userData.cut.faces.dispose(); m.userData.cut = null; }
     if (!t) continue;
     const pos = new THREE.Float32BufferAttribute(t.v.flat(), 3), onPlane = new Set(c?.faces ?? []);
     const body = [], planes = [];
     t.f.forEach((f, k) => (onPlane.has(k) ? planes : body).push(...f));
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", pos); geo.setIndex(body); geo.computeVertexNormals(); geo.computeBoundingBox();
     const faces = new THREE.BufferGeometry(); faces.setAttribute("position", pos); faces.setIndex(planes); faces.computeVertexNormals();
-    m.userData.cut = { geo, faces, mm: c?.mm ?? 0 };
+    set[id] = { geo, faces, mm: c?.mm ?? 0 };
   }
+}
+// Which cut the view shows: 초기 none; 목표 (and 셋업) the target's when the target turn gave one, else the plan's;
+// 단계 the plan's. A key with no set fetched yet shows the scan's crowns.
+function cutKeyNow() {
+  if (state.step === "initial") return null;
+  const t = state.targetId ? "target:" + state.targetId : null, p = state.plan ? "plan:" + state.plan.plan_id : null;
+  return state.step === "stages" ? p ?? t : t ?? p;
+}
+// the target turn's cut dentition (#22): GET /mesh?target_id= → {teeth_cut, ipr_cut, plan_id: null, target_id}. A server
+// without it answers with the plan's cut (target_id missing) — then the target shows the scan's crowns
+async function loadTargetCut(targetId) {
+  try {
+    const view = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/mesh?target_id=${encodeURIComponent(targetId)}`);
+    if (view.target_id !== targetId || !state.teeth) return;
+    setCut(view, "target:" + targetId);
+    if (cutKeyNow() === "target:" + targetId) applyStage(state.stage);   // the target is already on screen: swap its crowns in
+  } catch { /* the target shows without its cut */ }
 }
 function setView(kind) {
   const box = new THREE.Box3().setFromObject(group);
@@ -513,10 +534,10 @@ function applyStage(k) {
   // the gum follows the crowns, turning with them; from the target on, the removed crowns are gone for it too
   deformGum(st, rot, plan?.pivots ?? {}, k > 0 && !plain && !setup ? removed : new Set());
   // IPR-cut crowns (#22): 초기 shows the scan; 셋업·목표·단계 show the crowns as the case's plan cuts them
-  const cutOn = !plain && !!state.plan && state.plan.plan_id === state.cutPlanId;
+  const cutSet = state.cutSets[cutKeyNow()] ?? null;
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
-    const cut = cutOn ? m.userData.cut : null;
+    const cut = cutSet?.[id] ?? null;
     m.geometry = cut ? cut.geo : m.userData.full;
     if (cut) m.userData.cutMesh.geometry = cut.faces;
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
@@ -1417,6 +1438,7 @@ async function restoreProgress(st) {
     try {
       state.target = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(st.target_id)}`);
       state.targetId = st.target_id; setProgress("target", true);
+      loadTargetCut(st.target_id);   // the cut follows; the target shows at once
     } catch (e) { addMsg("system", "저장된 목표 배열을 불러오지 못했습니다 (" + e.message + ")."); }
   }
   if (st.plan_id && st.plan_id in state.planRows) await loadPlan(st.plan_id);   // a plan on screen opens the stages
@@ -1523,12 +1545,12 @@ async function loadPlan(planId) {
   $("planNotice").textContent = "계획 불러오는 중 — 다운로드 잠김";
   try {
     const [plan, cut] = await Promise.all([api("/api/plans/" + encodeURIComponent(planId)),
-      state.cutPlanId === planId ? null : api(`/api/cases/${encodeURIComponent(caseId)}/mesh?plan_id=${encodeURIComponent(planId)}`)]);   // #22
+      state.cutSets["plan:" + planId] ? null : api(`/api/cases/${encodeURIComponent(caseId)}/mesh?plan_id=${encodeURIComponent(planId)}`)]);   // #22
     if (version !== state.selectionVersion || caseId !== state.meshCase) return;
     if (plan.case_id !== caseId) throw new Error("선택 케이스와 계획이 다릅니다.");
     stopPlay();
     state.plan = plan;
-    if (cut) setCut(cut);
+    if (cut && cut.plan_id === planId) setCut(cut, "plan:" + planId);
     fillConstraints(plan.constraints);
     const slider = $("stageSlider");
     slider.max = plan.stages.length;
@@ -1572,7 +1594,7 @@ function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
                  locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: (t.ipr_mm_per_surface ?? 0) > 0,
-                 ipr_face: !!plan && plan.plan_id === state.cutPlanId && Object.values(state.teeth).some((m) => m.userData.cut) };
+                 ipr_face: Object.keys(state.cutSets[cutKeyNow()] ?? {}).length > 0 };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
 }
@@ -2063,6 +2085,7 @@ async function landStep(done) {
     state.targetId = done.target_id; state.targetSummary = done.summary ?? null;
     setProgress("target", true);
     setStep("target");
+    loadTargetCut(done.target_id);   // the cut follows; the target shows at once
   } else if (done.step === "stages") {
     setProgress("stages");
   }
@@ -2523,4 +2546,4 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
   } else { history.replaceState(null, "", "#start"); renderRail(); }   // the rail lights 「환자」 on the very first paint too
   } finally { document.documentElement.classList.remove("booting"); }   // the address's screen is on: show it (#15)
 })();
-window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView };   // test hook (scratch browser checks)
+window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView, cutKeyNow };   // test hook (scratch browser checks)
