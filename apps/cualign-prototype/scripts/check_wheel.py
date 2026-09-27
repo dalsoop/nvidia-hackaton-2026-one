@@ -15,6 +15,8 @@ def check_wheel(path):
         required.update(f"cualign/core/samples/{case}/{tooth}.stl" for tooth in range(2, 16))
         required.update({f"cualign/core/samples/{case}/gingiva.stl", f"cualign/core/samples/{case}/SOURCE.txt",
                          f"cualign/server/static/samples/{case}.png"})
+    # recorded agent answers the screen replays when the NIM is down (core/recorded.py): the demo case, every step
+    required.update(f"cualign/core/samples/recorded/poseidon-000097/{step}.json" for step in ("plan", "cap", "compare"))
     with ZipFile(path) as archive:
         missing = required - set(archive.namelist())
         empty = {name for name in required - missing if archive.getinfo(name).file_size == 0}
