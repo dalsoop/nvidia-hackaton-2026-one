@@ -308,10 +308,10 @@ def dentist_plan_check(cid: str, extraction: bool):
     def run():
         from evals.real_scans.run import run_case
         c = _scan(cid)
-        free = run_case(c, allow_extraction=False)
+        free = run_case(c)
         if not extraction:
             return free["outcome"] == "pass", f"{free['outcome']}: {free['reason']}", "pass without extraction"
-        ext = run_case(c, allow_extraction=True)
+        ext = run_case(c, extraction=tuple(_label(cid)["plan"]["extraction"]["teeth_universal"]))   # as prescribed (#56)
         ok = free["outcome"] == "fail" and ext["outcome"] == "pass" and ext["reason"].startswith("extraction")
         return ok, f"without: {free['outcome']} · with: {ext['reason']}", "fails without, extraction passes"
     return run

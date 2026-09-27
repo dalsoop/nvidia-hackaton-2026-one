@@ -161,10 +161,14 @@ def _parse(text: str, st: dict) -> None:
     m = re.search(r"\b(" + "|".join(CASES) + r")\b", text)
     if m:
         st["case"] = m.group(1)
-    if "발치" in text and re.search(r"(발치\s*(없이|는\s*(절대\s*)?안|는\s*빼고|금지|는?\s*싫)|발치\s*안\s*돼)", text):
-        st["allow_extraction"], st["known_extraction"] = False, True
-    elif re.search(r"발치\s*(허용|해도|가능)", text):
-        st["allow_extraction"], st["known_extraction"] = True, True
+    teeth = re.search(r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번\s*(?:치아\s*)?발치", text)
+    if "발치" in text and re.search(r"(비발치\s*(?:로|만)|발치\s*(없이|는\s*(절대\s*)?안|는\s*빼고|금지|는?\s*싫)|발치\s*안\s*돼)", text):
+        st["extraction"], st["known_extraction"], st["needs_teeth"] = [], True, False
+    elif teeth:                       # the prescribed teeth (#56)
+        st["extraction"] = sorted({int(n) for n in re.findall(r"\d{1,2}", teeth.group(1))})
+        st["known_extraction"], st["needs_teeth"] = True, False
+    elif re.search(r"발치\s*(허용|해도|가능)|발치\s*안", text):
+        st["needs_teeth"] = True      # extraction without teeth: ask, the app does not pick them
     m = re.search(r"(\d+)\s*개월", text)
     if m:
         st["months"], st["known_months"] = int(m.group(1)), True
@@ -185,7 +189,7 @@ def constraint_labels(cons: dict, months: int | None = None) -> str:
         return ", ".join(map(str, xs)) + "번" if xs else "없음"
     cap = cons.get("stage_cap")
     cap_months = months if months and L.stage_cap_from_months(months) == cap else L.months_from_stages(cap) if cap else None
-    return (f"- 조건: 발치 허용 {'예' if cons.get('allow_extraction') else '아니요'} · 고정 치아 {teeth(cons.get('lock'))}"
+    return (f"- 조건: 발치 치아 {teeth(cons.get('extraction'))} · 고정 치아 {teeth(cons.get('lock'))}"
             f" · IPR 제외 치아 {teeth(cons.get('ipr_exclude'))} · IPR 한도 면당 {cons.get('ipr_limit_mm'):g}mm"
             f" · 단계 상한 {f'{cap}단계(약 {cap_months:g}개월)' if cap else '없음'} · 이동 순서 {ORDER_KO[cons.get('order')]}")
 
@@ -214,7 +218,7 @@ def _ipr_question(text: str) -> bool:
 class ReferenceAgent:
     def __init__(self, tools: Tools | None = None, case: str | None = None):   # None: parser state only (tests)
         self.tools = tools
-        self.st = {"case": case, "allow_extraction": True, "known_extraction": False, "months": None,
+        self.st = {"case": case, "extraction": [], "known_extraction": False, "needs_teeth": False, "months": None,
                    "known_months": False, "order": "simultaneous", "lock": set(), "ipr_exclude": set(),
                    "last": None}
 
@@ -241,9 +245,7 @@ class ReferenceAgent:
         """Only what the dentist stated (set_constraints: omitted = keep)."""
         patch = {}
         if self.st["known_extraction"]:
-            patch["allow_extraction"] = self.st["allow_extraction"]
-        elif compare and re.search(r"발치\s*안", text):   # "발치안과 비발치안 비교": the extraction option is requested
-            patch["allow_extraction"] = True
+            patch["extraction"] = self.st["extraction"]
         if self.st["known_months"]:
             patch["stage_cap" if self.cap else "clear_stage_cap"] = self.cap or True
         if self.st["order"] != "simultaneous":
@@ -276,6 +278,10 @@ class ReferenceAgent:
             return ("진단에서 정한 조건(발치 금지·기간 상한)은 의사 확인 없이 바꾸지 않습니다. "
                     f"현재 조건에서 가장 나은 안({STRATEGY_KO[last['strategy']]}, {last['n_stages']}단계)도 규칙을 통과하지 못했습니다. "
                     "발치를 허용하거나 기간을 늘릴까요? " + DISCLAIMER)
+        if self.st["needs_teeth"]:        # extraction asked for without teeth: the app does not choose them (#56)
+            self.st["needs_teeth"] = False
+            return ("발치안을 만들려면 발치할 치아 번호가 필요합니다. 앱은 발치할 치아를 고르지 않습니다. "
+                    "어느 치아를 발치할까요? (예: 5번과 12번) " + DISCLAIMER)
         # No interview: the UI greeting already asked, and what the dentist did not say is the displayed form.
         compare = _compare_request(text)
         T = self.tools
@@ -300,7 +306,7 @@ class ReferenceAgent:
             return "\n".join(notices + lines + [self._review(best["plan_id"]), DISCLAIMER])
 
         prev = self.st["last"]
-        allowed = [s for s in L.STRATEGIES if cons["allow_extraction"] or s != "extraction"]
+        allowed = ["extraction"] if cons.get("extraction") else [s for s in L.STRATEGIES if s != "extraction"]
         ladder = ["ipr"] if _ipr_question(text) else allowed
         tried, chosen = [], None
         for s in ladder:

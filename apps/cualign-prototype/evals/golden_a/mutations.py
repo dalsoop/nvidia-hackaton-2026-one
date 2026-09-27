@@ -86,6 +86,7 @@ def compare_with_extraction(tr: Trace):
     for r in [res] + res["plans"]:
         if isinstance(r.get("constraints"), dict):
             r["constraints"]["allow_extraction"] = True
+            r["constraints"]["extraction"] = [5, 12]
     return tr
 
 
