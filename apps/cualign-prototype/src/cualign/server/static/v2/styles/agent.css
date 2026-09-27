@@ -293,3 +293,12 @@
   white-space: nowrap;
   border: 0;
 }
+
+.btn-send:hover:not(:disabled) {
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent-dim);
+}
+
+.btn-rule-calc:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}

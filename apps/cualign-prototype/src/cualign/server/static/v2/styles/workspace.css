@@ -251,20 +251,13 @@
 
   .workspace-panel-left { border-right: 0; border-bottom: var(--line-1) solid var(--color-border-subtle); }
   .workspace-plans-container { max-height: none; }
-  .workspace-agent-container { min-height: var(--height-viewer-stacked); }
+  .workspace-agent-container { min-height: var(--height-plans-min); }
 
   .workspace-panel-center,
   .workspace-viewer-container { height: auto; overflow: visible; }
 
   .workspace-panel-tabrail {
     order: 3;
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    height: auto;
-    flex-direction: row;
-    justify-content: center;
-    border-left: 0;
     border-top: var(--line-1) solid var(--color-border-subtle);
     border-bottom: var(--line-1) solid var(--color-border-subtle);
   }

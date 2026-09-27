@@ -488,6 +488,18 @@
   max-width: calc(100% - var(--width-stage-bar) - var(--space-48));
 }
 
+/* ------------------------------------------------------------- 1440px to 769px
+   The 3D column is too narrow for the layer toggles and the 440px stage bar to
+   share the bottom edge, so the toggles move to the top-left under the arch badge. */
+@media (max-width: 1440px) and (min-width: 769px) {
+  .viewer-layers-bar,
+  .viewer-container:has(.stage-bar) .viewer-layers-bar {
+    top: var(--space-52);
+    bottom: auto;
+    max-width: calc(100% - var(--space-32) - var(--space-64) - var(--space-16));
+  }
+}
+
 /* ------------------------------------------------------------- 768px and below
    The 3D view is 60vh tall and the stage bar sits under it at full width. */
 @media (max-width: 768px) {
@@ -512,6 +524,16 @@
     top: var(--space-52);
     bottom: auto;
     max-width: calc(100% - var(--space-32));
+  }
+
+  .viewer-layers-bar {
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+
+  .viewer-layer-toggle-btn {
+    padding: var(--space-4) var(--space-8);
+    font-size: var(--font-size-11);
   }
 
   .stage-bar {
