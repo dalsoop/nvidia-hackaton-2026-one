@@ -75,7 +75,7 @@ function resize() {
 new ResizeObserver(resize).observe($("canvasWrap"));
 
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
-const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽", back: "뒤쪽", base: "바닥" };
+const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
 (function loop() {
   controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
   requestAnimationFrame(loop);
@@ -367,14 +367,15 @@ function addDecision(prevId, newId) {
   if (!prevId || !newId || prevId === newId) return;
   const bar = document.createElement("div");
   bar.className = "decision";
-  bar.innerHTML = `<span></span><button class="btn primary small" type="button" data-act="keep">이 안 유지</button>
-    <button class="btn ghost small" type="button" data-act="revert">이전 안으로 되돌리기</button>`;
+  bar.innerHTML = `<span></span><button class="btn ghost small" type="button" data-act="revert">이전 안으로 되돌리기</button>`;
   const say = (t) => { bar.querySelector("span").textContent = t; };
   // the dentist reads strategy and stages; the ids stay in the tooltip (DESIGN.md: no plan ids on screen)
-  const newText = planWords(state.plan?.plan_id === newId ? { strategy: state.plan.strategy, n_stages: state.plan.info?.n_stages } : state.planRows[newId]);
-  const prevText = planWords(state.planRows[prevId]);
+  const kind = (p) => (["passed", "running", "failed"].includes(p?.review?.status) ? "에이전트 계획" : "규칙 계산");
+  const newRow = state.plan?.plan_id === newId ? { strategy: state.plan.strategy, n_stages: state.plan.info?.n_stages, review: state.plan.review } : state.planRows[newId];
+  const prevRow = state.planRows[prevId];
+  const newText = `${kind(newRow)} · ${planWords(newRow)}`, prevText = `${kind(prevRow)} · ${planWords(prevRow)}`;
   bar.title = `새 계획 ${newId} · 이전 계획 ${prevId}`;
-  say(`새 계획(${newText}) · 이전 계획(${prevText})`);
+  say(`3D가 새 안(${newText})으로 바뀌었습니다. 이전 안: ${prevText}`);
   bar.addEventListener("click", async (e) => {
     const act = e.target.dataset?.act;
     if (!act || state.streaming || state.loading) return;
@@ -385,7 +386,7 @@ function addDecision(prevId, newId) {
         // the model hears about it too, so the next revision starts from the plan on screen
         state.messages.push({ role: "user", content: `[화면 조작] 새 계획을 버리고 이전 계획(${prevId})으로 되돌렸습니다. 다음 요청은 이 계획을 기준으로 해 주세요.` });
       } catch (err) { addMsg("error", "되돌리기 실패: " + err.message); return; }
-    } else say(`새 계획(${newText})을 유지합니다.`);
+    }
     bar.querySelectorAll("button").forEach((b) => b.remove());
     bar.classList.add("done");
   });
@@ -844,7 +845,9 @@ function sampleOf(caseId) {
 function renderChips() {
   const sample = sampleOf(state.meshCase);
   // short labels on the chip; the full sentence is what gets sent
-  const chips = state.messages.some((m) => m.role === "user")
+  const chips = state.followup?.options?.length
+    ? state.followup.options
+    : state.messages.some((m) => m.role === "user")
     ? [{ label: "13번 고정하고 재계획", message: "13번은 움직이지 말고 다시 짜줘." },
        { label: "앞니 IPR 제외", message: "IPR은 앞니(7~10번) 빼고 해줘." },
        { label: "전략 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }]
@@ -853,11 +856,13 @@ function renderChips() {
        { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
   const box = $("chips");
   box.hidden = !!document.querySelector("#transcript .question:not(.done):not(.pending)");   // the card asks first
-  if ([...box.children].map((c) => c.dataset.message).join("|") === chips.map((c) => c.message).join("|")) return;
+  const key = (c) => c.message ?? c.fill ?? c.action ?? "";
+  if ([...box.children].map((c) => c.dataset.key).join("|") === chips.map(key).join("|")) return;
   box.innerHTML = "";
   for (const c of chips) {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "chip"; b.textContent = c.label; b.dataset.message = c.message; b.title = c.message;
+    b.type = "button"; b.className = "chip"; b.textContent = c.label; b.dataset.key = key(c);
+    b.dataset.message = c.message ?? ""; b.dataset.fill = c.fill ?? ""; b.dataset.action = c.action ?? ""; b.title = c.message ?? c.fill ?? "";
     box.appendChild(b);
   }
 }
@@ -867,6 +872,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   ++state.selectionVersion;
   state.requestId = null;
   state.messages = [];
+  state.followup = null;
   stopPlay();
   if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
@@ -896,10 +902,10 @@ async function activateCase(caseId, { greet = true } = {}) {
     if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 — 3D 왼쪽 위 조건을 확인해 주세요.");
     // the case opens with a rule-based preview of the prescription (#92): the first question is how to refine it
     const q = sample
-      ? { question: "처방을 반영한 미리보기입니다(규칙 계산, 검토 없음). 이 초안을 어떻게 다듬을까요?",
-          options: [{ label: "에이전트 계획(검토 포함)", message: sample.request },
-                    { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
-                    { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
+      ? { question: "3D는 처방대로 규칙만으로 계산한 미리보기입니다(에이전트 검토 전). 단계를 넘겨 보고, 다음 중 하나로 이어가세요.",
+          options: [{ label: "에이전트에게 계획 맡기기", hint: "처방을 읽고 계획을 짜고, 검토 에이전트가 문제점을 짚습니다", message: sample.request },
+                    { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에. 입력창에 문장이 채워지니 고쳐서 보내세요", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
+                    { label: "확장안과 IPR안 비교", hint: "두 전략을 나란히 계산해 차이를 보여 줍니다", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
       : { question: "발치는 허용되나요? 기간 상한이 있으면 함께 알려 주세요.",
           options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
                     { label: "발치 허용하고 계획", message: "발치를 허용하고 계획을 짜줘." },
@@ -1080,6 +1086,7 @@ function renderMd(text) {
       if (para.length) flush();
       const item = l.replace(BULLET, ""), m = /^(조건|검토|의사 확인 필요)\s*:\s*(.*)$/.exec(item);
       if (!m) { list.push(item); continue; }
+      if (m[1] === "의사 확인 필요") { m[2] = m[2].replace(/(이 계획은 초안입니다\.?\s*)?최종 판단은 의사가 합니다\.?/g, "").trim(); if (!m[2]) continue; }
       flush();
       if (m[1] === "조건") out.push(`<details class="fold"><summary>조건 보기</summary><p>${inline(m[2])}</p></details>`);
       else out.push(`<div class="row${m[1] === "검토" ? "" : " ask"}"><b>${m[1] === "검토" ? "" : '<i class="dot"></i>'}${m[1]}</b><span>${inline(m[2])}</span></div>`);
@@ -1217,7 +1224,8 @@ function addQuestion(q) {
   div.querySelector("p").textContent = q.question;
   for (const o of q.options) {
     const b = document.createElement("button");
-    b.type = "button"; b.textContent = o.label;
+    b.type = "button"; b.textContent = o.label; b.dataset.label = o.label;
+    if (o.hint) { const s = document.createElement("small"); s.textContent = o.hint; b.append(s); div.querySelector(".opts").classList.add("stack"); }
     b.dataset.message = o.message ?? ""; b.dataset.fill = o.fill ?? ""; b.dataset.action = o.action ?? "";
     div.querySelector(".opts").appendChild(b);
   }
@@ -1226,7 +1234,7 @@ function addQuestion(q) {
     if (!b || state.streaming || state.loading) return;
     if (b.dataset.fill) { $("chatInput").value = b.dataset.fill; autosize(); $("chatInput").focus(); return; }
     const picked = document.createElement("span");
-    picked.className = "picked"; picked.textContent = b.textContent;
+    picked.className = "picked"; picked.textContent = b.dataset.label;
     div.querySelector(".opts").replaceWith(picked);
     div.classList.add("done");
     if (state.meshCase) renderChips();
@@ -1276,15 +1284,12 @@ function requestFollowup() {
   return api("/api/followup", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages: state.messages.slice(-8) }) }).then((r) => r.question ?? null, () => null);
 }
+// The answer becomes the chips above the composer: suggestions for the next sentence, not a question to answer.
 async function askFollowup(caseId, pending = requestFollowup()) {
-  const ph = document.createElement("div");
-  ph.className = "question pending";
-  ph.innerHTML = '<p>다음 질문을 준비하는 중…</p><div class="opts"></div>';
-  $("transcript").appendChild(ph);
-  $("transcript").scrollTop = $("transcript").scrollHeight;
-  const question = await pending;   // never rejects: the card is optional
-  const card = question && state.meshCase === caseId && !state.streaming && ph.isConnected ? addQuestion(question) : null;
-  if (card) ph.replaceWith(card); else ph.remove();
+  const question = await pending;   // never rejects: the chips are optional
+  if (!question || state.meshCase !== caseId) return;
+  state.followup = question;
+  renderChips();
 }
 // The plan a turn produced, as a card in the transcript; 열기 shows it in the 3D and the result panel.
 function addPlanCard(plan) {
@@ -1327,6 +1332,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
   $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
+  state.followup = null;   // the last turn's suggestions no longer fit
   state.lastRequest = { text, constraints };
   addMsg("user", text);
   state.trace = newTrace();
@@ -1437,7 +1443,13 @@ function autosize() {
 $("chatInput").addEventListener("input", autosize);
 $("homeBtn").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
-$("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c) send(c.dataset.message); });
+$("chips").addEventListener("click", (e) => {
+  const c = e.target.closest(".chip");
+  if (!c || state.streaming || state.loading) return;
+  if (c.dataset.fill) { $("chatInput").value = c.dataset.fill; autosize(); $("chatInput").focus(); return; }
+  if (c.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
+  send(c.dataset.message);
+});
 $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
