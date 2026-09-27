@@ -87,6 +87,7 @@ def test_plan_takes_the_ui_path(served):
     assert plan["ui_url"] == f"https://cualign.test/ui/?plan={plan['plan_id']}"
     # the same system message the UI path gets from open_run, then the dentist's words
     run = seen["run"]
+    s.flow.clear()   # the context the turn started from: the flow (target_id) this very turn recorded is not in it
     _, expected = open_run(ChatContext(request_id=run.request_id, case_id="moderate", constraints=constraints), store=s)
     assert seen["messages"] == [expected, {"role": "user", "content": "계획 짜줘."}]
     assert run.constraints.ipr_exclude == (7,) and run.closed

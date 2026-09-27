@@ -60,6 +60,9 @@ class Store:
         self.cases: dict[str, Case] = {}
         self.replays: dict[str, dict] = {}   # case_id -> the last replayed recording {step, plan_id, recorded_at} (core/recorded.py)
         self.case_constraints: dict[str, Constraints] = {}
+        # case_id -> how far the step flow went: {"step": setup|target|stages, "constraints": Constraints (the setup
+        # conditions), "target_id", "plan_id"} (agent/steps.py); what activate returns as `flow` so a refresh restores it
+        self.flow: dict[str, dict] = {}
         self.active_case: str | None = None
         self.targets: dict[str, dict] = {}
         self.plans: dict[str, dict] = {}
@@ -165,10 +168,25 @@ class Store:
         st = patients.input_state(case_id)
         return st is not None and (st.get("deleted", False) or not st["confirmed"] or revision != st["revision"])
 
+    def set_flow(self, case_id: str, step: str, **what) -> dict:
+        """Record that `step` is done for the case (setup: constraints; target: target_id; stages: plan_id)."""
+        flow = self.flow.setdefault(case_id, {"step": None, "constraints": None, "target_id": None, "plan_id": None})
+        flow["step"] = step
+        flow.update(what)
+        return flow
+
+    def flow_json(self, case_id: str) -> dict | None:
+        flow = self.flow.get(case_id)
+        if flow is None:
+            return None
+        c = flow["constraints"]
+        return {**flow, "constraints": c.model_dump(mode="json") if c is not None else None}
+
     def forget_case(self, case_id: str) -> list[str]:
         """Drop everything derived from a deleted patient scan: case, conditions, targets, plans and their files."""
         self.cases.pop(case_id, None)
         self.case_constraints.pop(case_id, None)
+        self.flow.pop(case_id, None)
         if self.active_case == case_id:
             self.active_case = None
         for tid in [t for t, v in self.targets.items() if v["case_id"] == case_id]:

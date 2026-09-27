@@ -4,12 +4,15 @@ import asyncio
 import os
 import re
 import uuid
+
+import numpy as np
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from cualign.agent import steps
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, patients, planner, samples
 from cualign.core.constraints import ConstraintPatch, reason_ko
@@ -25,7 +28,7 @@ class RulePlanRequest(ConstraintPatch):
 
 
 class ReplayRequest(BaseModel):
-    step: str = Field(pattern="^(plan|cap|compare)$")
+    step: str = Field(pattern="^(setup|target|stages|plan|cap|compare)$")   # plan = stages (the name before the step flow)
     base_plan_id: str | None = None
 
 
@@ -146,7 +149,11 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     for pid in ids:
         STORE.set_review(pid, {"status": "skipped", "attempts": 0,
                               "message": "규칙 폴백 — 검토 에이전트 미실행", "error": None})
-    return _rule_plan_result(cid, ids)
+    out = _rule_plan_result(cid, ids)
+    chosen = out.get("chosen") or out.get("best_failed")
+    if chosen:   # the fallback stands in for a stages turn: the flow is at stages with this plan
+        STORE.set_flow(cid, "stages", constraints=c, target_id=STORE.plans[chosen["plan_id"]].get("target_id"), plan_id=chosen["plan_id"])
+    return out
 
 
 def _constraint_dump(record: dict) -> dict:
@@ -154,27 +161,6 @@ def _constraint_dump(record: dict) -> dict:
     if isinstance(constraints, dict):
         return constraints
     return constraints.model_dump(mode="json")
-
-
-def ensure_case_plan(case_id: str) -> dict | None:
-    """Build this case's stages from its own mesh and prescription. Another case's plan is never reused.
-
-    The planner rebuilds that case's whole trajectory. A prescription change starts a child plan of this case only.
-    """
-    current = STORE.constraints_for(case_id)
-    existing = STORE.plan_ids_for(case_id)
-    if not existing:
-        return rule_based_plan(case_id)
-    wanted = current.model_dump(mode="json")
-    if any(_prescription_dump(_constraint_dump(STORE._record(pid))) == _prescription_dump(wanted) for pid in existing):
-        # a plan under this prescription exists (the preview of an earlier opening, or a capped plan on top of it): reuse
-        # it, do not add a twin. A stage cap or move order is a plan condition and asks for no new preview.
-        return None
-    return rule_based_plan(case_id, changes=wanted, parent_plan_id=existing[-1])
-
-
-def _prescription_dump(constraints: dict) -> dict:
-    return {k: v for k, v in constraints.items() if k not in ("stage_cap", "order")}
 
 
 def _rule_plan_result(cid, ids):
@@ -289,23 +275,40 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
-        # Opening a case starts from its prescription: a stage cap or move order that a replay or an agent turn left at
-        # the case level is dropped here (it stays on the plan it was made for, and the next turn from that plan carries
-        # it), so the screen's «조건이 처방과 다릅니다» fires only when the prescription itself was changed. `active_plan`
-        # carries the newest plan's own conditions for the 조건 tab.
+        # Opening a case is the scan only: no rule preview is computed any more (step flow, .report/15-step-flow.md);
+        # «에이전트 없이 계산» (POST /api/plan) stays as the fallback when an agent turn fails. The case starts from its
+        # prescription: a stage cap or move order that a replay or an agent turn left at the case level is dropped here
+        # (it stays on the plan it was made for, and the next turn from that plan carries it), so the screen's «조건이
+        # 처방과 다릅니다» fires only when the prescription itself was changed. `active_plan` carries the newest plan's own
+        # conditions for the 조건 tab; `flow` is how far the step flow went (setup conditions, target_id, plan_id) so a
+        # refresh restores a case that was only set up or only targeted.
         STORE.case_constraints[cid] = STORE.constraints_for(cid).prescription()
         out = {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
-               "constraints": STORE.constraints_for(cid).model_dump(mode="json"), "active_plan": None}
-        try:
-            ensure_case_plan(cid)
-        except ValueError as e:
-            # The case still opens, with no plan: the screen shows the failure card (v2 board 07) with this text and
-            # «이 조건으로 다시 계산» calls POST /api/plan. Mesh and constraint failures above stay 404/400.
-            out["plan_error"] = str(e)
+               "constraints": STORE.constraints_for(cid).model_dump(mode="json"), "active_plan": None,
+               "flow": STORE.flow_json(cid), "unsupported": planner.unsupported_reasons(case)}
         ids = STORE.plan_ids_for(cid)
         if ids:
             out["active_plan"] = {"plan_id": ids[-1], "constraints": _constraint_dump(STORE._record(ids[-1]))}
         return out
+
+    @app.get("/api/cases/{case_id}/targets/{target_id}")
+    async def get_target(case_id: str, target_id: str):
+        """The target arrangement a target turn made, in the shape of a plan response with one stage (the final
+        arrangement): stages[0] = displacement per tooth, rotations[0] = yaw per tooth, pivots, target/info,
+        violations [] (nothing was validated yet). The screen draws it as 「목표」."""
+        t = STORE.targets.get(target_id)
+        if t is None or t["case_id"] != case_id:
+            raise HTTPException(404, "목표 배열이 없습니다")
+        target, info = t["target"], t["info"]
+        stage = {str(i): np.round(np.asarray(v, float), 4).tolist() for i, v in target.items() if v is not None}
+        yaw = {str(i): round(float(y), 3) for i, y in getattr(target, "yaw", {}).items()}
+        c = t["constraints"]
+        return {"target_id": target_id, "case_id": case_id, "strategy": info.get("strategy"),
+                "constraints": c if isinstance(c, dict) else c.model_dump(mode="json"),
+                "info": info, "target": info, "violations": [], "passed": True, "summary": steps.target_summary(info),
+                "stages": [stage], "rotations": [yaw],
+                "pivots": {str(i): np.round(p, 4).tolist() for i, p in STORE.cases[case_id].pos0.items()}
+                if case_id in STORE.cases else {}}
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str):
@@ -543,7 +546,26 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             constraints.check_case(case.ids)
         except ValueError as e:
             raise HTTPException(400, reason_ko(e))
-        out = {"recorded": True, "answer_md": rec["answer_md"], "plan_selected": None, "plans": [], "recorded_at": rec["recorded_at"]}
+        step = recorded.ALIASES.get(req.step, req.step)
+        out = {"recorded": True, "step": step, "answer_md": rec["answer_md"], "plan_selected": None, "plans": [], "recorded_at": rec["recorded_at"]}
+        STORE.replays[cid] = {"step": step, "step_ko": recorded.STEP_KO[step], "plan_id": None, "recorded_at": rec["recorded_at"]}
+        if step == "setup":            # the recorded setup turn: its conditions become the case's, no plan
+            STORE.case_constraints[cid] = constraints
+            STORE.set_flow(cid, "setup", constraints=constraints, target_id=None, plan_id=None)
+            out["constraints"] = constraints.model_dump(mode="json")
+            out["conditions_ko"] = constraints.describe_ko()
+            return out
+        if step == "target":           # the recorded target turn: the rule engine makes the target again, under the recorded strategy
+            strategy = rec.get("strategy") or (planner.strategies_for(list(planner.STRATEGIES), constraints) or ["expansion"])[0]
+            try:
+                tid = PlanningService(STORE).target(cid, strategy, constraints)
+            except ValueError as e:
+                raise HTTPException(400, reason_ko(e))
+            STORE.case_constraints[cid] = constraints
+            STORE.set_flow(cid, "target", constraints=constraints, target_id=tid, plan_id=None)
+            out["target_id"] = tid
+            out["summary"] = steps.target_summary(STORE.targets[tid]["info"])
+            return out
         if rec["review"] is None:      # the recorded turn made no plan (a question back, e.g. a comparison under an extraction prescription)
             return out
         try:
@@ -557,8 +579,9 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             or min(by_strategy.values(), key=lambda p: p["violations"])
         STORE.set_review(selected["plan_id"], dict(rec["review"]))
         selected = _summary(selected["plan_id"])
-        STORE.replays[cid] = {"step": rec["step"], "step_ko": recorded.STEP_KO[rec["step"]], "plan_id": selected["plan_id"],
-                              "recorded_at": rec["recorded_at"]}
+        STORE.replays[cid]["plan_id"] = selected["plan_id"]
+        STORE.set_flow(cid, "stages", constraints=constraints, target_id=STORE.plans[selected["plan_id"]].get("target_id"),
+                       plan_id=selected["plan_id"])
         out.update({"answer_md": recorded.substitute(rec["answer_md"], by_strategy, selected),
                     "plan_selected": {"plan_id": selected["plan_id"], "parent_plan_id": selected["parent_plan_id"], "review": selected["review"]},
                     "plans": [_summary(pid) for pid in ids]})

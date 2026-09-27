@@ -12,6 +12,7 @@ from cualign import sandbox_compat
 from cualign.agent import nim_stream_patch, react_history_patch, react_patch, reviewer  # register the bounded reviewer
 from cualign.server import rails_middleware  # noqa: F401  register the Guardrails workflow middleware
 from cualign.agent.context import CURRENT_RUN
+from cualign.agent import steps
 from cualign.core import limits as L, planner
 from cualign.core import skills as S
 from cualign.core.constraints import Constraints, ConstraintPatch, reason_ko
@@ -217,13 +218,14 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         run = CURRENT_RUN.get()
         if run:
             run.target_ids.add(tid)
+            run.last_target_id = tid
         t = STORE.targets[tid]
         return {"target_id": tid, "case_id": cid, "constraints": constraints_json(t["constraints"]), **t["info"]}
 
     async def _plan_stages(inp: PlanInput) -> dict:
         """목표에 저장된 조건으로 단계 생성과 검증을 수행한다. 수정은 선택된 부모 계획을 보존한다."""
         run = CURRENT_RUN.get()
-        if run and (run.closed or inp.target_id not in run.target_ids):
+        if run and (run.closed or inp.target_id not in run.target_ids | {run.inherited_target_id}):
             raise ValueError("target is not part of this request")
         pid = service.stages(inp.target_id, run.base_plan_id if run else None)
         if run:
@@ -296,5 +298,18 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
            "export_stl": _export_stl, "get_plan": _get_plan,
            "load_skill": _load_skill}
     for name in config.include:
-        group.add_function(name=name, fn=fns[name], description=fns[name].__doc__)
+        group.add_function(name=name, fn=step_gated(name, fns[name]), description=fns[name].__doc__)
     yield group
+
+
+def step_gated(name, fn):
+    """`fn` refused with steps.refusal when the current turn's step does not reach this tool (agent/steps.py): the
+    model gets a normal result saying so and stops, instead of running the whole plan in a setup or target turn."""
+    async def gated(inp):
+        run = CURRENT_RUN.get()
+        if run is not None and not steps.allowed(run.step, name):
+            return steps.refusal(run.step, name)
+        return await fn(inp)
+    gated.__annotations__ = dict(fn.__annotations__)   # NAT reads the input schema from the annotation
+    gated.__name__, gated.__doc__ = fn.__name__, fn.__doc__
+    return gated

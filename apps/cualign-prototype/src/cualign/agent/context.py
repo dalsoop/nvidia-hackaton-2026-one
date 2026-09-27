@@ -10,6 +10,9 @@ class PlanRun:
     case_id: str
     base_plan_id: str | None
     constraints: Constraints
+    step: str | None = None  # setup | target | stages: how far this turn goes (agent/steps.py); None = stages
+    last_target_id: str | None = None  # the target propose_target made last (step_done target)
+    inherited_target_id: str | None = None  # the target a previous target turn made (Store.flow): plan_stages may take it
     plan_ids: set[str] = field(default_factory=set)
     target_ids: set[str] = field(default_factory=set)
     selected_plan_id: str | None = None

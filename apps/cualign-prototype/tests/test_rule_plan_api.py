@@ -23,8 +23,9 @@ def _client(monkeypatch, tmp_path):
 def test_rule_plan_after_activate_matches_the_plans_list_and_a_plan_selected(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
     opened = client.post("/api/cases/moderate/activate").json()
-    assert "plan_error" not in opened
-    shown = client.get("/api/plans?case_id=moderate").json()["plans"][0]      # the plan the screen shows after opening
+    assert "plan_error" not in opened and client.get("/api/plans?case_id=moderate").json()["plans"] == []   # step flow: no preview
+    assert client.post("/api/plan", json={"case_id": "moderate"}).status_code == 200   # the fallback makes the first plans
+    shown = client.get("/api/plans?case_id=moderate").json()["plans"][0]      # the plan the screen shows
     body = {"case_id": "moderate", "parent_plan_id": shown["plan_id"], "extraction": [], "stage_cap": 40, "lock": [8]}
     r = client.post("/api/plan", json=body)
     assert r.status_code == 200
@@ -52,12 +53,9 @@ def test_rule_plan_after_activate_matches_the_plans_list_and_a_plan_selected(mon
 
 def test_rule_plan_recovers_a_case_whose_activation_plan_failed(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
-    real = api.rule_based_plan
-    monkeypatch.setattr(api, "rule_based_plan", lambda *a, **k: (_ for _ in ()).throw(ValueError("규칙 계산 실패: 시험용")))
     opened = client.post("/api/cases/moderate/activate")
-    assert opened.status_code == 200 and opened.json()["plan_error"] == "규칙 계산 실패: 시험용"   # v2 board 07: open, no plan
+    assert opened.status_code == 200 and "plan_error" not in opened.json()   # step flow: opening computes nothing
     assert client.get("/api/plans?case_id=moderate").json()["plans"] == []
-    monkeypatch.setattr(api, "rule_based_plan", real)
     # a condition the rules refuse through POST /api/plan: 400 with the Korean reason (the failure card's text)
     bad = client.post("/api/plan", json={"case_id": "moderate", "allow_extraction": True})   # extraction without teeth
     assert bad.status_code == 400 and "발치할 치아 번호가 필요합니다" in bad.json()["detail"]
