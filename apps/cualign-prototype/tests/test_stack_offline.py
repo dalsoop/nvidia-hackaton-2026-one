@@ -79,5 +79,5 @@ def test_planner_instructions_convert_fdi_to_universal():
     # the review memo is shown on the same screen: its tooth numbers are FDI too (configured and built-in instructions)
     from cualign.agent.reviewer import DEFAULT_INSTRUCTIONS
     memo = " ".join(yaml.safe_load((ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8"))["functions"]["reviewer"]["instructions"].split())
-    assert "Universal 1 2 3 4 5 6 7 8 -> FDI 18 17 16 15 14 13 12 11" in memo and "Never write a Universal number" in memo
-    assert "as FDI" in DEFAULT_INSTRUCTIONS and "never a Universal number" in DEFAULT_INSTRUCTIONS
+    assert "already FDI" in memo and "never convert" in memo
+    assert "already FDI" in DEFAULT_INSTRUCTIONS and "never convert" in DEFAULT_INSTRUCTIONS
