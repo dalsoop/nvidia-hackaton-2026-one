@@ -560,7 +560,7 @@ async function refreshPlans(selectId) {
     o.textContent = p.plan_id.slice(0,9) + " · " + p.strategy + " · " + p.n_stages + "장 · " + (p.passed ? "통과" : "위반");
     sel.appendChild(o);
   }
-  const id = selectId ?? state.plan?.plan_id;
+  const id = selectId ?? state.plan?.plan_id ?? plans[0]?.plan_id;
   if (id) { sel.value = id; await loadPlan(id); }
 }
 

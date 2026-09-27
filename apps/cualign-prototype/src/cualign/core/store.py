@@ -28,6 +28,7 @@ class Store:
         self.active_case: str | None = None
         self.targets: dict[str, dict] = {}
         self.plans: dict[str, dict] = {}
+        self._load_persisted_plans()
 
     # ------------------------------------------------------------------ cases
     def available_cases(self) -> list[dict]:
@@ -77,10 +78,39 @@ class Store:
     def constraints_for(self, case_id: str, parent_plan_id: str | None = None) -> Constraints:
         if parent_plan_id is not None:
             parent = self.plans.get(parent_plan_id)
-            if parent is None or parent["case_id"] != case_id:
+            if parent is None:
                 raise ValueError("parent plan must exist in the same case")
-            return parent["constraints"]
+            record = self._record(parent_plan_id)
+            if record["case_id"] != case_id:
+                raise ValueError("parent plan must exist in the same case")
+            constraints = record["constraints"]
+            if isinstance(constraints, dict):
+                return Constraints.model_validate(constraints)
+            return constraints
         return self.case_constraints.get(case_id, Constraints())
+
+    def _load_persisted_plans(self) -> None:
+        """A plan file belongs to one case. A new process reads them back instead of sharing another case's stages."""
+        folder = OUT_DIR / "plans"
+        if not folder.is_dir():
+            return
+        files = sorted(folder.glob("p*.json"), key=lambda path: path.stat().st_mtime)
+        for path in files:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            pid = data.get("plan_id")
+            if not pid or not data.get("case_id") or pid in self.plans:
+                continue
+            self.plans[pid] = {"_persisted": data}
+
+    def _record(self, pid: str) -> dict:
+        plan = self.plans[pid]
+        return plan["_persisted"] if "_persisted" in plan else plan
+
+    def plan_ids_for(self, case_id: str) -> list[str]:
+        return [pid for pid in self.plans if self._record(pid)["case_id"] == case_id]
 
     # ------------------------------------------------------------------ input revision (patient scans)
     def require_current_input(self, case_id: str, revision: int | None = None) -> None:
@@ -108,7 +138,7 @@ class Store:
             self.active_case = None
         for tid in [t for t, v in self.targets.items() if v["case_id"] == case_id]:
             del self.targets[tid]
-        gone = [pid for pid, p in self.plans.items() if p["case_id"] == case_id]
+        gone = [pid for pid in self.plans if self._record(pid)["case_id"] == case_id]
         for pid in gone:
             del self.plans[pid]
             for f in (OUT_DIR / "plans" / f"{pid}.json", OUT_DIR / "stl" / f"{pid}.zip"):
@@ -139,6 +169,11 @@ class Store:
         return pid
 
     def plan_json(self, pid: str) -> dict:
+        saved = self.plans[pid].get("_persisted")
+        if saved is not None:
+            data = dict(saved)
+            data["input_stale"] = self.input_stale(data["case_id"], data.get("input_revision"))
+            return data
         p = self.plans[pid]
         tinfo = self.targets.get(p["target_id"] or "", {}).get("info", {})
         return {"plan_id": pid, "case_id": p["case_id"], "strategy": p["strategy"], "stage_cap": p["stage_cap"],
@@ -154,6 +189,11 @@ class Store:
                 if p["case_id"] in self.cases else {}}
 
     def fingerprint(self, pid: str) -> str:
+        saved = self.plans[pid].get("_persisted")
+        if saved is not None:
+            data = dict(saved)
+            data.pop("approval", None)
+            return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         data = self.plan_json(pid)
         data.pop("approval")
         # Hash full precision coordinates, not the rounded display values.
@@ -161,7 +201,7 @@ class Store:
         return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     def approve(self, pid: str) -> dict:
-        p = self.plans[pid]
+        p = self._record(pid)
         self.require_current_input(p["case_id"], p.get("input_revision"))
         if p["violations"]:
             raise ValueError("규칙 위반 계획은 승인할 수 없습니다.")
@@ -173,19 +213,20 @@ class Store:
         return self.plan_json(pid)
 
     def revoke(self, pid: str) -> dict:
-        self.plans[pid]["approval"] = None
+        self._record(pid)["approval"] = None
         self._persist(pid)
         return self.plan_json(pid)
 
     def require_approved(self, pid: str) -> None:
-        p = self.plans[pid]
+        p = self._record(pid)
         self.require_current_input(p["case_id"], p.get("input_revision"))
         if not p["approval"] or p["approval"]["fingerprint"] != self.fingerprint(pid):
             raise ValueError("의사가 현재 계획을 승인한 뒤 내보낼 수 있습니다.")
 
     def set_review(self, pid: str, result: dict) -> dict:
-        self.plans[pid]["review"] = dict(result)
-        self.plans[pid]["approval"] = None
+        record = self._record(pid)
+        record["review"] = dict(result)
+        record["approval"] = None
         self._persist(pid)
         return dict(result)
 
