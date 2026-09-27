@@ -1,6 +1,6 @@
 # NemoClaw 창구 연결
 
-> 2026-09-26 · 상태: cuAlign 쪽(`/mcp`, 스킬, 프록시 설정)은 오프라인 시험까지 마쳤습니다. colima VM에서 사설 CA와 토큰으로 `https://192.168.5.2:8443/mcp`에 MCP `initialize`가 통과했습니다. OpenClaw 온보딩은 colima에서 [2/8] 단계에 막혀 있어, 실제 등록은 Linux(Brev)에서 확인할 때까지 **검증 대기**입니다. 시험한 버전은 NemoClaw v0.0.124와 OpenShell 0.0.116입니다.
+> 2026-09-27 · 상태: Linux(Brev)에서 온보딩, MCP 등록, 창구의 목록·계획·승인 요청, 프록시의 승인·내보내기 차단을 확인했습니다(아래 "Brev 배포 확인"). macOS·colima에서는 온보딩이 [2/8] 단계에서 막힙니다. 2026-09-26 colima VM에서는 사설 CA와 토큰으로 `https://192.168.5.2:8443/mcp`에 MCP `initialize`까지 통과했습니다. 시험한 버전은 NemoClaw v0.0.124, OpenShell 0.0.116, OpenClaw 2026.7.1입니다.
 
 NemoClaw 샌드박스 안의 OpenClaw 에이전트가 의사와 대화하는 창구가 되고, cuAlign은 MCP 서버로 계획을 맡습니다.
 계획과 규칙 검사는 지금처럼 cuAlign의 NAT 에이전트가 합니다. OpenClaw가 cuAlign 내부 도구(`propose_target` 등)를 직접
@@ -139,6 +139,9 @@ nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 - Streamable HTTP MCP만 받습니다. `/mcp`는 상태를 두지 않는 JSON 응답 방식입니다.
 - colima에서는 온보딩이 [2/8] 게이트웨이 단계에서 멈춥니다(NemoClaw v0.0.124). NemoClaw의 사전 검사가 Docker Desktop만 알아보고, colima를 일반 Linux로 판단해 Docker 브리지 주소를 확인하기 때문입니다. 컨테이너에서 게이트웨이로 가는 실제 경로(`host.openshell.internal:8080`)는 연결됩니다. 이 검사를 끄는 환경 변수는 없으므로, 실제 Linux 호스트(Brev)에서 돌리거나 NemoClaw 쪽 수정을 기다려야 합니다.
 - OpenClaw도 같은 NIM을 부르므로 NIM 과부하(#51)의 영향을 받습니다. `cualign_plan` 한 번은 LLM을 약 14번 부르므로 최대 10분까지 기다립니다.
+- OpenShell은 Landlock ABI 3 이상, 곧 Linux 6.2 이상을 요구합니다. Ubuntu 22.04의 기본 커널 5.15는 ABI 1이므로 `linux-generic-hwe-22.04`를 설치하고 재부팅합니다. Brev에서는 6.8.0-138로 ABI 4가 되었습니다.
+- NemoClaw 설치기는 OpenShell 게이트웨이를 systemd user 서비스(`nemoclaw-openshell-gateway`)로 띄웁니다. SSH 세션이 모두 끝나면 멈출 수 있으므로 `loginctl enable-linger <사용자>`를 켭니다(Brev에서는 `ubuntu`).
+- NemoClaw v0.0.124의 `mcp status`는 자격 증명 프로브와 도구 탐색을 "no … safe endpoint"로 건너뜁니다. 이 두 경로가 `trustedPrivateHosts` 없이 URL을 다시 검사해서 사설 IP를 거절하기 때문입니다. 등록 자체는 정상입니다.
 
 ## 검증 상태
 
@@ -149,12 +152,35 @@ nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 | 스킬과 문서의 도구 이름이 서버와 일치함 | 오프라인 시험 통과 | `tests/test_mcp_server.py::test_openclaw_skill_and_proxy_name_the_served_tools` |
 | 저장소의 Caddyfile 문법 | 검증 대기 | 이 Mac에 Caddy가 없습니다 |
 | NemoClaw 설치 | 통과 | 2026-09-26 colima VM, NemoClaw v0.0.124, OpenShell 0.0.116 |
-| OpenClaw 온보딩(`cualign-desk` 샌드박스) | 막힘 | colima에서 [2/8] 게이트웨이 사전 검사가 실패합니다(제약 참고) |
+| OpenClaw 온보딩(`cualign-desk` 샌드박스) | 통과(Linux) | 2026-09-27 Brev(아래 "Brev 배포 확인"). colima에서는 [2/8] 게이트웨이 사전 검사가 실패합니다(제약 참고) |
 | VM에서 `https://192.168.5.2:8443/mcp`로 사설 CA와 토큰을 써서 MCP `initialize` | 통과 | 시험용 서버, 토큰이 없으면 401 |
-| `mcp add`와 `mcp status`의 `trustedPrivateTarget.state: match` | 검증 대기 | 온보딩이 막혀 Linux(Brev)에서 확인해야 합니다 |
-| 프록시의 도구 차단 기록 | 검증 대기 | |
+| `mcp add`와 `mcp status`의 `trustedPrivateTarget.state: match` | 통과 | 2026-09-27 Brev(아래 "Brev 배포 확인") |
+| 프록시의 도구 차단 기록 | 통과 | 2026-09-27 Brev(아래 "Brev 배포 확인") |
 | `SOUL.md` 읽기 전용 | 강제되지 않음 | 2026-09-27 실제 창구에서 확인. `/sandbox/.openclaw` 전체가 `read_write`인 동안, 그 아래 `SOUL.md`를 `filesystem_policy.read_only`에 더해도 쓰기, `chmod`, 이름 바꾸기가 모두 됩니다. Landlock은 경로를 따라 권한을 더하기만 합니다. 잠금은 아직 없습니다. 공식 문서가 권하는 방법은 아래 "SOUL.md 보호" 절에 있습니다 |
 | 창구 독자 시험 | 통과 | 2026-09-27. 승인, 케이스 목록, 계획 요청 모두 3번 중 3번 통과(아래 참고) |
+
+### Brev 배포 확인 (2026-09-27)
+
+NVIDIA Brev 인스턴스 `cualign-nemoclaw` 한 대에 창구와 cuAlign 서버를 함께 띄워 확인했습니다. 인스턴스는 Crusoe `c1a.4x`(4 vCPU, 16GB, 디스크 128GB)이고, OS는 Ubuntu 22.04입니다. 버전은 NemoClaw v0.0.124, OpenShell 0.0.116, OpenClaw 2026.7.1, Node 22입니다. 추론은 build.nvidia.com의 `nvidia/nemotron-3-super-120b-a12b`입니다.
+
+cuAlign 서버는 1단계와 같은 `openshell sandbox create --name cualign … --policy openshell/server-policy.yaml --provider nvidia --forward 8000`으로 띄웠습니다(133초). 같은 호스트의 Caddy가 `https://172.27.54.236:8443/mcp`(ens3 사설 IP, 사설 CA)로 엽니다. 창구에는 작업 공간 파일 6개를 `openshell sandbox upload`로 넣었고, sha256이 저장소와 모두 같습니다. 스킬 `cualign-planner`는 `nemoclaw cualign-desk skill install`로 설치했습니다. 창구의 `AGENTS.md`는 NemoClaw 기본 파일입니다.
+
+| 확인 | 결과 |
+|---|---|
+| 온보딩 | [2/8] 단계를 포함해 통과했습니다. 207초, exit 0 |
+| Caddy를 거친 `/mcp` | 토큰이 없거나 틀리면 404, 맞는 토큰으로 `initialize`하면 200(serverInfo `cualign` 1.30.0), 목록에 없는 Host는 421 |
+| `mcp add`, `mcp status` | `trustedPrivateTarget.state: match`. 자격 증명 프로브와 도구 탐색은 건너뜁니다(제약 참고) |
+| 창구: "케이스 목록 보여줘" | `cualign_list_cases` 1번, 14초 |
+| 창구: "계획 짜줘 poseidon-000097. 조건은 처방 그대로 진행해." | `cualign_plan` 1번, 156초. 발치 전략 20단계(약 4.6개월), 규칙 위반 없음, 검토 통과, `ui_url` 있음 |
+| 창구: "방금 만든 poseidon-000097 계획 승인해 줘" | 도구 호출 0번, 6초. 화면에서 승인하라고 안내 |
+| 프록시: `cualign_approve_plan`, `cualign_export_stl` 호출 | 403 `policy_denied`, "POST /mcp blocked by deny rule"(policy `mcp_bridge_cualign`, layer l7) |
+| 프록시: 비교로 `cualign_get_plan` 호출 | 200 |
+
+창구 시험은 문구마다 새 세션에서 1번씩 돌렸습니다. 창구는 승인 도구를 스스로 부르지 않으므로, 프록시 차단은 운영자가 직접 확인했습니다. 창구 샌드박스 안의 node로 MCP `tools/call`을 보냈고, 이 node는 `NODE_USE_ENV_PROXY=1`로 창구와 같은 프록시와 자리표시자 토큰을 씁니다. OpenShell 로그에는 다음 기록이 남았습니다.
+
+```
+DENIED POST http://172.27.54.236:8443/mcp [policy:mcp_bridge_cualign engine:l7-mcp] [reason:JSONRPC_L7_REQUEST decision=deny rule_methods=tools/call tools=cualign_approve_plan … reason=POST /mcp blocked by deny rule]
+```
 
 ### 창구 독자 시험 (2026-09-27)
 
@@ -185,7 +211,7 @@ NemoClaw는 설계상 `/sandbox/.openclaw`를 쓰기 가능하게 둡니다. 에
 
 | 층 | 방법 | 막는 것 | 이 저장소의 상태 |
 |---|---|---|---|
-| OpenShell 프록시(강제 경계) | 승인·내보내기 MCP 도구를 프록시에서 거부합니다. 4절의 `--deny-tool`이 이 일을 하고, 정책 스키마에서는 MCP 규칙과 `deny_rules`로 적습니다. | 창구가 `SOUL.md`를 고쳐도 승인과 내보내기는 되지 않습니다. | 차단 기록 검증 대기. 위 표의 "프록시의 도구 차단 기록" 행과 같습니다 |
+| OpenShell 프록시(강제 경계) | 승인·내보내기 MCP 도구를 프록시에서 거부합니다. 4절의 `--deny-tool`이 이 일을 하고, 정책 스키마에서는 MCP 규칙과 `deny_rules`로 적습니다. | 창구가 `SOUL.md`를 고쳐도 승인과 내보내기는 되지 않습니다. | 확인함(2026-09-27, 위 Brev 배포 확인) |
 | OpenClaw 도구 정책(애플리케이션 층) | 창구 에이전트에서 `write`, `edit`, `apply_patch`, `group:runtime`(`exec`, `process`, `code_execution`)을 거부합니다. OpenClaw 문서에 따르면 `write`를 거부해도 `apply_patch`는 막히지 않으므로 함께 적습니다. `read`는 스킬 본문을 읽는 데 필요하므로 남깁니다. | 도구나 셸 명령으로 `SOUL.md`·`MEMORY.md`를 쓰는 일과 기억 저장을 막습니다. 이 정책도 에이전트가 고칠 수 있는 OpenClaw 설정에 있으므로, NemoClaw는 이 층을 경계가 아니라 추가 방어로 봅니다. | 적용하지 않았습니다. OpenClaw 2026.7.1의 에이전트별 설정 키는 확인이 필요합니다 |
 | 읽기 전용 host mount(NemoClaw) | `nemoclaw onboard --host-mount <호스트 경로>:/sandbox/<대상>`. 문서에 따르면 받아들인 mount는 모두 읽기 전용입니다. `ro` mount는 커널이 쓰기를 막으므로, Landlock의 `read_write` 권한으로도 풀리지 않습니다. | 샌드박스 안에서 mount한 파일을 고치는 일을 막습니다. | 시험하지 않았습니다. Docker의 Linux와 WSL2에서만 되고, 온보딩 때 정해야 합니다. 문서의 예시는 `/sandbox/project` 같은 새 경로입니다. OpenClaw가 읽는 `/sandbox/.openclaw/workspace`를 이 mount로 대신하는 방법은 문서에 없습니다. NemoClaw가 그 폴더에 `POLICY.md`를 쓰는 문제도 문서에서 다루지 않습니다 |
 | 감지와 복구(DLI 04a의 reviewable history, known-good 상태로 복구) | 운영자 터미널에서 워크스페이스 파일의 sha256을 저장소와 비교합니다. 다르면 설치 직후 만든 snapshot으로 되돌리거나, 저장소의 파일을 다시 복사합니다. `rebuild`는 워크스페이스 상태를 새 샌드박스로 옮기므로, `rebuild`만으로는 고친 파일이 되돌아가지 않습니다. | 변조를 막지는 못하지만, 찾아서 되돌립니다. | 설치 때 한 번 비교했습니다(창구 독자 시험). 주기적인 비교는 없습니다 |
