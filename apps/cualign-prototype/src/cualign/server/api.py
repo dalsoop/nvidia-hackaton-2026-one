@@ -165,10 +165,16 @@ def ensure_case_plan(case_id: str) -> dict | None:
     existing = STORE.plan_ids_for(case_id)
     if not existing:
         return rule_based_plan(case_id)
-    latest = existing[-1]
-    if _constraint_dump(STORE._record(latest)) == current.model_dump(mode="json"):
+    wanted = current.model_dump(mode="json")
+    if any(_prescription_dump(_constraint_dump(STORE._record(pid))) == _prescription_dump(wanted) for pid in existing):
+        # a plan under this prescription exists (the preview of an earlier opening, or a capped plan on top of it): reuse
+        # it, do not add a twin. A stage cap or move order is a plan condition and asks for no new preview.
         return None
-    return rule_based_plan(case_id, changes=current.model_dump(mode="json"), parent_plan_id=latest)
+    return rule_based_plan(case_id, changes=wanted, parent_plan_id=existing[-1])
+
+
+def _prescription_dump(constraints: dict) -> dict:
+    return {k: v for k, v in constraints.items() if k not in ("stage_cap", "order")}
 
 
 def _rule_plan_result(cid, ids):
@@ -283,14 +289,22 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
+        # Opening a case starts from its prescription: a stage cap or move order that a replay or an agent turn left at
+        # the case level is dropped here (it stays on the plan it was made for, and the next turn from that plan carries
+        # it), so the screen's «조건이 처방과 다릅니다» fires only when the prescription itself was changed. `active_plan`
+        # carries the newest plan's own conditions for the 조건 tab.
+        STORE.case_constraints[cid] = STORE.constraints_for(cid).prescription()
         out = {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
-               "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
+               "constraints": STORE.constraints_for(cid).model_dump(mode="json"), "active_plan": None}
         try:
             ensure_case_plan(cid)
         except ValueError as e:
             # The case still opens, with no plan: the screen shows the failure card (v2 board 07) with this text and
             # «이 조건으로 다시 계산» calls POST /api/plan. Mesh and constraint failures above stay 404/400.
             out["plan_error"] = str(e)
+        ids = STORE.plan_ids_for(cid)
+        if ids:
+            out["active_plan"] = {"plan_id": ids[-1], "constraints": _constraint_dump(STORE._record(ids[-1]))}
         return out
 
     @app.get("/api/cases/{case_id}/mesh")

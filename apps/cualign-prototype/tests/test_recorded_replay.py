@@ -128,3 +128,34 @@ def test_shipped_recordings_are_valid(case_id):
         ConstraintPatch.model_validate(rec["constraints"])
         assert "이 계획은 초안입니다" in rec["answer_md"] or rec["review"] is None
         assert not rec["answer_md"].startswith("Final Answer")
+
+
+def test_reopening_a_case_starts_from_the_prescription_and_names_the_active_plan(client):
+    """Answer-polish (8): a replayed (or planned) stage cap stayed at the case level, so opening the case again showed
+    «조건이 처방과 다릅니다» and a 35-stage cap on the 조건 tab. Rule: the case keeps the prescription only (extraction,
+    lock, IPR exclusions, IPR limit); a stage cap and the move order belong to the plan they were made for and reach the
+    next turn through base_plan_id. Opening reports the prescription as `constraints` and the newest plan's own
+    conditions as `active_plan`, and makes no new plan."""
+    from cualign.core.samples import SAMPLES
+    cid = "poseidon-000097"
+    prescription = SAMPLES[cid].initial_constraints().model_dump(mode="json")
+    _record(cid, "plan", PLAN_ANSWER, {"extraction": [5, 12]})
+    _record(cid, "cap", CAP_ANSWER, {"stage_cap": 35})
+    client.post(f"/api/cases/{cid}/activate")
+    n_plans = len(client.get(f"/api/plans?case_id={cid}").json()["plans"])
+    plan = client.post(f"/api/cases/{cid}/replay", json={"step": "plan"}).json()["plan_selected"]["plan_id"]
+    cap = client.post(f"/api/cases/{cid}/replay", json={"step": "cap", "base_plan_id": plan}).json()["plan_selected"]["plan_id"]
+    assert client.get(f"/api/plans/{cap}").json()["constraints"]["stage_cap"] == 35     # the cap is on the plan
+    opened = client.post(f"/api/cases/{cid}/activate").json()
+    assert opened["constraints"] == prescription                                        # the case shows its prescription: no warning
+    assert opened["active_plan"] == {"plan_id": cap, "constraints": client.get(f"/api/plans/{cap}").json()["constraints"]}
+    assert len(client.get(f"/api/plans?case_id={cid}").json()["plans"]) == n_plans + 2  # no twin preview
+    # the next turn from the capped plan still carries the cap; a turn from the case does not
+    assert api.STORE.constraints_for(cid, cap).stage_cap == 35 and api.STORE.constraints_for(cid).stage_cap is None
+    # a rule plan under a cap (POST /api/plan) leaves the same trace, and opening clears it the same way
+    r = client.post("/api/plan", json={"case_id": cid, "stage_cap": 30, "parent_plan_id": cap})
+    assert r.status_code == 200 and api.STORE.constraints_for(cid).stage_cap == 30
+    assert client.post(f"/api/cases/{cid}/activate").json()["constraints"] == prescription
+    # a changed prescription is still reported as such
+    api.STORE.case_constraints[cid] = api.STORE.constraints_for(cid).patched({"lock": [3]})
+    assert client.post(f"/api/cases/{cid}/activate").json()["constraints"]["lock"] == [3]
