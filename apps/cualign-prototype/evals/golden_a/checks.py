@@ -59,25 +59,25 @@ EXTRACTION_YES_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*\d|\d+\s
 # the prescribed teeth an answer names: "발치 치아 5, 12번", "5번과 12번 발치", "발치: 4·13번" (#56)
 EXTRACTION_TEETH_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
                                  r"|((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번\s*(?:을|를)?\s*(?:치아\s*)?발치")
-# FDI with the app numbers, tied to the extraction phrase: "발치 14·24(앱 번호 5·12)", "14·24(FDI · 앱 번호 5·12) 발치"
-_FDI_APP = r"(?:\d{1,2}\s*[·,]\s*)*\d{1,2}\s*번?\s*\(\s*(?:FDI\s*·\s*)?앱\s*번호\s*([\d\s·,]+)\)"
-EXTRACTION_APP_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*" + _FDI_APP + r"|" + _FDI_APP.replace("([", "(?P<b>[", 1) + r"\s*발치")
 NEGATED_RE = re.compile(r"아닙니다|아니|않|없습니다|제외")
 
 
 def stated_extraction_teeth(body: str) -> set[int]:
-    """The extraction teeth an answer names, in the app's numbers. App numbers count only where they belong to the
-    extraction phrase (an IPR contact's "앱 번호" beside it is not a tooth to extract); FDI numbers beside them are not
-    read again. A sentence that negates ("5·12번은 처방이 아닙니다") names no prescription."""
+    """The extraction teeth an answer names, in the app's numbers. The dentist reads FDI only (#113): "발치 치아 14, 24번"
+    is {5, 12}. A number that is not an upper-arch FDI number (an app number that leaked, "발치 치아 5, 12번") is not a
+    tooth the dentist can read and does not count. A sentence that negates ("14·24번은 처방이 아닙니다") names no
+    prescription."""
+    from cualign.core.fdi import from_fdi
     teeth: set[int] = set()
     for s in re.split(r"(?<=[.?？!])\s+|\n", body):
         if "발치" not in s or NEGATED_RE.search(s):
             continue
-        for m in EXTRACTION_APP_RE.finditer(s):
-            teeth |= {int(n) for n in re.findall(r"\d{1,2}", m.group(1) or m.group("b"))}
-        rest = EXTRACTION_APP_RE.sub(" ", s)
-        rest = re.sub(r"\([^)]*앱\s*번호[^)]*\)", " ", rest)     # other app-number notes (IPR contacts) are not teeth
-        teeth |= {int(n) for m in EXTRACTION_TEETH_RE.finditer(rest) for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2))}
+        for m in EXTRACTION_TEETH_RE.finditer(s):
+            for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2)):
+                try:
+                    teeth.add(from_fdi(int(n)))
+                except ValueError:
+                    pass
     return teeth
 
 

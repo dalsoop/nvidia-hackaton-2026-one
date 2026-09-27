@@ -198,18 +198,28 @@ def _record(kind: str, state: str, prev: str | None = None) -> str:
     return state
 
 
-# An answer for the dentist is Korean. A final answer with no Hangul at all is the model's own deliberation leaking
-# (observed 2026-09-27: "We need to parse the user's request..." streamed as the answer, no tool call, no plan): the
-# turn is reported as failed and the text never reaches the screen.
+# An answer for the dentist is Korean. A final answer that is the model's own deliberation (observed 2026-09-27 and
+# 2026-09-28: "We need to parse the user's request: "처방은 …"" streamed as the answer, no tool call, no plan) never
+# reaches the screen: the turn is reported as failed. Deliberation quotes the Korean request, so "no Hangul at all" is
+# not enough: an answer is deliberation when Hangul is a minority of its letters or it opens like a thought.
 HANGUL = re.compile(r"[\uac00-\ud7a3]")
+LATIN = re.compile(r"[A-Za-z]")
+DELIBERATION_OPENER = re.compile(r"^\W*(?:We need|We should|We must|Let's|Let me|The user|The dentist|I should|I need|I will|"
+                                 r"First,|Okay|Ok,|Thought:)", re.I)
+HANGUL_SHARE = 0.3     # a Korean answer with IPR/mm/FDI tokens keeps well above this; deliberation quoting one Korean
+                       # sentence sits far below (the 2026-09-28 leak: about 6 percent)
 NO_ANSWER = "모델이 계획 대신 자기 추론문만 돌려보내 답을 만들지 못했습니다. 같은 요청을 다시 보내 주세요."
 
 
 def _no_korean(answer: str) -> str | None:
-    """The notice that replaces `answer` when it holds no Korean text, else None. Records the failure for plan_error."""
-    if not answer.strip() or HANGUL.search(answer):
+    """The notice that replaces `answer` when it is not a Korean answer (no Hangul, Hangul a minority of its letters,
+    or an English deliberation opener), else None. Records the failure for plan_error."""
+    if not answer.strip():
         return None
-    logger.warning("cuAlign: the final answer has no Korean text (%d chars, head %r); replaced", len(answer), answer[:80])
+    hangul, latin = len(HANGUL.findall(answer)), len(LATIN.findall(answer))
+    if hangul and hangul >= HANGUL_SHARE * (hangul + latin) and not DELIBERATION_OPENER.match(answer):
+        return None
+    logger.warning("cuAlign: the final answer is not Korean (hangul %d, latin %d, head %r); replaced", hangul, latin, answer[:80])
     run = CURRENT_RUN.get()
     if run is not None:
         run.error = {"kind": "no_answer", "message": NO_ANSWER}

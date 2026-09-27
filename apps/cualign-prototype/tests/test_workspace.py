@@ -13,9 +13,10 @@ from cualign.core import skills as S
 
 ROOT = Path(__file__).resolve().parents[1]
 WS = ROOT / "workspace"
-# sha256 of workspace/AGENTS.md after the #120 batch merged into main (7231 chars): the c98bef0 snapshot (6193 chars,
-# 30bb8030…) plus the #113 FDI table, the conditions_ko line, the IPR-cap rule and the Korean-question rule.
-INSTRUCTIONS_SHA256 = "5502db79c3c2c4aa29ab7357c8904550c846d7839ca49dfe6824eee1ff15ab82"
+# sha256 of workspace/AGENTS.md after the #120 batch (7231 chars: the c98bef0 snapshot plus the #113 FDI table, the
+# conditions_ko line, the IPR-cap rule and the Korean-question rule) and the v3 batch (7476 chars: IPR contacts are not
+# a numbering puzzle, after the 2026-09-28 leak on the FDI-only sample text).
+INSTRUCTIONS_SHA256 = "d46b14bbbed4dc220f6298c3aabaf24d4cd5dbabe1c6f2ba0e8b83b8b513a4bc"
 OPENCLAW = ROOT / "nemoclaw" / "openclaw-2026.7.1"
 HANGUL = re.compile("[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]")
 
@@ -33,7 +34,7 @@ def test_nat_reads_the_instructions_from_workspace_agents_md():
 
 def test_instructions_are_byte_identical_to_the_pre_move_snapshot():
     text = _instructions()
-    assert len(text) == 7231
+    assert len(text) == 7476
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == INSTRUCTIONS_SHA256
     assert hashlib.sha256((WS / "AGENTS.md").read_bytes()).hexdigest() == INSTRUCTIONS_SHA256
 

@@ -556,11 +556,12 @@ def test_stage_unit(answer, ok):
     (f"plan_id: {P1}\n발치 없이, 단계 상한 없음", {}, False),                                # hides the cap it used
     (f"plan_id: {P1}\n발치 허용, 단계 상한 52단계", {}, False),                              # wrong extraction
     (f"plan_id: {P1}\n발치 허용: 예 · 단계 상한: 52단계", {"allow_extraction": True}, True),
-    # a prescribed extraction: the answer names the prescribed teeth, in the app's numbers (#56)
-    (f"plan_id: {P1}\n발치 치아 5, 12번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
-    (f"plan_id: {P1}\n처방대로 5번과 12번을 발치했습니다. 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
-    (f"plan_id: {P1}\n발치 14·24(앱 번호 5·12) · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
-    (f"plan_id: {P1}\n발치 치아 4, 13번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, False),
+    # a prescribed extraction: the answer names the prescribed teeth, in FDI (#56, #113); Universal [5, 12] is 14·24
+    (f"plan_id: {P1}\n발치 치아 14, 24번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
+    (f"plan_id: {P1}\n처방대로 14번과 24번을 발치했습니다. 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
+    (f"plan_id: {P1}\n발치 14·24 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, True),
+    (f"plan_id: {P1}\n발치 치아 15, 25번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, False),
+    (f"plan_id: {P1}\n발치 치아 5, 12번 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, False),   # app numbers leaked
     (f"plan_id: {P1}\n발치 허용: 예 · 단계 상한 52단계", {"allow_extraction": True, "extraction": [5, 12]}, False),   # teeth missing
     (f"plan_id: {P1}\n단계 상한 52단계", {}, False),                                         # extraction not stated
     (f"plan_id: {P1}\n발치 없이", {}, False),                                                # cap not stated

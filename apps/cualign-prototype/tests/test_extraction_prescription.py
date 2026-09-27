@@ -192,9 +192,9 @@ def test_a_locked_tooth_does_not_leave_the_extraction_space_open(tooth, lock):
 
 
 @pytest.mark.parametrize("text, teeth", [
-    ("5번과 12번 발치, 기간 제한 없이", [5, 12]),                         # "없이" about the time, not extraction
-    ("발치 치아 5, 12번으로 계획해줘", [5, 12]),
-    ("처방은 비발치, IPR 11-21·11-12·21-22(앱 번호 8-9·7-8·9-10) 접촉면에 각 0.4mm입니다.", []),   # IPR numbers are not teeth
+    ("14번과 24번 발치, 기간 제한 없이", [5, 12]),                        # "없이" about the time, not extraction
+    ("발치 치아 14, 24번으로 계획해줘", [5, 12]),
+    ("처방은 비발치, IPR 11-21·11-12·21-22 접촉면에 각 0.4mm입니다.", []),   # IPR numbers are not teeth
 ])
 def test_cli_reads_the_prescribed_teeth(text, teeth):
     from cualign.cli import parse_constraints
@@ -289,11 +289,11 @@ def test_a_migrated_plan_is_not_shown_as_approved():
 
 
 @pytest.mark.parametrize("text, teeth", [
-    ("발치 치아 5, 12번 · 단계 상한 52단계", {5, 12}),
-    ("발치 14·24(앱 번호 5·12) · 단계 상한 52단계", {5, 12}),
-    ("발치 치아 4·13번 · IPR 대상(앱 번호 5·12)", {4, 13}),        # the IPR contact's app numbers are not extraction teeth
-    ("발치 치아 5·12번 · IPR 대상(앱 번호 7·8)", {5, 12}),
-    ("발치 치아 5·12번은 처방이 아닙니다.", set()),                  # a negation names no prescription
+    ("발치 치아 14, 24번 · 단계 상한 52단계", {5, 12}),
+    ("발치 14·24 · 단계 상한 52단계", {5, 12}),
+    ("발치 치아 15·25번 · IPR 12-13·22-23", {4, 13}),           # the IPR contacts are not extraction teeth
+    ("발치 치아 5, 12번 · 단계 상한 52단계", {7}),                # app numbers leaked: 5 is no FDI tooth, 12 reads as FDI 12
+    ("발치 치아 14·24번은 처방이 아닙니다.", set()),                 # a negation names no prescription
 ])
 def test_answer_extraction_teeth_are_read_from_the_extraction_phrase(text, teeth):
     from evals.golden_a.checks import stated_extraction_teeth
