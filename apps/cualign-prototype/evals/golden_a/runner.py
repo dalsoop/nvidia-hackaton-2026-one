@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from nat.utils.io.yaml_tools import yaml_load
 
 from .judge import Spec, load_specs
 from .trace import ToolCall, Trace, Turn, is_overload_crash, normalize_tool_name
@@ -58,8 +59,11 @@ WORKFLOW = ROOT / "configs" / "workflow.yml"
 
 # ---------------------------------------------------------------------------------------------- config
 def build_config(llm: str = "nim_super", reviewer_llm: dict | None = None, all_llms: dict | None = None) -> dict:
-    """workflow.yml with the planner model selected, optionally the reviewer (or every LLM) replaced."""
-    cfg = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    """workflow.yml with the planner model selected, optionally the reviewer (or every LLM) replaced.
+
+    Loaded the way NAT loads it, so `file://` references (the planner instructions in workspace/AGENTS.md) are
+    already inlined when the result is written to a temporary config elsewhere."""
+    cfg = yaml_load(WORKFLOW)
     cfg.pop("general", None)   # front end (FastAPI worker, CORS) is not used in-process
     if all_llms is not None:
         cfg["llms"] = {name: dict(all_llms) for name in cfg["llms"]}

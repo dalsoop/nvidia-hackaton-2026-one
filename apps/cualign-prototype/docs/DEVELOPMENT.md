@@ -51,7 +51,7 @@ UI/UX는 화면·상태·문구 설계를 맡고 개발자는 구현 방식을 �
 | 합성 케이스 | `core/synth.py`에서 생성. 파일로 필요하면 `uv run cualign cases build --out data/cases` |
 | 과거 실행·비교 자료 | `docs/demo/`, `docs/model-swap.md`, `bench/results.md`. 현재 버전 검증은 VERIFICATION과 구별 |
 | UI·형상 조사 | DESIGN_REFERENCES의 관찰·원문 링크. 외부 제품 이미지·원본 메시 전체를 재배포한 묶음은 아님 |
-| NVIDIA 관련 자산 | `configs/`, `guardrails/`, `openshell/`, `skills/`. 각 자산의 실제 연결 수준은 NVIDIA_STACK 참조 |
+| NVIDIA 관련 자산 | `configs/`, `guardrails/`, `openshell/`, `workspace/`. 각 자산의 실제 연결 수준은 NVIDIA_STACK 참조 |
 
 ## 작업을 인계할 때
 

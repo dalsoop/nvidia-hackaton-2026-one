@@ -22,6 +22,7 @@ import yaml
 from fastapi.routing import APIWebSocketRoute
 from fastapi.testclient import TestClient
 from nat.runtime.loader import load_config, load_workflow
+from nat.utils.io.yaml_tools import yaml_load
 
 from rails_fakes import A14, FakeLLM, FakeRails, PlanningLLM, RailLLM, SkippingPlanner
 from cualign import cli
@@ -60,7 +61,7 @@ def store(tmp_path, monkeypatch):
 
 
 def write_config(tmp_path, llm, factory, edit=None):
-    cfg = yaml.safe_load((ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8"))
+    cfg = yaml_load(ROOT / "configs" / "workflow.yml")   # file:// inlined: the copy is written under tmp_path
     for name in cfg["llms"]:
         cfg["llms"][name] = {"_type": "openai", "model_name": "fake", "base_url": llm.base_url, "api_key": "fake"}
     cfg["middleware"]["cualign_rails"]["rails_factory"] = factory
