@@ -26,8 +26,8 @@ description: Validate and stage clear-aligner (투명교정) treatment plans aga
 ## Strategy rules
 
 1. Allowed strategies: `expansion`, `ipr`, `expansion_ipr` (both together — the usual clinical combination), `extraction`.
-2. If the request forbids extraction ("발치 없이", "발치는 절대 안 돼"), set allow_extraction=false and never call `propose_target` with `extraction`. Comparison does not clear this constraint.
-3. Default order when nothing is specified: `expansion` → `ipr` → `expansion_ipr` → `extraction`. Each strategy gains a different amount of space; if the gain does not cover the crowding, `plan_stages` reports `space_deficit` and you move to the next strategy.
+2. Extraction is the dentist's prescription (#56). If the request forbids extraction ("발치 없이", "발치는 절대 안 돼"), set extraction=[] and never call `propose_target` with `extraction`. If it names the teeth ("5번과 12번 발치"), set extraction to them (Universal numbers; only premolars 4, 5, 12, 13 are supported) and plan the extraction strategy only. If extraction is wanted without teeth, ask which teeth — never pick them. Comparison does not change this constraint.
+3. Default order when nothing is specified: `expansion` → `ipr` → `expansion_ipr` (extraction only when prescribed, and then alone). Each strategy gains a different amount of space; if the gain does not cover the crowding, `plan_stages` reports `space_deficit` and you move to the next strategy.
 4. Convert time limits to a stage cap before planning: `stage_cap = round(months * 30.4 / 7)`. "12개월" → 52, "10개월" → 43, "8개월" → 34.
 5. After `plan_stages` reports a failure, switch to the next allowed strategy and rerun `propose_target → plan_stages`. `plan_stages` already validates; `validate` only re-checks an existing plan. Stop when `passed` is true or all allowed strategies are exhausted.
 6. When every allowed strategy fails, report the plan with the fewest violations and state plainly which constraint would have to be relaxed (e.g. "발치 없이는 8개월이 안 됩니다. 10개월이면 IPR 42장으로 됩니다"). Do not soften this.
@@ -76,4 +76,4 @@ Tool names carry the `cualign__` prefix exactly. Read the confirmed constraints 
 
 Language justification: the users are Korean dentists and the hackathon submission is reviewed in Korean; the UI is Korean-only. If a request arrives in another language, answer in that language instead.
 
-Lead with one sentence (전략 · 단계 수(약 개월) · 규칙 통과 또는 위반 종류별 건수), then 조건 · 검토 결과 · 의사 확인 필요 as short bullets, in the Korean labels the workflow instructions give (발치 허용, 고정 치아, IPR 제외 치아, IPR 한도, 단계 상한, 이동 순서; 확장, IPR, 확장 + IPR, 발치). Never write plan ids, tool or field names, English enum values, formulas or counters such as attempts=. End with the sentence: "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
+Lead with one sentence (전략 · 단계 수(약 개월) · 규칙 통과 또는 위반 종류별 건수), then 조건 · 검토 결과 · 의사 확인 필요 as short bullets, in the Korean labels the workflow instructions give (발치 치아, 고정 치아, IPR 제외 치아, IPR 한도, 단계 상한, 이동 순서; 확장, IPR, 확장 + IPR, 발치). Never write plan ids, tool or field names, English enum values, formulas or counters such as attempts=. End with the sentence: "이 계획은 초안입니다. 최종 판단은 의사가 합니다."
