@@ -36,6 +36,10 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
                "conditions_ko": constraints.describe_ko()}   # the answer's 조건 line, FDI, written by the server (#113)
     if ctx.base_plan_id is not None:
         context["base_plan_ko"] = base_plan_ko(store, cid, ctx.base_plan_id)   # the plan on screen, and a revert (#90)
+        rep = getattr(store, "replays", {}).get(cid)
+        if rep and rep.get("plan_id") == ctx.base_plan_id:   # the plan on screen came from a recorded answer (core/recorded.py)
+            context["replayed_ko"] = (f"[녹화된 답 재생] 직전 턴({rep['step_ko']})은 모델이 아니라 녹화된 답의 재생이었고 계획은 규칙 엔진이 "
+                                      f"다시 계산했다. 이 계획을 기준으로 이어간다.")
     if preload is not None:
         context.update(preload(cid, case, constraints))
     return run, {"role": "system", "content": "cuAlign server context: " + json.dumps(context, ensure_ascii=False)}

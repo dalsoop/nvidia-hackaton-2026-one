@@ -24,6 +24,11 @@ class RulePlanRequest(ConstraintPatch):
     parent_plan_id: str | None = None
 
 
+class ReplayRequest(BaseModel):
+    step: str = Field(pattern="^(plan|cap|compare)$")
+    base_plan_id: str | None = None
+
+
 class ApprovalRequest(BaseModel):
     confirmed: bool = False
 
@@ -504,6 +509,46 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         note = f"{models['status']}; files={models['n_files']}" + (f"; reason={models['reason']}" if models.get("reason") else "")
         return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
                             headers={"X-Cualign-Print-Models": note})
+
+    @app.post("/api/cases/{case_id}/replay")
+    async def replay_recorded(case_id: str, req: ReplayRequest):
+        """A sample's recorded agent answer (core/recorded.py) instead of a model turn: the plans are recomputed by the
+        rule engine under the recorded constraints, the answer's stage counts are checked against them, the recorded
+        review is attached, and the side effects are the agent turn's (plans stored, case constraints, context line)."""
+        from cualign.core import recorded
+        rec = recorded.load(case_id, req.step)
+        if rec is None or samples.get(case_id) is None:
+            raise HTTPException(404, recorded.NO_RECORDING)
+        try:
+            cid, case = STORE.load_case(case_id)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        patch = ConstraintPatch.model_validate({k: v for k, v in rec["constraints"].items() if k in ConstraintPatch.model_fields}).changes()
+        try:
+            constraints = STORE.constraints_for(cid, req.base_plan_id).patched(patch)
+            constraints.check_case(case.ids)
+        except ValueError as e:
+            raise HTTPException(400, reason_ko(e))
+        out = {"recorded": True, "answer_md": rec["answer_md"], "plan_selected": None, "plans": [], "recorded_at": rec["recorded_at"]}
+        if rec["review"] is None:      # the recorded turn made no plan (a question back, e.g. a comparison under an extraction prescription)
+            return out
+        try:
+            ids = PlanningService(STORE).compare(cid, constraints, parent_plan_id=req.base_plan_id)
+        except ValueError as e:
+            raise HTTPException(400, reason_ko(e))
+        STORE.case_constraints[cid] = constraints
+        by_strategy = {STORE._record(pid)["strategy"]: _summary(pid) for pid in ids}
+        wanted = recorded.strategy_in(rec["answer_md"].splitlines()[0]) if rec["answer_md"].strip() else None
+        selected = by_strategy.get(wanted) or next((p for p in by_strategy.values() if p["passed"]), None) \
+            or min(by_strategy.values(), key=lambda p: p["violations"])
+        STORE.set_review(selected["plan_id"], dict(rec["review"]))
+        selected = _summary(selected["plan_id"])
+        STORE.replays[cid] = {"step": rec["step"], "step_ko": recorded.STEP_KO[rec["step"]], "plan_id": selected["plan_id"],
+                              "recorded_at": rec["recorded_at"]}
+        out.update({"answer_md": recorded.substitute(rec["answer_md"], by_strategy, selected),
+                    "plan_selected": {"plan_id": selected["plan_id"], "parent_plan_id": selected["parent_plan_id"], "review": selected["review"]},
+                    "plans": [_summary(pid) for pid in ids]})
+        return out
 
     @app.post("/api/plan")
     async def rule_plan(req: RulePlanRequest):
