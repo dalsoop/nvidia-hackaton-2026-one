@@ -76,8 +76,11 @@ textarea { resize: vertical; }
   gap: 0; padding: 0; min-height: 0;
 }
 /* drag handle between the agent panel and the 3D (#90) */
-.splitter { cursor: col-resize; background: var(--line); touch-action: none; }
+.splitter { position: relative; cursor: col-resize; background: var(--line); touch-action: none; }
 .splitter:hover, .splitter:focus-visible, .splitter.dragging { background: var(--green); outline: none; }
+/* the handle (#13 polish): three dots at mid-height so the 6px line reads as draggable */
+.splitter::after { content: ""; position: absolute; left: 2px; top: calc(50% - 6px); width: 2px; height: 2px; border-radius: 50%; background: var(--muted); box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); }
+.splitter:hover::after, .splitter:focus-visible::after, .splitter.dragging::after { background: #000; box-shadow: 0 5px 0 #000, 0 10px 0 #000; }
 body.resizing { cursor: col-resize; user-select: none; }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .layout > * { grid-column: auto; } .splitter { display: none; } .side { border-left: 0; border-top: 1px solid var(--line); } }
 
@@ -187,6 +190,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: var(--radius); margin-right: 4px; vertical-align: -1px; }
 .legend { flex-wrap: wrap; row-gap: 4px; }
 .legend small { color: var(--faint); }
+.legend [hidden] { display: none; }
 .legend .red { background: var(--red); }
 .legend .amber { background: var(--amber); }
 .legend .blue { background: var(--blue); }
@@ -199,13 +203,18 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* floating toolbar over the 3D (#90): only the decision (내보내기) at the top right; views and tools are on the rail */
 .view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; margin-left: auto; }
 .view-actions { display: flex; gap: 4px; }
-/* vertical rail at the right edge of the 3D (Dentone style): six views, then 겹쳐 · 크게 (#90) */
+/* vertical icon bar at the right edge of the 3D (#90, #13 polish): four views, then 겹쳐 · 크게. Icons are grey PNG
+   glyphs from static/icons (26px); the label appears to the left on hover/focus, from aria-label */
 .view-rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 4px; }
-.view-rail .btn { width: 36px; height: 36px; padding: 0; font-size: 11px; }
-.rail-tools .btn { height: 44px; flex-direction: column; gap: 1px; font-size: 10px; }
+.view-rail .btn { position: relative; width: 40px; height: 40px; padding: 0; }
+.view-rail .vic { width: 26px; height: 26px; display: block; }
+.view-rail .btn[aria-pressed="true"] .vic { filter: brightness(1.15); }
+.view-rail .btn::after { content: attr(aria-label); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; font-weight: 400; color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s; }
+.view-rail .btn:hover::after, .view-rail .btn:focus-visible::after { opacity: 1; }
 .rail-tools { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .export { position: relative; }
-.export-pop { position: absolute; right: 0; top: calc(100% + 6px); width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
+#exportBtn, #exportWhy { display: none; }   /* the rail item is the visible 내보내기 (#13 polish); these keep the state */
+.export-pop { position: fixed; width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
 .export-pop p { margin: 0 0 8px; }
 .export-pop div { display: flex; gap: 6px; }
 .export-pop[hidden] { display: none; }
@@ -277,9 +286,7 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .legend { display: none; }
 .pop-confirm p { margin: 0 0 8px; }
 .pop-confirm div { display: flex; gap: 6px; }
 .case-pop .link-btn { align-self: flex-start; padding: 2px 4px; }
-.case-head .thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius); background: #000; }
 .case-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.case-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .case-text b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag { flex: none; font-size: 11px; line-height: 1.4; color: var(--green); border: 1px solid var(--green); border-radius: var(--radius); padding: 0 4px; }
 .case-text span { font-size: 12px; color: var(--muted); }
@@ -353,11 +360,10 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 /* ---- case list (v2 보드 02) */
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; background: var(--text); vertical-align: middle; }
 .dot.amber { background: var(--amber); } .dot.faint { background: var(--faint); } .dot.red { background: var(--red); } .dot.green { background: var(--green); }
-.start-body { max-width: 1100px; padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.start-body { width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .start-sub { margin: 12px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); }
 .cl-head { display: flex; align-items: center; gap: 12px; }
 .cl-head h1 { margin: 0; font-size: 22px; flex: 1; }
-.cl-head .count { font-size: 14px; font-weight: 400; color: var(--faint); margin-left: 6px; }
 .cl-table { border: 1px solid var(--line); border-radius: var(--radius); }
 .cl-row { display: grid; grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr; gap: 16px; padding: 10px 16px; font-size: 13px; align-items: center; text-align: left; }
 .cl-thead { font-size: 12px; color: var(--faint); background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -378,18 +384,17 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .cl-dbody > div { display: flex; flex-direction: column; gap: 8px; }
 #dArch { width: 100%; max-width: 300px; }
 @media (max-width: 1200px) { .cl-dbody { grid-template-columns: 1fr; } }
-.cl-dhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 16px; }
+.cl-dhead { display: flex; justify-content: flex-end; }
 .cl-detail .muted { color: var(--muted); font-size: 12px; }
 .cl-detail p { margin: 0; font-size: 13px; }
 .cl-detail .cl-label { padding: 8px 0 2px; border-top: 1px solid var(--line); margin-top: 4px; }
-.cl-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.cl-facts div { background: var(--panel-2); border-radius: var(--radius); padding: 6px 8px; font-size: 13px; font-weight: 700; }
-.cl-facts div small { display: block; font-size: 11px; font-weight: 400; color: var(--faint); }
+.cl-facts { font-size: 13px; font-weight: 700; }
 #dArch { width: 100%; height: auto; }
 #dArch circle { fill: var(--panel-2); stroke: var(--line-strong); }
 #dArch circle.extract { stroke: var(--red); stroke-width: 2; }
+#dArch circle.ipr-dot { fill: var(--faint); stroke: none; }
 #dArch text { fill: var(--text); font-size: 11px; text-anchor: middle; dominant-baseline: central; }
-#dArch text.legend { fill: var(--faint); font-size: 10px; }
+#dArch text.key { fill: var(--faint); font-size: 10px; }   /* not .legend: that is the 3D legend, hidden until a plan */
 #dOpen { margin-top: auto; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
@@ -471,8 +476,9 @@ body.start .splitter { pointer-events: none; }
 .pane .sub { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .pane .sub:empty { display: none; }
 .pane-sub { margin: 16px 20px 6px; font-size: 11px; font-weight: 700; color: var(--muted); }
-.facts-line { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--muted); }
-.facts-line b { color: var(--text); }
+.facts-line { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+.facts-line .l1 { font-size: 15px; font-weight: 700; color: var(--text); }
+.facts-line .l2:empty { display: none; }
 .facts-line:empty::before { content: "계획이 없어 단계가 없습니다."; }
 /* the stage table: rows are stages, columns teeth; a cell's colour is the kind of movement in that stage */
 .stage-grid { padding: 12px 12px 8px; display: grid; grid-auto-rows: 24px; gap: 1px; font-size: 10px; font-variant-numeric: tabular-nums; flex: none; }
@@ -482,6 +488,8 @@ body.start .splitter { pointer-events: none; }
 .stage-grid .row > * { cursor: pointer; }
 .stage-grid .k { display: grid; place-items: center; color: var(--faint); padding-right: 4px; justify-content: end; }
 .stage-grid .c { border-bottom: 1px solid #1f1f1f; }
+.stage-grid .c.nil { border-bottom: 0; }   /* a tooth that never moves: blank column */
+.stage-grid .hd.nil { color: var(--faint); font-weight: 400; }
 .stage-grid .row.cur > * { background: rgba(118, 185, 0, 0.14); }
 .stage-grid .row.cur .k { color: var(--green); font-weight: 700; }
 .stage-grid .row:hover > * { background: var(--hover); }
@@ -559,14 +567,12 @@ body.start .splitter { pointer-events: none; }
 /* ---------- start screen sample cards (③, 2026-09-28): thumbnail, title, plain finding, badges, status dot ---------- */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
 .sample-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 16px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; }
-.case-card::before { content: ""; position: absolute; top: 0; left: 0; width: 10px; height: 10px; background: var(--green); }  /* corner-square */
-.case-card:hover { border-color: var(--line-strong); }
-.case-card.on { border-color: var(--green); }
-.case-card .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
-.case-card .cid { font-weight: 700; font-size: 16px; }
-.case-card .rx { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: keep-all; }
-.case-card .st { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; padding: 0 0 14px; background: var(--panel-2); border: 1px solid var(--line); border-bottom: 2px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.case-card:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.case-card.on { border-bottom-color: var(--green); }   /* the pressed card: one green line under it */
+.case-card .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 0; border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; margin: 0 0 10px; }
+.case-card .cid { font-weight: 700; font-size: 16px; padding: 0 14px; }
+.case-card .rx { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: keep-all; padding: 2px 14px 0; }
+.case-card .meta { font-size: 12px; color: var(--faint); padding: 6px 14px 0; }
 .case-card > span:empty { display: none; }
 .cards .empty, #clRows .empty { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 13px; }
-.case-card { transition: border-color 0.15s ease; }

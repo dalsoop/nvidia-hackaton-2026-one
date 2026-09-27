@@ -125,7 +125,7 @@ async def main():
             assert await page.locator("#stlLink").get_attribute("href") is None
             parent_detail = store_module.STORE.plan_json(parent)
             assert parent_detail["passed"] and parent_detail["review"]["status"] == "skipped"
-            assert "미실행 (규칙 폴백)" in await page.locator("#reviewLine").inner_text()
+            assert "아직 검토 전" in await page.locator("#reviewLine").inner_text()
             assert int(await page.locator("#stageSlider").get_attribute("max")) == parent_detail["info"]["n_stages"]
             await page.locator("#stageSlider").fill(str(parent_detail["info"]["n_stages"]))
             await page.locator("#stageSlider").dispatch_event("input")
@@ -134,24 +134,26 @@ async def main():
             # Export is gated on a passing, reviewed plan; approving happens through the export popover, which then
             # clicks the hidden download link itself.
             assert await page.locator("#exportBtn").is_enabled()
-            await page.locator("#exportBtn").click()
+            assert await page.locator('#rail button[data-go="export"]').is_enabled()      # the rail item is the visible 내보내기
+            await page.locator('#rail button[data-go="export"]').click()
             await page.wait_for_selector("#exportPop:not([hidden])")
             async with page.expect_download() as download:
                 await page.locator("#exportGo").click()
             await page.wait_for_function("!!window.__cualign.state.plan?.approval")
             assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
-            assert (await page.locator("#exportBtn").inner_text()) == "STL 내려받기"
+            assert (await page.locator("#exportBtn").text_content()) == "STL 내려받기"
+            assert (await page.locator('#rail button[data-go="export"] span').inner_text()) == "STL 받기"
             await (await download.value).save_as(OUT / "approved-stages.zip")
 
             # Revoke the approval (the 검토 fold under the plan cards) and confirm export gates again.
             await page.locator("#planReview").evaluate("(el) => { el.open = true; }")
             await page.locator("#revokeBtn").click()
             await page.wait_for_function("!window.__cualign.state.plan?.approval")
-            assert (await page.locator("#exportBtn").inner_text()) == "내보내기"
+            assert (await page.locator("#exportBtn").text_content()) == "내보내기"
             assert await page.locator("#stlLink").get_attribute("href") is None
             # Re-approve so the plan is on screen as approved again before the next edit invalidates it.
-            await page.locator("#exportBtn").click()
+            await page.locator('#rail button[data-go="export"]').click()
             await page.wait_for_selector("#exportPop:not([hidden])")
             await page.locator("#exportGo").click()
             await page.wait_for_function("!!window.__cualign.state.plan?.approval")
@@ -159,6 +161,7 @@ async def main():
             # Editing the conditions makes the on-screen (approved) plan stale for export until replanned.
             await page.locator("#cLock").fill("13")
             assert await page.locator("#exportBtn").is_disabled()
+            assert await page.locator('#rail button[data-go="export"]').is_disabled()
             assert "조건이 바뀜" in await page.locator("#condState").inner_text()
             await page.locator("#fallbackBtn").click()
             await page.wait_for_function(f"(p) => {plan_on_screen} !== p && !document.querySelector('#fallbackBtn').disabled"
@@ -218,7 +221,7 @@ async def main():
             await page.locator("#reviewBtn").click()
             await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'passed' && !document.querySelector('#sendBtn').disabled")
             assert await on_screen() == selected
-            assert "메모 생성 완료" in await page.locator("#reviewLine").inner_text()
+            assert "검토 완료" in await page.locator("#reviewLine").inner_text()
             assert await page.locator("#reviewBtn").is_hidden()
             if store_module.STORE.plan_json(selected)["passed"]:
                 assert await page.locator("#exportBtn").is_enabled()
