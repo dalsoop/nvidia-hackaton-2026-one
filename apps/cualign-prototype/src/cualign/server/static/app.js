@@ -302,12 +302,85 @@ async function reviewCurrent() {
 // ------------------------------------------------------------------ patient flow (start point)
 // 환자 목록 → 환자(스캔 목록·업로드) → 입력 확인 → 계획. Samples sit outside the flow. The alias stays in the UI;
 // the chat and tools only see the pseudonymous case id (P0001-S1).
-const SCREENS = { start: "screenStart", patients: "screenPatients", patient: "screenPatient", check: "screenCheck" };
+const SCREENS = { patients: "screenPatients", patient: "screenPatient", check: "screenCheck" };
 function showScreen(name) {
+  setHash(name === "patient" ? "#patient=" + state.patient.patient_id : name === "check" ? "#check=" + state.checkCase : "#" + name);
+  document.body.classList.remove("start");   // the check screen shows its scan in the viewer
   for (const [k, id] of Object.entries(SCREENS)) $(id).hidden = k !== name;
+  $(SCREENS[name]).prepend($("gateClose"));   // inside the open panel, not over the top bar
   $("caseGate").classList.toggle("side", name === "check");   // keep the 3D viewer visible while checking
   $("gateClose").hidden = name === "check" || !state.activeCase;   // leave the check screen by confirming or going back
   $("caseGate").hidden = false;
+}
+// Start state (#90): no modal. The work screen itself shows the intro on the left and the sample cards where the
+// 3D goes; the conditions, chips, legend and result wait until a case is open.
+async function showStart() {
+  setHash("#start");
+  await loadCases();
+  $("caseGate").hidden = true;
+  $("startClose").hidden = !state.activeCase;
+  document.body.classList.add("start");
+}
+function leaveStart() {
+  document.body.classList.remove("start");
+}
+// Each screen gets an address (#start, #case=<id>, #patients, #patient=<id>, #check=<case>) so the browser's back
+// and forward buttons move between screens (#90). Moves made by back/forward replace instead of pushing.
+let routing = false;
+function setHash(h) {
+  if (location.hash === h) return;
+  if (routing) history.replaceState(null, "", h); else history.pushState(null, "", h);
+}
+async function route(hash) {
+  const [key, id] = decodeURIComponent(hash.slice(1)).split("=");
+  routing = true;
+  try {
+    if (key === "case" && id) {
+      if (id === state.activeCase) { $("caseGate").hidden = true; $("startClose").click(); }
+      else await activateCase(id);
+    } else if (key === "patients") { await loadPatients(); showScreen("patients"); }
+    else if (key === "patient" && id) await openPatient(id);
+    else if (key === "check" && id) {
+      const m = /^(P\d{4,})-(S\d+)$/.exec(id);
+      if (m && state.patient?.patient_id !== m[1]) await openPatient(m[1]);
+      await openCheck(id);
+    } else await showStart();
+  } finally { routing = false; }
+}
+window.addEventListener("popstate", () => route(location.hash).catch((err) => addMsg("error", err.message)));
+
+// Agent panel width: drag the splitter, arrow keys move it, double click resets. Kept per browser.
+const CHAT_MIN = 300, VIEWER_MIN = 420;
+function setChatWidth(px) {
+  const layout = document.querySelector(".layout");
+  if (px == null) { layout.style.removeProperty("--chat-w"); localStorage.removeItem("cualign.chatWidth"); return; }
+  px = Math.round(Math.max(CHAT_MIN, Math.min(px, layout.clientWidth - VIEWER_MIN - 6)));
+  layout.style.setProperty("--chat-w", px + "px");
+  localStorage.setItem("cualign.chatWidth", px);
+}
+{
+  const sp = $("splitter");
+  const saved = +localStorage.getItem("cualign.chatWidth");
+  if (saved) setChatWidth(saved);
+  sp.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    sp.setPointerCapture(e.pointerId);
+    sp.classList.add("dragging"); document.body.classList.add("resizing");
+  });
+  sp.addEventListener("pointermove", (e) => {
+    if (!sp.hasPointerCapture(e.pointerId)) return;
+    setChatWidth(e.clientX - document.querySelector(".layout").getBoundingClientRect().left);
+  });
+  sp.addEventListener("pointerup", (e) => {
+    sp.releasePointerCapture(e.pointerId);
+    sp.classList.remove("dragging"); document.body.classList.remove("resizing");
+  });
+  sp.addEventListener("dblclick", () => setChatWidth(null));
+  sp.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setChatWidth(document.querySelector(".chat").getBoundingClientRect().width + (e.key === "ArrowLeft" ? -16 : 16));
+  });
 }
 const fmtDate = (iso) => (iso ?? "").slice(0, 16).replace("T", " ");
 
@@ -315,7 +388,7 @@ async function loadPatients() {
   const { patients } = await api("/api/patients");
   const wrap = $("patientCards");
   wrap.innerHTML = "";
-  if (!patients.length) wrap.innerHTML = '<p class="empty">등록된 환자가 없습니다. 아래에서 새 환자를 등록하세요.</p>';
+  if (!patients.length) wrap.innerHTML = '<p class="empty">등록된 환자가 없습니다. 위에서 새 환자를 등록하세요.</p>';
   for (const p of patients) {
     const b = document.createElement("button");
     b.className = "case-card";
@@ -455,10 +528,10 @@ async function loadCases() {
       img.alt = `${c.case_id} 교합면`;
       img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
       b.prepend(img);
-      b.querySelector(".cid").textContent = c.case_id.replace(/^poseidon-/, "");
-      b.querySelector(".sev").textContent = c.title;
-      b.querySelector(".rx").textContent = "처방 · " + c.prescription;
-      b.querySelector(".meta").textContent = c.available ? "Poseidon3D · 상악 실제 스캔" : "샘플 파일이 설치되지 않았습니다";
+      // the card shows the finding and the prescription only; the case number and tooth numbering come after it opens (#90)
+      b.querySelector(".cid").textContent = c.title;
+      b.querySelector(".rx").textContent = "처방 · " + c.prescription.replace(/\s*\(FDI[^)]*\)/, "");
+      b.querySelector(".meta").textContent = c.available ? "" : "샘플 파일이 설치되지 않았습니다";
       b.disabled = !c.available;
     } else {
       b.querySelector(".cid").textContent = c.case_id;
@@ -506,6 +579,8 @@ async function activateCase(caseId, { greet = true } = {}) {
   setPrescriptionChip(sampleOf(caseId));
   $("caseGate").hidden = true;
   $("gateClose").hidden = false;
+  setHash("#case=" + caseId);
+  leaveStart();
   if (greet) {
     // The agent opens the conversation (clinical SW: case first, then constraints). Kept in the transcript
     // the model sees, so it knows which case is on screen.
@@ -707,7 +782,7 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
 async function send(text, constraints = null, { resend = false } = {}) {
   text = (text ?? "").trim();
   if (!text || state.streaming || state.loading) return;
-  if (!state.meshCase) { $("caseGate").hidden = false; return; }
+  if (!state.meshCase) { showStart(); return; }
   if (constraints === null) {
     try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   }
@@ -832,8 +907,11 @@ $("patientForm").addEventListener("submit", async (e) => {
   try {
     const p = await api("/api/patients", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ alias: $("pAlias").value, memo: $("pMemo").value }) });
-    $("pAlias").value = ""; $("pMemo").value = "";
+    const files = [...$("pScans").files];
+    $("pAlias").value = ""; $("pMemo").value = ""; $("pScans").value = "";
+    $("pScansName").textContent = "누르면 파일 선택 창이 열립니다. 나중에 올려도 됩니다.";
     await openPatient(p.patient_id);
+    if (files.length) await uploadScan(files);   // registered with its scan: go straight to 입력 확인
   } catch (err) { alert(err.message); }
 });
 $("scanList").addEventListener("click", (e) => {
@@ -848,6 +926,10 @@ $("scanList").addEventListener("click", (e) => {
   }
   const go = btn.dataset.act === "check" ? openCheck(caseId) : activateCase(caseId);
   go.catch((err) => addMsg("error", "스캔 열기 실패: " + err.message));
+});
+$("pScans").addEventListener("change", (e) => {
+  const n = e.target.files.length;
+  $("pScansName").textContent = n ? `${n}개 파일 선택됨 — 등록하면 바로 올라갑니다` : "누르면 파일 선택 창이 열립니다. 나중에 올려도 됩니다.";
 });
 $("scanInput").addEventListener("change", (e) => { uploadScan([...e.target.files]); e.target.value = ""; });
 for (const ev of ["dragenter", "dragover"]) $("dropZone").addEventListener(ev, (e) => { e.preventDefault(); $("dropZone").classList.add("over"); });
@@ -885,7 +967,7 @@ $("deletePatient").addEventListener("click", async () => {
     await loadPatients(); showScreen("patients");
   } catch (err) { alert("삭제 실패: " + err.message); }
 });
-$("toSamples").addEventListener("click", () => loadCases().then(() => showScreen("start")).catch((err) => addMsg("error", err.message)));
+$("toSamples").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
 $("toPatients").addEventListener("click", () => loadPatients().then(() => showScreen("patients")).catch((err) => addMsg("error", "환자 목록 로드 실패: " + err.message)));
 for (const b of document.querySelectorAll("#caseGate .back")) b.addEventListener("click", () => {
   if (b.dataset.go === "patient" && state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
@@ -893,7 +975,13 @@ for (const b of document.querySelectorAll("#caseGate .back")) b.addEventListener
 });
 $("caseBtn").addEventListener("click", () => {
   if (state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
-  else loadCases().then(() => showScreen("start")).catch((err) => addMsg("error", err.message));
+  else showStart().catch((err) => addMsg("error", err.message));
+});
+$("startClose").addEventListener("click", async () => {
+  leaveStart();
+  if (state.activeCase && state.meshCase !== state.activeCase) {
+    try { await loadMesh(state.activeCase); await refreshPlans(); } catch (err) { addMsg("error", err.message); }
+  }
 });
 $("gateClose").addEventListener("click", async () => {
   $("caseGate").hidden = true;
@@ -941,7 +1029,13 @@ for (const b of document.querySelectorAll(".view-btns button")) b.addEventListen
     try { await activateCase(params.get("case")); return; }
     catch (e) { addMsg("error", `케이스 로드 실패: ${e.message}`); }
   }
-  // The page opens on the sample cards; "내 스캔 올리기" leads to the patient flow (patient → scan → plan).
+  // The page opens in the start state; "내 스캔 올리기" leads to the patient flow (patient → scan → plan).
   if (active) document.querySelector(`.case-card[data-id="${CSS.escape(active)}"]`)?.classList.add("current");
-  showScreen("start");
+  $("startClose").hidden = !state.activeCase;
+  // a reload or a shared address opens the same screen; otherwise this is the start state
+  if (location.hash && location.hash !== "#start") {
+    routing = true;
+    try { await route(location.hash); } catch (e) { addMsg("error", e.message); }
+    routing = false;
+  } else history.replaceState(null, "", "#start");
 })();
