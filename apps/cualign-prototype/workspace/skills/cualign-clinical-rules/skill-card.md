@@ -1,6 +1,6 @@
 <!-- Drafted with the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0) on 2026-09-25 from SKILL.md, README.md, SECURITY.md, docs/clinical-sources.md and workspace/skills/skillspector-report*.md; reviewed by the cuAlign team (#39). -->
 ## Description: <br>
-Validate and stage clear-aligner treatment plans against published clinical limits using the cuAlign tool set, producing draft-only output that never diagnoses or prescribes. <br>
+Skill for the NAT planner of cuAlign. It validates clear-aligner staging plans against published clinical limits with the cuAlign tools. It gives draft plans only. It does not diagnose or prescribe. <br>
 
 This skill is for research and development only. <br>
 
@@ -9,7 +9,7 @@ This skill is not owned or developed by NVIDIA. This skill has been developed an
 
 ### License/Terms of Use: <br>
 ## Use Case: <br>
-Developers and dentists on the cuAlign team use it to turn a dentist's natural-language constraints into a staged clear-aligner plan. Example constraints are no extraction, within 12 months, and lock tooth 13. The plan is validated against the published movement, IPR, arch-expansion and stage-count limits. When a rule fails, the skill chooses or switches a space-gaining strategy. The result is a draft the dentist reviews; the skill never diagnoses, prescribes or approves a plan. <br>
+A dentist gives conditions in natural language, for example no extraction, 12 months or less, or lock tooth 13. The cuAlign team uses this skill to change these conditions into a staged clear-aligner plan. The tools check the plan against the published limits for movement, IPR, arch expansion and stage count. When a rule fails, the skill selects a space-gaining strategy or changes to a different strategy. The result is a draft that the dentist examines. The skill does not diagnose, prescribe or approve a plan. <br>
 
 ### Deployment Geography for Use: <br>
 Republic of Korea (Korean-speaking dentists; the UI and the hackathon submission are in Korean) <br>
@@ -33,12 +33,12 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis, Files] <br>
-**Output Format:** [Korean Markdown summary (strategy · aligner count · months · violations by type · tool order) ending with «이 계획은 초안입니다. 최종 판단은 의사가 합니다.»; tool results are JSON; an approved plan exports as a ZIP of per-stage STL files] <br>
+**Output Format:** [Korean Markdown summary: strategy, aligner count, months, violations by type and tool order. The last line is «이 계획은 초안입니다. 최종 판단은 의사가 합니다.» The tools give JSON. An approved plan exports as a ZIP of STL files, one file for each stage.] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [Draft-only. Rule failures and reviewer failures block approval. Only the dentist can approve in the UI. Patient meshes stay local; only computed plan summaries reach the reviewer model.] <br>
+**Other Properties Related to Output:** [Draft only. A rule failure or a reviewer failure blocks approval. Only the dentist can approve, in the UI. Patient meshes stay on the local computer. Only the calculated plan summaries go to the reviewer model.] <br>
 
 ## Evaluation Tasks: <br>
-SkillSpector static and semantic security scans of the skill directory on 2026-09-22 (two reports in workspace/skills/, one markdown component of 62 lines, same result). The reports are a snapshot of the skill on that date. They are not a safety certification of the current file or of the service (docs/NVIDIA_STACK.md, SECURITY.md). <br>
+SkillSpector static and semantic security scans of the skill folder on 2026-09-22. The two reports are in workspace/skills/. Each scan found one markdown component of 62 lines, and the two results are the same. The reports show the skill on that date. They do not certify the safety of the current file or of the service (docs/NVIDIA_STACK.md, SECURITY.md). <br>
 
 ## Evaluation Results: <br>
 | Metric | Value |
