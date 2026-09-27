@@ -30,10 +30,10 @@ from cualign.core.fdi import to_fdi  # noqa: E402
 SAMPLES = APP / "src" / "cualign" / "core" / "samples"
 OUT = APP / "out" / "target-check"
 
-CASES = [
-    ("poseidon-000097", "extraction", {"extraction": [5, 12]}),
-    ("poseidon-000001", "expansion_ipr", {"extraction": [], "ipr_exclude": [2, 3, 14, 15], "ipr_limit_mm": 0.25}),
-    ("poseidon-000131", "ipr", {"extraction": [], "ipr_exclude": [2, 3, 4, 5, 6, 11, 12, 13, 14, 15], "ipr_limit_mm": 0.25}),
+CASES = [                     # the real samples use their own prescriptions (samples.py, per-contact IPR since #57)
+    ("poseidon-000097", "extraction", None),
+    ("poseidon-000001", "expansion_ipr", None),
+    ("poseidon-000131", "ipr", None),
     ("synthetic:moderate", "expansion_ipr", {}),
     ("synthetic:severe", "extraction", {"extraction": [5, 12]}),
 ]
@@ -47,7 +47,11 @@ def load(cid: str) -> Case:
 
 def run(cid, strategy, cons, uncut: bool = False) -> tuple[dict, Case, dict]:
     case = load(cid)
-    c = Constraints(**cons) if cons else None
+    if cons is None:
+        from cualign.core import samples
+        c = samples.get(cid).initial_constraints()
+    else:
+        c = Constraints(**cons) if cons else None
     t0 = time.time()
     target, info = planner.propose_target(case, strategy, constraints=c)
     stages, sinfo = planner.plan_stages(case, target)

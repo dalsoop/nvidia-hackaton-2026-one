@@ -211,8 +211,9 @@ def staging_check():
         stages, info = planner.plan_stages(c, {**{k: np.zeros(3) for k in c.ids}, 8: d})
         n = math.ceil(np.linalg.norm(d) / 0.25)
         steps = [np.linalg.norm(stages[k][8] - (stages[k - 1][8] if k else 0)) for k in range(len(stages))]
-        ok = info["n_stages"] == n and max(steps) <= 0.25 + 1e-9 and np.allclose(stages[-1][8], d)
-        return ok, f"{info['n_stages']} stages, max step {max(steps):.3f}", f"{n} stages, ≤ 0.25"
+        # a lone move clips nothing, so nothing is sequenced (2026-09-28: phase_boundary 0)
+        ok = info["n_stages"] == n and max(steps) <= 0.25 + 1e-9 and np.allclose(stages[-1][8], d) and info["phase_boundary"] == 0
+        return ok, f"{info['n_stages']} stages, max step {max(steps):.3f}, boundary {info['phase_boundary']}", f"{n} stages, ≤ 0.25"
     return run
 
 
@@ -346,7 +347,7 @@ CHECKS: list[Check] = [
     Check("B-push-aligned", 1, "push 8 into 9 by 0.75 mm, aligned arch", push_check(0.0, 8, 9, 0.75)),
     Check("B-push-crowded", 1, "push 2 into 3 by 0.75 mm while other pairs start overlapped", push_check(6.0, 2, 3, 0.75)),
     Check("B-extraction-neighbour", 1, "after removing 5, pushing 4 into 6 is reported", extraction_neighbor_check()),
-    Check("B-staging", 1, "straight move split into ≤ 0.25 mm stages, exact end", staging_check()),
+    Check("B-staging", 1, "straight move split into ≤ 0.25 mm stages, exact end, nothing sequenced", staging_check()),
     # step 5 — rotation / vertical correction
     Check("B-rot-8-20", 5, "incisor rotated 20° is derotated, nothing else turns", correction_check(yaw={8: 20.0})),
     Check("B-rot-3-12", 5, "molar rotated -12° is derotated, nothing else turns", correction_check(yaw={3: -12.0})),
