@@ -18,34 +18,49 @@ INSTRUCTIONS = (
     "to decide next, with 2 or 3 concrete choices. Each choice is a short label (at most 12 Korean characters) and the "
     "full message the dentist would send to the assistant to take that choice (one sentence, Korean, imperative). "
     "Good questions decide a condition: extraction, a time cap in months, teeth to lock, IPR exclusions, comparing "
-    "strategies, or a revision. Never offer approval, export or 보류 as a choice: the dentist approves with a button, "
-    "and every choice must be something the assistant can do in the next turn. Ask about the plan just made "
-    "(its strategy, months, violations), not in general. Never diagnose, never prescribe, never mention plan ids, "
-    "tool or field names. "
+    "strategies, or a revision. Never offer approval, export, download, hold (보류) or re-review as a choice: the screen "
+    "does those with buttons, and every choice must be a planning request the assistant can carry out in the next turn "
+    "(a condition change, a comparison, a revision). If the dentist's last message is off topic (not about this plan), "
+    "still ask about the plan just made. Ask about the plan just made (its strategy, months, violations), not in "
+    "general, and never ask again what the dentist's last message already decided: move to the next decision. Korean "
+    "only, question and choices alike. Stay inside the app's limits: IPR is at most 0.25 mm per surface (never offer "
+    "more), strategies are 확장, IPR, 확장 + IPR, 발치; a choice names concrete teeth or values. Tooth numbers in FDI, "
+    "upper arch only (11..18, 21..28), never the app's 1..16 and never lower teeth. If the dentist asks about pain, "
+    "symptoms, medication or anything clinical, do not answer it: the choices stay plan conditions (never advise "
+    "medication, wear time or treatment management). Never diagnose, never prescribe, never mention plan ids, tool or "
+    "field names. "
     'Answer with JSON only: {"question": "...", "options": [{"label": "...", "message": "..."}, ...]}'
 )
 
 MAX_TURNS = 6           # the model sees only the tail of the conversation
 MAX_CHARS = 1500        # per message
 MAX_OPTIONS = 3
+# What the screen does with buttons, never a chip (#107): approving, exporting, holding, downloading, re-reviewing.
+HANGUL_RE = re.compile(r"[가-힣]")
+SCREEN_ACTION_RE = re.compile(r"승인|확정|내보내|export|보류|다운로드|STL|ZIP|검토 다시|재검토|approve", re.I)
 
 
 def parse(text: str) -> dict | None:
     """The JSON object in the model's text, trimmed to what the card shows; None when it is not a usable question."""
-    m = re.search(r"\{[\s\S]*\}", text or "")
-    if not m:
-        return None
-    try:
-        data = json.loads(m.group(0))
-    except json.JSONDecodeError:
+    text = text or ""
+    data = None
+    for start in sorted({m.start() for m in re.finditer(r"\{", text)}, reverse=True):   # the last object that parses
+        try:
+            data = json.loads(text[start:text.rindex("}") + 1])
+            break
+        except (json.JSONDecodeError, ValueError):
+            continue
+    if not isinstance(data, dict):
         return None
     question = str(data.get("question") or "").strip()
+    if not HANGUL_RE.search(question):   # an English question is no card for a Korean screen (#107, live case 6)
+        return None
     options = []
     for o in data.get("options") or []:
         if not isinstance(o, dict):
             continue
         label, message = str(o.get("label") or "").strip(), str(o.get("message") or "").strip()
-        if label and message:
+        if label and message and not SCREEN_ACTION_RE.search(label + " " + message):
             options.append({"label": label[:24], "message": message[:200]})
     if not question or len(options) < 2:
         return None

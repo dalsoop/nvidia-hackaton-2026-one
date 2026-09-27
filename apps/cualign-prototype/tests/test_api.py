@@ -1,12 +1,15 @@
 """Offline artifact flow and missing-resource handling; no model calls."""
+import asyncio
+import threading
 from io import BytesIO
 from zipfile import ZipFile
 
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from cualign.server import api
-from cualign.core import store
+from cualign.core import planner, store
 
 
 def test_artifact_flow(tmp_path, monkeypatch):
@@ -75,3 +78,38 @@ def test_upload_without_tooth_files_is_rejected(tmp_path, monkeypatch):
     with TestClient(app) as client:
         r = client.post("/api/cases/upload", files=[("files", ("gingiva.stl", b"solid g\nendsolid g\n", "model/stl"))])
         assert r.status_code == 400
+
+
+def test_stl_zip_builds_off_the_event_loop(tmp_path, monkeypatch):
+    """While a download builds (seconds on a real scan), other requests are answered: the agent shares this
+    process (#119). The build is held open until the other request is back."""
+    monkeypatch.setattr(api, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(store, "OUT_DIR", tmp_path)
+    started, release, released = threading.Event(), threading.Event(), []
+    real = planner.export_print_models
+
+    def held(*args, **kwargs):
+        started.set()
+        released.append(release.wait(5))   # on the event loop nothing else runs, so this only times out
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(planner, "export_print_models", held)
+    app = FastAPI()
+    api.add_api_routes(app)
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            result = (await client.post("/api/plan", json={"case_id": "moderate"})).json()
+            pid = (result["chosen"] or result["best_failed"])["plan_id"]
+            assert (await client.post(f"/api/plans/{pid}/approval", json={"confirmed": True})).status_code == 200
+            download = asyncio.create_task(client.get(f"/api/plans/{pid}/stl.zip"))
+            assert await asyncio.to_thread(started.wait, 5)
+            other = await asyncio.wait_for(client.get(f"/api/plans/{pid}"), 2)
+            assert other.status_code == 200
+            release.set()
+            output = await download
+            assert output.status_code == 200 and released == [True]
+            with ZipFile(BytesIO(output.content)) as archive:
+                assert "print_models/README.txt" in archive.namelist()
+        assert not list((tmp_path / "stl").glob("*.tmp"))   # built under a temporary name, then moved into place
+    asyncio.run(scenario())

@@ -18,7 +18,7 @@ class ExtractionTeethNeeded(ValueError):
     """Extraction was allowed without saying which teeth: the app does not choose them."""
 
     def __init__(self):
-        super().__init__("발치할 치아 번호가 필요합니다(Universal, 예: 5, 12). 앱은 발치 치아를 고르지 않습니다.")
+        super().__init__("발치할 치아 번호가 필요합니다(예: 14번과 24번). 앱은 발치 치아를 고르지 않습니다.")
 
 
 def reason_ko(e: Exception) -> str:
@@ -69,6 +69,17 @@ class Constraints(BaseModel):
     @classmethod
     def unique_teeth(cls, value):
         return tuple(sorted(set(value)))
+
+    def describe_ko(self) -> str:
+        """The 조건 line the dentist reads, with FDI tooth numbers (#113). The server writes it so the model copies it
+        instead of converting numbers itself (a live answer turned ipr_exclude 2..15 into 25..43)."""
+        from .fdi import to_fdi
+        from .limits import DAYS_PER_MONTH, WEAR_DAYS
+        teeth = lambda ts: ", ".join(str(to_fdi(t)) for t in ts) + "번" if ts else "없음"   # noqa: E731
+        cap = f"{self.stage_cap}단계(약 {round(self.stage_cap * WEAR_DAYS / DAYS_PER_MONTH, 1)}개월)" if self.stage_cap else "없음"
+        order = {"simultaneous": "동시", "anterior_first": "앞니 먼저", "sequential": "순차"}[self.order]
+        return (f"발치 치아 {teeth(self.extraction)} · 고정 치아 {teeth(self.lock)} · IPR 제외 치아 {teeth(self.ipr_exclude)} · "
+                f"IPR 한도 면당 {self.ipr_limit_mm:g}mm · 단계 상한 {cap} · 이동 순서 {order}")
 
     @field_validator("extraction")
     @classmethod

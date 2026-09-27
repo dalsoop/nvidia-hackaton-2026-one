@@ -1,5 +1,7 @@
 """Artifact API. Approval is checked on every export, including cached files."""
 from __future__ import annotations
+import asyncio
+import os
 import re
 import uuid
 from pathlib import Path
@@ -90,7 +92,8 @@ def _summary(pid):
     return {"plan_id": pid, "case_id": p["case_id"], "parent_plan_id": p["parent_plan_id"],
             "strategy": p["strategy"], "n_stages": p["info"]["n_stages"], "months": p["info"]["months"],
             "passed": p["passed"], "violations": len(p["violations"]), "by_type": planner.summarize(p["violations"]),
-            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"]}
+            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"],
+            "input_stale": p["input_stale"]}   # same rule as GET /api/plans/{id}: the scan was renumbered since
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
@@ -181,6 +184,19 @@ def _case_status(confirmed: bool | None, rep: dict | None) -> str:
     return "awaiting_approval"
 
 
+def _build_stl_zip(case: Case, stages: list[dict], path: Path, case_id: str) -> dict:
+    """Stage STLs and print models into `path`, built under a temporary name and moved into place: two downloads of
+    the same plan at once build side by side, and neither serves the other's half-written zip."""
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        planner.export_zip(case, stages, str(tmp))
+        models = planner.export_print_models(case, stages, str(tmp), case_id)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return models
+
+
 def add_api_routes(app: FastAPI, review=None, followup=None):
     """`review(plan_id)` runs the bounded reviewer outside a chat request: the dentist's «검토 다시 요청», and the
     chat stream's fallback when the agent skipped the reviewer (plan_events.py reads it from app.state).
@@ -240,12 +256,15 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
+        out = {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
+               "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
         try:
             ensure_case_plan(cid)
         except ValueError as e:
-            raise HTTPException(400, str(e))
-        return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
-                "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
+            # The case still opens, with no plan: the screen shows the failure card (v2 board 07) with this text and
+            # «이 조건으로 다시 계산» calls POST /api/plan. Mesh and constraint failures above stay 404/400.
+            out["plan_error"] = str(e)
+        return out
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str):
@@ -444,9 +463,10 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             raise HTTPException(409, str(e))
         _, case = STORE.load_case(p["case_id"])
         path = OUT_DIR / "stl" / f"{plan_id}.zip"
-        # Regenerate from the approved snapshot; a stale file cannot bypass approval.
-        planner.export_zip(case, p["stages"], str(path))
-        models = planner.export_print_models(case, p["stages"], str(path), p["case_id"])
+        # Regenerate from the approved snapshot; a stale file cannot bypass approval. Building takes 5–11 s on the
+        # samples (mostly the print models), and the agent shares this process: off the event loop, or every other
+        # request and the agent's streamed answer wait for it (#119).
+        models = await asyncio.to_thread(_build_stl_zip, case, p["stages"], path, p["case_id"])
         note = f"{models['status']}; files={models['n_files']}" + (f"; reason={models['reason']}" if models.get("reason") else "")
         return FileResponse(str(path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
                             headers={"X-Cualign-Print-Models": note})

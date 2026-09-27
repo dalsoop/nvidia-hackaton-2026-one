@@ -25,7 +25,7 @@ import numpy as np
 import trimesh
 
 from .intake import mirror_numbers, orient_scan
-from .rail_patterns import PII
+from cualign.server.rail_patterns import PII   # the regex rail list lives with the harness (#79)
 
 ALIAS_MAX = 40
 MEMO_MAX = 200
@@ -127,9 +127,9 @@ def _check_meshes(folder: Path) -> None:
         try:
             m = trimesh.load(f, process=False, force="mesh")
         except Exception as e:
-            raise ValueError(f"{f.name}: STL을 읽지 못했습니다 ({type(e).__name__}).") from None
+            raise ValueError(f"스캔을 읽지 못했습니다: {type(e).__name__} ({f.name})") from None   # v2 board 08 wording (#112)
         if len(m.faces) == 0 or not np.isfinite(m.vertices).all() or float(m.area) <= 0.0:
-            raise ValueError(f"{f.name}: 면이 없거나 넓이가 0인 메시입니다.")
+            raise ValueError(f"스캔을 읽지 못했습니다: 면이 없거나 넓이가 0인 메시 ({f.name})")
 
 
 def add_scan(pid: str, files: dict[str, bytes]) -> dict:
