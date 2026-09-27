@@ -18,9 +18,9 @@ def test_samples_ship_with_the_package():
     for s in samples.SAMPLES.values():
         assert s.available, s.case_id
         assert {f"{i}.stl" for i in range(2, 16)} <= {p.name for p in s.folder.iterdir()}
-        assert (s.folder / "gingiva.stl").exists() and "CC-BY-4.0" in (s.folder / "SOURCE.txt").read_text()
+        assert (s.folder / "gingiva.stl").exists() and "CC-BY-4.0" in (s.folder / "SOURCE.txt").read_text(encoding="utf-8")
         assert (STATIC / "samples" / f"{s.case_id}.png").stat().st_size > 1000
-    assert "CC-BY-4.0" in (samples.SAMPLE_DIR / "ATTRIBUTION.md").read_text()
+    assert "CC-BY-4.0" in (samples.SAMPLE_DIR / "ATTRIBUTION.md").read_text(encoding="utf-8")
 
 
 def test_start_screen_lists_the_samples_not_the_synthetic_cases():
@@ -30,7 +30,7 @@ def test_start_screen_lists_the_samples_not_the_synthetic_cases():
     assert all(r["constraints"] == samples.get(r["case_id"]).initial_constraints().model_dump(mode="json") for r in rows[:3])
     # the presets stay loadable by name (agent, tests, CLI); the screen filters them out
     assert {"moderate"} <= {r["case_id"] for r in rows if r["kind"] == "synthetic"}
-    html = (STATIC / "index.html").read_text()
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert 'id="screenStart"' in html and 'id="sampleCards"' in html and "screenSamples" not in html
     assert "발치안이랑 비발치안" not in html          # the tool does not pick the treatment direction
 
