@@ -156,6 +156,12 @@ class Constraints(BaseModel):
             data["extraction"] = sorted(set(removed or ())) if allowed else []
         return cls.model_validate(data)
 
+    def prescription(self) -> "Constraints":
+        """The dentist's prescription part: extraction, lock, IPR exclusions and limit. The stage cap and the move order
+        are plan conditions (they belong to the plan they were made for and reach the next turn through that plan), so
+        a case keeps none of them between openings (answer-polish (8), 2026-09-28)."""
+        return self.model_copy(update={"stage_cap": None, "order": "simultaneous"})
+
     def patched(self, changes: dict) -> "Constraints":
         changes = _legacy_extraction(changes, self.extraction)
         return Constraints.model_validate({**self.model_dump(exclude={"allow_extraction"}), **changes})

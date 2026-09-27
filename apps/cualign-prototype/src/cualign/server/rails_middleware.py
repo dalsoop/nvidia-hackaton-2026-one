@@ -211,6 +211,16 @@ DELIBERATION_MIN_LATIN = 200   # a dropped prefix has at least this many Latin l
 HANGUL_SHARE = 0.3     # a Korean answer with IPR/mm/FDI tokens keeps well above this; deliberation quoting one Korean
                        # sentence sits far below (the 2026-09-28 leak: about 6 percent)
 NO_ANSWER = "모델이 계획 대신 자기 추론문만 돌려보내 답을 만들지 못했습니다. 같은 요청을 다시 보내 주세요."
+# The ReAct label the model answers under. NAT strips it from a parsed "Final Answer:" block, but an answer given
+# without a tool call in the same turn (E2E 2026-09-28, the compare turn under an extraction prescription: "Final
+# Answer: 발치 치아 14,24번 처방이 유지된 상태에서 …") reaches the screen with the label on. A label only ever opens the
+# answer, so "Final Answer:" inside a sentence is left alone.
+REACT_LABEL = re.compile(r"^\s*(?:\*\*)?Final Answer\s*:?(?:\*\*)?\s*:?\s*", re.I)
+
+
+def _strip_label(answer: str) -> str:
+    """`answer` without a leading ReAct "Final Answer:" label (plain or bold)."""
+    return REACT_LABEL.sub("", answer, count=1)
 
 
 def _korean_line(line: str) -> bool:
@@ -360,7 +370,7 @@ class RailsMiddleware(FunctionMiddleware):
             except Exception as e:
                 raise self._failed(e) from None
             answer = _text(out)
-            stripped = _strip_deliberation(answer)
+            stripped = _strip_deliberation(_strip_label(answer))
             if stripped != answer:
                 out, answer = response_like(value, stripped), stripped
             fixed = _checked_rule_status(answer)
@@ -379,7 +389,7 @@ class RailsMiddleware(FunctionMiddleware):
             except Exception as e:
                 raise self._failed(e) from None
             answer = "".join(_text(c) for c in held)
-            stripped = _strip_deliberation(answer)
+            stripped = _strip_deliberation(_strip_label(answer))
             if stripped != answer:
                 held, answer = [ChatResponseChunk.create_streaming_chunk(stripped)], stripped
             fixed = _checked_rule_status(answer)

@@ -9,12 +9,12 @@ from cualign.server import api
 
 
 class FakeLLM:
-    def __init__(self, text, delay=0):
-        self.text, self.delay, self.calls = text, delay, []
+    def __init__(self, text, delay=0, delays=None):
+        self.text, self.delay, self.delays, self.calls = text, delay, list(delays or []), []
 
     async def ainvoke(self, messages):
         self.calls.append(messages)
-        await asyncio.sleep(self.delay)
+        await asyncio.sleep(self.delays.pop(0) if self.delays else self.delay)   # `delays`: per call, then `delay`
         return self.text
 
 
@@ -36,10 +36,21 @@ def test_parse_rejects_what_is_not_a_question():
     assert followup.parse('{"question": "q", "options": [{"label": "a"}, {"label": "b", "message": ""}]}') is None
 
 
-def test_tail_keeps_the_last_turns_only():
-    msgs = [{"role": "system", "content": "ctx"}] + [{"role": "user", "content": "x" * 5000}] * 10
+def test_tail_keeps_the_last_answer_and_the_sentence_that_asked_for_it():
+    """The E2E conversation (three turns) made nim_lightning time out at 60 s; the card needs the last answer only."""
+    msgs = [{"role": "system", "content": "ctx"}]
+    for i in range(3):
+        msgs += [{"role": "user", "content": f"요청 {i} " + "u" * 5000}, {"role": "assistant", "content": f"답 {i} " + "a" * 5000}]
     t = followup.tail(msgs)
-    assert len(t) == followup.MAX_TURNS and all(len(m["content"]) == followup.MAX_CHARS for m in t)
+    assert [m["role"] for m in t] == ["user", "assistant"] and t[0]["content"].startswith("요청 2") and t[1]["content"].startswith("답 2")
+    assert len(t[0]["content"]) == followup.MAX_USER_CHARS and len(t[1]["content"]) == followup.MAX_ANSWER_CHARS
+    assert sum(len(m["content"]) for m in t) <= followup.MAX_CHARS and len(t) == followup.MAX_TURNS
+    # the screen's slice(-8) with the dentist's sentence after the answer: the answer and the sentence before it
+    t = followup.tail(msgs + [{"role": "user", "content": "뒤에 온 문장"}])
+    assert t[0]["content"].startswith("요청 2") and t[1]["content"].startswith("답 2")
+    assert followup.tail([{"role": "user", "content": "첫 문장"}]) == [{"role": "user", "content": "첫 문장"}]   # no answer yet
+    assert followup.tail([{"role": "assistant", "content": "답만"}]) == [{"role": "assistant", "content": "답만"}]
+    assert followup.tail([{"role": "system", "content": "ctx"}]) == []
 
 
 def test_next_question_sends_the_tail_and_parses():
@@ -50,9 +61,25 @@ def test_next_question_sends_the_tail_and_parses():
 
 
 def test_next_question_is_none_on_timeout_or_empty():
-    assert asyncio.run(followup.next_question(FakeLLM(GOOD, delay=0.2), [{"role": "user", "content": "a"}],
-                                              timeout_seconds=0.01)) is None
+    llm = FakeLLM(GOOD, delay=0.2)
+    assert asyncio.run(followup.next_question(llm, [{"role": "user", "content": "a"}], timeout_seconds=0.03)) is None
+    assert len(llm.calls) == 2   # the hedge fired too, and both were given up at the deadline
     assert asyncio.run(followup.next_question(FakeLLM(GOOD), [])) is None
+
+
+def test_a_hung_first_call_is_hedged_by_a_second_within_the_budget():
+    """Live 2026-09-28: 3 of 9 nim_lightning calls never answered, whatever the input; the next request did.
+    A first call silent past `hedge_after` gets a second one, and the first answer is the card. A quick first
+    answer means one call only."""
+    msgs = [{"role": "user", "content": "a"}, {"role": "assistant", "content": "계획을 만들었습니다."}]
+    llm = FakeLLM(GOOD, delays=[10, 0.01])
+    q = asyncio.run(followup.next_question(llm, msgs, timeout_seconds=1, hedge_after=0.05))
+    assert q["question"] == "발치 없이 갈까요?" and len(llm.calls) == 2
+    llm = FakeLLM(GOOD, delay=0.01)
+    assert asyncio.run(followup.next_question(llm, msgs, timeout_seconds=1, hedge_after=0.5)) and len(llm.calls) == 1
+    llm = FakeLLM(GOOD, delays=[10, 10])   # both silent: no card, no error, inside the budget
+    assert asyncio.run(followup.next_question(llm, msgs, timeout_seconds=0.3, hedge_after=0.05)) is None
+    assert followup.HEDGE_AFTER < 12
 
 
 def test_endpoint_without_a_model_returns_no_card():
