@@ -4,6 +4,8 @@
   min-height: 0;
   display: grid;
   grid-template-columns: var(--width-panel-work) minmax(0, 1fr) var(--width-panel-sidebar) var(--width-tab-rail);
+  grid-template-rows: minmax(0, 1fr);
+  position: relative;
   overflow: hidden;
   background: var(--color-bg);
 }
@@ -17,19 +19,20 @@
 .workspace-panel-left {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--color-border-subtle);
+  border-right: var(--line-1) solid var(--color-border-subtle);
   overflow: hidden;
 }
 
 .workspace-plans-container {
-  flex: 0 1 48%;
-  min-height: 190px;
+  flex: 0 1 auto;
+  max-height: 62%;
+  min-height: var(--height-plans-min);
   overflow: hidden;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
 }
 
 .workspace-agent-container {
-  flex: 1 1 52%;
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -45,44 +48,9 @@
 }
 
 .workspace-panel-sidebar {
-  border-left: 1px solid var(--color-border-subtle);
+  border-left: var(--line-1) solid var(--color-border-subtle);
   overflow: hidden;
 }
-
-.workspace-panel-tabrail {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-4);
-  padding-top: var(--space-10);
-  border-left: 1px solid var(--color-border-subtle);
-  background: var(--color-surface-base);
-}
-
-.workspace-tabrail-btn {
-  width: 48px;
-  min-height: 48px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-4) 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--color-text-secondary);
-}
-
-.workspace-tabrail-btn:hover,
-.workspace-tabrail-btn.active {
-  border-color: var(--color-border-subtle);
-  background: var(--color-surface-raised);
-  color: var(--color-accent);
-}
-
-.workspace-tabrail-label { font-size: 10px; line-height: 1.2; }
 
 .plans-panel {
   height: 100%;
@@ -99,8 +67,8 @@
   padding: var(--space-16) var(--space-20) var(--space-10);
 }
 
-.plans-panel-title { margin: 0; font-size: 18px; font-weight: 700; }
-.plans-panel-count { font-size: 13px; color: var(--color-text-muted); }
+.plans-panel-title { margin: 0; font-size: var(--font-size-18); font-weight: 700; }
+.plans-panel-count { font-size: var(--font-size-13); color: var(--color-text-muted); }
 
 .plans-list {
   flex: 1;
@@ -113,8 +81,8 @@
   overscroll-behavior: contain;
 }
 
-.plans-empty-note { padding: var(--space-16) 0; color: var(--color-text-muted); font-size: 13px; }
-.plans-panel-error { margin: 0 var(--space-20) var(--space-12); color: var(--color-danger-light); font-size: 12px; }
+.plans-empty-note { padding: var(--space-16) 0; color: var(--color-text-muted); font-size: var(--font-size-13); }
+.plans-panel-error { margin: 0 var(--space-20) var(--space-12); color: var(--color-danger-light); font-size: var(--font-size-12); }
 
 .plan-card {
   flex: 0 0 auto;
@@ -123,7 +91,7 @@
   gap: var(--space-8);
   min-width: 0;
   padding: var(--space-10);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
   background: var(--color-surface-raised);
 }
@@ -131,97 +99,177 @@
 .plan-card-viewing { border-color: var(--color-accent); }
 .plan-card-stale { border-color: var(--color-border-strong); }
 .plan-card-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-8); }
-.plan-card-title { margin: 0; font-size: 13px; font-weight: 700; white-space: nowrap; }
-.plan-card-view-btn { height: 36px; padding: 0 var(--space-10); font-size: 13px; font-weight: 700; }
+.plan-card-title { margin: 0; font-size: var(--font-size-13); font-weight: 700; white-space: nowrap; }
+.plan-card-view-btn { height: var(--btn-height-default); padding: 0 var(--space-10); font-size: var(--font-size-13); font-weight: 700; }
 .plan-card-view-active { border-color: var(--color-accent); color: var(--color-accent); }
 .plan-card-badges { display: flex; flex-wrap: wrap; gap: var(--space-4); min-width: 0; }
 .plan-badge-strategy,
-.plan-badge-stages { border: 1px solid var(--color-border-subtle); background: var(--color-surface-base); }
-.plan-badge-stale { border: 1px solid var(--color-border-strong); color: var(--color-text-secondary); }
+.plan-badge-stages { border: var(--line-1) solid var(--color-border-subtle); background: var(--color-surface-base); }
+.plan-badge-stale { border: var(--line-1) solid var(--color-border-strong); color: var(--color-text-secondary); }
 
 .plan-card-actions {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
   padding-top: var(--space-8);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: var(--line-1) solid var(--color-border-subtle);
 }
 
 .plan-notice-stale,
 .plan-action-error {
   padding: var(--space-8);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   border-radius: var(--radius-xs);
   background: var(--color-danger-bg);
   color: var(--color-danger-light);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.4;
 }
 
 .plan-review-row { display: flex; flex-direction: column; gap: var(--space-6); }
 .plan-review-toggle-btn {
   width: 100%;
-  min-height: 28px;
+  min-height: var(--space-28);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-6);
   padding: 0 var(--space-8);
-  border: 1px solid transparent;
+  border: var(--line-1) solid transparent;
   background: none;
   color: var(--color-text-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-align: left;
 }
 
 .plan-review-toggle-btn:hover,
 .plan-review-toggle-btn[aria-expanded="true"] { border-color: var(--color-border-strong); background: var(--color-surface-raised); }
-.plan-review-memo-drawer { padding: var(--space-8); border: 1px solid var(--color-border-subtle); color: var(--color-text-secondary); font-size: 12px; }
-.plan-review-retry-btn { align-self: flex-start; height: 36px; }
+.plan-review-memo-drawer { padding: var(--space-8); border: var(--line-1) solid var(--color-border-subtle); color: var(--color-text-secondary); font-size: var(--font-size-12); }
+.plan-review-retry-btn { align-self: flex-start; height: var(--btn-height-default); }
 .plan-primary-actions,
 .plan-approve-confirm-step { display: flex; align-items: center; gap: var(--space-8); }
 .plan-approve-btn,
-.plan-confirm-execute-btn { flex: 1; height: 36px; }
+.plan-confirm-execute-btn { flex: 1; height: var(--btn-height-default); }
 .plan-confirm-cancel-btn { border: 0; background: none; color: var(--color-text-secondary); text-decoration: underline; }
-.plan-download-btn { min-width: 64px; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-4); text-decoration: none; }
+.plan-download-btn { min-width: var(--space-64); height: var(--btn-height-default); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-4); text-decoration: none; }
 .plan-download-btn.disabled { color: var(--color-text-muted); pointer-events: none; }
-.plan-action-suffix { font-size: 11px; font-weight: 400; }
-.plan-revoke-btn { height: 36px; }
-.plan-approved-meta { color: var(--color-accent-light); font-size: 12px; font-weight: 700; }
+.plan-action-suffix { font-size: var(--font-size-11); font-weight: 400; }
+.plan-revoke-btn { height: var(--btn-height-default); }
+.plan-approved-meta { color: var(--color-accent-light); font-size: var(--font-size-12); font-weight: 700; }
 
 .screen-workspace-loading {
   width: 100%; height: 100%; display: grid; place-content: center; justify-items: center;
   gap: var(--space-12); background: var(--color-bg); color: var(--color-text-secondary);
 }
-.workspace-spinner { width: 28px; height: 28px; border: 3px solid var(--color-border-subtle); border-top-color: var(--color-accent); border-radius: var(--radius-full); animation: workspace-spin 0.8s linear infinite; }
+.workspace-spinner { width: var(--space-28); height: var(--space-28); border: var(--line-3) solid var(--color-border-subtle); border-top-color: var(--color-accent); border-radius: var(--radius-full); animation: workspace-spin 0.8s linear infinite; }
 @keyframes workspace-spin { to { transform: rotate(360deg); } }
 
-.workspace-plan-start-panel { flex: 0 1 auto; display: flex; flex-direction: column; gap: var(--space-12); border-bottom: 1px solid var(--color-border-subtle); }
-.plan-start-error { margin: 0 var(--space-20); padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-6); border: 1px solid var(--color-danger); background: var(--color-danger-bg); }
+.workspace-plan-start-panel { flex: 0 1 auto; display: flex; flex-direction: column; gap: var(--space-12); border-bottom: var(--line-1) solid var(--color-border-subtle); }
+.plan-start-error { margin: 0 var(--space-20); padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-6); border: var(--line-1) solid var(--color-danger); background: var(--color-danger-bg); }
 .plan-start-error strong { color: var(--color-danger-light); }
-.plan-start-error-message { font-size: 13px; line-height: 1.5; }
+.plan-start-error-message { font-size: var(--font-size-13); line-height: 1.5; }
 .plan-start-conditions { padding: 0 var(--space-20); display: flex; flex-direction: column; gap: var(--space-8); }
-.plan-start-label { font-size: 11px; font-weight: 700; color: var(--color-text-secondary); }
+.plan-start-label { font-size: var(--font-size-11); font-weight: 700; color: var(--color-text-secondary); }
 .plan-start-tags { display: flex; flex-wrap: wrap; gap: var(--space-6); }
-.plan-start-tags span { padding: 3px var(--space-8); border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised); color: var(--color-text-secondary); font-size: 12px; }
-.plan-start-footer { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-16) var(--space-20) var(--space-20); border-top: 1px solid var(--color-border-subtle); }
-.plan-start-recalc-btn { width: 100%; height: var(--btn-height-primary); font-size: 15px; font-weight: 700; }
+.plan-start-tags span { padding: var(--space-3) var(--space-8); border: var(--line-1) solid var(--color-border-subtle); background: var(--color-surface-raised); color: var(--color-text-secondary); font-size: var(--font-size-12); }
+.plan-start-footer { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-16) var(--space-20) var(--space-20); border-top: var(--line-1) solid var(--color-border-subtle); }
+.plan-start-recalc-btn { width: 100%; height: var(--btn-height-primary); font-size: var(--font-size-15); font-weight: 700; }
 
-@media (max-width: 1440px) and (min-width: 769px) {
-  .screen-workspace-layout { --width-panel-work: 340px; --width-panel-sidebar: 340px; }
-}
+/* Plan + chat drawer toggle: only exists at 1024px and below, where it sits
+   at the bottom of the rail column. */
+.workspace-left-drawer-toggle { display: none; }
 
+/* ------------------------------------------------------------- 1280px and below
+   The right sidebar becomes a drawer over the 3D view, opened from the tab rail. */
 @media (max-width: 1280px) and (min-width: 769px) {
-  .screen-workspace-layout { grid-template-columns: var(--width-panel-work) minmax(0, 1fr) var(--width-tab-rail); position: relative; }
-  .workspace-panel-sidebar { position: absolute; z-index: 8; top: 0; right: var(--width-tab-rail); bottom: 0; width: var(--width-panel-sidebar); transform: translateX(110%); }
-  .workspace-panel-sidebar.is-open { transform: translateX(0); }
+  .screen-workspace-layout {
+    grid-template-columns: var(--width-panel-work) minmax(0, 1fr) var(--width-tab-rail);
+  }
+
+  .workspace-panel-sidebar {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    right: var(--width-tab-rail);
+    bottom: 0;
+    width: var(--width-panel-sidebar);
+    display: none;
+    box-shadow: var(--shadow-drawer);
+  }
+
+  .workspace-sidebar-open .workspace-panel-sidebar { display: block; }
 }
 
+/* ------------------------------------------------------------- 1024px and below
+   The plan + chat column also becomes a drawer; the 3D view takes the width. */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .screen-workspace-layout {
+    grid-template-columns: minmax(0, 1fr) var(--width-tab-rail);
+  }
+
+  .workspace-panel-left {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--width-panel-work);
+    display: none;
+    box-shadow: var(--shadow-drawer);
+  }
+
+  .workspace-left-open .workspace-panel-left { display: flex; }
+
+  .screen-workspace-layout .workspace-left-drawer-toggle {
+    position: fixed;
+    z-index: 25;
+    left: var(--space-4);
+    bottom: var(--space-16);
+    width: calc(var(--width-rail) - var(--space-8));
+    padding: 0;
+    display: inline-flex !important;
+  }
+
+  .workspace-left-open .workspace-left-drawer-toggle {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+}
+
+/* ------------------------------------------------------------- 768px and below
+   One column: plans + chat, 3D (60vh) with the stage bar under it, tab bar, sidebar. */
 @media (max-width: 768px) {
-  .screen-workspace-layout { height: auto; min-height: 100%; grid-template-columns: 1fr; grid-template-rows: auto 60vh auto auto; overflow: visible; }
-  .workspace-panel-left { min-height: 620px; }
-  .workspace-panel-center { height: 60vh; }
-  .workspace-panel-sidebar { min-height: 480px; }
-  .workspace-panel-tabrail { order: -1; min-height: 56px; flex-direction: row; justify-content: center; padding: var(--space-4); border-left: 0; border-bottom: 1px solid var(--color-border-subtle); }
+  .screen-workspace-layout {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    overflow: visible;
+  }
+
+  .workspace-panel-left { border-right: 0; border-bottom: var(--line-1) solid var(--color-border-subtle); }
+  .workspace-plans-container { max-height: none; }
+  .workspace-agent-container { min-height: var(--height-viewer-stacked); }
+
+  .workspace-panel-center,
+  .workspace-viewer-container { height: auto; overflow: visible; }
+
+  .workspace-panel-tabrail {
+    order: 3;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    flex-direction: row;
+    justify-content: center;
+    border-left: 0;
+    border-top: var(--line-1) solid var(--color-border-subtle);
+    border-bottom: var(--line-1) solid var(--color-border-subtle);
+  }
+
+  .workspace-panel-sidebar {
+    order: 4;
+    min-height: var(--height-viewer-stacked);
+    border-left: 0;
+  }
 }

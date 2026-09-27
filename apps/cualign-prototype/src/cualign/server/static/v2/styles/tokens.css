@@ -4,6 +4,13 @@
   --color-surface-base: #111111;
   --color-surface-raised: #1a1a1a;
   --color-surface-lock: #242424;
+  --color-surface-sunken: #0a0a0a;
+
+  /* Translucent layers over the 3D canvas and behind drawers */
+  --color-overlay: rgba(0, 0, 0, 0.72);
+  --color-overlay-raised: rgba(17, 17, 17, 0.94);
+  --color-scrim: rgba(0, 0, 0, 0.5);
+  --shadow-drawer: 0 0 24px rgba(0, 0, 0, 0.6);
 
   /* Borders and Dividers */
   --color-border-subtle: #2e2e2e;
@@ -34,11 +41,41 @@
   /* Info (Blue) */
   --color-info: #4f8fd6;
 
+  /* Keyboard focus: light green ring, 2px outside the element */
+  --color-focus-ring: #c6f27a;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
   /* Typography Tokens */
   --font-family-base: Pretendard, 'IBM Plex Sans KR', -apple-system, 'Apple SD Gothic Neo', sans-serif;
   --font-family-mono: 'IBM Plex Mono', monospace;
 
+  /* Font sizes (design scale). 11 = section label, 13 = body/buttons,
+     15 = primary button, 18 = panel title, 22+ = screen title. */
+  --font-size-rail-note: 9.5px;
+  --font-size-10: 10px;
+  --font-size-rail-label: 10.5px;
+  --font-size-11: 11px;
+  --font-size-12: 12px;
+  --font-size-13: 13px;
+  --font-size-14: 14px;
+  --font-size-15: 15px;
+  --font-size-17: 17px;
+  --font-size-18: 18px;
+  --font-size-20: 20px;
+  --font-size-21: 21px;
+  --font-size-22: 22px;
+  --font-size-24: 24px;
+  --font-size-28: 28px;
+
+  /* Line widths (borders, rules, accent bars) */
+  --line-1: 1px;
+  --line-2: 2px;
+  --line-3: 3px;
+  --line-4: 4px;
+
   /* Button Heights */
+  --btn-height-small: 28px;
   --btn-height-default: 36px;
   --btn-height-primary: 46px;
 
@@ -48,24 +85,79 @@
   --width-panel-list: 280px;
   --width-panel-work: 380px;
   --width-panel-sidebar: 400px;
+  --width-panel-detail: 480px;
   --height-topbar: 56px;
+
+  /* Component sizes */
+  --width-stage-bar: 440px;
+  --width-chips-bar: 480px;
+  --width-readable: 480px;
+  --width-check-label: 104px;
+  --width-agent-actions: 124px;
+  --height-check-scroll: 180px;
+  --height-plans-min: 190px;
+  --height-viewer-stacked: 60vh;
+  --size-tooth-chart-w: 380px;
+  --size-tooth-chart-h: 226px;
+  --size-tooth-chart-label-inset: 120px;
+  --size-tooth-chart-label-w: 140px;
+  --size-busy-bar-short: 64px;
+  --size-busy-bar-long: 120px;
 
   /* Border Radii */
   --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-full: 9999px;
 
-  /* Spacings */
+  /* Spacings (also used for small fixed sizes: dots, icons, chips) */
+  --space-1: 1px;
   --space-2: 2px;
+  --space-3: 3px;
   --space-4: 4px;
+  --space-5: 5px;
   --space-6: 6px;
+  --space-7: 7px;
   --space-8: 8px;
+  --space-9: 9px;
   --space-10: 10px;
   --space-12: 12px;
   --space-14: 14px;
   --space-16: 16px;
+  --space-18: 18px;
   --space-20: 20px;
   --space-24: 24px;
   --space-28: 28px;
+  --space-30: 30px;
+  --space-32: 32px;
   --space-36: 36px;
+  --space-40: 40px;
+  --space-44: 44px;
+  --space-48: 48px;
+  --space-52: 52px;
+  --space-56: 56px;
+  --space-60: 60px;
+  --space-64: 64px;
+}
+
+/* Breakpoints (media queries cannot read custom properties, so the widths
+   live here as comments and are repeated in each @media rule):
+   - 1440px and below: narrower panels (below)
+   - 1280px and below: workspace sidebar and case detail become overlay drawers
+   - 1024px and below: workspace plan/chat column becomes a drawer
+   - 768px and below: single stacked column, page scrolls, rail on top */
+@media (max-width: 1440px) {
+  :root {
+    --width-panel-list: 240px;
+    --width-panel-work: 340px;
+    --width-panel-sidebar: 340px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --width-panel-list: 100%;
+    --width-panel-work: 100%;
+    --width-panel-sidebar: 100%;
+    --width-panel-detail: 100%;
+  }
 }

@@ -9,14 +9,13 @@
   background: var(--color-bg);
 }
 
-/* Left Inspection Panel (Strictly 380px) */
+/* Left Inspection Panel (--width-panel-work) */
 .check-panel {
-  width: 380px;
-  width: var(--width-panel-work, 380px);
+  width: var(--width-panel-work);
   flex-shrink: 0;
   height: 100%;
   background: var(--color-surface-base);
-  border-right: 1px solid var(--color-border-subtle);
+  border-right: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -26,7 +25,7 @@
 /* Header */
 .check-header {
   padding: var(--space-20) var(--space-20) var(--space-14);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
@@ -42,14 +41,14 @@
 
 .check-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-18);
   font-weight: 700;
   color: var(--color-text-primary);
   line-height: 1.3;
 }
 
 .check-subtitle {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 700;
   color: var(--color-text-secondary);
   line-height: 1.4;
@@ -69,7 +68,7 @@
 .check-loading {
   padding: var(--space-24) 0;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text-secondary);
 }
 
@@ -77,7 +76,7 @@
 .check-box {
   padding: var(--space-12) var(--space-14);
   border-radius: var(--radius-xs);
-  font-size: 12.5px;
+  font-size: var(--font-size-13);
   line-height: 1.5;
   display: flex;
   flex-direction: column;
@@ -90,18 +89,18 @@
 
 .check-box-warning {
   background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning);
+  border: var(--line-1) solid var(--color-warning);
   color: var(--color-warning-light);
 }
 
 .check-box-warning b {
   color: var(--color-warning);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .check-box-notice {
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   color: var(--color-text-secondary);
 }
 
@@ -111,18 +110,18 @@
 
 .check-box-danger {
   background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   color: var(--color-danger-light);
 }
 
 .check-box-danger b {
   color: var(--color-danger);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .check-box-error {
   background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   color: var(--color-danger-light);
   font-weight: 500;
 }
@@ -130,7 +129,7 @@
 .check-unsupported-list {
   margin: 0;
   padding-left: var(--space-16);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.5;
   display: flex;
   flex-direction: column;
@@ -141,13 +140,13 @@
 .check-dl {
   margin: 0;
   display: grid;
-  grid-template-columns: 104px 1fr;
+  grid-template-columns: var(--width-check-label) 1fr;
   row-gap: var(--space-8);
   column-gap: var(--space-12);
-  font-size: 12.5px;
+  font-size: var(--font-size-13);
   line-height: 1.45;
   padding-bottom: var(--space-10);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
 }
 
 .check-dt {
@@ -169,18 +168,18 @@
 /* Section Title */
 .check-section-title {
   margin: 0 0 var(--space-4) 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 700;
   color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
 }
 
 /* FDI Tooth Width Table */
 .check-table-wrap {
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  max-height: 180px;
+  max-height: var(--height-check-scroll);
   overflow-y: auto;
   background: var(--color-surface-raised);
 }
@@ -188,24 +187,24 @@
 .check-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .check-table th {
   background: var(--color-surface-base);
   color: var(--color-text-secondary);
-  padding: 6px var(--space-12);
+  padding: var(--space-6) var(--space-12);
   text-align: left;
   font-weight: 700;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
 .check-table td {
-  padding: 6px var(--space-12);
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-6) var(--space-12);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
   color: var(--color-text-primary);
 }
 
@@ -225,7 +224,7 @@
 /* Hint */
 .check-hint {
   margin: 0;
-  font-size: 11.5px;
+  font-size: var(--font-size-11);
   line-height: 1.4;
   color: var(--color-text-muted);
 }
@@ -233,7 +232,7 @@
 /* Footer (Bottom Actions) */
 .check-footer {
   padding: var(--space-16) var(--space-20) var(--space-20);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
@@ -243,9 +242,9 @@
 /* Primary Button strictly 46px */
 .check-btn-primary {
   width: 100%;
-  height: 46px;
-  height: var(--btn-height-primary, 46px); /* 46px */
-  font-size: 14.5px;
+  height: var(--btn-height-primary);
+  height: var(--btn-height-primary);
+  font-size: var(--font-size-14);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -265,10 +264,10 @@
 .check-btn-mirror {
   margin-top: var(--space-4);
   width: 100%;
-  height: 32px;
-  font-size: 12px;
+  height: var(--btn-height-default);
+  font-size: var(--font-size-13);
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-warning);
+  border: var(--line-1) solid var(--color-warning);
   color: var(--color-warning-light);
 }
 
@@ -279,10 +278,10 @@
 /* Delete Button */
 .check-btn-delete {
   width: 100%;
-  height: var(--btn-height-default); /* 36px */
-  font-size: 13px;
+  height: var(--btn-height-default);
+  font-size: var(--font-size-13);
   background: transparent;
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   color: var(--color-danger-light);
 }
 
@@ -295,7 +294,7 @@
   flex-direction: column;
   gap: var(--space-8);
   color: var(--color-danger-light);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.5;
 }
 
@@ -307,4 +306,11 @@
   position: relative;
   background: var(--color-bg);
   overflow: hidden;
+}
+
+/* ------------------------------------------------------------- 768px and below */
+@media (max-width: 768px) {
+  .screen-check { height: auto; flex-direction: column; overflow: visible; }
+  .check-panel { height: auto; border-right: 0; border-bottom: var(--line-1) solid var(--color-border-subtle); }
+  .check-viewer-container { height: auto; overflow: visible; }
 }

@@ -15,7 +15,7 @@
 
 .agent-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-18);
   font-weight: 700;
   color: var(--color-text-primary);
 }
@@ -42,9 +42,9 @@
 .agent-bubble-user {
   padding: var(--space-8) var(--space-12);
   background: var(--color-surface-lock);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text-primary);
   line-height: 1.5;
   word-break: break-word;
@@ -54,7 +54,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .agent-trace-step {
@@ -64,8 +64,8 @@
 }
 
 .agent-trace-dot {
-  width: 7px;
-  height: 7px;
+  width: var(--space-7);
+  height: var(--space-7);
   border-radius: var(--radius-full);
   display: inline-block;
   flex-shrink: 0;
@@ -85,8 +85,8 @@
 }
 
 .agent-busy-card {
-  padding: 9px var(--space-10);
-  border: 1px dashed var(--color-border-strong);
+  padding: var(--space-9) var(--space-10);
+  border: var(--line-1) dashed var(--color-border-strong);
   border-radius: var(--radius-xs);
   display: flex;
   flex-direction: column;
@@ -95,7 +95,7 @@
 }
 
 .agent-busy-title {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text-muted);
 }
 
@@ -105,15 +105,15 @@
 }
 
 .agent-busy-bar-1 {
-  width: 64px;
-  height: 14px;
+  width: var(--size-busy-bar-short);
+  height: var(--space-14);
   background: var(--color-surface-raised);
   border-radius: var(--radius-xs);
 }
 
 .agent-busy-bar-2 {
-  width: 120px;
-  height: 14px;
+  width: var(--size-busy-bar-long);
+  height: var(--space-14);
   background: var(--color-surface-raised);
   border-radius: var(--radius-xs);
 }
@@ -123,9 +123,9 @@
   max-width: 94%;
   padding: var(--space-8) var(--space-12);
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text-primary);
   line-height: 1.6;
   word-break: break-word;
@@ -142,10 +142,10 @@
 .agent-bubble-error {
   padding: var(--space-8) var(--space-12);
   background: var(--color-danger-bg);
-  border: 1px solid var(--color-border-subtle);
-  border-left: 3px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-border-subtle);
+  border-left: var(--line-3) solid var(--color-danger);
   border-radius: var(--radius-xs);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-danger-light);
   line-height: 1.6;
   word-break: break-word;
@@ -166,10 +166,10 @@
   justify-content: center;
   background: var(--color-surface-base);
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
   font-family: var(--font-family-base);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 700;
   align-self: flex-start;
   cursor: pointer;
@@ -183,13 +183,13 @@
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
 .agent-input-container {
   padding: var(--space-16) var(--space-20) var(--space-20);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   gap: var(--space-8);
   flex-shrink: 0;
@@ -209,14 +209,13 @@
   height: auto;
   resize: none;
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
   padding: var(--space-8) var(--space-10);
   color: var(--color-text-primary);
   font-family: var(--font-family-base);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   line-height: 1.5;
-  outline: none;
 }
 
 .agent-textarea:focus {
@@ -231,7 +230,7 @@
 }
 
 .agent-actions {
-  width: 124px;
+  width: var(--width-agent-actions);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -242,10 +241,10 @@
   height: var(--btn-height-default);
   background: var(--color-accent);
   color: var(--color-text-inverse);
-  border: 1px solid var(--color-accent);
+  border: var(--line-1) solid var(--color-accent);
   border-radius: var(--radius-xs);
   font-family: var(--font-family-base);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 700;
   cursor: pointer;
   display: flex;
@@ -265,13 +264,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: var(--space-5);
   background: none;
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
   font-family: var(--font-family-base);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -285,10 +284,10 @@
 
 .sr-only {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: var(--space-1);
+  height: var(--space-1);
   padding: 0;
-  margin: -1px;
+  margin: calc(-1 * var(--space-1));
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;

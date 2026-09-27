@@ -16,37 +16,31 @@
   display: block;
   width: 100%;
   height: 100%;
-  outline: none;
-}
-
-.viewer-overlay-chips-bar[hidden],
-.viewer-tooltip[hidden],
-.viewer-overlay-layer [hidden] {
-  display: none;
 }
 
 /* ------------------------------------------------------------- Viewport Toolbars */
 .viewer-views-bar {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: var(--space-16);
+  right: var(--space-16);
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: var(--space-4);
   background-color: var(--color-surface-base);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--color-border-subtle);
+  backdrop-filter: blur(var(--space-8));
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  padding: 4px;
+  padding: var(--space-4);
   z-index: 10;
 }
 
 .viewer-view-btn {
   background: transparent;
   color: var(--color-text-secondary);
-  border: 1px solid transparent;
+  border: var(--line-1) solid transparent;
   border-radius: var(--radius-xs);
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: var(--space-4) var(--space-10);
+  font-size: var(--font-size-12);
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -65,21 +59,27 @@
 
 .viewer-layers-bar {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  bottom: var(--space-16);
+  left: var(--space-16);
+  max-width: calc(100% - var(--space-32));
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  background-color: var(--color-overlay);
+  border: var(--line-1) solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
   z-index: 10;
 }
 
 .viewer-layer-toggle-btn {
   background-color: var(--color-surface-base);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--space-8));
   color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: var(--space-6) var(--space-12);
+  font-size: var(--font-size-12);
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -100,16 +100,15 @@
 /* Arch Info Badge */
 .viewer-arch-info {
   position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  background-color: var(--color-surface-base);
-  backdrop-filter: blur(8px);
+  top: var(--space-16);
+  left: var(--space-16);
+  background-color: var(--color-overlay);
+  backdrop-filter: blur(var(--space-8));
   color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: var(--space-4) var(--space-12);
+  font-size: var(--font-size-12);
   font-weight: 700;
   pointer-events: none;
   z-index: 10;
@@ -134,19 +133,19 @@
 /* Violation and IPR callouts using CSS variables --x and --y */
 .viewer-violation-callout {
   position: absolute;
-  left: var(--x, 0px);
-  top: var(--y, 0px);
-  transform: translate(-50%, -100%) translateY(-6px);
+  left: var(--x, 0);
+  top: var(--y, 0);
+  transform: translate(-50%, -100%) translateY(calc(-1 * var(--space-6)));
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   background-color: var(--color-danger-bg);
   color: var(--color-danger-light);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   border-radius: var(--radius-xs);
-  padding: 2px 6px;
-  font-size: 11px;
+  padding: var(--space-2) var(--space-6);
+  font-size: var(--font-size-11);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -155,9 +154,9 @@
 .viewer-violation-callout .badge-danger {
   color: var(--color-text-primary);
   background-color: var(--color-danger);
-  padding: 1px 4px;
-  border-radius: 1px;
-  font-size: 10px;
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--space-1);
+  font-size: var(--font-size-10);
 }
 
 .viewer-violation-callout .teeth-pair {
@@ -170,16 +169,16 @@
 
 .viewer-ipr-callout {
   position: absolute;
-  left: var(--x, 0px);
-  top: var(--y, 0px);
+  left: var(--x, 0);
+  top: var(--y, 0);
   transform: translate(-50%, -50%);
   pointer-events: auto;
   background-color: var(--color-surface-base);
   color: var(--color-accent-light);
-  border: 1px solid var(--color-accent-dim);
+  border: var(--line-1) solid var(--color-accent-dim);
   border-radius: var(--radius-xs);
-  padding: 1px 5px;
-  font-size: 11px;
+  padding: var(--space-1) var(--space-5);
+  font-size: var(--font-size-11);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -187,16 +186,16 @@
 
 .viewer-tooth-badge {
   position: absolute;
-  left: var(--x, 0px);
-  top: var(--y, 0px);
+  left: var(--x, 0);
+  top: var(--y, 0);
   transform: translate(-50%, -50%);
   pointer-events: none;
   background-color: var(--color-surface-base);
   color: var(--color-text-muted);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  padding: 1px 4px;
-  font-size: 10px;
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--font-size-10);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -204,16 +203,16 @@
 /* Hover Tooltip */
 .viewer-tooltip {
   position: absolute;
-  left: var(--x, 0px);
-  top: var(--y, 0px);
+  left: var(--x, 0);
+  top: var(--y, 0);
   pointer-events: none;
   background-color: var(--color-surface-base);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(var(--space-6));
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: var(--space-6) var(--space-10);
+  font-size: var(--font-size-12);
   line-height: 1.4;
   white-space: nowrap;
   z-index: 20;
@@ -239,38 +238,38 @@
 /* Selection FDI Chips Bar */
 .viewer-overlay-chips-bar {
   position: absolute;
-  top: 56px;
-  left: 16px;
+  top: var(--space-56);
+  left: var(--space-16);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-6);
   background-color: var(--color-surface-base);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--color-border-subtle);
+  backdrop-filter: blur(var(--space-6));
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  padding: 6px 10px;
-  max-width: 480px;
+  padding: var(--space-6) var(--space-10);
+  max-width: var(--width-chips-bar);
   pointer-events: auto;
   z-index: 10;
 }
 
 .viewer-chips-title {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-secondary);
-  margin-right: 2px;
+  margin-right: var(--space-2);
 }
 
 .viewer-fdi-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   background-color: var(--color-surface-raised);
   color: var(--color-accent);
-  border: 1px solid var(--color-accent-dim);
+  border: var(--line-1) solid var(--color-accent-dim);
   border-radius: var(--radius-xs);
-  padding: 2px 6px;
-  font-size: 12px;
+  padding: var(--space-2) var(--space-6);
+  font-size: var(--font-size-12);
   font-weight: 700;
   cursor: pointer;
 }
@@ -281,7 +280,7 @@
 }
 
 .viewer-fdi-chip .chip-remove {
-  font-size: 10px;
+  font-size: var(--font-size-10);
   color: var(--color-text-muted);
 }
 
@@ -289,10 +288,10 @@
   background: transparent;
   color: var(--color-text-muted);
   border: none;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   cursor: pointer;
   text-decoration: underline;
-  padding: 2px 4px;
+  padding: var(--space-2) var(--space-4);
 }
 
 .viewer-chips-clear:hover {
@@ -302,20 +301,19 @@
 /* ------------------------------------------------------------- 440px Stage Scrubber Bar */
 .stage-bar {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
-  width: 440px;
-  max-width: calc(100% - 32px);
+  right: var(--space-16);
+  bottom: var(--space-16);
+  width: var(--width-stage-bar);
+  max-width: calc(100% - var(--space-32));
   background-color: var(--color-surface-base);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--color-border-subtle);
+  backdrop-filter: blur(var(--space-10));
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
-  padding: 10px 14px;
+  padding: var(--space-10) var(--space-14);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-8);
   z-index: 15;
-  outline: none;
   transition: border-color 0.15s ease;
   box-sizing: border-box;
 }
@@ -324,19 +322,10 @@
   border-color: var(--color-border-strong);
 }
 
-/* Container adaptation when nested inside workspace-stagebar-container */
-.workspace-stagebar-container .stage-bar {
-  position: relative;
-  right: auto;
-  bottom: auto;
-  width: 440px;
-  margin: 0 0 0 auto;
-}
-
 .stage-bar-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-8);
   width: 100%;
 }
 
@@ -344,11 +333,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--space-32);
+  height: var(--space-32);
   background-color: var(--color-surface-raised);
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
   cursor: pointer;
   flex-shrink: 0;
@@ -379,14 +368,14 @@
   flex: 1;
   display: flex;
   align-items: center;
-  height: 32px;
+  height: var(--space-32);
 }
 
 .stage-slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 6px;
+  height: var(--space-6);
   background: linear-gradient(
     to right,
     var(--color-accent) 0%,
@@ -395,7 +384,6 @@
     var(--color-surface-lock) 100%
   );
   border-radius: var(--radius-xs);
-  outline: none;
   cursor: pointer;
   margin: 0;
   padding: 0;
@@ -410,20 +398,20 @@
 .stage-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: var(--space-16);
+  height: var(--space-16);
   background-color: var(--color-text-primary);
-  border: 2px solid var(--color-accent);
+  border: var(--line-2) solid var(--color-accent);
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: transform 0.1s ease;
 }
 
 .stage-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: var(--space-16);
+  height: var(--space-16);
   background-color: var(--color-text-primary);
-  border: 2px solid var(--color-accent);
+  border: var(--line-2) solid var(--color-accent);
   border-radius: var(--radius-full);
   cursor: pointer;
 }
@@ -444,10 +432,10 @@
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 2px;
-  height: 8px;
+  width: var(--space-2);
+  height: var(--space-8);
   background-color: var(--color-border-strong);
-  border-radius: 1px;
+  border-radius: var(--space-1);
 }
 
 /* Violation marks container */
@@ -462,13 +450,13 @@
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 8px;
-  height: 8px;
+  width: var(--space-8);
+  height: var(--space-8);
   border-radius: var(--radius-full);
   pointer-events: auto;
   cursor: pointer;
   padding: 0;
-  border: 1px solid var(--color-bg);
+  border: var(--line-1) solid var(--color-bg);
   transition: transform 0.15s ease;
 }
 
@@ -487,10 +475,50 @@
 
 /* Stage Label: "Stage N / M" */
 .stage-label {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 700;
   color: var(--color-text-secondary);
   text-align: center;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.02em;
+}
+
+/* Layer toggles share the bottom edge with the stage bar: keep them left of it. */
+.viewer-container:has(.stage-bar) .viewer-layers-bar {
+  max-width: calc(100% - var(--width-stage-bar) - var(--space-48));
+}
+
+/* ------------------------------------------------------------- 768px and below
+   The 3D view is 60vh tall and the stage bar sits under it at full width. */
+@media (max-width: 768px) {
+  .viewer-container {
+    height: auto;
+    padding-top: var(--height-viewer-stacked);
+  }
+
+  .viewer-canvas,
+  .viewer-overlay-root {
+    bottom: auto;
+    height: var(--height-viewer-stacked);
+  }
+
+  .viewer-views-bar {
+    flex-direction: row;
+    top: calc(var(--height-viewer-stacked) - var(--space-52));
+  }
+
+  .viewer-layers-bar,
+  .viewer-container:has(.stage-bar) .viewer-layers-bar {
+    top: var(--space-52);
+    bottom: auto;
+    max-width: calc(100% - var(--space-32));
+  }
+
+  .stage-bar {
+    position: static;
+    width: 100%;
+    max-width: none;
+    border-width: var(--line-1) 0 0;
+    border-radius: 0;
+  }
 }

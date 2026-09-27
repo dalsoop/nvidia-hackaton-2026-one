@@ -15,52 +15,57 @@
   flex-shrink: 0;
   height: 100%;
   background: var(--color-surface-base);
-  border-right: 1px solid var(--color-border-subtle);
+  border-right: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .intake-list-header {
-  padding: var(--space-16) var(--space-20);
-  border-bottom: 1px solid var(--color-border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  padding: var(--space-20) var(--space-20) var(--space-12);
+  border-bottom: 0;
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--space-10);
+}
+
+.intake-list-header .panel-subtitle {
+  font-size: var(--font-size-13);
+  font-weight: 400;
+  color: var(--color-text-muted);
 }
 
 /* New Patient Form */
 .intake-patient-form {
-  padding: var(--space-16) var(--space-20);
-  border-bottom: 1px solid var(--color-border-subtle);
+  order: 2;
+  padding: var(--space-20);
+  border-top: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
-  gap: var(--space-10);
-  background: var(--color-surface-raised);
+  gap: var(--space-12);
 }
 
 .intake-form-title {
-  font-size: 13px;
+  font-size: var(--font-size-11);
   font-weight: 700;
-  color: var(--color-text-primary);
-  margin-bottom: var(--space-2);
+  color: var(--color-text-secondary);
 }
 
 .intake-input {
   height: var(--btn-height-default);
   padding: 0 var(--space-10);
   background: var(--color-surface-base);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
   color: var(--color-text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   box-sizing: border-box;
-  outline: none;
   transition: border-color 0.15s ease;
 }
 
-.intake-input:focus {
+.intake-input:focus,
+.intake-input:focus-visible {
   border-color: var(--color-accent);
 }
 
@@ -69,18 +74,20 @@
 }
 
 .intake-form-error {
-  font-size: 12px;
-  color: var(--color-danger);
+  font-size: var(--font-size-12);
+  color: var(--color-danger-light);
   line-height: 1.3;
 }
 
 .intake-submit-btn {
   width: 100%;
-  margin-top: var(--space-2);
+  height: var(--btn-height-default);
+  font-size: var(--font-size-13);
 }
 
 /* Patient Items */
 .intake-patient-items {
+  order: 1;
   flex-grow: 1;
   min-height: 0;
   overflow-y: auto;
@@ -94,14 +101,14 @@
   padding: var(--space-20);
   text-align: center;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .intake-patient-card {
   width: 100%;
   padding: var(--space-12) var(--space-14);
   background: transparent;
-  border: 1px solid transparent;
+  border: var(--line-1) solid transparent;
   border-radius: var(--radius-xs);
   cursor: pointer;
   display: flex;
@@ -129,7 +136,7 @@
 }
 
 .intake-card-alias {
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 700;
   color: var(--color-text-primary);
   white-space: nowrap;
@@ -139,10 +146,10 @@
 
 .intake-card-id {
   font-family: var(--font-family-mono);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-accent-light);
   background: var(--color-accent-bg);
-  padding: 1px 6px;
+  padding: var(--space-1) var(--space-6);
   border-radius: var(--radius-xs);
   flex-shrink: 0;
 }
@@ -151,7 +158,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
 }
 
@@ -172,7 +179,7 @@
 }
 
 .intake-empty-view {
-  padding: 60px 0;
+  padding: var(--space-60) 0;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -182,16 +189,16 @@
 
 .intake-empty-title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--font-size-20);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .intake-empty-desc {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   color: var(--color-text-secondary);
-  max-width: 480px;
+  max-width: var(--width-readable);
 }
 
 /* Patient Header */
@@ -200,7 +207,7 @@
   align-items: flex-start;
   justify-content: space-between;
   padding-bottom: var(--space-20);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
   gap: var(--space-16);
   flex-wrap: wrap;
 }
@@ -213,18 +220,18 @@
 
 .intake-patient-alias {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--font-size-24);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .intake-patient-meta {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text-secondary);
 }
 
 .intake-delete-patient-btn {
-  color: var(--color-danger);
+  color: var(--color-danger-light);
   border-color: var(--color-danger);
 }
 
@@ -239,10 +246,10 @@
   gap: var(--space-8);
   padding: var(--space-8) var(--space-12);
   background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   border-radius: var(--radius-xs);
   color: var(--color-danger-light);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   flex-wrap: wrap;
 }
 
@@ -251,9 +258,9 @@
 }
 
 .btn.small {
-  height: 28px;
-  padding: 0 var(--space-8);
-  font-size: 12px;
+  height: var(--btn-height-default);
+  padding: 0 var(--space-10);
+  font-size: var(--font-size-13);
 }
 
 /* Scans Section */
@@ -271,23 +278,23 @@
 
 .intake-section-title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--font-size-17);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .intake-section-badge {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
 .intake-scans-empty {
   padding: var(--space-20);
   background: var(--color-surface-base);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   text-align: center;
 }
 
@@ -303,7 +310,7 @@
   justify-content: space-between;
   padding: var(--space-12) var(--space-16);
   background: var(--color-surface-base);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
   gap: var(--space-16);
 }
@@ -322,13 +329,13 @@
 }
 
 .intake-scan-id {
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-family: var(--font-family-mono);
   color: var(--color-text-primary);
 }
 
 .intake-scan-meta {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -348,7 +355,7 @@
 }
 
 .intake-scan-del-btn {
-  color: var(--color-danger);
+  color: var(--color-danger-light);
 }
 
 .intake-scan-del-btn:hover {
@@ -362,7 +369,7 @@
   gap: var(--space-16);
   padding: var(--space-24);
   background: var(--color-surface-base);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
 }
 
@@ -374,20 +381,20 @@
 
 .upload-title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--font-size-17);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .upload-subtitle {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
 /* Dropzone */
 .upload-dropzone {
-  border: 2px dashed var(--color-border-strong);
+  border: var(--line-2) dashed var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   padding: var(--space-36) var(--space-20);
@@ -400,7 +407,6 @@
   text-align: center;
   user-select: none;
   transition: all 0.2s ease;
-  outline: none;
   color: var(--color-text-secondary);
 }
 
@@ -419,18 +425,18 @@
 }
 
 .upload-dropzone-primary-text {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .upload-dropzone-secondary-text {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
 .upload-dropzone-limit-text {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
 }
 
@@ -438,7 +444,7 @@
 .upload-error-card {
   padding: var(--space-14) var(--space-16);
   background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   border-radius: var(--radius-xs);
   display: flex;
   flex-direction: column;
@@ -453,12 +459,12 @@
 }
 
 .upload-error-title {
-  font-size: 14px;
+  font-size: var(--font-size-14);
   color: var(--color-text-primary);
 }
 
 .upload-error-message {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   line-height: 1.4;
   word-break: break-word;
 }
@@ -472,18 +478,18 @@
 
 .upload-error-file-chip {
   font-family: var(--font-family-mono);
-  font-size: 11px;
-  padding: 1px 6px;
+  font-size: var(--font-size-11);
+  padding: var(--space-1) var(--space-6);
   background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger);
+  border: var(--line-1) solid var(--color-danger);
   border-radius: var(--radius-xs);
   color: var(--color-danger-light);
 }
 
 .upload-error-guide {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: var(--line-1) solid var(--color-border-subtle);
   padding-top: var(--space-6);
   margin-top: var(--space-2);
 }
@@ -492,7 +498,7 @@
 .upload-summary-card {
   padding: var(--space-14) var(--space-16);
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--line-1) solid var(--color-border-subtle);
   border-radius: var(--radius-xs);
   display: flex;
   flex-direction: column;
@@ -506,13 +512,13 @@
 }
 
 .upload-summary-count {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .upload-summary-size {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-family: var(--font-family-mono);
   color: var(--color-text-muted);
 }
@@ -525,10 +531,10 @@
 
 .upload-tooth-chip {
   font-family: var(--font-family-mono);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   padding: var(--space-2) var(--space-8);
   background: var(--color-surface-base);
-  border: 1px solid var(--color-border-strong);
+  border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
   color: var(--color-text-primary);
 }
@@ -548,7 +554,7 @@
 .upload-submit-btn {
   height: var(--btn-height-primary);
   padding: 0 var(--space-24);
-  font-size: 15px;
+  font-size: var(--font-size-15);
 }
 
 .upload-reset-btn {
@@ -561,7 +567,7 @@
   flex-direction: column;
   gap: var(--space-10);
   margin-top: var(--space-12);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: var(--line-1) solid var(--color-border-subtle);
   padding-top: var(--space-16);
 }
 
@@ -575,26 +581,26 @@
 
 .upload-table-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-14);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .upload-table-note {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
 }
 
 .upload-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .upload-table th,
 .upload-table td {
   padding: var(--space-8) var(--space-10);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--line-1) solid var(--color-border-subtle);
   text-align: left;
 }
 
@@ -623,4 +629,12 @@
 
 .font-bold {
   font-weight: 700;
+}
+
+/* ------------------------------------------------------------- 768px and below */
+@media (max-width: 768px) {
+  .screen-intake { height: auto; flex-direction: column; overflow: visible; }
+  .intake-panel-list { height: auto; border-right: 0; border-bottom: var(--line-1) solid var(--color-border-subtle); }
+  .intake-main-panel { height: auto; overflow: visible; padding: var(--space-20) var(--space-16); }
+  .intake-scan-row { flex-wrap: wrap; }
 }
