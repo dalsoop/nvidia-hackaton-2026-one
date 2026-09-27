@@ -18,7 +18,12 @@ const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.e
 const state = {
   messages: [],          // full transcript sent to /chat/stream
   streaming: false,
-  step: "initial",       // the design flow: initial · setup · target · stages (#15)
+  step: "initial",       // the step on screen: initial · setup · target · stages (#15)
+  progress: "initial",   // the furthest step the agent has finished (#20): the strip only opens up to here
+  setup: null,           // step_done setup: the constraints the agent read from the prescription
+  setupRed: false,       // the extracted crowns flash red right after the setup lands, then they go
+  target: null, targetId: null,   // step_done target: GET /api/cases/{id}/targets/{target_id}, plan-shaped with one stage
+  caseInfo: null,        // /activate payload: the scan facts on the 스캔 tab
   skippedPlans: new Set(),   // plans adopted with 건너뛰기: the card says 건너뜀 instead of a review state (#15)
   abort: null, skippedTurn: null,
   stlBusy: false,        // the server is building the STL zip for a download (#119)
@@ -288,47 +293,57 @@ function setView(kind) {
 // ---- the design flow (#15): 초기 → 셋업 → 목표 → 단계. The server computed the plan when the case opened; the
 // screen reveals it in steps. The step lives in body.step-* and in the address (&step=).
 const STEPS = ["initial", "setup", "target", "stages"];
-const STEP_NEXT = { initial: "셋업 보기", setup: "목표 배열 보기", target: "단계 만들기" };
+// The strip is progress (#20): the agent's turns move it forward (step_done), the dentist only looks back at steps
+// that are done (초기 ↔ 목표 to compare). The plan the 3D shows for a step: the target before any plan exists,
+// otherwise the plan.
+const stepIndex = (s) => STEPS.indexOf(s);
+const viewPlan = () => (state.step === "target" && state.target ? state.target : state.plan);
+function setProgress(step, reset = false) {   // reset: a new setup or target makes the later steps stale again
+  if (!reset && stepIndex(step) <= stepIndex(state.progress)) return;
+  state.progress = step;
+  for (const s of STEPS) document.body.classList.toggle("prog-" + s, stepIndex(s) <= stepIndex(step));
+  renderFlow();
+}
 function setStep(step) {
-  if (!STEPS.includes(step)) step = "initial";
+  if (!STEPS.includes(step) || stepIndex(step) > stepIndex(state.progress)) step = state.progress;
   state.step = step;
   for (const s of STEPS) document.body.classList.toggle("step-" + s, s === step);
   stopPlay();
-  const n = state.plan?.stages?.length ?? 0;
+  const n = viewPlan()?.stages?.length ?? 0;
   applyStage(step === "target" ? n : 0);   // 목표 = the last stage; the others start at the scan
+  buildIprLabels();
   renderSetupMarks();
   renderFlow();
   renderPlanList();
-  // before the target only the conditions matter on the right; from the target on, the table and rules
-  if (step === "initial" || step === "setup") showTab("cond");
-  else if (state.tab === "cond") showTab("stages");
+  // the right panel follows the step: the scan's facts, then the conditions, from the stages on the table and rules
+  if (step === "initial") showTab("scan");
+  else if (step === "setup" || step === "target") showTab("cond");
+  else if (state.tab === "cond" || state.tab === "scan") showTab("stages");
   if (state.activeCase) setHash(caseHash());
 }
 function renderFlow() {
   for (const b of document.querySelectorAll("#flow button")) {
-    const i = STEPS.indexOf(b.dataset.step), cur = STEPS.indexOf(state.step);
-    b.classList.toggle("on", i === cur); b.classList.toggle("done", i < cur);
+    const i = stepIndex(b.dataset.step), cur = stepIndex(state.step), done = stepIndex(state.progress);
+    b.classList.toggle("on", i === cur); b.classList.toggle("done", i < cur && i <= done);
+    b.disabled = i > done;
   }
-  const plan = state.plan, t = plan?.target ?? {}, sample = sampleOf(state.meshCase);
-  const removed = (t.removed ?? []).map(String);
-  const line = state.step === "initial" ? (sample?.prescription ?? (state.meshCase ? "처방 없음 · 조건 기본값" : ""))
-    : state.step === "setup" ? (plan ? [`총생 ${t.crowding_mm ?? "—"} mm → 확보 ${t.space_gain_mm ?? "—"} mm`, removed.length && plan.strategy === "extraction" ? null : STRATEGY_KO[plan.strategy] ?? plan.strategy,   // 발치 once, with its teeth
-                                        removed.length ? `발치 ${fdiList(removed)}` : null, (plan.info?.expansion_mm_per_side ?? 0) > 0 ? `확장 편측 ${plan.info.expansion_mm_per_side} mm` : null].filter(Boolean).join(" · ")
-                                      : "계획이 없어 셋업을 보일 수 없습니다")
-    : state.step === "target" ? (plan ? `목표 배열 · ${plan.stages?.length ?? 0}단계 뒤 · 약 ${plan.info?.months ?? "—"}개월` : "계획이 없어 목표 배열이 없습니다")
-    : "";
-  $("stepLine").textContent = line;
-  $("stepNext").textContent = STEP_NEXT[state.step] ?? "";
-  $("stepNext").disabled = !plan && state.step !== "initial";
+}
+// what the 3D marks in 셋업: the agent's constraints (step_done setup), or the plan's target when looking back at a plan
+function setupSource() {
+  if (state.setup) return { removed: (state.setup.extraction ?? []).map(String), excl: new Set((state.setup.ipr_exclude ?? []).map(String)),
+                            per: state.setup.ipr_limit_mm ?? 0, expansion: 0 };
+  const t = state.plan?.target;
+  return t ? { removed: (t.removed ?? []).map(String), excl: new Set((t.ipr_exclude ?? []).map(String)), per: t.ipr_mm_per_surface ?? 0,
+               expansion: state.plan.info?.expansion_mm_per_side ?? 0 } : null;
 }
 // 셋업 marks over the 3D: a yellow dot at each IPR contact (the same contacts the mm labels use), arrows on the
 // last crowns when the arch widens. Only in the 셋업 state.
 function renderSetupMarks() {
   for (const o of state.setupMarks ?? []) o.parent?.remove(o);
   state.setupMarks = [];
-  const t = state.plan?.target;
-  if (state.step !== "setup" || !t) return;
-  const per = t.ipr_mm_per_surface ?? 0, excl = new Set((t.ipr_exclude ?? []).map(String)), removed = new Set((t.removed ?? []).map(String));
+  const src = setupSource();
+  if (state.step !== "setup" || !src) return;
+  const per = src.per, excl = src.excl, removed = new Set(src.removed);
   const order = state.archOrder.filter((id) => state.teeth[id] && !removed.has(id));
   const put = (el, pos) => { const o = new CSS2DObject(el); o.position.copy(pos); group.add(o); state.setupMarks.push(o); };
   if (per) for (let k = 0; k + 1 < order.length; k++) {
@@ -338,22 +353,21 @@ function renderSetupMarks() {
     const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
     put(el, p);
   }
-  if ((state.plan.info?.expansion_mm_per_side ?? 0) > 0 && order.length >= 2) {
+  if (src.expansion > 0 && order.length >= 2) {
     for (const [id, arrow] of [[order[0], "←"], [order[order.length - 1], "→"]]) {
-      const el = document.createElement("div"); el.className = "exp-arrow"; el.textContent = arrow; el.title = `악궁 확장 편측 ${state.plan.info.expansion_mm_per_side} mm`;
+      const el = document.createElement("div"); el.className = "exp-arrow"; el.textContent = arrow; el.title = `악궁 확장 편측 ${src.expansion} mm`;
       const p = state.center[id].clone(); p.x += arrow === "←" ? -7 : 7;   // outward of the last crown (+x is the patient's left)
       put(el, p);
     }
   }
 }
-$("flow").addEventListener("click", (e) => { const s = e.target.closest("button")?.dataset.step; if (s && state.meshCase) setStep(s); });
-$("stepNext").addEventListener("click", () => { const i = STEPS.indexOf(state.step); if (i >= 0 && i < 3) setStep(STEPS[i + 1]); });
+$("flow").addEventListener("click", (e) => { const s = e.target.closest("button:not([disabled])")?.dataset.step; if (s && state.meshCase) setStep(s); });
 
 // ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
 function clearLabels() { for (const l of state.labels) l.parent?.remove(l); state.labels = []; }
 function buildIprLabels() {
   clearLabels();
-  const t = state.plan?.target;
+  const t = viewPlan()?.target;
   const per = t?.ipr_mm_per_surface ?? 0;
   if (!per) return;
   const excl = new Set((t.ipr_exclude ?? []).map(String));
@@ -385,7 +399,7 @@ function placeLabels() {
 
 function violationsAt(k) {
   const by = {};   // tooth -> Set(type)
-  for (const v of state.plan?.violations ?? []) {
+  for (const v of viewPlan()?.violations ?? []) {
     if (v.stage !== k || !v.teeth) continue;
     for (const t of v.teeth) (by[String(t)] ??= new Set()).add(v.type);
   }
@@ -394,14 +408,15 @@ function violationsAt(k) {
 
 function applyStage(k) {
   state.stage = k;
-  const plan = state.plan;
+  const plan = viewPlan();
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
   const rot = k > 0 ? plan?.rotations?.[k - 1] ?? {} : {};
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
-  const removed = new Set((plan?.target?.removed ?? []).map(String));
   const plain = state.step === "initial", setup = state.step === "setup";   // #15: before the target, the crowns all stay
+  // 셋업 marks what the agent's constraints remove (#20); the other steps follow the plan on view
+  const removed = new Set(setup ? setupSource()?.removed ?? [] : (plan?.target?.removed ?? []).map(String));
   // the gum follows the crowns, turning with them; from the target on, the removed crowns are gone for it too
   deformGum(st, rot, plan?.pivots ?? {}, k > 0 && !plain && !setup ? removed : new Set());
   for (const [id, m] of Object.entries(state.teeth)) {
@@ -412,7 +427,8 @@ function applyStage(k) {
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
     // #18 decision: 치료 전 (k = 0) is the scan with every crown, stages 1..n−1 show the silhouette, the target (k = n) none
     const gone = hasPlan && removed.has(id) && !plain && !setup && k > 0;
-    m.visible = !gone || k < (plan?.stages?.length ?? 0);
+    // 셋업 (#20): the extracted crowns flash red as the setup lands, then they are gone (the filled gum shows)
+    m.visible = setup && removed.has(id) ? state.setupRed : !gone || k < (plan?.stages?.length ?? 0);
     // extracted teeth from stage 1 on: a translucent white silhouette (#14, #18); materials are per tooth and reused across
     // plans, so every other tooth gets its solid look back
     m.material.opacity = gone ? 0.45 : 1;
@@ -423,7 +439,7 @@ function applyStage(k) {
     m.userData.viol = bad[id] ? [...bad[id]] : [];
     if (gone) m.material.color.setHex(0xffffff);
     else if (plain) m.material.color.copy(IVORY);
-    else if (setup) m.material.color.setHex(removed.has(id) ? RED : IVORY.getHex());   // 셋업: what the prescription removes
+    else if (setup) m.material.color.setHex(removed.has(id) ? RED : IVORY.getHex());   // 셋업: what the constraints remove
     else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
@@ -666,10 +682,12 @@ function renderPlanFail() {
 // The 조건 tab's two lines: whose conditions the form holds, and whether it still matches the plan on screen (#111)
 function renderCondState() {
   const p = state.plan, n = planNo(p?.plan_id);
-  $("condFor").textContent = p ? `계획 ${n}의 조건 · 바꾸면 새 계획` : "계획을 만들 조건";
+  $("condFor").textContent = p ? `계획 ${n}의 조건 · 고치면 셋업부터 다시` : state.setup ? "에이전트가 읽은 조건 · 고치면 셋업부터 다시" : "계획을 만들 조건";
   const dirty = constraintsDirty(), el = $("condState");
-  el.textContent = !p ? "" : dirty ? "조건이 바뀜 · 「이 조건으로 계산」으로 새 계획" : "보고 있는 계획의 조건과 같음";
+  el.textContent = !p ? "" : dirty ? "조건이 바뀜 · 「이 조건으로 셋업 다시」" : "보고 있는 계획의 조건과 같음";
   el.classList.toggle("changed", dirty);
+  $("condApply").hidden = stepIndex(state.progress) < 1;   // a hand-edited condition re-runs the setup turn (#20)
+  $("condApply").disabled = state.streaming || state.loading;
 }
 function constraintsDirty() {
   if (!state.plan) return false;
@@ -681,28 +699,28 @@ function constraintsDirty() {
 }
 function updateActions() {
   const p = state.plan, busy = state.streaming || state.loading;
-  if (state.meshCase) renderChips();
   const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
-  for (const id of ["sendBtn", "fallbackBtn", "caseBtn"]) $(id).disabled = !!busy;
+  for (const id of ["sendBtn", "caseBtn"]) $(id).disabled = !!busy;
   for (const b of document.querySelectorAll("#plans .plan-row .btn")) b.disabled = !!busy;
   renderCondState();
   $("constraints").disabled = !!busy;
   const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
   $("exportBtn").disabled = !exportable || state.stlBusy;
   renderRail();
-  $("exportBtn").textContent = state.stlBusy ? "STL 만드는 중…" : p?.approval ? "STL 내려받기" : "내보내기";
+  const building = "STL 만드는 중" + (state.stlProgress ? " · " + state.stlProgress : "…");
+  $("exportBtn").textContent = state.stlBusy ? building : p?.approval ? "STL 내려받기" : "내보내기";
   // why the button is off, in the same order as the gate above; nothing while a turn or a load is running
   $("exportWhy").textContent = exportable || busy ? "" : !p ? "계획이 없습니다" : p.input_stale ? "이전 입력의 계획"
     : dirty ? "조건이 바뀜 · 새 계획 뒤 승인" : !p.passed ? `규칙 위반 ${(p.violations ?? []).length}건 · 조건을 바꿔 다시 계획`
     : "검토 실패 · 검토 다시 요청";
   // the rail item is the only visible 내보내기 (#13 polish): dim until the plan can be approved, the reason in its tooltip
   const railExport = document.querySelector('#rail button[data-go="export"]');
-  railExport.querySelector("span").textContent = state.stlBusy ? "만드는 중…" : p?.approval ? "STL 받기" : "내보내기";
+  railExport.querySelector("span").textContent = state.stlBusy ? (state.stlProgress ? state.stlProgress : "만드는 중…") : p?.approval ? "STL 받기" : "내보내기";
   railExport.title = $("exportWhy").textContent ? "내보내기 · " + $("exportWhy").textContent : p?.approval ? "단계별 STL(zip)을 내려받습니다" : "승인하고 STL 내보내기";
   $("exportSkip").hidden = !["skipped", "not_requested"].includes(p?.review?.status);
   $("revokeBtn").hidden = !p?.approval;
   $("revokeBtn").disabled = !allowed;
-  if (!exportable) $("exportPop").hidden = true;
+  if (!exportable && !$("exportPop").hidden) showPop($("exportPop"), false);
   // Recovery when the agent skipped the reviewer or the review failed: the dentist asks for it on this plan.
   $("reviewBtn").hidden = !p || !["not_requested", "failed"].includes(p.review.status);
   $("reviewBtn").disabled = !allowed;
@@ -782,11 +800,11 @@ async function showStart() {
   lockComposer(true);
   renderRail();
 }
-// No case open (start, the patients modal from the start, the input check): the composer is not shown at all —
-// body.no-case hides it; it appears when a case is on screen (leaveStart)
+// No case open (start, the patients modal from the start, the input check): the composer stays in place, locked
+// (#20: it was hidden by body.no-case since #130; the original way is back)
 function lockComposer(on) {
-  $("chatInput").disabled = on;
-  $("chatInput").placeholder = on ? "케이스를 열면 입력할 수 있습니다" : "처방과 우선순위를 적어 주세요 · Enter 로 보내기";
+  $("chatInput").disabled = on; $("sendBtn").disabled = on;
+  $("chatInput").placeholder = on ? "케이스를 열면 입력할 수 있습니다" : "처방과 우선순위를 적어 주세요";
   document.body.classList.toggle("no-case", on);
 }
 lockComposer(true);
@@ -1241,36 +1259,6 @@ function sampleOf(caseId) {
   return state.cases.find((c) => c.case_id === caseId && c.kind === "sample") ?? null;
 }
 
-// Three example sentences for the situation (DESIGN.md 「칩」): the sample's prescription first, then two ways to
-// go on; once a plan exists, revisions instead.
-function renderChips() {
-  const sample = sampleOf(state.meshCase);
-  // short labels on the chip; the full sentence is what gets sent
-  let chips = state.followup?.options?.length
-    ? state.followup.options
-    : state.messages.some((m) => m.role === "user")
-    ? [{ label: "25번 고정하고 재계획", message: "25번은 움직이지 말고 다시 짜줘." },
-       { label: "앞니 IPR 제외", message: "IPR은 앞니(12·11·21·22) 빼고 해줘." },
-       { label: "전략 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }]
-    : [sample ? { label: "에이전트 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
-       sample ? { label: "12개월 안에", message: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." }
-              : { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
-       sample ? { label: "비교해줘", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘." }   // the recorded compare request (#18)
-              : { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
-  chips = withoutComparison(chips);
-  const box = $("chips");
-  box.hidden = !!document.querySelector("#transcript .question:not(.done):not(.pending)");   // the card asks first
-  const key = (c) => c.message ?? c.fill ?? c.action ?? "";
-  if ([...box.children].map((c) => c.dataset.key).join("|") === chips.map(key).join("|")) return;
-  box.innerHTML = "";
-  for (const c of chips) {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "chip"; b.textContent = c.label; b.dataset.key = key(c);
-    b.dataset.message = c.message ?? ""; b.dataset.fill = c.fill ?? ""; b.dataset.action = c.action ?? ""; b.title = c.message ?? c.fill ?? "";
-    box.appendChild(b);
-  }
-}
-
 async function activateCase(caseId, { greet = true } = {}) {
   if (state.streaming || state.loading) return;
   ++state.selectionVersion;
@@ -1285,13 +1273,16 @@ async function activateCase(caseId, { greet = true } = {}) {
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   state.planError = info.plan_error ?? null;   // the case opened but no plan could be made: the server's sentence
+  state.setup = null; state.target = null; state.targetId = null; state.setupRed = false; state.caseInfo = info;
+  state.progress = "initial"; for (const s of STEPS) document.body.classList.toggle("prog-" + s, s === "initial");
   await loadMesh(caseId);
   resetPlanPanel();
   fillConstraints(info.constraints);
-  await refreshPlans();
+  await refreshPlans(null, false);   // the case's earlier plans as cards only (#20): nothing is computed or shown at open
   renderCaseCard(caseId, info);
+  renderScanPane(info);
+  await restoreProgress(info.state);   // the case's current step state, when the server keeps it (#20 decision 1)
   state.activeCase = caseId;
-  renderChips();
   $("caseGate").hidden = true;
   endCheck();
   setStep("initial");   // the flow starts at the scan as it is (#15); the address follows
@@ -1307,26 +1298,30 @@ async function activateCase(caseId, { greet = true } = {}) {
         : `이 케이스에서 전에 바꾼 계획 조건이 남아 있습니다. 처방(${sample.prescription})과 다르니 조건 칸을 확인해 주세요.`)
       : `계획을 시작하려면 제약을 알려 주세요.`);
     // no bubble: the case card on the panel top already says it; only a changed prescription is worth a line
-    if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 — 오른쪽 「조건」 탭을 확인해 주세요.");
-    // the case opens with a rule-based preview of the prescription (#92): the first question is how to refine it
-    const q = sample
-      ? { question: "처방대로 만든 미리보기입니다. 아래 칩을 누르거나 요청을 적어 이어가세요.",
-          options: [{ label: "에이전트에게 계획 맡기기", hint: "처방을 읽고 계획을 짜고 검토까지 합니다", message: sample.request },
-                    { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에 — 채워진 문장을 고쳐 보내세요", fill: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
-                    { label: "비교해줘", hint: "확장안과 IPR안을 둘 다 만들어 비교합니다", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘." }] }
-      : { question: "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.",
-          options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
-                    { label: "발치 치아 정하기", fill: "14번과 24번 발치로 계획을 짜줘." },
-                    { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘." }] };
-    state.messages.push({ role: "assistant", content: text + " " + q.question });
-    // one bubble and the three ways on as chips (#14) — not a boxed card
-    addMsg("assistant", q.question);
-    state.followup = { options: q.options.map(({ label, message, fill }) => ({ label, message, fill })) };
-    renderChips();
+    if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 · 오른쪽 「조건」 탭을 확인해 주세요.");
+    // the agent's first word (#20): the prescription; a sample offers its own as one chip that sends it. A case the
+    // server restored further along says where it stands, and the chips continue from there.
+    const ask = state.progress === "initial" ? "처방을 적어 주세요."
+      : `이 케이스는 ${{ setup: "셋업", target: "목표 배열", stages: "단계" }[state.progress]}까지 되어 있습니다. 이어서 진행하세요.`;
+    state.messages.push({ role: "assistant", content: text + " " + ask });
+    addNextChips(addMsg("assistant", ask));
   }
 }
 
 
+// The server may send the case's current step state with /activate (#20 decision 1): `state: {setup: constraints|null,
+// target_id: str|null, plan_id: str|null}`. Each field opens the strip that far; without it the case opens at 초기.
+async function restoreProgress(st) {
+  if (!st) return;
+  if (st.setup) { state.setup = st.setup; fillConstraints(st.setup); setProgress("setup", true); }
+  if (st.target_id) {
+    try {
+      state.target = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(st.target_id)}`);
+      state.targetId = st.target_id; setProgress("target", true);
+    } catch (e) { addMsg("system", "저장된 목표 배열을 불러오지 못했습니다 (" + e.message + ")."); }
+  }
+  if (st.plan_id && st.plan_id in state.planRows) await loadPlan(st.plan_id);   // a plan on screen opens the stages
+}
 function resetPlanPanel() {
   stopPlay();
   state.plan = null;
@@ -1366,7 +1361,7 @@ function preferredPlanId(plans) {
 }
 
 
-async function refreshPlans(selectId) {
+async function refreshPlans(selectId, select = true) {
   const caseId = state.meshCase, generation = state.selectionVersion;
   const { plans } = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
   if (caseId !== state.meshCase || generation !== state.selectionVersion) return;
@@ -1377,7 +1372,7 @@ async function refreshPlans(selectId) {
   state.planRows = Object.fromEntries([...plans].reverse().map((p) => [p.plan_id, p]));
   state.planRowsCase = caseId;
   renderPlanList();
-  const id = selectId ?? state.plan?.plan_id ?? preferredPlanId(plans);
+  const id = selectId ?? state.plan?.plan_id ?? (select ? preferredPlanId(plans) : null);
   if (id) await loadPlan(id);
 }
 
@@ -1439,6 +1434,7 @@ async function loadPlan(planId) {
     slider.disabled = false;
     buildIprLabels(); applyStage(0); renderResult(plan); renderStageMarks();
     document.body.classList.add("has-plan");
+    setProgress("stages");   // a plan on screen means the stages are done (also on reload, #20)
     $("viewCanvas").dataset.planId = planId;
     $("planNotice").textContent = "";
     // the plan joins the address: a new plan pushes, so back/forward walk through plans; while routing it replaces
@@ -1796,66 +1792,61 @@ function addQuestion(q) {
     picked.className = "picked"; picked.textContent = b.dataset.label;
     div.querySelector(".opts").replaceWith(picked);
     div.classList.add("done");
-    if (state.meshCase) renderChips();
     if (b.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
     send(b.dataset.message);
   });
   $("transcript").appendChild(div);
   $("transcript").scrollTop = $("transcript").scrollHeight;
-  if (state.meshCase) renderChips();
   return div;
 }
-// After each answer the server's fast model writes the next question; no card when it cannot. The request starts
-// when the stream ends (it overlaps the plan reload); a muted placeholder holds the card's place until it answers.
-// The demo path (preview → agent plan → time cap or comparison → export) is written down, keyed by the sentence
-// the dentist just sent; off that path the server's fast model writes the question (#90 혼합).
-const COMPARE = "이 처방 안에서 확장안과 IPR안을 비교해줘.";
-const SCRIPT = [
-  { when: (t, s) => s && t === s.request,
-    q: { question: "처방대로 에이전트가 계획하고 검토했습니다. 조건을 더 다듬을까요?",
-         options: [{ label: "12개월 안에", message: "12개월 안에 끝나게 다시 짜줘." },
-                   { label: "확장안·IPR안 비교", message: COMPARE },
-                   { label: "이대로 내보내기", action: "export" }] } },
-  { when: (t) => /12개월 안에 끝나게 다시 짜줘/.test(t),
-    q: { question: "기간을 맞춘 계획입니다. 다음은 어떻게 할까요?",
-         options: [{ label: "앞니 먼저 풀기", message: "앞니 총생부터 먼저 풀도록 다시 짜줘." },
-                   { label: "확장안·IPR안 비교", message: COMPARE },
-                   { label: "이대로 내보내기", action: "export" }] } },
-  { when: (t) => t === COMPARE,
-    q: { question: "두 안을 비교했습니다. 어느 쪽으로 갈까요?",
-         options: [{ label: "확장안으로", message: "확장안으로 계획해줘." },
-                   { label: "IPR안으로", message: "IPR안으로 계획해줘." },
-                   { label: "기간 상한 12개월", message: "12개월 안에 끝나게 다시 짜줘." }] } },
-  { when: (t) => /^(확장안|IPR안)으로 계획해줘/.test(t) || /앞니 총생부터 먼저/.test(t),
-    q: { question: "이 안으로 진행할까요?",
-         options: [{ label: "이대로 내보내기", action: "export" },
-                   { label: "25번 고정하고 재계획", message: "25번은 움직이지 말고 다시 짜줘." },
-                   { label: "앞니 IPR 제외", message: "IPR은 앞니(12·11·21·22) 빼고 해줘." }] } },
-];
-function scriptedFollowup() {
-  const last = [...state.messages].reverse().find((m) => m.role === "user")?.content?.replace(/^\[선택한 치아:[^\]]*\]\s*/, "").trim() ?? "";
+// The next moves, as chips right under the agent's bubble (#20): what the finished step allows. One row at a time;
+// sending anything folds the open row.
+const NEXT_STEP = { initial: "setup", setup: "target", target: "stages", stages: "stages" };
+function nextChips() {
   const sample = sampleOf(state.meshCase);
-  return SCRIPT.find((s) => s.when(last, sample))?.q ?? null;
+  const extraction = state.setup ? (state.setup.extraction ?? []).length > 0 : ($("cExtract").value.trim() !== "");
+  switch (state.progress) {
+    case "initial": return sample ? [{ label: "이 케이스의 처방 넣기", message: sample.request, step: "setup", hint: sample.prescription }] : [];
+    case "setup": return [{ label: "목표 배열 만들기", message: "이 조건으로 목표 배열을 만들어줘.", step: "target" }, { label: "조건 바꾸기", action: "cond" }];
+    case "target": return [{ label: "단계 만들기", message: "이 목표로 단계를 만들어줘.", step: "stages" },
+                           { label: "8개월 안에", message: "8개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
+                           ...(extraction ? [] : [{ label: "비발치안과 비교", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘.", step: "stages" }])];
+    default: return [{ label: "승인하고 내보내기", action: "export" }, { label: "조건 바꾸기", action: "cond" }];
+  }
 }
-function requestFollowup() {
-  const scripted = scriptedFollowup();
-  if (scripted) return Promise.resolve(scripted);
-  return api("/api/followup", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: state.messages.slice(-8) }) }).then((r) => r.question ?? null, () => null);
+function addNextChips(after) {
+  const chips = nextChips();
+  if (!chips.length) return null;
+  for (const old of document.querySelectorAll("#transcript .next:not(.done)")) old.remove();
+  const div = document.createElement("div");
+  div.className = "next";
+  const opts = document.createElement("div"); opts.className = "opts"; div.append(opts);
+  for (const c of chips) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = c.label; b.title = c.hint ?? c.message ?? "";
+    b.dataset.message = c.message ?? ""; b.dataset.step = c.step ?? ""; b.dataset.action = c.action ?? "";
+    opts.appendChild(b);
+  }
+  div.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || state.streaming || state.loading) return;
+    if (b.dataset.action === "cond") { showTab("cond"); $("cExtract").focus(); return; }
+    if (b.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
+    send(b.dataset.message, null, { step: b.dataset.step || undefined });
+  });
+  (after ?? $("transcript")).after ? after.after(div) : $("transcript").appendChild(div);
+  $("transcript").scrollTop = $("transcript").scrollHeight;
+  return div;
 }
-// The answer becomes the chips above the composer: suggestions for the next sentence, not a question to answer.
-async function askFollowup(caseId, pending = requestFollowup()) {
-  const question = await pending;   // never rejects: the chips are optional
-  if (!question || state.meshCase !== caseId) return;
-  state.followup = question;
-  renderChips();
+function foldNextChips() {
+  for (const row of document.querySelectorAll("#transcript .next:not(.done)")) { row.classList.add("done"); row.querySelector(".opts")?.remove(); }
 }
 // The plan a turn produced, as a card in the transcript; 열기 shows it in the 3D and the result panel.
 
 
 // `constraints` and `resend` come from the 다시 보내기 button: the same text and form values as the failed request,
 // a fresh request id, and the failed turn's user message replaced rather than repeated in the transcript the model sees.
-async function send(text, constraints = null, { resend = false } = {}) {
+async function send(text, constraints = null, { resend = false, step = null } = {}) {
   text = (text ?? "").trim();
   if (!text || state.streaming || state.loading) return;
   if (!state.meshCase) { showStart(); return; }
@@ -1867,29 +1858,34 @@ async function send(text, constraints = null, { resend = false } = {}) {
     state.selected.clear(); renderSelection();
   }
   const requestId = crypto.randomUUID(), caseId = state.meshCase, prevPlanId = state.plan?.plan_id ?? null;
+  // the step this turn asks for (#20): the next one after the progress, or the one the chip/button names
+  const turnStep = step ?? (resend ? state.lastRequest?.step : null) ?? NEXT_STEP[state.progress] ?? "stages";
   state.requestId = requestId;
   setStreaming(true); updateActions();
+  foldNextChips();
   $("retryBar").hidden = true;
-  $("planNotice").textContent = state.plan ? "재계획 중 — 현재 3D는 이전 계획입니다." : "계획 생성 중";
+  $("planNotice").textContent = turnStep === "setup" ? "처방을 조건으로 옮기는 중" : turnStep === "target" ? "목표 배열 만드는 중"
+    : state.plan ? "재계획 중 · 현재 3D는 이전 계획입니다." : "단계 계획 만드는 중";
   $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
-  state.followup = null;   // the last turn's suggestions no longer fit
-  state.lastRequest = { text, constraints };
+  state.lastRequest = { text, constraints, step: turnStep };
   addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
   // a sample case may skip the agent (#15): after 8 s of streaming a 건너뛰기 sits under the answer; a failed turn offers it too
   const sample = !!sampleOf(caseId), ac = new AbortController();
   state.abort = ac; state.skippedTurn = null;
-  state.turnStep = stepOf(text);   // which recorded answer 건너뛰기 would play for this turn
+  state.turnStep = stepOf(text, turnStep);   // which recorded answer 건너뛰기 would play for this turn
   let skipRow = null;
   const skipTimer = sample ? setTimeout(() => { if (state.requestId === requestId) skipRow = addSkipRow(bubble, requestId); }, 8000) : null;
   $("retryFallback").hidden = sample; $("skipBtn").hidden = !sample;
-  let answer = "", selected = null, streamError = false, overload = null;
+  let answer = "", selected = null, streamError = false, overload = null, stepDone = null;
   const handle = ({type, data: obj}) => {
     if (type === "plan_selected") {
       if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
+    } else if (type === "step_done") {
+      if (!obj.request_id || obj.request_id === state.requestId) stepDone = obj;   // setup: constraints · target: target_id + summary · stages: nothing more
     } else if (type === "plan_context") {
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
@@ -1906,7 +1902,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
   try {
     const r = await fetch("/chat/stream", { method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ messages: state.messages, cualign: { request_id: requestId,
+      body: JSON.stringify({ messages: state.messages, step: turnStep, cualign: { request_id: requestId,
         case_id: caseId, base_plan_id: state.plan?.plan_id ?? null, constraints } }), signal: ac.signal });
     if (!r.ok || !r.body) throw new Error("HTTP " + r.status);
     const reader = r.body.getReader(), parser = new PlanStream();
@@ -1918,7 +1914,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     if (state.requestId !== requestId || state.meshCase !== caseId) return;
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
-    const followup = answer && !streamError ? requestFollowup() : null;   // overlaps the plan reload below
+    if (stepDone && !streamError) await landStep(stepDone);
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
       setStep("stages");
@@ -1929,23 +1925,44 @@ async function send(text, constraints = null, { resend = false } = {}) {
       if (selected.review.status === "failed") addMsg("error", selected.review.message + " (" + selected.review.error + ")");
     } else if (streamError || !answer) {
       throw new Error(overload?.message || "모델 실행 또는 최종 계획 선택 실패");
+    } else if (stepDone) {
+      $("planNotice").textContent = "";
     } else {
-      $("planNotice").textContent = "새 계획 선택 없음 — 대화 내용을 확인하세요.";
+      $("planNotice").textContent = turnStep === "stages" ? "새 계획 선택 없음 · 대화 내용을 확인하세요." : "";
     }
-    if (followup) askFollowup(caseId, followup);   // not awaited: the card arrives when the fast model answers
+    addNextChips(bubble);
   } catch (e) {
     if (state.skippedTurn === requestId) { await replayOrAdopt(bubble, caseId, prevPlanId); return; }   // 건너뛰기 stopped the stream
     if (answer) setAnswer(bubble, answer); else bubble.remove();
-    $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 현재 3D는 이전 계획입니다." : "";
-    if (!Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
+    $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 · 현재 3D는 이전 계획입니다." : "";
+    if (turnStep === "stages" && !Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
     addMsg("error", overload
       ? overload.message + (overload.kind === "no_answer" ? " 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다."
                                                             : " 잠시 뒤 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다.")
-      : "계획을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 「에이전트 없이 계산」할 수 있습니다.");
+      : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 「에이전트 없이 계산」할 수 있습니다.");
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
     clearTimeout(skipTimer); skipRow?.remove();
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
+  }
+}
+// step_done (#20): the agent finished a step. setup → its constraints go to the form and the 3D marks them; target →
+// the target state comes from /targets and the 3D shows it; stages → plan_selected does the rest.
+async function landStep(done) {
+  if (done.step === "setup" && done.constraints) {
+    state.setup = done.constraints; state.target = null; state.targetId = null;
+    fillConstraints(done.constraints);
+    setProgress("setup", true);
+    state.setupRed = true;
+    setStep("setup");
+    setTimeout(() => { state.setupRed = false; if (state.step === "setup") applyStage(0); }, 1200);
+  } else if (done.step === "target" && done.target_id) {
+    state.target = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(done.target_id)}`);
+    state.targetId = done.target_id; state.targetSummary = done.summary ?? null;
+    setProgress("target", true);
+    setStep("target");
+  } else if (done.step === "stages") {
+    setProgress("stages");
   }
 }
 // 건너뛰기 (#15): the rule plan on screen is the plan; a running turn is cut, its answer dropped
@@ -1963,15 +1980,15 @@ function skipTurn(requestId) {
   state.skippedTurn = requestId;
   state.abort?.abort();
 }
-// the turn's kind for the recorded answers: a time cap, a strategy comparison, or the plan itself
-const stepOf = (text) => /개월|기간/.test(text) ? "cap" : /비교|둘 ?다/.test(text) ? "compare" : "plan";
+// the turn's kind for the recorded answers (#20): the step it asks for, or a time cap / a strategy comparison on the stages
+const stepOf = (text, step) => step === "stages" && /개월|기간/.test(text) ? "cap" : step === "stages" && /비교|둘 ?다/.test(text) ? "compare" : step;
 // 건너뛰기 plays the recorded answer for this step (contract 12-replay.md); with none recorded (404) the rule plan on
 // screen is adopted. The recorded answer sits where the agent's would, marked grey with its date.
 async function replayOrAdopt(bubble, caseId, prevPlanId) {
   $("retryBar").hidden = true;
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step: state.turnStep ?? "plan", base_plan_id: state.plan?.plan_id ?? null }) });
+      body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
     if (r.status === 404) { bubble.remove(); adoptCurrentPlan(); return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     const rec = await r.json();
@@ -1982,6 +1999,9 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     bubble.prepend(tag);
     state.messages.push({ role: "assistant", content: rec.answer_md ?? "" });
     addMsg("system", "에이전트 답을 건너뛰고 녹화된 답을 보였습니다.");
+    // a recorded setup or target lands like the agent's step_done (#20); a plan like its plan_selected
+    if (rec.constraints) await landStep({ step: "setup", constraints: rec.constraints });
+    else if (rec.target_id) await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
     const sel = rec.plan_selected;   // null on a compare of an extraction case (the answer only asks back): the bubble alone, cards and 3D stay
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
@@ -1990,6 +2010,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
       addDecision(prevPlanId, sel.plan_id);
       if (state.plan?.plan_id === sel.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
     }
+    addNextChips(bubble);
   } catch (e) {
     bubble.remove();
     addMsg("error", "녹화된 답을 불러오지 못했습니다 (" + e.message + ").");
@@ -1999,10 +2020,12 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
 function adoptCurrentPlan() {
   $("retryBar").hidden = true;
   $("planNotice").textContent = "";
-  if (state.plan) state.skippedPlans.add(state.plan.plan_id);
+  if (!state.plan) { addMsg("system", "녹화된 답이 없어 건너뛸 수 없습니다 · 다시 보내거나 에이전트 없이 계산해 주세요."); $("retryBar").hidden = false; return; }
+  state.skippedPlans.add(state.plan.plan_id);
   renderPlanList();
-  addMsg("system", "에이전트 답을 건너뛰었습니다 — 지금 화면의 계획을 그대로 씁니다.");
-  if (state.plan) setStep("stages");
+  addMsg("system", "에이전트 답을 건너뛰었습니다 · 지금 화면의 계획을 그대로 씁니다.");
+  setStep("stages");
+  addNextChips($("transcript").lastElementChild);
 }
 $("skipBtn").addEventListener("click", () => {
   if (state.streaming) skipTurn(state.requestId);
@@ -2025,7 +2048,7 @@ async function runFallback() {
       body: JSON.stringify({ case_id: caseId, parent_plan_id: state.plan?.plan_id ?? null, ...constraints }) });
     for (const t of res.tried ?? []) addStep("fallback: " + t.strategy, t, "fallback");
     const selected = res.chosen || res.best_failed, prevPlanId = state.plan?.plan_id ?? null;
-    if (selected) { await refreshPlans(selected.plan_id); setStep("stages"); addDecision(prevPlanId, selected.plan_id); }
+    if (selected) { await refreshPlans(selected.plan_id); setStep("stages"); addDecision(prevPlanId, selected.plan_id); addNextChips($("transcript").lastElementChild); }
     if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
   } catch (e) {
     addMsg("error", "계산 실패: " + e.message);
@@ -2064,13 +2087,6 @@ $("homeBtn").addEventListener("click", (e) => {
   showStart().then(() => { $("screenStart").scrollTop = 0; }).catch((err) => addMsg("error", err.message));
 });
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
-$("chips").addEventListener("click", (e) => {
-  const c = e.target.closest(".chip");
-  if (!c || state.streaming || state.loading) return;
-  if (c.dataset.fill) { $("chatInput").value = c.dataset.fill; autosize(); $("chatInput").focus(); return; }
-  if (c.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
-  send(c.dataset.message);
-});
 $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
@@ -2260,8 +2276,25 @@ for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("clic
 function showTab(name) {
   state.tab = name;
   for (const b of document.querySelectorAll(".side-tab")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
-  $("paneStages").hidden = name !== "stages"; $("paneRules").hidden = name !== "rules"; $("paneCond").hidden = name !== "cond";
+  $("paneScan").hidden = name !== "scan"; $("paneStages").hidden = name !== "stages"; $("paneRules").hidden = name !== "rules"; $("paneCond").hidden = name !== "cond";
 }
+// the scan as it came (#20): tooth count, crowding, what is missing between 17 and 27
+function renderScanPane(info) {
+  const rows = [];
+  if (info) {
+    const present = new Set(Object.keys(state.teeth).map((id) => fdi(id)));
+    const missing = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27].filter((n) => !present.has(n));
+    rows.push(["치아", `${info.n_teeth ?? Object.keys(state.teeth).length}개`], ["총생", info.crowding_mm != null ? `${info.crowding_mm} mm` : "—"],
+              ["결손", missing.length ? missing.join(", ") + "번" : "없음"]);
+  }
+  $("scanFacts").replaceChildren(...rows.flatMap(([k, v]) => { const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v; return [dt, dd]; }));
+  $("scanFor").textContent = info ? (sampleOf(state.meshCase)?.prescription ? "처방 · " + sampleOf(state.meshCase).prescription : "처방은 대화로") : "";
+}
+$("condApply").addEventListener("click", () => {
+  let constraints;
+  try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
+  send("조건을 이렇게 바꿔서 다시 셋업해줘.", constraints, { step: "setup" });
+});
 // a row of the stage table or a stage button of a violation group moves the 3D to that stage
 for (const id of ["stageGrid", "violGroups"]) $(id).addEventListener("click", (e) => {
   const k = e.target.closest("[data-stage]")?.dataset.stage;
@@ -2270,20 +2303,24 @@ for (const id of ["stageGrid", "violGroups"]) $(id).addEventListener("click", (e
 });
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
 $("playBtn").addEventListener("click", togglePlay);
-$("fallbackBtn").addEventListener("click", runFallback);
 $("retryFallback").addEventListener("click", () => { $("retryBar").hidden = true; runFallback(); });
 $("planFailRetry").addEventListener("click", () => { showTab("cond"); runFallback(); });
+// a popover that fades and slides in and out (#20): hidden toggles display, .in drives the transition
+function showPop(pop, on) {
+  if (on) { pop.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => pop.classList.add("in"))); }
+  else { pop.classList.remove("in"); setTimeout(() => { if (!pop.classList.contains("in")) pop.hidden = true; }, 160); }
+}
 $("exportBtn").addEventListener("click", () => {
   if (state.plan?.approval) { $("stlLink").click(); return; }
   const pop = $("exportPop");
-  pop.hidden = !pop.hidden;
+  showPop(pop, pop.hidden);
   // the popover sits beside the rail item that opened it (the anchor button itself is hidden)
   const r = document.querySelector('#rail button[data-go="export"]').getBoundingClientRect();
   pop.style.top = `${Math.round(r.top)}px`; pop.style.left = `${Math.round(r.right + 8)}px`;
 });
-$("exportCancel").addEventListener("click", () => { $("exportPop").hidden = true; });
+$("exportCancel").addEventListener("click", () => showPop($("exportPop"), false));
 $("exportGo").addEventListener("click", async () => {
-  $("exportPop").hidden = true;
+  showPop($("exportPop"), false);
   if (!state.plan?.approval) await approveCurrent();
   if (state.plan?.approval && $("stlLink").hasAttribute("href")) $("stlLink").click();
 });
@@ -2291,11 +2328,31 @@ $("exportGo").addEventListener("click", async () => {
 // file arrives: fetch it so the button says so meanwhile (and a refused download shows its reason instead of being
 // saved as the file), then hand it to the browser. Every download path clicks the hidden link, which lands here.
 // One transcript card per approval once its file arrives; 다시 내려받기 downloads again.
+// One toast per approval once its file arrives (#20: no line in the agent panel, no 다시 내려받기; the rail button downloads again)
 const doneCards = new Set();
+function toast(text, ms = 3200) {
+  const el = $("toast"); el.textContent = text; showPop(el, true);
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => showPop(el, false), ms);
+}
+// While the zip builds, the server may report its progress (contract: GET /api/plans/{id}/export-status →
+// {building, done, total}); the rail label shows N/총 when it does, plain 만드는 중 when it does not
+async function pollExportStatus(planId) {
+  while (state.stlBusy && state.plan?.plan_id === planId) {
+    try {
+      const r = await fetch(`/api/plans/${encodeURIComponent(planId)}/export-status`);
+      if (r.status === 404) return;   // the server has no progress to give
+      const st = await r.json();
+      state.stlProgress = st.total ? `${st.done ?? 0}/${st.total}` : null;
+      if (state.stlBusy) updateActions();
+    } catch { return; }
+    await new Promise((res) => setTimeout(res, 500));
+  }
+}
 async function downloadStl() {
   const p = state.plan, link = $("stlLink");
   if (state.stlBusy || !p?.approval || !link.hasAttribute("href")) return;
-  state.stlBusy = true; updateActions();
+  state.stlBusy = true; state.stlProgress = null; updateActions();
+  pollExportStatus(p.plan_id);
   try {
     const r = await fetch(link.href);
     if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.detail || ("HTTP " + r.status)); }
@@ -2308,20 +2365,11 @@ async function downloadStl() {
     addMsg("error", `STL 내려받기 실패: ${err.message}`);
     return;
   } finally {
-    state.stlBusy = false; updateActions();
+    state.stlBusy = false; state.stlProgress = null; updateActions();
   }
   const key = p.plan_id + "@" + p.approval.approved_at;
-  if (doneCards.has(key)) return;
+  toast(`${doneCards.has(key) ? "" : "승인 완료 · "}단계별 STL ${p.stages?.length ?? p.info?.n_stages ?? "?"}장을 내려받았습니다`);
   doneCards.add(key);
-  const div = document.createElement("div");
-  div.className = "done export-done";
-  div.innerHTML = '<span></span><button class="btn ghost small" type="button">다시 내려받기</button>';
-  div.querySelector("span").textContent = `승인 완료 · 단계별 STL ${p.stages?.length ?? p.info?.n_stages ?? "?"}장을 내려받았습니다`;
-  div.querySelector("button").addEventListener("click", () => {
-    if (state.plan?.plan_id === p.plan_id) link.click();
-  });
-  $("transcript").appendChild(div);
-  $("transcript").scrollTop = $("transcript").scrollHeight;
 }
 $("stlLink").addEventListener("click", (e) => { e.preventDefault(); downloadStl(); });
 $("revokeBtn").addEventListener("click", approveCurrent);
@@ -2373,4 +2421,4 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
   } else { history.replaceState(null, "", "#start"); renderRail(); }   // the rail lights 「환자」 on the very first paint too
   } finally { document.documentElement.classList.remove("booting"); }   // the address's screen is on: show it (#15)
 })();
-window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, scriptedFollowup, loadPlan, state, camera, controls, setView };   // test hook (scratch browser checks)
+window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView };   // test hook (scratch browser checks)

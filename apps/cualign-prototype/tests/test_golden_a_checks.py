@@ -577,10 +577,9 @@ def test_runner_mirrors_the_ui_request():
     from evals.golden_a.runner import form_patch, ui_greeting
     from cualign.core.constraints import ConstraintPatch, Constraints
     app = (Path(__file__).resolve().parents[1] / "src/cualign/server/static/app.js").read_text(encoding="utf-8")
-    # the bubble text and the question card's question, joined into the one assistant message the model sees (#90)
-    fixed = ("계획을 시작하려면 제약을 알려 주세요.",
-             "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.")
-    assert "를 불러왔습니다. ` +" in app and all(f in app for f in fixed) and 'content: text + " " + q.question' in app
+    # the case line and the agent's first word, joined into the one assistant message the model sees (#90, #20)
+    fixed = ("계획을 시작하려면 제약을 알려 주세요.", "처방을 적어 주세요.")
+    assert "를 불러왔습니다. ` +" in app and all(f in app for f in fixed) and 'content: text + " " + ask' in app
     assert "상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm" in app
     g = ui_greeting("moderate")
     assert g.startswith("케이스 moderate (상악 14개 치아, 총생 ") and g.endswith(" ".join(fixed))
