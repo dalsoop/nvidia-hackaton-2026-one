@@ -621,3 +621,21 @@ def test_answer_without_korean_is_replaced_and_reported(store, tmp_path, monkeyp
     assert NO_ANSWER in stream and "universal numbering" not in stream
     assert sse_event(stream, "plan_error")["kind"] == "no_answer" and "plan_selected" not in stream
     assert NO_ANSWER in plain and "universal numbering" not in plain
+
+
+FINAL_ANSWER_LABEL = "Final Answer: 발치 치아 14,24번 처방이 유지된 상태에서 확장안과 IPR안을 비교하시겠습니까, 아니면 발치 없이 비교하시겠습니까?"
+
+
+def test_react_final_answer_label_is_stripped(store, tmp_path, monkeypatch):
+    """E2E 2026-09-28 (000097 compare turn): the model asked back without a tool call and NAT passed its text on with
+    the ReAct label. The dentist sees the question only, plain or bold label alike; a label inside a sentence stays."""
+    from cualign.server.rails_middleware import _strip_label
+    assert _strip_label(FINAL_ANSWER_LABEL) == FINAL_ANSWER_LABEL.removeprefix("Final Answer: ")
+    assert _strip_label("**Final Answer:** 발치 없이 비교할까요?") == "발치 없이 비교할까요?"
+    assert _strip_label("**Final Answer**: 발치 없이 비교할까요?") == "발치 없이 비교할까요?"
+    assert _strip_label("**확장 전략으로 9단계 계획을 만들었습니다.** Final Answer: 아님") == "**확장 전략으로 9단계 계획을 만들었습니다.** Final Answer: 아님"
+    with PlanningLLM(FINAL_ANSWER_LABEL) as llm, serve(tmp_path, monkeypatch, llm) as client:
+        stream = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+        plain = ask(client, "/generate")
+    assert "Final Answer" not in stream and "발치 치아 14,24번 처방이 유지된 상태에서" in stream and "plan_error" not in stream
+    assert "Final Answer" not in plain and "발치 치아 14,24번 처방이 유지된 상태에서" in plain

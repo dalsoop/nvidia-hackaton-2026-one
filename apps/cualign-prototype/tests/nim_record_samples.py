@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -67,9 +68,10 @@ async def record_case(client, url, case_id, log, out):
             saved = recorded.save(case_id, step, {"step": step, "request": text, "constraints": final, "answer_md": rec["answer"].strip(),
                                                    "review": rec["review"], "recorded_at": now, "model": _model()})
             base = rec["plan_selected"]
-        elif step == "compare" and sample.constraints.get("extraction") and rec["tools"] == [] and rec["korean"] \
+        elif step == "compare" and sample.constraints.get("extraction") and rec["korean"] \
+                and not [t for t in rec["tools"] if t != "cualign__load_skill"] \
                 and "?" in rec["answer"] and not rec["universal_numbers"] and not rec["internal_terms"]:
-            answer = re.sub(r"^\s*Final Answer:\s*", "", rec["answer"])
+            answer = re.sub(r"^\s*Final Answer:\s*", "", rec["answer"]).strip()
             saved = recorded.save(case_id, step, {"step": step, "request": text, "constraints": {}, "answer_md": answer,
                                                    "review": None, "recorded_at": now, "model": _model()})
         results[step] = {"saved": str(saved.relative_to(ROOT)) if saved else None, "elapsed_s": rec["elapsed_s"], "tools": rec["tools"],
@@ -84,7 +86,10 @@ async def main(case_ids):
         raise SystemExit("NVIDIA_API_KEY is not set (put it in apps/cualign-prototype/.env)")
     port = free_port()
     url = f"http://127.0.0.1:{port}"
-    env = {**os.environ, "PYTHONUTF8": "1", "CUALIGN_OUT": str(ROOT / "out")}
+    store = ROOT / "out" / "nim-live" / "record-store"   # a fresh store: a plan another run left (a capped one) must not become the base plan
+    shutil.rmtree(store, ignore_errors=True)
+    store.mkdir(parents=True)
+    env = {**os.environ, "PYTHONUTF8": "1", "CUALIGN_OUT": str(store)}
     (ROOT / "out" / "nim-live").mkdir(parents=True, exist_ok=True)
     logfile = open(ROOT / "out" / "nim-live" / "record-server.log", "w", encoding="utf-8")
     proc = subprocess.Popen([sys.executable, "-m", "nat.cli.main", "serve", "--config_file", str(ROOT / "configs" / "workflow.yml"),

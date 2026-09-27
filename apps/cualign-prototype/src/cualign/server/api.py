@@ -114,6 +114,16 @@ def gum_filled_view(case_id: str, case, gum: dict) -> dict:
     return _GUM_FILLED[key]
 
 
+def ipr_cut_view(cid: str, case, plan_id: str | None = None) -> dict:
+    """`teeth_cut` / `ipr_cut` (see Case.cut_json) of the crowns with this case's IPR cut (#62), and `plan_id`: the plan
+    whose IPR it is - `plan_id` if given, else the case's representative plan (approved, else latest). No plan, or a
+    plan without IPR: `plan_id` None / the plan, and both maps empty."""
+    rec = STORE.plans.get(plan_id) if plan_id else _representative_plan(STORE.plan_ids_for(cid))
+    if rec is None or rec["case_id"] != cid:
+        return {"plan_id": None, "teeth_cut": {}, "ipr_cut": {}}
+    return {"plan_id": rec["plan_id"], **planner.cut_case(case, rec["info"]).cut_json()}
+
+
 def _summary(pid):
     p = STORE.plan_json(pid)
     return {"plan_id": pid, "case_id": p["case_id"], "parent_plan_id": p["parent_plan_id"],
@@ -165,10 +175,16 @@ def ensure_case_plan(case_id: str) -> dict | None:
     existing = STORE.plan_ids_for(case_id)
     if not existing:
         return rule_based_plan(case_id)
-    latest = existing[-1]
-    if _constraint_dump(STORE._record(latest)) == current.model_dump(mode="json"):
+    wanted = current.model_dump(mode="json")
+    if any(_prescription_dump(_constraint_dump(STORE._record(pid))) == _prescription_dump(wanted) for pid in existing):
+        # a plan under this prescription exists (the preview of an earlier opening, or a capped plan on top of it): reuse
+        # it, do not add a twin. A stage cap or move order is a plan condition and asks for no new preview.
         return None
-    return rule_based_plan(case_id, changes=current.model_dump(mode="json"), parent_plan_id=latest)
+    return rule_based_plan(case_id, changes=wanted, parent_plan_id=existing[-1])
+
+
+def _prescription_dump(constraints: dict) -> dict:
+    return {k: v for k, v in constraints.items() if k not in ("stage_cap", "order")}
 
 
 def _rule_plan_result(cid, ids):
@@ -283,24 +299,33 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
+        # Opening a case starts from its prescription: a stage cap or move order that a replay or an agent turn left at
+        # the case level is dropped here (it stays on the plan it was made for, and the next turn from that plan carries
+        # it), so the screen's «조건이 처방과 다릅니다» fires only when the prescription itself was changed. `active_plan`
+        # carries the newest plan's own conditions for the 조건 tab.
+        STORE.case_constraints[cid] = STORE.constraints_for(cid).prescription()
         out = {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
-               "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
+               "constraints": STORE.constraints_for(cid).model_dump(mode="json"), "active_plan": None}
         try:
             ensure_case_plan(cid)
         except ValueError as e:
             # The case still opens, with no plan: the screen shows the failure card (v2 board 07) with this text and
             # «이 조건으로 다시 계산» calls POST /api/plan. Mesh and constraint failures above stay 404/400.
             out["plan_error"] = str(e)
+        ids = STORE.plan_ids_for(cid)
+        if ids:
+            out["active_plan"] = {"plan_id": ids[-1], "constraints": _constraint_dump(STORE._record(ids[-1]))}
         return out
 
     @app.get("/api/cases/{case_id}/mesh")
-    async def case_mesh(case_id: str):
+    async def case_mesh(case_id: str, plan_id: str | None = None):
         try:
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
         data = case.viewer_json()
         data.update(gum_filled_view(cid, case, data["gum"]))
+        data.update(ipr_cut_view(cid, case, plan_id))
         return data
 
     @app.get("/api/cases/{case_id}/gum")
@@ -501,6 +526,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         except ValueError as e:
             raise HTTPException(409, str(e))
         _, case = STORE.load_case(p["case_id"])
+        case = planner.cut_case(case, p["info"])     # the stage files and print models carry the IPR cut (#62)
         path = OUT_DIR / "stl" / f"{plan_id}.zip"
         # Regenerate from the approved snapshot; a stale file cannot bypass approval. Building takes 5–11 s on the
         # samples (mostly the print models), and the agent shares this process: off the event loop, or every other

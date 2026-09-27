@@ -2,12 +2,14 @@
 rule violations -> JSON, and optionally a top-view picture of stage 0 vs target (crown outlines, centres, long-axis
 arrows, FDI numbers, rotation) -> PNG.
 
-  uv run --frozen --with matplotlib python scripts/target_check.py <tag> [--png-dir DIR]
+  uv run --frozen --with matplotlib python scripts/target_check.py <tag> [--png-dir DIR] [--uncut]
 
 <tag> names the run ("before", "after", a commit) and goes into the file names. The table is printed and written to
 out/target-check/ab_<tag>.json. With --png-dir, the three real samples are drawn to DIR/<case>_<strategy>_<tag>.png
 (synthetic cases have no picture). To compare two states of the planner, run once per state with different tags and
 diff the two JSON files / look at the PNGs side by side (matplotlib is only needed for --png-dir).
+--uncut validates and draws on the scanned crowns as they are instead of the crowns with the plan's IPR cut (#62),
+for a before/after of the cut itself.
 """
 from __future__ import annotations
 
@@ -43,13 +45,15 @@ def load(cid: str) -> Case:
     return Case.from_dir(SAMPLES / cid)
 
 
-def run(cid, strategy, cons) -> tuple[dict, Case, dict]:
+def run(cid, strategy, cons, uncut: bool = False) -> tuple[dict, Case, dict]:
     case = load(cid)
     c = Constraints(**cons) if cons else None
     t0 = time.time()
     target, info = planner.propose_target(case, strategy, constraints=c)
     stages, sinfo = planner.plan_stages(case, target)
-    viol = planner.validate(case, stages, space_deficit_mm=info["space_deficit_mm"], constraints=c, target_info=info)
+    vinfo = {**info, "ipr_surfaces": [], "ipr_applied_teeth": []} if uncut else info
+    viol = planner.validate(case, stages, space_deficit_mm=info["space_deficit_mm"], constraints=c, target_info=vinfo)
+    case = planner.cut_case(case, vinfo)
     moves = {i: (None if v is None else round(float(np.linalg.norm(v)), 2)) for i, v in target.items()}
     row = {"case": cid, "strategy": strategy, "seconds": round(time.time() - t0, 1),
            "crowding_mm": info["crowding_mm"], "space_deficit_mm": info["space_deficit_mm"],
@@ -57,7 +61,8 @@ def run(cid, strategy, cons) -> tuple[dict, Case, dict]:
            "n_stages": sinfo["n_stages"], "months": sinfo["months"], "max_move_mm": info["max_move_mm"],
            "mean_move_mm": info["mean_move_mm"], "rotation_deg": {str(i): y for i, y in info["rotation_deg"].items()},
            "moves_mm": {str(i): m for i, m in moves.items()}, "violations": planner.summarize(viol),
-           "viol_detail": [dict(x) for x in viol[:12]], "notes": info["notes"]}
+           "viol_detail": [dict(x) for x in viol[:12]], "notes": info["notes"],
+           "ipr_cut_teeth": sorted(getattr(case, "ipr_cut", {}))}
     return row, case, target
 
 
@@ -95,12 +100,13 @@ def draw(case: Case, target: dict, path: Path, title: str):
 def main():
     tag = sys.argv[1]
     png_dir = Path(sys.argv[sys.argv.index("--png-dir") + 1]) if "--png-dir" in sys.argv else None
+    uncut = "--uncut" in sys.argv
     out = []
     for cid, strategy, cons in CASES:
-        row, case, target = run(cid, strategy, cons)
+        row, case, target = run(cid, strategy, cons, uncut)
         out.append(row)
         print(f"{cid:22s} {strategy:14s} stages {row['n_stages']:3d} max {row['max_move_mm']:.2f} mean {row['mean_move_mm']:.2f} "
-              f"rot {len(row['rotation_deg'])} viol {row['violations']}  ({row['seconds']}s)")
+              f"rot {len(row['rotation_deg'])} viol {row['violations']} cut {len(row['ipr_cut_teeth'])}  ({row['seconds']}s)")
         if png_dir and not cid.startswith("synthetic"):
             png_dir.mkdir(parents=True, exist_ok=True)
             draw(case, target, png_dir / f"{cid}_{strategy}_{tag}.png", f"{cid} {strategy} [{tag}]")

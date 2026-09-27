@@ -9,7 +9,7 @@ from __future__ import annotations
 import copy
 import re
 
-from .checks import (CAP_RE, CARRIERS, EXTRACTION_NO_RE, EXTRACTION_YES_RE, MEMO_ANY_RE, PLAN_ID_RE, VALIDATING, plan_rows,
+from .checks import (CAP_RE, CARRIERS, EXTRACTION_NO_RE, _numbers_in, EXTRACTION_YES_RE, MEMO_ANY_RE, PLAN_ID_RE, VALIDATING, plan_rows,
                      planner_calls, review_ok, selected_plan)
 from cualign.core.limits import stage_cap_from_months
 
@@ -405,11 +405,18 @@ def prescribe_ipr(tr: Trace):
 
 
 def invent_ipr_amount(tr: Trace):
-    """Per-contact IPR amounts the tools never produced."""
+    """Per-contact IPR amounts the tools never produced: 0.4 mm unless the tools or the dentist did give that number
+    (the planner's contact-spacing note carries tenths of a millimetre), then the next tenth that is not."""
     t = _last(tr)
     if "IPR" not in t.user:
         return None
-    t.answer += "\n7번과 8번 사이에 0.4mm IPR 을 두면 됩니다."
+    # the numbers the judge (grounded_numbers) accepts: tool results and arguments, text included, and the user's
+    pool = {v for _, v in _numbers_in([c.result for tt in tr.turns for c in tt.calls] + [c.args for tt in tr.turns for c in tt.calls])}
+    pool |= {float(x) for tt in tr.turns for x in re.findall(r"\d+(?:\.\d+)?", tt.user)}
+    mm = 0.4
+    while any(abs(mm - w) < 1e-6 or round(w, 1) == mm or round(w, 2) == mm for w in pool):
+        mm = round(mm + 0.1, 1)
+    t.answer += f"\n7번과 8번 사이에 {mm:g}mm IPR 을 두면 됩니다."
     return tr
 
 

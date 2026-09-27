@@ -4,8 +4,10 @@ A sample gingiva.stl is the gum with the teeth cut out: not one socket per tooth
 is one boundary loop that hugs every crown). Once a crown moves, or is extracted, the viewer looks through that trench
 into the dark inside of the mesh. Here the trench is covered by one surface interpolated from its rim, the way
 print_model.py fills the sockets of the print model (`_fill`), and stitched to the gum through the rim vertices.
-Display only: never part of collision checks, planning or the print model. The procedural ridge (gum.py) has no
-trench and comes back unchanged.
+Then the gum is closed underneath (close_base): the scan is an open shell, and turned over in the viewer it looked
+empty, so its outer rim walls down to a flat floor a little below the gum and the small holes are patched, leaving no
+boundary loop. Display only: never part of collision checks, planning or the print model. The procedural ridge
+(gum.py) has no trench and comes back unchanged.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from .print_model import GRID_MM as PRINT_GRID_MM, _fill
 GRID_MM = 2 * PRINT_GRID_MM   # 0.4 mm: the viewer's patch; the print model keeps its finer grid
 RIM_NEAR_CROWN_MM = 2.0       # a trench rim runs along the crowns; the gum's outer edge (vestibule, palate) is far away
 RIM_CLEARANCE = 0.5           # grid points closer than this (in cells) to the rim are dropped (slivers in the triangulation)
+BASE_DEPTH_MM = 2.0           # the viewer floor lies this far below the gum's lowest point (close_base)
 
 
 def boundary_loops(m: trimesh.Trimesh) -> list[np.ndarray]:
@@ -138,12 +141,91 @@ def _finite(m: trimesh.Trimesh) -> trimesh.Trimesh:
     return out
 
 
+def _ear_clip(poly: np.ndarray) -> np.ndarray | None:
+    """Triangles (m, 3) of vertex indices over the simple polygon `poly` (n, 2), using exactly its edges (so a wall
+    built on those edges closes against it). None when no ear is found (a self-crossing outline)."""
+    n = len(poly)
+    idx = list(range(n))
+    x, y = poly[:, 0], poly[:, 1]
+    area2 = float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+    sign = 1.0 if area2 >= 0 else -1.0
+    tris, guard = [], 0
+    while len(idx) > 3 and guard < 4 * n:
+        guard += 1
+        found = False
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            a, b, c = poly[i0], poly[i1], poly[i2]
+            cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+            if cross * sign < -1e-9:
+                continue                               # a reflex corner is no ear
+            others = poly[[j for j in idx if j not in (i0, i1, i2)]]
+            if len(others) and abs(cross) > 1e-9:
+                d1 = (b[0] - a[0]) * (others[:, 1] - a[1]) - (b[1] - a[1]) * (others[:, 0] - a[0])
+                d2 = (c[0] - b[0]) * (others[:, 1] - b[1]) - (c[1] - b[1]) * (others[:, 0] - b[0])
+                d3 = (a[0] - c[0]) * (others[:, 1] - c[1]) - (a[1] - c[1]) * (others[:, 0] - c[0])
+                if np.any((d1 * sign > 1e-9) & (d2 * sign > 1e-9) & (d3 * sign > 1e-9)):
+                    continue                           # another vertex inside: no ear
+            tris.append((i0, i1, i2))
+            del idx[k]
+            found = True
+            break
+        if not found:
+            return None
+    if len(idx) == 3:
+        tris.append(tuple(idx))
+    return np.asarray(tris) if tris else None
+
+
+def _fan(rim: np.ndarray) -> trimesh.Trimesh:
+    """A fan over a small hole (its centre and the rim's edges)."""
+    verts = np.vstack([rim, rim.mean(axis=0)[None]])
+    n = len(rim)
+    faces = np.array([(i, (i + 1) % n, n) for i in range(n)])
+    return trimesh.Trimesh(verts, faces, process=False)
+
+
+def close_base(gum: trimesh.Trimesh, depth: float = BASE_DEPTH_MM) -> tuple[trimesh.Trimesh, dict]:
+    """`gum` as a closed shell for the viewer: its largest boundary loop (the gum's outer edge, vestibule and palate in
+    one chain) is dropped by a vertical wall onto a flat floor `depth` below the gum's lowest point, the floor is
+    triangulated on the loop's own edges, and every other loop (small holes, a stray piece's edge) is patched.
+    Seen from below the gum is a solid block, not an empty shell. Returns (mesh, {base, z_base, loops_after})."""
+    loops = boundary_loops(gum)
+    if not loops:
+        return gum, {"base": False, "z_base": None, "loops_after": 0}
+    v = np.asarray(gum.vertices, float)
+    z_base = float(v[:, 2].min()) - depth
+    parts = [gum]
+    outer = max(range(len(loops)), key=lambda k: len(loops[k]))
+    for k, loop in enumerate(loops):
+        rim = v[loop]
+        if k != outer:
+            cover = _cover(rim) if len(loop) > 8 else None
+            parts.append(cover if cover is not None else _fan(rim))
+            continue
+        n = len(rim)
+        floor = np.column_stack([rim[:, :2], np.full(n, z_base)])
+        verts = np.vstack([rim, floor])
+        nxt = (np.arange(n) + 1) % n
+        wall = np.vstack([np.column_stack([np.arange(n), nxt, nxt + n]), np.column_stack([np.arange(n), nxt + n, np.arange(n) + n])])
+        tris = _ear_clip(floor[:, :2])
+        if tris is None:   # the outline crosses itself: a Delaunay floor trimmed to the outline (may leave slivers open)
+            tris = Delaunay(floor[:, :2]).simplices
+            tris = tris[inside_polygon(floor[tris][:, :, :2].mean(axis=1), floor[:, :2])]
+        parts.append(trimesh.Trimesh(verts, np.vstack([wall, tris + n]), process=False))
+    closed = trimesh.util.concatenate(parts)
+    closed.merge_vertices()
+    closed = _seal_triangles(closed)
+    return closed, {"base": True, "z_base": round(z_base, 2), "loops_after": len(boundary_loops(closed))}
+
+
 def fill_sockets(gum: trimesh.Trimesh, anchors: dict[int, np.ndarray], crowns: list[trimesh.Trimesh]) -> tuple[trimesh.Trimesh, dict]:
-    """The gum with every tooth trench covered, and what was done: {filled, sockets, loops_before, loops_after}."""
+    """The gum with every tooth trench covered and its underside closed (close_base), and what was done:
+    {filled, sockets, loops_before, loops_after, base, z_base}."""
     gum = _finite(gum)
     before = boundary_loops(gum)
     sockets = socket_loops(gum, anchors, crowns)
-    meta = {"filled": False, "sockets": [], "loops_before": len(before), "loops_after": len(before)}
+    meta = {"filled": False, "sockets": [], "loops_before": len(before), "loops_after": len(before), "base": False, "z_base": None}
     if not sockets:
         return gum, meta
     parts, teeth = [gum], []
@@ -157,7 +239,8 @@ def fill_sockets(gum: trimesh.Trimesh, anchors: dict[int, np.ndarray], crowns: l
     filled = trimesh.util.concatenate(parts)
     filled.merge_vertices()
     filled = _seal_triangles(filled)
-    meta.update({"filled": True, "sockets": sorted(set(teeth)), "loops_after": len(boundary_loops(filled))})
+    filled, base = close_base(filled)
+    meta.update({"filled": True, "sockets": sorted(set(teeth)), **base})
     return filled, meta
 
 
