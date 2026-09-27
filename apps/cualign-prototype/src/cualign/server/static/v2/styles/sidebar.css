@@ -238,7 +238,7 @@
 }
 
 .staging-row.current-stage {
-  background: var(--color-accent-bg) !important;
+  background: var(--color-accent-bg);
 }
 
 .staging-row.current-stage .staging-td-stage {

@@ -4,17 +4,10 @@ import { clear, h } from '../../../ui/dom.js';
 import { fdiToUniversal, universalToFdi } from '../../../domain/teeth.js';
 import { T } from '../../../domain/vocab.js';
 import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
-import { preferredPlan } from '../../../domain/status.js';
+import { planStageIndex, selectViewingPlan, violationCount } from './plan-state.js';
 
 export const STRATEGY_KO = SIDEBAR_VOCAB.staging.strategies;
 
-/**
- * Returns FDI tooth numbers for the staging table columns in standard dental order:
- * Quadrant 1 (18 down to 11) followed by Quadrant 2 (21 up to 28).
- *
- * @param {Object} [plan] - Viewing plan
- * @returns {Array<number>} Array of FDI tooth numbers
- */
 export function getFdiColumnsForPlan(plan = null) {
   const standardFdi = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27];
 
@@ -50,14 +43,6 @@ export function getFdiColumnsForPlan(plan = null) {
   });
 }
 
-/**
- * Determines tooth movement type at a given stage.
- *
- * @param {Object} plan - Plan object
- * @param {number} stageIdx - Stage index (1..N)
- * @param {number} uTooth - Universal tooth number (1..16)
- * @returns {Object} { kind: 'locked'|'extracted'|'rot'|'vert'|'trans'|'idle', linearMm, rotDeg }
- */
 export function getToothMovementInfo(plan, stageIdx, uTooth) {
   if (!plan || stageIdx <= 0) {
     return { kind: 'idle', linearMm: 0, rotDeg: 0 };
@@ -103,14 +88,6 @@ export function getToothMovementInfo(plan, stageIdx, uTooth) {
   return { kind: 'idle', linearMm, rotDeg };
 }
 
-/**
- * Checks if tooth is involved in a collision at a given stage.
- *
- * @param {Object} plan - Plan object
- * @param {number} stageIdx - Stage index (1..N)
- * @param {number} uTooth - Universal tooth number
- * @returns {boolean}
- */
 export function hasToothCollision(plan, stageIdx, uTooth) {
   if (!plan || !Array.isArray(plan.violations) || stageIdx <= 0) {
     return false;
@@ -139,12 +116,7 @@ export function renderStaging(container, ctx) {
   clear(container);
 
   const state = ctx.store.get();
-  const plans = state.plans || [];
-  const currentPlan = (state.viewingPlanId && plans.find(p => (p.plan_id || p.id) === state.viewingPlanId))
-    || state.viewingPlan
-    || preferredPlan(plans)
-    || plans[0]
-    || null;
+  const currentPlan = selectViewingPlan(state);
 
   const panelRoot = h('div', { class: 'sidebar-staging-panel' });
 
@@ -164,8 +136,7 @@ export function renderStaging(container, ctx) {
   // 2. Staging Table (FDI columns x Stage rows)
   const fdiColumns = getFdiColumnsForPlan(currentPlan);
   const nStages = currentPlan.stages.length;
-  const rawStage = Number(state.stage);
-  const currentStage = Number.isInteger(rawStage) && rawStage >= 0 ? rawStage : 0;
+  const currentStage = planStageIndex(state);
 
   const tableWrap = h('div', { class: 'staging-table-wrap' });
   const tableEl = h('table', { class: 'staging-table' });
@@ -194,7 +165,7 @@ export function renderStaging(container, ctx) {
       class: `staging-row ${isCurrent ? 'current-stage' : ''}`,
       dataset: { stage: s },
       onClick: () => {
-        ctx.store.set({ stage: s });
+        ctx.store.set({ stageIndex: s });
       }
     }, [
       h('td', { class: 'staging-td-stage' }, stageLabel)
@@ -309,7 +280,7 @@ function renderPlanSummaryBar(plan) {
   const stratName = STRATEGY_KO[plan.strategy] || plan.strategy || SIDEBAR_VOCAB.staging.defaultPlanLabel;
   const nStages = plan.stages?.length ?? plan.info?.n_stages ?? 0;
   const months = plan.info?.months != null ? plan.info.months : (nStages ? (nStages / 1.5).toFixed(1) : 0);
-  const violationsCount = plan.violations?.length || 0;
+  const violationsCount = violationCount(plan);
 
   barEl.appendChild(h('span', { class: 'summary-pill summary-pill-strategy' }, stratName));
   barEl.appendChild(h('span', { class: 'summary-pill' }, T.stagesCount(nStages)));

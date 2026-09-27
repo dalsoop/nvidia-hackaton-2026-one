@@ -1,4 +1,3 @@
-// 3D Viewer module entry (J5 contract)
 // Integrates scene, teeth, overlay, layers, views, and stage-bar
 
 import * as THREE from 'three';
@@ -10,13 +9,6 @@ import { createOverlayManager } from './overlay.js';
 import { createStageBar } from './stage-bar.js';
 import { VIEWER_T } from '../domain/vocab/viewer.js';
 
-/**
- * Creates and initializes the 3D dental aligner viewer.
- *
- * @param {HTMLElement} container
- * @param {object} [options]
- * @returns {object}
- */
 export function createViewer(container, options = {}) {
   // Ensure container styling
   container.classList.add('viewer-container');
@@ -25,42 +17,39 @@ export function createViewer(container, options = {}) {
   let currentMesh = null;
   let currentPlan = null;
   let currentStage = 0;
+  let currentPlanNumber = 1;
   let customLabels = [];
 
-  // 1. Initialize Scene (Renderer, Camera, Lights, OrbitControls)
   const sceneCtx = createScene(container);
 
-  // 2. Initialize Teeth Manager (Meshes, Poses, Centers)
   const teethManager = createTeethManager({
     group: sceneCtx.group,
     ghostGroup: sceneCtx.ghost
   });
 
-  // 3. Initialize Layers Manager (Ghost overlay, Heat tint, IPR, Numbers, Gum)
   const layersManager = createLayersManager({
     ghostGroup: sceneCtx.ghost,
     teethManager
   });
 
-  // 4. Initialize Arch Info Badge (e.g. Upper arch, teeth count, occlusal view)
   const archBadge = document.createElement('div');
   archBadge.className = 'viewer-arch-info';
   archBadge.hidden = true;
   container.appendChild(archBadge);
 
-  function updateArchBadge(viewNameKo) {
+  function updateArchBadge() {
     if (!currentMesh) {
       archBadge.hidden = true;
       return;
     }
     const archName = currentMesh.arch === 'upper' ? VIEWER_T.arch.upper : (currentMesh.arch === 'lower' ? VIEWER_T.arch.lower : (currentMesh.arch || ''));
     const teethCount = teethManager.getTeethCount();
-    const viewDesc = VIEWER_T.views.viewSuffix(viewNameKo || VIEWER_T.views.occlusal);
-    archBadge.textContent = VIEWER_T.arch.archInfo(archName, teethCount, viewDesc);
+    archBadge.textContent = currentPlan
+      ? VIEWER_T.arch.archInfo(archName, teethCount, currentPlanNumber, currentStage)
+      : VIEWER_T.arch.scanInfo(archName, teethCount);
     archBadge.hidden = false;
   }
 
-  // 5. Initialize Views Manager (Occlusal, Frontal, Right, Left)
   const viewsManager = createViewsManager({
     camera: sceneCtx.camera,
     controls: sceneCtx.controls,
@@ -69,11 +58,10 @@ export function createViewer(container, options = {}) {
       viewsBar.querySelectorAll('.viewer-view-btn').forEach((b) => {
         b.classList.toggle('active', b.dataset.view === viewKey);
       });
-      updateArchBadge(viewLabel);
+      updateArchBadge();
     }
   });
 
-  // 6. Initialize Overlay Manager (Labels, Violations, Tooltips, FDI chips)
   const overlayManager = createOverlayManager({
     container,
     camera: sceneCtx.camera,
@@ -86,7 +74,6 @@ export function createViewer(container, options = {}) {
     }
   });
 
-  // 7. View Controls UI (Occlusal, Frontal, Right, Left)
   const viewsBar = document.createElement('div');
   viewsBar.className = 'viewer-views-bar';
   const supportedViews = ['occlusal', 'frontal', 'right', 'left'];
@@ -107,7 +94,6 @@ export function createViewer(container, options = {}) {
   }
   container.appendChild(viewsBar);
 
-  // 8. Layer Controls UI (Ghost overlay, Heat tint, IPR, Numbers, Gum)
   const layersBar = document.createElement('div');
   layersBar.className = 'viewer-layers-bar';
 
@@ -138,9 +124,10 @@ export function createViewer(container, options = {}) {
   }
   container.appendChild(layersBar);
 
-  // 9. Initialize 440px Stage Bar (Bottom-Right)
   const stageBarTarget = options.stageBarContainer || container;
-  const stageBar = options.stageBar === false ? null : createStageBar(stageBarTarget, {
+  const stageBarEnabled = options.stageBar === true
+    || (options.stageBar !== false && typeof options.onStageChange === 'function');
+  const stageBar = stageBarEnabled ? createStageBar(stageBarTarget, {
     max: 0,
     value: 0,
     violations: [],
@@ -148,7 +135,7 @@ export function createViewer(container, options = {}) {
       setStage(stage, false);
       options.onStageChange?.(stage);
     }
-  });
+  }) : null;
 
   // Coordinate update on every frame
   sceneCtx.onBeforeRender(() => {
@@ -209,6 +196,7 @@ export function createViewer(container, options = {}) {
     currentMesh = meshJson;
     currentPlan = null;
     currentStage = 0;
+    currentPlanNumber = 1;
 
     teethManager.loadMesh(meshJson);
     stageBar?.setMax(0);
@@ -218,11 +206,12 @@ export function createViewer(container, options = {}) {
 
     applyStage(0);
     viewsManager.setView('occlusal');
-    updateArchBadge(VIEW_NAMES_KO.occlusal);
+    updateArchBadge();
   }
 
-  function setPlan(planJson) {
+  function setPlan(planJson, planNumber = null) {
     currentPlan = planJson;
+    currentPlanNumber = Number(planNumber ?? planJson?.planNumber ?? planJson?.plan_number ?? planJson?.ordinal) || 1;
     const totalStages = planJson?.stages?.length || 0;
     const months = planJson?.info?.months ?? null;
 
@@ -231,6 +220,7 @@ export function createViewer(container, options = {}) {
     stageBar?.setViolations(planJson?.violations || []);
 
     applyStage(Math.min(currentStage, totalStages));
+    updateArchBadge();
   }
 
   function setStage(n, updateBar = true) {
@@ -238,6 +228,7 @@ export function createViewer(container, options = {}) {
     currentStage = Math.max(0, Math.min(totalStages, Number(n) || 0));
 
     applyStage(currentStage);
+    updateArchBadge();
 
     if (updateBar) {
       stageBar?.setStage(currentStage);
@@ -247,7 +238,7 @@ export function createViewer(container, options = {}) {
   function applyStage(k) {
     teethManager.applyPose(currentPlan, k);
     layersManager.applyAppearance(currentPlan, k, overlayManager.getSelectedTeeth());
-    overlayManager.syncLabels(currentPlan, k, layersManager.getLayers());
+    overlayManager.syncLabels(currentPlan, k, layersManager.getLayers(), customLabels);
   }
 
   function setLayers(obj) {
@@ -261,7 +252,7 @@ export function createViewer(container, options = {}) {
       }
     }
     layersManager.applyAppearance(currentPlan, currentStage, overlayManager.getSelectedTeeth());
-    overlayManager.syncLabels(currentPlan, currentStage, layersManager.getLayers());
+    overlayManager.syncLabels(currentPlan, currentStage, layersManager.getLayers(), customLabels);
   }
 
   function setView(name) {
@@ -270,7 +261,7 @@ export function createViewer(container, options = {}) {
 
   function setLabels(list) {
     customLabels = list || [];
-    overlayManager.syncLabels(currentPlan, currentStage, layersManager.getLayers());
+    overlayManager.syncLabels(currentPlan, currentStage, layersManager.getLayers(), customLabels);
   }
 
   function destroy() {

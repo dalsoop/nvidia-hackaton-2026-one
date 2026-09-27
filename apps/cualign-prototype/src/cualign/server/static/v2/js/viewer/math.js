@@ -71,18 +71,20 @@ export function getViolationsAtStage(violations = [], stage = 0) {
  * Group violations by stage for slider tick marks.
  *
  * @param {Array<{ stage?: number, type: string, teeth?: any[] }>} violations
- * @returns {Record<number, { collision: number, move_limit: number, total: number }>}
+ * @returns {Record<number, { collision: number, move_limit: number, other: number, total: number }>}
  */
 export function getStageViolationsSummary(violations = []) {
   const summary = {};
 
   for (const v of violations || []) {
-    if (v.stage == null || !['collision', 'move_limit'].includes(v.type)) continue;
+    if (v.stage == null) continue;
     const stage = Number(v.stage);
+    if (!Number.isInteger(stage) || stage < 0) continue;
     if (!summary[stage]) {
-      summary[stage] = { collision: 0, move_limit: 0, total: 0 };
+      summary[stage] = { collision: 0, move_limit: 0, other: 0, total: 0 };
     }
-    summary[stage][v.type] = (summary[stage][v.type] || 0) + 1;
+    const category = ['collision', 'move_limit'].includes(v.type) ? v.type : 'other';
+    summary[stage][category] += 1;
     summary[stage].total += 1;
   }
 
@@ -232,4 +234,3 @@ export function projectNormalizedToScreen(ndcX = 0, ndcY = 0, width = 0, height 
   const y = (-(ndcY * 0.5) + 0.5) * height;
   return { x, y };
 }
-

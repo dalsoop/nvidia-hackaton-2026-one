@@ -6,6 +6,7 @@ import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { renderStaging, getFdiColumnsForPlan } from './staging.js';
 import { renderChecks, groupViolations } from './checks.js';
 import { renderConditions, calculateConditionDiff } from './conditions.js';
+import { planId, planStageIndex, selectViewingPlan } from './plan-state.js';
 
 export { groupViolations } from './checks.js';
 export { calculateConditionDiff } from './conditions.js';
@@ -42,6 +43,9 @@ export function mountSidebar(el, ctx) {
 
   let isMounted = true;
   let unsubscribe = null;
+  let renderedTab = null;
+  let renderedPlan = null;
+  let renderedStage = null;
 
   // Root container for sidebar
   const sidebarContainer = h('div', { class: 'sidebar-root' });
@@ -92,6 +96,9 @@ export function mountSidebar(el, ctx) {
     const state = ctx.store.get();
     let currentTab = state.sidebarTab || 'stages';
     if (currentTab === 'checks') currentTab = 'rules';
+    renderedTab = currentTab;
+    renderedPlan = selectViewingPlan(state);
+    renderedStage = planStageIndex(state);
 
     syncTabRail(currentTab);
 
@@ -112,7 +119,16 @@ export function mountSidebar(el, ctx) {
   }
 
   unsubscribe = ctx.store.subscribe(() => {
-    renderActivePanel();
+    const state = ctx.store.get();
+    const nextTab = state.sidebarTab === 'checks' ? 'rules' : (state.sidebarTab || 'stages');
+    const nextPlan = selectViewingPlan(state);
+    const planChanged = nextPlan !== renderedPlan || planId(nextPlan) !== planId(renderedPlan);
+    const stageChanged = planStageIndex(state) !== renderedStage;
+    const needsStageRefresh = nextTab !== 'conditions' && stageChanged;
+
+    if (nextTab !== renderedTab || planChanged || needsStageRefresh) {
+      renderActivePanel();
+    }
   });
 
   // Initial render

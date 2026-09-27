@@ -1,127 +1,12 @@
 // Checks & Rule validation results for workspace right sidebar (J8 contract)
 
 import { clear, h } from '../../../ui/dom.js';
-import { universalToFdi } from '../../../domain/teeth.js';
 import { T } from '../../../domain/vocab.js';
 import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
-import { preferredPlan } from '../../../domain/status.js';
+import { planStageIndex, selectViewingPlan, violationCount } from './plan-state.js';
+import { groupViolations } from './violations.js';
 
-export const VIOLATION_LABELS = SIDEBAR_VOCAB.rules.violations;
-
-/**
- * Group violations by violation type and tooth pairs / teeth.
- *
- * @param {Array} violations - Array of violation objects
- * @returns {Array} Array of violation group objects with .byType and .total properties
- */
-export function groupViolations(violations = []) {
-  if (!Array.isArray(violations)) {
-    const empty = [];
-    empty.byType = {};
-    empty.total = 0;
-    return empty;
-  }
-
-  const typeMap = new Map();
-
-  for (const v of violations) {
-    if (!v || typeof v !== 'object') continue;
-    const type = v.type || 'unknown';
-
-    if (!typeMap.has(type)) {
-      typeMap.set(type, {
-        type,
-        label: VIOLATION_LABELS[type] || type,
-        count: 0,
-        pairs: [],
-        byTooth: [],
-        general: [],
-        items: []
-      });
-    }
-
-    const group = typeMap.get(type);
-    group.count++;
-    group.items.push(v);
-
-    const teeth = Array.isArray(v.teeth)
-      ? v.teeth.map(Number).filter(n => Number.isInteger(n))
-      : [];
-
-    if (teeth.length >= 2) {
-      // Tooth pair grouping (e.g. collision between 2 teeth)
-      const sortedTeeth = [...teeth].sort((a, b) => a - b);
-      const pairKey = sortedTeeth.join('-');
-      let pairEntry = group.pairs.find(p => p.pairKey === pairKey);
-
-      if (!pairEntry) {
-        pairEntry = {
-          pairKey,
-          teeth: sortedTeeth,
-          fdiTeeth: sortedTeeth.map(t => universalToFdi(t)).filter(n => n !== null),
-          count: 0,
-          stages: [],
-          maxOverlap: 0,
-          items: []
-        };
-        group.pairs.push(pairEntry);
-      }
-
-      pairEntry.count++;
-      pairEntry.items.push(v);
-
-      if (v.stage != null) {
-        const stageNum = Number(v.stage);
-        if (Number.isInteger(stageNum) && !pairEntry.stages.includes(stageNum)) {
-          pairEntry.stages.push(stageNum);
-          pairEntry.stages.sort((a, b) => a - b);
-        }
-      }
-
-      if (v.overlap_mm3 != null && Number(v.overlap_mm3) > pairEntry.maxOverlap) {
-        pairEntry.maxOverlap = Number(v.overlap_mm3);
-      }
-    } else if (teeth.length === 1) {
-      // Single tooth grouping (e.g. move_limit, rotation_limit, locked_tooth)
-      const t = teeth[0];
-      let toothEntry = group.byTooth.find(item => item.tooth === t);
-
-      if (!toothEntry) {
-        toothEntry = {
-          tooth: t,
-          fdiTooth: universalToFdi(t),
-          count: 0,
-          stages: [],
-          items: []
-        };
-        group.byTooth.push(toothEntry);
-      }
-
-      toothEntry.count++;
-      toothEntry.items.push(v);
-
-      if (v.stage != null) {
-        const stageNum = Number(v.stage);
-        if (Number.isInteger(stageNum) && !toothEntry.stages.includes(stageNum)) {
-          toothEntry.stages.push(stageNum);
-          toothEntry.stages.sort((a, b) => a - b);
-        }
-      }
-    } else {
-      // General / plan-level violations (space_deficit, stage_cap, etc.)
-      group.general.push(v);
-    }
-  }
-
-  const result = Array.from(typeMap.values());
-  result.byType = {};
-  for (const g of result) {
-    result.byType[g.type] = g;
-  }
-  result.total = violations.length;
-
-  return result;
-}
+export { groupViolations, VIOLATION_LABELS } from './violations.js';
 
 /**
  * Render the checks / rules panel.
@@ -133,12 +18,8 @@ export function renderChecks(container, ctx) {
   clear(container);
 
   const state = ctx.store.get();
-  const plans = state.plans || [];
-  const currentPlan = (state.viewingPlanId && plans.find(p => (p.plan_id || p.id) === state.viewingPlanId))
-    || state.viewingPlan
-    || preferredPlan(plans)
-    || plans[0]
-    || null;
+  const currentPlan = selectViewingPlan(state);
+  const currentViolationCount = violationCount(currentPlan);
 
   const panelRoot = h('div', { class: 'sidebar-checks-panel' });
 
@@ -146,8 +27,8 @@ export function renderChecks(container, ctx) {
   const headerEl = h('div', { class: 'sidebar-panel-header' }, [
     h('h3', { class: 'sidebar-panel-title' }, SIDEBAR_VOCAB.rules.title),
     h('span', {
-      class: `sidebar-status-pill ${!currentPlan ? 'neutral' : (currentPlan.violations?.length ? 'danger' : 'success')}`
-    }, !currentPlan ? SIDEBAR_VOCAB.rules.noPlanStatus : (currentPlan.violations?.length ? T.violations(currentPlan.violations.length) : T.workspace.passed))
+      class: `sidebar-status-pill ${!currentPlan ? 'neutral' : (currentViolationCount ? 'danger' : 'success')}`
+    }, !currentPlan ? SIDEBAR_VOCAB.rules.noPlanStatus : (currentViolationCount ? T.violations(currentViolationCount) : T.workspace.passed))
   ]);
   panelRoot.appendChild(headerEl);
 
@@ -160,7 +41,7 @@ export function renderChecks(container, ctx) {
     return;
   }
 
-  const violations = currentPlan.violations || [];
+  const violations = Array.isArray(currentPlan.violations) ? currentPlan.violations : [];
   const grouped = groupViolations(violations);
 
   if (grouped.length === 0) {
@@ -175,7 +56,7 @@ export function renderChecks(container, ctx) {
     return;
   }
 
-  const currentStage = Number(state.stage);
+  const currentStage = planStageIndex(state);
 
   // Violations list
   const listEl = h('div', { class: 'checks-group-list' });
@@ -204,7 +85,7 @@ export function renderChecks(container, ctx) {
           itemEl.classList.add('checks-item-clickable');
           itemEl.title = SIDEBAR_VOCAB.rules.stageJumpTitle(pair.stages[0]);
           itemEl.onclick = () => {
-            ctx.store.set({ stage: pair.stages[0] });
+            ctx.store.set({ stageIndex: pair.stages[0] });
           };
         }
 
@@ -226,7 +107,7 @@ export function renderChecks(container, ctx) {
               title: SIDEBAR_VOCAB.rules.stageJumpTitle(st),
               onClick: (e) => {
                 e.stopPropagation();
-                ctx.store.set({ stage: st });
+                ctx.store.set({ stageIndex: st });
               }
             }, SIDEBAR_VOCAB.rules.stageChip(st)))
           ]);
@@ -247,7 +128,7 @@ export function renderChecks(container, ctx) {
           itemEl.classList.add('checks-item-clickable');
           itemEl.title = SIDEBAR_VOCAB.rules.stageJumpTitle(tEntry.stages[0]);
           itemEl.onclick = () => {
-            ctx.store.set({ stage: tEntry.stages[0] });
+            ctx.store.set({ stageIndex: tEntry.stages[0] });
           };
         }
 
@@ -266,7 +147,7 @@ export function renderChecks(container, ctx) {
               title: SIDEBAR_VOCAB.rules.stageJumpTitle(st),
               onClick: (e) => {
                 e.stopPropagation();
-                ctx.store.set({ stage: st });
+                ctx.store.set({ stageIndex: st });
               }
             }, SIDEBAR_VOCAB.rules.stageChip(st)))
           ]);
@@ -305,7 +186,7 @@ export function renderChecks(container, ctx) {
                 title: SIDEBAR_VOCAB.rules.stageJumpTitle(st),
                 onClick: (e) => {
                   e.stopPropagation();
-                  ctx.store.set({ stage: st });
+                  ctx.store.set({ stageIndex: st });
                 }
               }, SIDEBAR_VOCAB.rules.stageChip(st))
             ]);

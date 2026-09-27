@@ -15,12 +15,6 @@ export function createScene(container, options = {}) {
   if (!canvas) {
     canvas = document.createElement('canvas');
     canvas.className = 'viewer-canvas';
-    canvas.style.position = 'absolute';
-    canvas.style.inset = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.outline = 'none';
-    container.style.position = 'relative';
     container.appendChild(canvas);
   }
 

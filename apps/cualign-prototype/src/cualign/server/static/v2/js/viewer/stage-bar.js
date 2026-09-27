@@ -1,21 +1,7 @@
-// Viewer stage scrubber bar (J5 contract)
-// 440px bar at bottom-right with play, first, track, ticks, violation red dots, last, stage label, and keyboard controls (←→, Home, End)
-
 import { calculateTickPosition, getStageViolationsSummary } from './math.js';
 import { VIEWER_T } from '../domain/vocab/viewer.js';
+import { createTransportIcon } from './stage-icons.js';
 
-/**
- * Creates the 440px stage scrubber bar.
- *
- * @param {HTMLElement} container
- * @param {object} [options]
- * @param {number} [options.max=0]
- * @param {number} [options.value=0]
- * @param {number|string|null} [options.months=null]
- * @param {Array} [options.violations=[]]
- * @param {(stage: number) => void} [options.onChange]
- * @returns {{ setStage: (n: number) => void, setMax: (n: number) => void, setViolations: (v: Array) => void, setMonths: (m: number|string|null) => void, getStage: () => number, getMax: () => number, play: () => void, pause: () => void, isPlaying: () => boolean, destroy: () => void }}
- */
 export function createStageBar(container, { max = 0, value = 0, months = null, violations = [], onChange = null } = {}) {
   let currentMax = Number(max) || 0;
   let currentStage = Math.max(0, Math.min(currentMax, Number(value) || 0));
@@ -26,51 +12,36 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
 
   const T = VIEWER_T.stageBar;
 
-  // Root bar container
   const bar = document.createElement('div');
   bar.className = 'stage-bar';
   bar.setAttribute('tabindex', '0');
   bar.setAttribute('role', 'region');
   bar.setAttribute('aria-label', T.ariaLabel);
 
-  // Top/main row
   const row = document.createElement('div');
   row.className = 'stage-bar-row';
   bar.appendChild(row);
 
-  // 1. First button (|◀)
   const firstBtn = document.createElement('button');
   firstBtn.type = 'button';
   firstBtn.className = 'stage-btn stage-first-btn';
   firstBtn.title = T.firstTitle;
   firstBtn.setAttribute('aria-label', T.firstTitle);
-  firstBtn.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-      <rect x="2" y="3" width="2" height="10" rx="1" />
-      <polygon points="13,3 5,8 13,13" />
-    </svg>
-  `;
+  firstBtn.appendChild(createTransportIcon('first'));
   row.appendChild(firstBtn);
 
-  // 2. Play/Pause button (▶ / ⏸)
   const playBtn = document.createElement('button');
   playBtn.type = 'button';
   playBtn.className = 'stage-btn stage-play-btn';
   playBtn.title = T.playPauseTitle;
   playBtn.setAttribute('aria-label', T.playPauseTitle);
-  playBtn.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-play">
-      <polygon points="4,2 14,8 4,14" />
-    </svg>
-  `;
+  playBtn.appendChild(createTransportIcon('play'));
   row.appendChild(playBtn);
 
-  // 3. Track, Scrubber Slider, Ticks, and Violation Markers
   const trackWrap = document.createElement('div');
   trackWrap.className = 'stage-track-wrap';
   row.appendChild(trackWrap);
 
-  // Ticks layer
   const ticksContainer = document.createElement('div');
   ticksContainer.className = 'stage-ticks';
   trackWrap.appendChild(ticksContainer);
@@ -91,21 +62,14 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
   marksContainer.className = 'stage-marks';
   trackWrap.appendChild(marksContainer);
 
-  // 4. Last button (▶|)
   const lastBtn = document.createElement('button');
   lastBtn.type = 'button';
   lastBtn.className = 'stage-btn stage-last-btn';
   lastBtn.title = T.lastTitle;
   lastBtn.setAttribute('aria-label', T.lastTitle);
-  lastBtn.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-      <polygon points="3,3 11,8 3,13" />
-      <rect x="12" y="3" width="2" height="10" rx="1" />
-    </svg>
-  `;
+  lastBtn.appendChild(createTransportIcon('last'));
   row.appendChild(lastBtn);
 
-  // 5. Stage Label ("Stage N / M")
   const label = document.createElement('div');
   label.className = 'stage-label';
   bar.appendChild(label);
@@ -127,7 +91,7 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
   }
 
   function renderTicks() {
-    ticksContainer.innerHTML = '';
+    ticksContainer.replaceChildren();
     if (currentMax <= 0 || currentMax > 40) return;
 
     for (let k = 0; k <= currentMax; k++) {
@@ -140,7 +104,7 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
   }
 
   function renderMarks() {
-    marksContainer.innerHTML = '';
+    marksContainer.replaceChildren();
     if (currentMax <= 0) return;
 
     const summary = getStageViolationsSummary(currentViolations);
@@ -158,6 +122,7 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
       const details = [];
       if (s.collision) details.push(T.collisionCount(s.collision));
       if (s.move_limit) details.push(T.moveLimitCount(s.move_limit));
+      if (s.other) details.push(T.otherViolationCount(s.other));
       dot.title = T.stageViolationTitle(k, details);
       dot.setAttribute('aria-label', T.stageViolationTitle(k, details));
 
@@ -193,12 +158,7 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     isPlaying = true;
     playBtn.classList.add('playing');
     playBtn.setAttribute('aria-pressed', 'true');
-    playBtn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-pause">
-        <rect x="3" y="2" width="3.5" height="12" rx="1" />
-        <rect x="9.5" y="2" width="3.5" height="12" rx="1" />
-      </svg>
-    `;
+    playBtn.replaceChildren(createTransportIcon('pause'));
     if (playTimer) clearInterval(playTimer);
 
     playTimer = setInterval(() => {
@@ -214,11 +174,7 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     isPlaying = false;
     playBtn.classList.remove('playing');
     playBtn.setAttribute('aria-pressed', 'false');
-    playBtn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-play">
-        <polygon points="4,2 14,8 4,14" />
-      </svg>
-    `;
+    playBtn.replaceChildren(createTransportIcon('play'));
     if (playTimer) {
       clearInterval(playTimer);
       playTimer = null;
@@ -236,7 +192,6 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     }
   }
 
-  // Event Listeners
   playBtn.addEventListener('click', togglePlay);
 
   firstBtn.addEventListener('click', () => {
@@ -254,7 +209,6 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     goToStage(Number(e.target.value));
   });
 
-  // Keyboard controls: ArrowLeft, ArrowRight, Home, End, Space
   function handleKeyDown(e) {
     if (e.target.tagName === 'INPUT' && e.target !== slider) return;
     if (e.target.tagName === 'TEXTAREA') return;
@@ -288,7 +242,6 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     container.addEventListener('keydown', handleKeyDown);
   }
 
-  // Initial render
   updateSliderFill();
   updateLabel();
   renderTicks();

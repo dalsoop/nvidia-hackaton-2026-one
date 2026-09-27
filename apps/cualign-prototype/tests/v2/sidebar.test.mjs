@@ -17,6 +17,12 @@ import {
   getToothMovementInfo,
   hasToothCollision
 } from '../../src/cualign/server/static/v2/js/screens/workspace/sidebar/staging.js';
+import {
+  planStageIndex,
+  resolveCreatedPlanId,
+  selectViewingPlan,
+  violationCount
+} from '../../src/cualign/server/static/v2/js/screens/workspace/sidebar/plan-state.js';
 
 // ============================================================================
 // 1. Grouping Violations Tests (위반 묶기)
@@ -171,9 +177,9 @@ test('calculateConditionDiff: detects locked teeth changes with set-normalizatio
   const diffEmpty = calculateConditionDiff({ lock: [] }, base);
   assert.deepEqual(diffEmpty, { lock: [] });
 
-  // String input format "13, 14"
+  // String input is interpreted as FDI and converted for the API.
   const diffString = calculateConditionDiff({ lock: '13, 14' }, base);
-  assert.deepEqual(diffString, { lock: [13, 14] });
+  assert.deepEqual(diffString, { lock: [5, 6] });
 
   // Duplicate tooth numbers and reverse order normalized
   const diffDuplicates = calculateConditionDiff({ lock: [13, 13] }, base);
@@ -280,20 +286,35 @@ test('calculateConditionDiff: compares against DEFAULT_CONSTRAINTS when base is 
 // 3. Tooth Input Normalization Tests
 // ============================================================================
 
-test('normalizeToothList: handles string and FDI numbers', () => {
-  // Universal numbers in string: 2..15
-  assert.deepEqual(normalizeToothList('13, 14, 13'), [13, 14]);
+test('normalizeToothList: accepts FDI display numbers and returns Universal API numbers', () => {
+  assert.deepEqual(normalizeToothList('13, 14, 13'), [5, 6]);
 
   // FDI numbers > 16 converted to Universal:
   // FDI 21 -> Universal 9, FDI 22 -> Universal 10
   assert.deepEqual(normalizeToothList('21, 22'), [9, 10]);
 
-  // Mixed Universal and FDI
-  // Universal 6, FDI 25 (Universal 13)
-  assert.deepEqual(normalizeToothList('6, 25'), [6, 13]);
+  assert.deepEqual(normalizeToothList('13, 25'), [6, 13]);
 
-  // Out of range teeth (1, 16 wisdom teeth or invalid) are ignored
-  assert.deepEqual(normalizeToothList('1, 16, 99'), []);
+  // Values outside the supported upper-arch FDI range are ignored.
+  assert.deepEqual(normalizeToothList('1, 10, 29, 99'), []);
+});
+
+test('plan state helpers prefer the full viewing plan and use stageIndex', () => {
+  const summary = { plan_id: 'p-summary', violations: 3 };
+  const full = { plan_id: 'p-full', stages: [{}], violations: [] };
+  assert.equal(selectViewingPlan({ viewingPlan: full, viewingPlanId: full.plan_id, plans: [summary] }), full);
+  assert.equal(selectViewingPlan({ viewingPlan: full, viewingPlanId: summary.plan_id, plans: [summary] }), summary);
+  assert.equal(selectViewingPlan({ viewingPlanId: summary.plan_id, plans: [summary] }), summary);
+  assert.equal(violationCount(summary), 3);
+  assert.equal(violationCount(full), 0);
+  assert.equal(planStageIndex({ stageIndex: 4, stage: 'violation' }), 4);
+  assert.equal(planStageIndex({ stage: 4 }), 0);
+});
+
+test('resolveCreatedPlanId selects the new rule-plan result before list fallback', () => {
+  assert.equal(resolveCreatedPlanId({ chosen: { plan_id: 'p-chosen' } }, [{ plan_id: 'p-list' }]), 'p-chosen');
+  assert.equal(resolveCreatedPlanId({ best_failed: { plan_id: 'p-failed' } }, [{ plan_id: 'p-list' }]), 'p-failed');
+  assert.equal(resolveCreatedPlanId({ tried: [{ plan_id: 'p-tried' }] }, [{ plan_id: 'p-list' }]), 'p-tried');
 });
 
 // ============================================================================
@@ -456,4 +477,3 @@ test('SIDEBAR_VOCAB: contains all required Korean strings for tabs, staging, rul
   assert.equal(SIDEBAR_VOCAB.rules.violations.locked_tooth, '고정 치아 이동');
   assert.equal(SIDEBAR_VOCAB.rules.violations.stage_cap, '단계 상한 초과');
 });
-

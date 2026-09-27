@@ -1,37 +1,11 @@
-// 2D HTML/CSS overlay on top of 3D canvas (Violations, Callouts, FDI chips)
-// Screen coordinates are set via CSS custom properties: --x and --y
-
 import * as THREE from 'three';
 import { universalToFdi } from '../domain/teeth.js';
-import { calculateIprContacts, getViolationsAtStage, projectNormalizedToScreen } from './math.js';
+import { calculateIprContacts, getViolationsAtStage } from './math.js';
 import { VIEWER_T } from '../domain/vocab/viewer.js';
+import { appendDiv, projectToScreen, replaceTooltipContent, textSpan } from './overlay-dom.js';
 
-/**
- * Projects a 3D Vector3 onto 2D screen coordinates.
- *
- * @param {THREE.Vector3} worldPos
- * @param {THREE.Camera} camera
- * @param {number} width
- * @param {number} height
- * @returns {{ x: number, y: number, visible: boolean }}
- */
-export function projectToScreen(worldPos, camera, width, height) {
-  const v = worldPos.clone().project(camera);
-  const visible = v.z < 1.0;
-  const { x, y } = projectNormalizedToScreen(v.x, v.y, width, height);
-  return { x, y, visible };
-}
+export { projectToScreen } from './overlay-dom.js';
 
-/**
- * Creates the overlay manager.
- *
- * @param {object} param0
- * @param {HTMLElement} param0.container
- * @param {THREE.Camera} param0.camera
- * @param {object} param0.teethManager
- * @param {object} [param0.options]
- * @returns {object}
- */
 export function createOverlayManager({ container, camera, teethManager, options = {} }) {
   const T = VIEWER_T.overlay;
 
@@ -42,22 +16,10 @@ export function createOverlayManager({ container, camera, teethManager, options 
     container.appendChild(overlayRoot);
   }
 
-  // Sub-containers
-  const labelsLayer = document.createElement('div');
-  labelsLayer.className = 'viewer-overlay-layer viewer-labels-layer';
-  overlayRoot.appendChild(labelsLayer);
+  const labelsLayer = appendDiv(overlayRoot, 'viewer-overlay-layer viewer-labels-layer');
+  const chipsBar = appendDiv(overlayRoot, 'viewer-overlay-chips-bar', true);
+  const tooltip = appendDiv(overlayRoot, 'viewer-tooltip', true);
 
-  const chipsBar = document.createElement('div');
-  chipsBar.className = 'viewer-overlay-chips-bar';
-  chipsBar.hidden = true;
-  overlayRoot.appendChild(chipsBar);
-
-  const tooltip = document.createElement('div');
-  tooltip.className = 'viewer-tooltip';
-  tooltip.hidden = true;
-  overlayRoot.appendChild(tooltip);
-
-  // Tracked 3D objects with labels
   let dynamicLabels = []; // Array<{ el: HTMLElement, getPosition: () => THREE.Vector3, isVisible?: () => boolean }>
   const selectedTeeth = new Set();
   let currentPlan = null;
@@ -66,18 +28,11 @@ export function createOverlayManager({ container, camera, teethManager, options 
   let showIpr = true;
 
   function clearLabels() {
-    labelsLayer.innerHTML = '';
+    labelsLayer.replaceChildren();
     dynamicLabels = [];
   }
 
-  /**
-   * Rebuilds violation and IPR labels for the current plan and stage.
-   *
-   * @param {object|null} plan
-   * @param {number} stage
-   * @param {object} layersState
-   */
-  function syncLabels(plan, stage = 0, layersState = {}) {
+  function syncLabels(plan, stage = 0, layersState = {}, customLabels = []) {
     clearLabels();
     currentPlan = plan;
     currentStage = stage;
@@ -87,7 +42,6 @@ export function createOverlayManager({ container, camera, teethManager, options 
     const teeth = teethManager.getTeeth();
     const centers = teethManager.getCenters();
 
-    // 1. Collision and violation labels
     if (plan && plan.violations) {
       for (const v of plan.violations) {
         if (v.stage !== stage) continue;
@@ -105,7 +59,11 @@ export function createOverlayManager({ container, camera, teethManager, options 
             const fdiA = universalToFdi(aId) ?? aId;
             const fdiB = universalToFdi(bId) ?? bId;
             const vol = v.overlap_mm3 != null ? `${v.overlap_mm3} mm³` : T.collision;
-            el.innerHTML = `<span class="badge-danger">${T.collision}</span> <span class="teeth-pair">#${fdiA}-#${fdiB}</span> <span class="vol">${vol}</span>`;
+            el.append(
+              textSpan('badge-danger', T.collision),
+              textSpan('teeth-pair', `#${fdiA}-#${fdiB}`),
+              textSpan('vol', vol)
+            );
             labelsLayer.appendChild(el);
 
             dynamicLabels.push({
@@ -123,7 +81,6 @@ export function createOverlayManager({ container, camera, teethManager, options 
       }
     }
 
-    // 2. IPR labels along contact points
     if (showIpr && plan?.target?.ipr_mm_per_surface) {
       const archOrder = teethManager.getArchOrder();
       const iprContacts = calculateIprContacts(archOrder, plan.target);
@@ -157,8 +114,8 @@ export function createOverlayManager({ container, camera, teethManager, options 
       }
     }
 
-    // 3. Tooth Numbering (FDI) when numbers layer is enabled
     if (showNumbers) {
+      const labelByTooth = new Map(customLabels.map((item) => [String(item.tooth), item.label]));
       for (const [id, m] of Object.entries(teeth)) {
         if (!m.visible) continue;
         const c = centers[id];
@@ -169,7 +126,7 @@ export function createOverlayManager({ container, camera, teethManager, options 
 
         const el = document.createElement('div');
         el.className = 'viewer-tooth-badge';
-        el.textContent = String(fdi);
+        el.textContent = String(labelByTooth.get(id) ?? fdi);
         labelsLayer.appendChild(el);
 
         dynamicLabels.push({
@@ -187,16 +144,13 @@ export function createOverlayManager({ container, camera, teethManager, options 
     updateLabelCoordinates();
   }
 
-  /**
-   * Updates CSS variables --x and --y for all dynamic overlay elements.
-   */
   function updateLabelCoordinates() {
     const width = container.clientWidth || 300;
     const height = container.clientHeight || 200;
 
     for (const item of dynamicLabels) {
       if (item.isVisible && !item.isVisible()) {
-        item.el.style.display = 'none';
+        item.el.hidden = true;
         continue;
       }
 
@@ -204,20 +158,17 @@ export function createOverlayManager({ container, camera, teethManager, options 
       const { x, y, visible } = projectToScreen(worldPos, camera, width, height);
 
       if (!visible || x < -50 || x > width + 50 || y < -50 || y > height + 50) {
-        item.el.style.display = 'none';
+        item.el.hidden = true;
       } else {
-        item.el.style.display = '';
+        item.el.hidden = false;
         item.el.style.setProperty('--x', `${x.toFixed(1)}px`);
         item.el.style.setProperty('--y', `${y.toFixed(1)}px`);
       }
     }
   }
 
-  /**
-   * Render FDI selection chips at the top/bottom of the viewer.
-   */
   function renderChips() {
-    chipsBar.innerHTML = '';
+    chipsBar.replaceChildren();
     if (selectedTeeth.size === 0) {
       chipsBar.hidden = true;
       return;
@@ -236,7 +187,7 @@ export function createOverlayManager({ container, camera, teethManager, options 
       chip.type = 'button';
       chip.className = 'viewer-fdi-chip';
       chip.dataset.id = id;
-      chip.innerHTML = `<span>#${fdi}</span> <span class="chip-remove">✕</span>`;
+      chip.append(textSpan('', `#${fdi}`), textSpan('chip-remove', '✕'));
       chip.title = T.removeSelectionTitle(fdi);
       chip.addEventListener('click', () => {
         selectedTeeth.delete(id);
@@ -258,13 +209,6 @@ export function createOverlayManager({ container, camera, teethManager, options 
     chipsBar.appendChild(clearBtn);
   }
 
-  /**
-   * Hover tooltip update
-   *
-   * @param {string|null} toothId
-   * @param {number} clientX
-   * @param {number} clientY
-   */
   function updateTooltip(toothId, clientX, clientY) {
     if (!toothId) {
       tooltip.hidden = true;
@@ -286,17 +230,17 @@ export function createOverlayManager({ container, camera, teethManager, options 
     const toothViols = byTooth[toothId] ? [...byTooth[toothId]] : [];
 
     const lines = [];
-    lines.push(`<strong>${T.toothPrefix(fdi)}</strong>`);
+    lines.push({ tag: 'strong', text: T.toothPrefix(fdi) });
     if (currentPlan) {
-      lines.push(T.cumulativeMove(moved));
+      lines.push({ text: T.cumulativeMove(moved) });
     }
-    if (locked) lines.push(`<span class="badge-blue">${T.locked}</span>`);
-    if (removed) lines.push(`<span class="badge-amber">${T.removed}</span>`);
+    if (locked) lines.push({ className: 'badge-blue', text: T.locked });
+    if (removed) lines.push({ className: 'badge-amber', text: T.removed });
     if (toothViols.length > 0) {
-      lines.push(`<span class="badge-danger">${T.violations(toothViols)}</span>`);
+      lines.push({ className: 'badge-danger', text: T.violations(toothViols) });
     }
 
-    tooltip.innerHTML = lines.join(' · ');
+    replaceTooltipContent(tooltip, lines);
 
     const rect = container.getBoundingClientRect();
     const x = clientX - rect.left + 12;

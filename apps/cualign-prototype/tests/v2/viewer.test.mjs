@@ -113,12 +113,13 @@ test('Stage violations summary: aggregates for scrubber ticks', () => {
     { stage: 1, type: 'collision', teeth: [8, 9] },
     { stage: 1, type: 'move_limit', teeth: [7] },
     { stage: 3, type: 'collision', teeth: [9, 10] },
+    { stage: 3, type: 'rotation_limit', teeth: [10] },
     { stage: null, type: 'collision' } // ignored
   ];
 
   const summary = getStageViolationsSummary(violations);
-  assert.deepEqual(summary[1], { collision: 1, move_limit: 1, total: 2 });
-  assert.deepEqual(summary[3], { collision: 1, move_limit: 0, total: 1 });
+  assert.deepEqual(summary[1], { collision: 1, move_limit: 1, other: 0, total: 2 });
+  assert.deepEqual(summary[3], { collision: 1, move_limit: 0, other: 1, total: 2 });
   assert.equal(summary[2], undefined);
 });
 
@@ -257,7 +258,8 @@ test('Viewer Vocabulary: verifies all core sections and label generators', () =>
   assert.equal(VIEWER_T.views.frontal, '정면');
   assert.equal(VIEWER_T.views.right, '우측');
   assert.equal(VIEWER_T.views.left, '좌측');
-  assert.equal(VIEWER_T.views.viewSuffix('교합면'), '교합면에서 본 모습');
+  assert.equal(VIEWER_T.arch.scanInfo('상악', 14), '상악 · 치아 14개 · 치료 전');
+  assert.equal(VIEWER_T.arch.archInfo('상악', 14, 3, 9), '상악 · 치아 14개 · 계획 3 · 단계 9');
 
   assert.equal(VIEWER_T.layers.ghost, '치료 전 겹쳐 보기');
   assert.equal(VIEWER_T.layers.heat, '이동량 색');

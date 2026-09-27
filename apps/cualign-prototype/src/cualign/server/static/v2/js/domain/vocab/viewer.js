@@ -7,8 +7,7 @@ export const VIEWER_T = {
     right: '우측',
     left: '좌측',
     back: '설측',
-    base: '바닥',
-    viewSuffix: (view) => `${view}에서 본 모습`
+    base: '바닥'
   },
   layers: {
     ghost: '치료 전 겹쳐 보기',
@@ -29,12 +28,14 @@ export const VIEWER_T = {
     stageLabelWithMonths: (k, total, months) => `단계 ${k} / ${total} · 예상 ${months}개월`,
     collisionCount: (n) => `충돌 ${n}건`,
     moveLimitCount: (n) => `이동한계 초과 ${n}건`,
+    otherViolationCount: (n) => `기타 규칙 ${n}건`,
     stageViolationTitle: (stage, details) => `단계 ${stage}: ${details.join(', ')}`
   },
   arch: {
     upper: '상악',
     lower: '하악',
-    archInfo: (archName, teethCount, viewDescription) => `${archName} · 치아 ${teethCount}개 · ${viewDescription}`
+    scanInfo: (archName, teethCount) => `${archName} · 치아 ${teethCount}개 · 치료 전`,
+    archInfo: (archName, teethCount, planNumber, stage) => `${archName} · 치아 ${teethCount}개 · 계획 ${planNumber} · 단계 ${stage}`
   },
   overlay: {
     selectedTeeth: '선택한 치아:',
