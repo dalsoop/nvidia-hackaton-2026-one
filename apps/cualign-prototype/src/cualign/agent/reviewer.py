@@ -25,7 +25,9 @@ class ReviewInput(BaseModel):
 # live there, next to the planner's); this default is the text from before that key existed, so an absent key
 # changes nothing.
 DEFAULT_INSTRUCTIONS = ("You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: "
-                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number "
+                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Tooth numbers: "
+                        "the plan data holds Universal numbers (1..16); write every tooth number in the memo as FDI (FDI = 19 - "
+                        "Universal for 1..8, 12 + Universal for 9..16; e.g. 5 -> 14, 12 -> 24), never a Universal number. Each number "
                         "means what field_notes says: never call a total movement a per-aligner value or a tooth-width sum a "
                         "space shortage. The dentist reads this memo: never write a field name, a JSON key, an English enum "
                         "value or any snake_case token (no word ending in _mm or _deg); use the Korean names in "

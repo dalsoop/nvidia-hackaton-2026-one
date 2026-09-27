@@ -18,7 +18,7 @@ class ExtractionTeethNeeded(ValueError):
     """Extraction was allowed without saying which teeth: the app does not choose them."""
 
     def __init__(self):
-        super().__init__("발치할 치아 번호가 필요합니다(Universal, 예: 5, 12). 앱은 발치 치아를 고르지 않습니다.")
+        super().__init__("발치할 치아 번호가 필요합니다(예: 14번과 24번). 앱은 발치 치아를 고르지 않습니다.")
 
 
 def reason_ko(e: Exception) -> str:
