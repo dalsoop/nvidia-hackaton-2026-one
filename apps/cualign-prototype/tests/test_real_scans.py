@@ -10,8 +10,8 @@ from evals.real_scans.run import run_case  # noqa: E402
 
 
 def test_outcomes_have_reasons():
-    for preset, allow in (("mild", False), ("severe", False), ("moderate", True)):
-        r = run_case(Case.synthetic(preset), allow_extraction=allow)
+    for preset, ext in (("mild", ()), ("severe", ()), ("moderate", (5, 12))):
+        r = run_case(Case.synthetic(preset), extraction=ext)
         assert r["outcome"] in ("pass", "fail") and r["reason"], (preset, r)
     assert run_case(Case.synthetic("severe"))["outcome"] == "fail"
 

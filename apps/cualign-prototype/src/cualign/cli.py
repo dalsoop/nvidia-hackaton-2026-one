@@ -21,13 +21,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def parse_constraints(text: str) -> dict:
     """Rule-based reading of the request (the agent does this with Nemotron; this is the offline stand-in).
-    allow_extraction is None when the request does not say: the case's own constraints decide (a sample opens with
-    its prescription, #46)."""
-    c = {"allow_extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
+    extraction: None when the request does not say (the case's own prescription decides, #46), [] for non-extraction,
+    the prescribed teeth ("5번과 12번 발치", "14·24(앱 번호 5·12) 발치"; Universal numbers, #56), or "teeth-needed"
+    when extraction is mentioned without teeth — the app does not pick them."""
+    c = {"extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
     if "비발치" in text or ("발치" in text and any(k in text for k in ("없", "피", "싫", "안 돼", "안돼", "금지"))):
-        c["allow_extraction"] = False
-    elif re.search(r"발치\s*(허용|해|가능|처방|입니다|합니다)", text):
-        c["allow_extraction"] = True
+        c["extraction"] = []
+    elif "발치" in text:
+        m = re.search(r"앱 번호\s*([\d\s·,]+)", text) or \
+            re.search(r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번?\s*(?:치아\s*)?발치", text)
+        teeth = sorted({int(n) for n in re.findall(r"\d{1,2}", m.group(1))}) if m else []
+        c["extraction"] = teeth or "teeth-needed"
     m = re.search(r"(\d+)\s*개월", text)
     if m:
         from cualign.core.limits import stage_cap_from_months
@@ -53,12 +57,11 @@ def cmd_plan(args):
     if args.export:
         raise SystemExit("[거부] CLI 초안은 미승인입니다. UI에서 계획 생성·의사 승인 후 다운로드하세요.")
     t0 = time.time()
-    from cualign.core import samples
     c = parse_constraints(args.request)
-    if c["allow_extraction"] is None and samples.get(args.case) is None:
-        c["allow_extraction"] = True          # synthetic presets and folders: extraction allowed unless the request says no
     print(f"[요청] {args.request}\n[제약] {json.dumps(c, ensure_ascii=False)}")
-    res = rule_based_plan(args.case, c["allow_extraction"], c["stage_cap"], c["order"])
+    if c["extraction"] == "teeth-needed":
+        raise SystemExit("[확인 필요] 발치할 치아 번호를 함께 적어 주세요(Universal, 예: \"5번과 12번 발치\"). 앱은 발치 치아를 고르지 않습니다.")
+    res = rule_based_plan(args.case, extraction=c["extraction"], stage_cap=c["stage_cap"], order=c["order"])
     for r in res["tried"]:
         flag = "통과" if r["passed"] else f"실패 {r['by_type']}"
         print(f"[시도] {r['strategy']:14s} {r['n_stages']:3d}장 {r['months']:4.1f}개월  {flag}")

@@ -59,7 +59,7 @@ def scan(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def exported(scan, tmp_path_factory):
-    target, _ = propose_target(scan, "extraction")          # removes 5 and 12: sockets left without a crown
+    target, _ = propose_target(scan, "extraction", extraction=(5, 12))          # removes 5 and 12: sockets left without a crown
     stages, _ = plan_stages(scan, target)
     path = str(tmp_path_factory.mktemp("zip") / "plan.zip")
     export_zip(scan, stages, path)

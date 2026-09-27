@@ -138,7 +138,7 @@ def test_one_piece_scan_is_explained_and_deletes_work(client):
 # --------------------------------------------------------------------------- PR #36 review regressions
 def _confirmed_plan(client, pid="P0001", sid="S1"):
     client.post(f"/api/patients/{pid}/scans/{sid}/confirm")
-    res = client.post("/api/plan", json={"case_id": f"{pid}-{sid}", "allow_extraction": True}).json()
+    res = client.post("/api/plan", json={"case_id": f"{pid}-{sid}", "extraction": [5, 12]}).json()
     return (res["chosen"] or res["best_failed"])["plan_id"]
 
 

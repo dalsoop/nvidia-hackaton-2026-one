@@ -70,7 +70,8 @@ def test_extraction_sample_plans_inside_its_prescription():
     st = Store()
     cid, case = st.load_case("poseidon-000097")
     rows = planner.compare_strategies(case, constraints=st.constraints_for(cid))
-    ext = next(r for r in rows if r["strategy"] == "extraction")
+    assert [r["strategy"] for r in rows] == ["extraction"]              # prescribed: the extraction plan only
+    ext = rows[0]
     assert ext["passed"] and ext["removed"] == [5, 12]                  # FDI 14·24, as prescribed
 
 
@@ -100,8 +101,10 @@ def test_prescriptions_show_fdi_and_the_app_numbers():
 
 def test_cli_keeps_the_sample_prescription_unless_the_request_says_otherwise():
     from cualign.cli import parse_constraints
-    assert parse_constraints(samples.get("poseidon-000131").request)["allow_extraction"] is False
-    assert parse_constraints(samples.get("poseidon-000001").request)["allow_extraction"] is False
-    assert parse_constraints(samples.get("poseidon-000097").request)["allow_extraction"] is True
-    assert parse_constraints("12개월 안에")["allow_extraction"] is None        # not said: the case decides
-    assert parse_constraints("발치 없이 12개월 안에")["allow_extraction"] is False
+    assert parse_constraints(samples.get("poseidon-000131").request)["extraction"] == []
+    assert parse_constraints(samples.get("poseidon-000001").request)["extraction"] == []
+    assert parse_constraints(samples.get("poseidon-000097").request)["extraction"] == [5, 12]   # the app numbers
+    assert parse_constraints("12개월 안에")["extraction"] is None           # not said: the case decides
+    assert parse_constraints("발치 없이 12개월 안에")["extraction"] == []
+    assert parse_constraints("4번과 13번 발치로 짜줘")["extraction"] == [4, 13]
+    assert parse_constraints("발치 허용해서 짜줘")["extraction"] == "teeth-needed"   # the app does not pick teeth (#56)

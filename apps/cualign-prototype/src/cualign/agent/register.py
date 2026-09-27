@@ -14,7 +14,7 @@ from cualign.server import rails_middleware  # noqa: F401  register the Guardrai
 from cualign.agent.context import CURRENT_RUN
 from cualign.core import limits as L, planner
 from cualign.core import skills as S
-from cualign.core.constraints import Constraints, ConstraintPatch
+from cualign.core.constraints import Constraints, ConstraintPatch, reason_ko
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
 
@@ -166,7 +166,13 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         cid, case = current_case()
         run = CURRENT_RUN.get()
         current = constraints_for(cid)
-        c = current.patched(inp.changes())
+        try:
+            c = current.patched(inp.changes())
+        except ValueError as e:
+            # Extraction without teeth, a tooth that cannot be extracted, ...: a normal result, like the rejection
+            # below (raising makes the agent retry), so the agent asks the dentist instead (#56).
+            return {**current.model_dump(mode="json"), "rejected": inp.changes(), "note": reason_ko(e)
+                    + " 조건은 바꾸지 않았습니다. 의사에게 확인한 뒤 다시 설정하세요."}
         # Re-stating the same conditions mid-loop is harmless; only a real change after targets
         # exist would make the computed plans disagree with the stored constraints.
         if c == current:
