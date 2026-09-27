@@ -55,8 +55,8 @@ function buildToothNodes(checkData) {
       continue;
     }
     const pos = FDI_COORDINATES[fdi];
-    const hasRot = Math.abs(rotMap[u] ?? rotMap[String(u)] ?? 0) > 0.05;
-    const hasVert = Math.abs(vertMap[u] ?? vertMap[String(u)] ?? 0) > 0.05;
+    const hasRot = Math.abs(rotMap[u] ?? rotMap[String(u)] ?? rotMap[fdi] ?? rotMap[String(fdi)] ?? 0) > 0.05;
+    const hasVert = Math.abs(vertMap[u] ?? vertMap[String(u)] ?? vertMap[fdi] ?? vertMap[String(fdi)] ?? 0) > 0.05;
 
     const ringCls = hasRot
       ? 'cases-tooth-rotate'
@@ -92,7 +92,7 @@ function buildCheckCards(checkData) {
   const missingList = checkData?.missing || [];
   const outsideList = checkData?.outside || [];
   const missCount = missingList.length + outsideList.length;
-  const missText = missCount > 0 ? T.teethCount(missCount) : LABEL_NONE;
+  const missText = missCount > 0 ? `${missCount}\uAC1C` : LABEL_NONE;
 
   const rotMap = checkData?.rotation_deg || {};
   const rotEntries = Object.entries(rotMap).filter(([, v]) => Math.abs(v) > 0.05);
@@ -106,12 +106,12 @@ function buildCheckCards(checkData) {
 
   const vertMap = checkData?.vertical_mm || {};
   const vertCount = Object.values(vertMap).filter((v) => Math.abs(v) > 0.05).length;
-  const vertText = vertCount > 0 ? T.teethCount(vertCount) : LABEL_NONE;
+  const vertText = vertCount > 0 ? `${vertCount}\uAC1C` : LABEL_NONE;
 
   const gingivaText = checkData?.scanned_gingiva ? LABEL_EXIST : LABEL_NONE;
 
   const cardDefs = [
-    { label: LABEL_TEETH, value: T.teethCount(nTeeth) },
+    { label: LABEL_TEETH, value: `${nTeeth}\uAC1C` },
     { label: LABEL_CROWDING, value: crowding },
     { label: LABEL_MISSING_OUTSIDE, value: missText },
     { label: LABEL_ROTATION, value: rotText },
@@ -137,23 +137,25 @@ function buildPrescriptionSection(selectedCase) {
   const c = selectedCase.constraints;
 
   const isExtraction = Boolean(c?.allow_extraction);
-  tags.push(isExtraction ? LABEL_EXTRACTION : LABEL_NON_EXTRACTION);
+  tags.push({ text: isExtraction ? LABEL_EXTRACTION : LABEL_NON_EXTRACTION, accent: false });
 
   if (c?.ipr_exclude_teeth && c.ipr_exclude_teeth.length > 0) {
     const fdiExcludes = c.ipr_exclude_teeth.map((u) => universalToFdi(u) || u);
-    tags.push(`IPR \uC81C\uC678 ${fdiExcludes.join(', ')}`);
+    tags.push({ text: `IPR \uC81C\uC678 ${fdiExcludes.join(', ')}`, accent: true });
   }
 
-  tags.push(`\uBA74\uB2F9 ${c?.max_ipr_per_contact ?? '0.25'} mm`);
-  tags.push(c?.stage_cap ? T.stagesCount(c.stage_cap) : '\uB2E8\uACC4 \uC0C1\uD55C \uC5C6\uC74C');
-  tags.push('\uC774\uB3D9 \uB3D9\uC2DC');
+  tags.push({ text: `\uBA74\uB2F9 ${c?.max_ipr_per_contact ?? '0.25'} mm`, accent: false });
+  tags.push({ text: c?.stage_cap ? T.stagesCount(c.stage_cap) : '\uB2E8\uACC4 \uC0C1\uD55C \uC5C6\uC74C', accent: false });
+  tags.push({ text: '\uC774\uB3D9 \uB3D9\uC2DC', accent: false });
 
   return h('div', { class: 'cases-detail-section' },
     h('div', { class: 'cases-detail-section-title' }, heading),
     h('div', { class: 'cases-detail-rx-main' }, text),
     note ? h('div', { class: 'cases-detail-rx-note' }, note) : null,
     h('div', { class: 'cases-detail-tags' },
-      ...tags.map((t) => h('span', { class: 'cases-detail-tag' }, t))
+      ...tags.map((t) => h('span', {
+        class: ['cases-detail-tag', t.accent ? 'cases-detail-tag-accent' : ''].filter(Boolean)
+      }, t.text))
     )
   );
 }

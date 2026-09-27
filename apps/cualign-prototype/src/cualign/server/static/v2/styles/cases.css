@@ -286,6 +286,7 @@
 .cases-detail-rx-note { font-size: 12px; color: var(--color-text-muted); line-height: 1.6; }
 .cases-detail-tags { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .cases-detail-tag { font-size: 12px; padding: 3px var(--space-8); border: 1px solid var(--color-border-subtle); background: var(--color-surface-raised); border-radius: var(--radius-xs); color: var(--color-text-primary); }
+.cases-detail-tag.cases-detail-tag-accent { border-color: var(--color-accent-dim); color: var(--color-accent-light); }
 
 /* Detail Footer CTA */
 .cases-detail-footer { padding: var(--space-16) var(--space-20) var(--space-20); border-top: 1px solid var(--color-border-subtle); flex-shrink: 0; }

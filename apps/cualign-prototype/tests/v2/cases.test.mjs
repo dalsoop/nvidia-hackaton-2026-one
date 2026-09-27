@@ -264,3 +264,26 @@ test('Cases data: sortCases sorts by id, status, and plans count', () => {
   assert.deepEqual(sortCases(null), []);
   assert.deepEqual(sortCases([]), []);
 });
+
+test('Cases data: formatPlanSummary handles ipr, expansion_ipr and array violations', () => {
+  const iprPlan = {
+    strategy: 'ipr',
+    n_stages: 12,
+    passed: true,
+    violations: []
+  };
+  assert.equal(formatPlanSummary(iprPlan), 'IPR · 12장 · 통과');
+
+  const expansionIprPlan = {
+    strategy: 'expansion_ipr',
+    n_stages: 16,
+    passed: false,
+    violations: ['v1', 'v2']
+  };
+  assert.equal(formatPlanSummary(expansionIprPlan), '확장 · IPR · 16장 · 위반');
+
+  // Violations formatted with array
+  assert.equal(formatViolations({ status: 'ready' }, iprPlan), '0');
+  assert.equal(formatViolations({ status: 'violation' }, expansionIprPlan), '충돌 2');
+});
+
