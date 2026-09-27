@@ -54,9 +54,23 @@ class CuAlignWorker(FastApiFrontEndPluginWorker):
         # plan_events.PlanEventsASGI reads it from app.state on every /chat/stream request.
         app.state.cualign_preload = context_preload(builder.get_function_group_config("cualign").context_preload)
         from .api import add_api_routes
-        add_api_routes(app, review=await manual_review(builder))
+        add_api_routes(app, review=await manual_review(builder), followup=await followup_writer(builder))
         from .mcp_server import add_mcp_route
         add_mcp_route(app)   # /mcp for NemoClaw (docs/nemoclaw.md); 503 until a token is configured
+
+
+async def followup_writer(builder: WorkflowBuilder, llm_name: str = "nim_lightning"):
+    """The question card after each agent turn (#90) comes from the workflow's fast model, outside any chat request."""
+    from nat.builder.framework_enum import LLMFrameworkEnum
+    from cualign.agent.followup import next_question
+    try:
+        llm = await builder.get_llm(llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+    except Exception:   # noqa: BLE001 - a config without that model just shows no cards
+        return None
+
+    async def followup(messages: list[dict]) -> dict | None:
+        return await next_question(llm, messages)
+    return followup
 
 
 async def manual_review(builder: WorkflowBuilder, name: str = "reviewer"):

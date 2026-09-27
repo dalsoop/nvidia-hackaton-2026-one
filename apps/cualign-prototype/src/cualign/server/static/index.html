@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>cuAlign — 투명교정 스테이징 에이전트</title>
+  <title>cuAlign — 투명교정 에이전트</title>
   <!-- favicon: "cA" in Pretendard Black as outlines, the top-bar wordmark's two colours (#90) -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='2' fill='%23000'/%3E%3Cpath fill='%23fff' d='M8.91 23.71C12.17 23.71 14.16 21.84 14.22 18.93H10.61C10.51 20.12 9.87 20.75 8.97 20.75C7.86 20.75 7.12 19.81 7.12 17.92C7.12 16.06 7.86 15.13 8.97 15.13C9.87 15.13 10.51 15.77 10.61 16.94H14.22C14.18 14.07 12.13 12.22 8.91 12.22C5.32 12.22 3.16 14.54 3.16 17.96C3.16 21.39 5.32 23.71 8.91 23.71Z'/%3E%3Cpath fill='%2376b900' d='M18.03 23.5 18.91 20.59H23.89L24.78 23.5H28.98L24.06 8.65H18.75L13.8 23.5ZM19.81 17.63 21.33 12.65H21.45L22.99 17.63Z'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" />
@@ -21,13 +21,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="logo">cu<b>Align</b></span>
-      <span class="tagline">투명교정 스테이징 에이전트 <em>(초안 전용 · 최종 판단은 의사)</em></span>
-    </div>
-    <div class="controls">
-      <button id="caseBtn" class="btn ghost case-pill" title="환자·스캔 바꾸기">
-        <span class="k">환자</span> <span id="caseName">—</span>
-      </button>
-      <button id="fallbackBtn" class="btn ghost" title="LLM 없이 규칙 기반 루프만 돌립니다">규칙 기반 폴백</button>
+      <span class="tagline">투명교정 에이전트</span>
     </div>
   </header>
 
@@ -97,12 +91,19 @@
   <main class="layout">
     <section class="chat">
       <div id="intro" class="intro">
-        <h1>cuAlign — 투명교정 단계 계획 에이전트</h1>
-        <p class="lead">치과의사가 "발치 없이, 12개월 안에, 앞니 먼저"처럼 조건을 말하면, 에이전트가 치아를 몇 단계에 걸쳐 어떤 순서로 옮길지 계획 초안을 짜고 규칙으로 검사해 3D로 보여 줍니다.</p>
-        <p class="muted">오른쪽에서 케이스를 열면 대화를 시작할 수 있습니다.</p>
+        <img class="mark" src="intro-arch.png" alt="" />
+        <h1>처방을 설명하고 교정을 설계해보세요</h1>
+        <button id="introPick" class="link-btn" type="button">샘플 케이스 고르기 →</button>
       </div>
+      <div id="caseCard" class="case-head">
+        <img id="caseThumb" class="thumb" alt="" hidden />
+        <div class="case-text"><b id="caseName">—</b><span id="caseSub"></span></div>
+        <button id="caseBtn" class="btn ghost small" type="button" title="환자·스캔 바꾸기">바꾸기</button>
+      </div>
+      <details id="condBox" class="cond">
+        <summary>조건 · <span id="condSummary">—</span></summary>
       <fieldset id="constraints" class="constraints">
-        <legend>의사 처방 · 대화로도 수정 가능</legend>
+        <legend>대화로도 바꿀 수 있습니다</legend>
         <label><input id="cExtraction" type="checkbox"> 발치 허용</label>
         <label>고정 치아 <input id="cLock" placeholder="예: 13, 14"></label>
         <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 7, 8, 9, 10"></label>
@@ -110,24 +111,28 @@
         <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
         <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
       </fieldset>
-      <div class="chat-tools">
-        <button id="traceBtn" class="btn ghost small" type="button" aria-pressed="false">활동 기록 보기</button>
-      </div>
+      </details>
       <div id="transcript" class="transcript" aria-live="polite"></div>
       <div id="retryBar" class="retry-bar" hidden>
         <button id="resendBtn" class="btn ghost small" type="button">다시 보내기</button>
       </div>
 
-      <div class="chips" id="chips">
-        <button class="chip">발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.</button>
-        <button class="chip">발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.</button>
-        <button class="chip">이 처방 안에서 확장안과 IPR안을 비교해줘.</button>
-        <button class="chip">13번은 움직이지 말고 다시 짜줘.</button>
-        <button class="chip">IPR은 앞니(7~10번) 빼고 해줘.</button>
-      </div>
-
       <div id="selChips" class="sel-chips" hidden></div>
       <form id="chatForm" class="composer">
+        <details id="plusMenu" class="plus">
+          <summary title="예시 문장 · 규칙 기반 폴백">+</summary>
+          <div class="menu">
+            <button id="fallbackBtn" class="menu-item" type="button" title="LLM 없이 규칙 기반 루프만 돌립니다">규칙 기반으로만 계산 (모델 없이)</button>
+            <div class="menu-label">예시 문장</div>
+            <div class="chips" id="chips">
+              <button class="chip">발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.</button>
+              <button class="chip">발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.</button>
+              <button class="chip">이 처방 안에서 확장안과 IPR안을 비교해줘.</button>
+              <button class="chip">13번은 움직이지 말고 다시 짜줘.</button>
+              <button class="chip">IPR은 앞니(7~10번) 빼고 해줘.</button>
+            </div>
+          </div>
+        </details>
         <textarea id="chatInput" rows="2" placeholder="처방과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
         <button id="sendBtn" type="submit" class="btn primary">전송</button>
       </form>
@@ -140,9 +145,11 @@
         <canvas id="viewCanvas"></canvas>
         <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
         <div id="screenStart" class="start-pane">
-          <button id="startClose" class="btn ghost small start-x" type="button" hidden>닫기</button>
           <div class="start-body">
-          <h2>샘플 케이스로 시작하기</h2>
+          <div class="start-head">
+            <h2>샘플 케이스로 시작하기</h2>
+            <button id="startClose" class="btn ghost small" type="button" hidden>← 작업 화면으로 돌아가기</button>
+          </div>
           <div id="sampleCards" class="cards sample-cards"></div>
           <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
           <div class="gate-foot">
@@ -209,11 +216,16 @@
           <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
           <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
           <div><dt>위반</dt><dd id="rViol">—</dd></div>
-          <div><dt>계획 ID</dt><dd id="rPlan">—</dd></div>
-          <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
-          <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
           <div><dt>의사 승인</dt><dd id="rApproval">—</dd></div>
         </dl>
+        <details class="plan-meta">
+          <summary>자세히</summary>
+          <dl class="card">
+            <div><dt>계획 ID</dt><dd id="rPlan">—</dd></div>
+            <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
+            <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
+          </dl>
+        </details>
         <p id="reviewMemo" class="review-memo"></p>
         <table class="viol" id="violTable">
           <thead><tr><th>단계</th><th>치아</th><th>종류</th><th>값</th></tr></thead>

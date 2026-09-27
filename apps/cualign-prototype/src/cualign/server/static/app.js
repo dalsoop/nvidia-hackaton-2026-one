@@ -369,11 +369,6 @@ function toggle(btn, cls, on) {
   document.body.classList.toggle(cls, on);
   btn.setAttribute("aria-pressed", String(on));
 }
-$("traceBtn").addEventListener("click", (e) => {
-  const on = !document.body.classList.contains("show-trace");
-  toggle(e.currentTarget, "show-trace", on);
-  e.currentTarget.textContent = on ? "활동 기록 숨기기" : "활동 기록 보기";
-});
 $("focusBtn").addEventListener("click", (e) => {
   const on = !document.body.classList.contains("focus3d");
   toggle(e.currentTarget, "focus3d", on);
@@ -416,6 +411,19 @@ function fillConstraints(c) {
   $("cIpr").value = c.ipr_limit_mm;
   $("cCap").value = c.stage_cap ?? "";
   $("cOrder").value = c.order;
+  renderCondSummary();
+}
+// The folded conditions line: what the form says, in the dentist's words.
+function renderCondSummary() {
+  const nums = (v) => v.split(/[,\s]+/).filter(Boolean);
+  const parts = [$("cExtraction").checked ? "발치 허용" : "비발치"];
+  const lock = nums($("cLock").value), excl = nums($("cExclude").value);
+  if (lock.length) parts.push("고정 " + lock.join("·") + "번");
+  if (excl.length) parts.push("IPR 제외 " + excl.join("·") + "번");
+  parts.push("IPR 면당 " + ($("cIpr").value || "0") + "mm");
+  if ($("cCap").value) parts.push("상한 " + $("cCap").value + "단계");
+  parts.push($("cOrder").options[$("cOrder").selectedIndex]?.textContent ?? "");
+  $("condSummary").textContent = parts.join(" · ");
 }
 function constraintsDirty() {
   if (!state.plan) return false;
@@ -680,6 +688,14 @@ async function openCheck(caseId, check) {
   showScreen("check");
 }
 
+// The case card on the panel top: a sample shows its thumbnail, finding and prescription; a scan its alias.
+function renderCaseCard(caseId, info) {
+  const s = sampleOf(caseId), thumb = $("caseThumb");
+  thumb.hidden = !s;
+  if (s) thumb.src = `samples/${encodeURIComponent(caseId)}.png`;
+  $("caseName").textContent = s ? s.title.split(" — ")[0] : caseTitle(caseId, info.crowding_mm);
+  $("caseSub").textContent = (s ? "처방 · " + s.prescription.replace(/\s*\(FDI[^)]*\)/, "") + " · " : "") + `총생 ${info.crowding_mm} mm`;
+}
 function caseTitle(caseId, crowding) {
   const sc = state.patient?.scans?.find((x) => x.case_id === caseId);
   return (sc ? `${state.patient.alias} · ${sc.scan_id}` : caseId) + ` · 총생 ${crowding} mm`;
@@ -705,7 +721,7 @@ async function loadCases() {
       img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
       b.prepend(img);
       // the card shows the finding and the prescription only; the case number and tooth numbering come after it opens (#90)
-      b.querySelector(".cid").textContent = c.title;
+      b.querySelector(".cid").textContent = c.title.split(" — ")[0];
       b.querySelector(".rx").textContent = "처방 · " + c.prescription.replace(/\s*\(FDI[^)]*\)/, "");
       b.querySelector(".meta").textContent = c.available ? "" : "샘플 파일이 설치되지 않았습니다";
       b.disabled = !c.available;
@@ -744,13 +760,14 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.requestId = null;
   state.messages = [];
   stopPlay();
+  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   await loadMesh(caseId);
   resetPlanPanel();
   fillConstraints(info.constraints);
   await refreshPlans();
-  $("caseName").textContent = caseTitle(caseId, info.crowding_mm);
+  renderCaseCard(caseId, info);
   state.activeCase = caseId;
   setPrescriptionChip(sampleOf(caseId));
   $("caseGate").hidden = true;
@@ -766,10 +783,19 @@ async function activateCase(caseId, { greet = true } = {}) {
       ? (asPrescribed
         ? `의사 처방(${sample.prescription})을 계획 조건에 넣어 두었습니다.` + (sample.note ? ` ${sample.note}` : "")
         : `이 케이스에서 전에 바꾼 계획 조건이 남아 있습니다. 처방(${sample.prescription})과 다르니 조건 칸을 확인해 주세요.`)
-        + ` 이 조건으로 계획할까요? 치료 기간 상한이나 먼저 풀고 싶은 부위가 있으면 함께 알려 주세요.`
-      : `계획을 시작하려면 제약을 말로 알려 주세요. 발치는 허용되나요? 치료 기간 상한은 몇 개월인가요? 먼저 풀고 싶은 부위가 있나요?`);
+      : `계획을 시작하려면 제약을 알려 주세요.`);
     addMsg("assistant", text);
-    state.messages.push({ role: "assistant", content: text });
+    const q = sample
+      ? { question: "이 처방으로 계획할까요? 기간 상한이나 먼저 풀 부위가 있으면 함께 정해 주세요.",
+          options: [{ label: "처방대로 계획", message: sample.request },
+                    { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
+                    { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
+      : { question: "발치는 허용되나요? 기간 상한이 있으면 함께 알려 주세요.",
+          options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
+                    { label: "발치 허용하고 계획", message: "발치를 허용하고 계획을 짜줘." },
+                    { label: "기간 상한 정하기", fill: "발치 없이 12개월 안에 끝나는 계획 짜줘." }] };
+    state.messages.push({ role: "assistant", content: text + " " + q.question });
+    addQuestion(q);
   }
 }
 
@@ -885,6 +911,17 @@ function renderResult(plan) {
 }
 
 // ------------------------------------------------------------------ chat
+const TOOL_KO = { load_case: "케이스 읽기", list_cases: "케이스 목록", clinical_limits: "임상 한계 읽기", get_constraints: "조건 읽기",
+  set_constraints: "조건 설정", propose_target: "목표 배열 제안", plan_stages: "단계 계획", validate: "규칙 검증",
+  compare_strategies: "전략 비교", select_plan: "계획 선택", export_stl: "STL 내보내기", get_plan: "계획 읽기",
+  load_skill: "임상 규칙 읽기", reviewer: "검토" };
+const STRATEGY_KO = { expansion: "확장", ipr: "IPR", expansion_ipr: "확장 + IPR", extraction: "발치" };
+function toolKo(name) {
+  const n = (name ?? "").replace(/^Function (Start|End): /, "").replace(/^cualign__/, "");
+  if (n.startsWith("fallback: ")) return "규칙 기반 " + (STRATEGY_KO[n.slice(10)] ?? n.slice(10));
+  return TOOL_KO[n] ?? n;
+}
+
 function addMsg(role, text = "") {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
@@ -897,10 +934,21 @@ function addMsg(role, text = "") {
 // Inline trace (Claude Code style): one row per tool/LLM event, keyed by NAT step id, rendered
 // inside the transcript right before the assistant bubble. Click a row to expand the raw payload.
 function newTrace() {
-  const div = document.createElement("div");
-  div.className = "trace";
-  $("transcript").appendChild(div);
-  return { el: div, rows: new Map() };
+  const box = document.createElement("details");
+  box.className = "trace";
+  box.innerHTML = '<summary><span class="dot">\u25CF</span><span class="text"></span></summary><div class="rows"></div>';
+  $("transcript").appendChild(box);
+  return { box, el: box.querySelector(".rows"), rows: new Map() };
+}
+// The folded line reads as progress while a tool runs and as the list of tools used when the turn is done.
+function traceSummary(trace) {
+  const rows = [...trace.el.children];
+  const running = rows.find((r) => r.classList.contains("running"));
+  trace.box.classList.toggle("running", !!running);
+  const names = [...new Set(rows.map((r) => r.querySelector(".name").textContent))].filter((n) => n !== "모델 추론");
+  trace.box.querySelector(".text").textContent = running
+    ? running.querySelector(".name").textContent + " 중…"
+    : (names.length ? `도구 ${rows.length}회 · ` + names.join(" → ") : `모델 응답 ${rows.length}회`);
 }
 
 // NAT's step adaptor sends markdown: **Input:**\n```json\n…\n```\n\n**Output:**\n…
@@ -943,13 +991,68 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
     trace.el.appendChild(row);
     if (id) trace.rows.set(id, row);
   }
-  row.querySelector(".name").textContent = isLlm ? "모델 추론" : label;
+  row.querySelector(".name").textContent = isLlm ? "모델 추론" : toolKo(label);
   row.querySelector(".args").textContent = isLlm ? ` (${label})` : (input ? `(${argsSummary(input)})` : "");
   const done = !!output;
   row.querySelector(".arrow").style.visibility = done ? "visible" : "hidden";
   row.querySelector(".out").textContent = done ? (isLlm ? output.replace(/\s+/g, " ").slice(0, 110) : outSummary(label, output)) : "";
   row.classList.toggle("running", !done);
   row.querySelector("pre").textContent = text ?? "";
+  traceSummary(trace);
+  $("transcript").scrollTop = $("transcript").scrollHeight;
+}
+
+// The agent's question card (#90): the question and two or three choices. A choice with a message is sent as the
+// dentist's turn; a choice with `fill` only puts a sentence in the composer to edit.
+function addQuestion(q) {
+  if (!q?.question || !(q.options?.length >= 2)) return null;
+  const div = document.createElement("div");
+  div.className = "question";
+  div.innerHTML = '<p></p><div class="opts"></div>';
+  div.querySelector("p").textContent = q.question;
+  for (const o of q.options) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = o.label;
+    b.dataset.message = o.message ?? ""; b.dataset.fill = o.fill ?? "";
+    div.querySelector(".opts").appendChild(b);
+  }
+  div.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || state.streaming || state.loading) return;
+    if (b.dataset.fill) { $("chatInput").value = b.dataset.fill; $("chatInput").focus(); return; }
+    const picked = document.createElement("span");
+    picked.className = "picked"; picked.textContent = b.textContent;
+    div.querySelector(".opts").replaceWith(picked);
+    div.classList.add("done");
+    send(b.dataset.message);
+  });
+  $("transcript").appendChild(div);
+  $("transcript").scrollTop = $("transcript").scrollHeight;
+  return div;
+}
+// After each answer the server's fast model writes the next question; no card when it cannot.
+async function askFollowup(caseId) {
+  try {
+    const { question } = await api("/api/followup", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: state.messages.slice(-8) }) });
+    if (question && state.meshCase === caseId && !state.streaming) addQuestion(question);
+  } catch { /* the card is optional */ }
+}
+// The plan a turn produced, as a card in the transcript; 열기 shows it in the 3D and the result panel.
+function addPlanCard(plan) {
+  if (!plan?.plan_id) return;
+  const viol = plan.violations ?? [];
+  const review = ({ not_requested: "검토 미실행", running: "검토 중", passed: "검토 완료", failed: "검토 실패", skipped: "검토 생략(규칙 기반)" })[plan.review?.status] ?? "";
+  const div = document.createElement("div");
+  div.className = "plan-card";
+  div.innerHTML = '<div class="t"><b></b><small></small></div><button class="btn ghost small" type="button">열기</button>';
+  div.querySelector("b").textContent = `${STRATEGY_KO[plan.strategy] ?? plan.strategy ?? "계획"} · ${plan.info?.n_stages ?? "?"}단계 · 약 ${plan.info?.months ?? "?"}개월 · ${viol.length ? "위반 " + viol.length + "건" : "규칙 통과"}`;
+  div.querySelector("small").textContent = `${plan.plan_id.slice(0, 9)} · ${plan.parent_plan_id ? "이전 안 " + plan.parent_plan_id.slice(0, 9) : "최초 계획"} · ${review}`;
+  div.querySelector("button").addEventListener("click", () => {
+    loadPlan(plan.plan_id).then(() => document.querySelector(".result").scrollIntoView({ behavior: "smooth" }))
+      .catch((err) => addMsg("error", err.message));
+  });
+  $("transcript").appendChild(div);
   $("transcript").scrollTop = $("transcript").scrollHeight;
 }
 
@@ -1012,6 +1115,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     state.lastAssistantText = answer;
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
+      addPlanCard(state.plan);
       addDecision(prevPlanId, selected.plan_id);
       if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
       if (selected.reviewed_by_server) addMsg("system", "에이전트가 검토를 호출하지 않아 서버가 같은 조건으로 검토를 실행했습니다.");
@@ -1021,6 +1125,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     } else {
       $("planNotice").textContent = "새 계획 선택 없음 — 대화 내용을 확인하세요.";
     }
+    if (answer) askFollowup(caseId);   // not awaited: the card arrives when the fast model answers
   } catch (e) {
     bubble.textContent = answer || "계획 요청 실패";
     bubble.classList.add("error");
@@ -1048,7 +1153,7 @@ async function runFallback() {
       body: JSON.stringify({ case_id: caseId, parent_plan_id: state.plan?.plan_id ?? null, ...constraints }) });
     for (const t of res.tried ?? []) addStep("fallback: " + t.strategy, t, "fallback");
     const selected = res.chosen || res.best_failed, prevPlanId = state.plan?.plan_id ?? null;
-    if (selected) { await refreshPlans(selected.plan_id); addDecision(prevPlanId, selected.plan_id); }
+    if (selected) { await refreshPlans(selected.plan_id); addPlanCard(state.plan); addDecision(prevPlanId, selected.plan_id); }
     if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
   } catch (e) {
     addMsg("error", "폴백 실패: " + e.message);
@@ -1071,14 +1176,21 @@ function togglePlay() {
 // ------------------------------------------------------------------ wiring
 $("chatForm").addEventListener("submit", (e) => { e.preventDefault(); send($("chatInput").value); });
 $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
-$("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) send(e.target.textContent); });
+$("chips").addEventListener("click", (e) => { if (e.target.classList.contains("chip")) { $("plusMenu").open = false; send(e.target.textContent); } });
 $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
 });
-$("sampleCards").addEventListener("click", (e) => {
+$("sampleCards").addEventListener("click", async (e) => {
   const card = e.target.closest(".case-card");
-  if (card) { state.patient = null; activateCase(card.dataset.id).catch((err) => addMsg("error", `케이스 로드 실패: ${err.message}`)); }
+  if (!card || state.streaming || state.loading) return;
+  state.patient = null;
+  // the pane fades while the mesh loads; leaveStart() drops both classes when the workspace is ready
+  card.classList.add("picked");
+  document.body.classList.add("leaving");
+  try { await activateCase(card.dataset.id); }
+  catch (err) { addMsg("error", `케이스 로드 실패: ${err.message}`); }
+  finally { document.body.classList.remove("leaving"); card.classList.remove("picked"); }
 });
 $("patientCards").addEventListener("click", (e) => {
   const card = e.target.closest(".case-card");
@@ -1159,6 +1271,7 @@ $("caseBtn").addEventListener("click", () => {
   if (state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
   else showStart().catch((err) => addMsg("error", err.message));
 });
+$("introPick").addEventListener("click", () => $("sampleCards").querySelector(".case-card:not(:disabled)")?.focus());
 $("startClose").addEventListener("click", async () => {
   leaveStart();
   if (state.activeCase && state.meshCase !== state.activeCase) {
@@ -1176,10 +1289,10 @@ $("gateClose").addEventListener("click", async () => {
 $("planSelect").addEventListener("change", (e) => loadPlan(e.target.value).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`)));
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
 $("playBtn").addEventListener("click", togglePlay);
-$("fallbackBtn").addEventListener("click", runFallback);
+$("fallbackBtn").addEventListener("click", () => { $("plusMenu").open = false; runFallback(); });
 $("approveBtn").addEventListener("click", approveCurrent);
 $("reviewBtn").addEventListener("click", reviewCurrent);
-$("constraints").addEventListener("input", updateActions);
+$("constraints").addEventListener("input", () => { renderCondSummary(); updateActions(); });
 $("stlLink").addEventListener("click", e => { if (e.currentTarget.classList.contains("disabled")) e.preventDefault(); });
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
