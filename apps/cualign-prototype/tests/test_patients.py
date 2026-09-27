@@ -215,3 +215,14 @@ def test_patient_ids_are_never_used_as_paths(client, pid):
     client.post("/api/patients", json={"alias": "경로"})
     assert client.get(f"/api/patients/{pid}").status_code == 404
     assert client.delete(f"/api/patients/{pid}").status_code in (404, 405)
+
+
+def test_closed_crowns_without_gum_keep_the_input_orientation_but_are_plannable(client):
+    """#104 «방향 판정 불가» (v2 board 09-c): closed crowns (no cut rim to vote from) and no gingiva give no evidence
+    for the occlusal side, so the scan keeps its input orientation (basis none) while still being ready to plan.
+    The default `_scan_files()` is exactly that scan; the screen session uses it for the state (scripts/orientation_none_scan.py)."""
+    client.post("/api/patients", json={"alias": "방향 판정 불가"})
+    scan = client.post("/api/patients/P0001/scans", files=_scan_files()).json()
+    assert scan["orientation"]["basis"] == "none" and scan["orientation"]["side"] == "ok"
+    assert scan["check"]["ready"] and scan["check"]["n_teeth"] >= 6 and scan["check"]["unsupported"] == []
+    assert client.post("/api/patients/P0001/scans/S1/confirm").status_code == 200   # the dentist may still confirm
