@@ -232,7 +232,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             status = _case_status(None, rep)
             rows.append({"case_id": s.case_id, "kind": "sample", "title": s.title, "subtitle": s.summary,
                         "status": status, "status_ko": _CASE_LIST_STATUS_KO[status], "plan": _plan_row(rep),
-                        "n_plans": len(plan_ids), "prescription": s.prescription, "badges": list(s.badges),
+                        "n_plans": len(plan_ids), "prescription": s.prescription, "reason": s.reason, "badges": list(s.badges),
                         "patient": None, "confirmed": None, "n_teeth": n_teeth or None, "crowding_mm": None,
                         "unsupported": []})
         for p in patients.list_patients():
