@@ -5,15 +5,22 @@ The text rule on its own, then the real NAT app with a local fake planner (no NV
 the golden-set runner's in-process turn. A stage cap of 1 makes the moderate expansion + IPR plan fail on that cap only.
 """
 import dataclasses
+import inspect
 import json
+import re
+from pathlib import Path
 
 import pytest
+from nat.utils.io.yaml_tools import yaml_load
 
 from rails_fakes import ComparingLLM, FakeLLM, FakeRails, PlanningLLM
 from test_golden_a_runner import _run
 from test_rails_middleware import ask, serve, sse_event, store  # noqa: F401  (store is a fixture)
 from evals.golden_a.checks import CHECKS
-from cualign.server.rails_middleware import fix_rule_status, rule_status
+from cualign.core import planner
+from cualign.server.rails_middleware import VIOLATION_KO, fix_rule_status, rule_status
+
+ROOT = Path(__file__).resolve().parents[1]
 
 OPENING = "**확장 + IPR 전략으로 12단계(약 2.8개월) 계획을 만들었습니다.**"
 # The run9 answer of the issue: three collisions in the plan, "no violation" in the answer.
@@ -81,6 +88,27 @@ def test_other_sentences_are_left_alone(answer):
 def test_status_names_each_violation_in_plan_order():
     violations = [{"type": "space_deficit"}, *COLLISIONS[:2], {"type": "stage_cap"}, {"type": "new_kind"}]
     assert rule_status(violations) == "규칙 위반: 공간 부족 1건, 충돌 2건, 단계 상한 초과 1건, 기타 1건."
+
+
+def test_every_planner_violation_has_the_instruction_name():
+    """A type core/planner.py emits without a name here would be written «기타» (#98 added two). The planner keeps no
+    list of types, so they are read from its source. Each name must be one the planner's instructions use; yaml_load
+    reads the instructions whether they sit in workflow.yml or behind a file:// reference."""
+    types = set(re.findall(r'"type": "([a-z_]+)"', inspect.getsource(planner)))
+    assert types and not types - set(VIOLATION_KO), f"no Korean name for {sorted(types - set(VIOLATION_KO))}"
+    text = yaml_load(ROOT / "configs" / "workflow.yml")["workflow"]["additional_instructions"]
+    listed = re.sub(r"\s+", " ", text.split("Violations:")[1].split(".")[0])
+    names = {n.strip() for n in listed.split(",")}
+    assert not set(VIOLATION_KO.values()) - names, f"not in the instructions: {set(VIOLATION_KO.values()) - names}"
+
+
+@pytest.mark.parametrize("kind,name", [("extraction_mismatch", "처방과 다른 발치"),
+                                       ("extraction_space_open", "닫지 못한 발치 공간")])
+def test_extraction_violations_get_their_names(kind, name):
+    """The first-screen extraction sample (poseidon-000097) can fail on these."""
+    answer = "**발치 전략으로 20단계(약 4.7개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\n- 검토: 통과"
+    fixed = fix_rule_status(answer, [{"stage": None, "type": kind, "teeth": [5, 12]}])
+    assert fixed == answer.replace("규칙 위반은 없습니다.", f"규칙 위반: {name} 1건.")
 
 
 @pytest.mark.parametrize("rails", ["on", "off"])

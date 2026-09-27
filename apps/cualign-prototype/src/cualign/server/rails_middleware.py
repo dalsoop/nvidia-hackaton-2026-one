@@ -70,10 +70,12 @@ MEMO_REQUEST = "이 계획의 검토 메모를 써줘."
 _RANK = {"passed": 0, "flagged": 1, "off": 1, "error": 2, "blocked": 3}
 # A caller without a PlanRun sets a dict here before the turn; the middleware writes "state" into it.
 RAIL_RECORD: ContextVar[dict | None] = ContextVar("cualign_rail_record", default=None)
-# The violation names workflow.yml gives the planner for its rule status line.
+# The violation names workflow.yml gives the planner for its rule status line, one per type core/planner.py emits
+# (tests/test_rule_status.py fails when a type or a name is missing; a missing type would be written «기타»).
 VIOLATION_KO = {"space_deficit": "공간 부족", "collision": "충돌", "move_limit": "이동량 초과", "rotation_limit": "회전량 초과",
                 "stage_cap": "단계 상한 초과", "locked_tooth": "고정 치아 이동", "ipr_limit": "IPR 한도 초과",
-                "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치"}
+                "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치",
+                "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간"}
 # Says the plan broke no rule: "규칙 위반은 없습니다", "위반 사항 없음", "위반 0건", "모든 규칙을 통과했습니다".
 # Not "검토: 통과" (the reviewer wrote a memo, #91), "규칙을 통과하지 못했습니다" or "규칙 위반: 충돌 3건".
 NO_VIOLATION = (r"위반\s*(?:사항)?\s*(?:[은는이가도]|[:：])?\s*(?:없|0\s*건|(?:발견|확인)되지\s*않)"

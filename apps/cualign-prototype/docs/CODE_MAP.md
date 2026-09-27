@@ -93,7 +93,7 @@
 | `tests/test_patients.py` | 환자 등록(식별정보 거부)→업로드→입력 확인→번호 확인 뒤에만 계획, 스캐너 좌표 정렬, 좌우 번호 경고·뒤집기, 번호 변경 뒤 이전 계획 차단, ID 비재사용, 삭제 시 파생물 제거, 입력 검증, 경로 ID 거부 |
 | `tests/test_ui_flow.py`, `tests/fixtures/ui_flow.json` | 화면 순서 그대로: 환자 등록→번호 뒤집힌 스캔 업로드→입력 확인(뒤집기·revision)→활성화→규칙 폴백→조건 폼으로 `/chat/stream` 까지, 가짜 계획 모델로 키 없이 검사 (#49). 입력·기대값은 JSON 에서 읽음 |
 | `tests/test_planning_flow.py`, `test_reviewer.py`, `test_plan_events.py` | 제약·부모·출력 내용·검토 실패·ASGI 요청 컨텍스트 회귀 |
-| `tests/test_rule_status.py` | 실패한 계획을 «규칙 위반은 없습니다» 로 연 답이 실제 상태로 바뀌어 나가는지(레일 켬·끔, UI 스트림·골든셋 실행기), 통과한 계획·계획 없는 답·비교 답은 그대로인지(#91) |
+| `tests/test_rule_status.py` | 실패한 계획을 «규칙 위반은 없습니다» 로 연 답이 실제 상태로 바뀌어 나가는지(레일 켬·끔, UI 스트림·골든셋 실행기), 통과한 계획·계획 없는 답·비교 답은 그대로인지, `core/planner.py` 의 모든 위반 종류에 지시문과 같은 한국어 이름이 있는지(#91) |
 | `tests/test_context_preload.py` | 서버 문맥에 미리 싣는 케이스 요약·한도·스킬이 설정대로 들어가고, 끄거나 블록이 없으면 전과 같은지(#48) |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/검토 재요청/승인·지연 응답 검사 |
 | `tests/nim_review_live_check.py` | 실제 워크플로(NIM 검토·Guardrails)로 미실행·실패 계획의 검토 재요청 확인. 원격 사용량 발생 |
