@@ -101,7 +101,7 @@
         <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">바꾸기</button>
         <div id="casePop" class="case-pop" hidden>
           <div id="popCases"></div>
-          <button id="popPatients" class="link-btn" type="button">내 스캔 올리기 →</button>
+          <button id="popPatients" class="link-btn" type="button">환자 등록 →</button>
         </div>
       </div>
       <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 승인·STL은 3D 위 「내보내기」 하나 (#111) -->
@@ -159,7 +159,7 @@
             <h2 class="start-sub">환자 목록</h2>
             <div class="cl-table">
               <!-- 4열: 위반 건수·계획 수는 행 아래 상세(#dFacts)에서만 -->
-              <div class="cl-row cl-thead"><span>환자</span><span>상태</span><span>처방</span><span>최근 계획</span></div>
+              <div class="cl-row cl-thead"><span>환자</span><span>상태</span><span>처방</span><span>대표 계획</span></div>
               <div id="clRows"></div>
             </div>
             <!-- 상세: renderCaseList 가 선택한 카드/행 뒤로 옮긴다 -->

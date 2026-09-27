@@ -571,8 +571,12 @@ async function reviewCurrent() {
 // "patients" = the modal, "patient" = the modal with state.patient open, "check" = the scan in the 3D with the check bar.
 function showScreen(name) {
   setHash(name === "patient" ? "#patient=" + state.patient.patient_id : name === "check" ? "#check=" + state.checkCase : "#" + name);
-  document.body.classList.remove("start");   // the check shows its scan in the viewer
   const check = name === "check";
+  // the modal sits over whatever was there: before a case is open that is the start screen, which stays (its
+  // class is dropped only by a case opening, leaveStart). The check is the one exception: it shows its scan in
+  // the viewer, which the start pane would cover
+  if (check) document.body.classList.remove("start");
+  else if (!state.activeCase) document.body.classList.add("start");
   if (!check) endCheck();
   $("checkBar").hidden = !check;
   document.body.classList.toggle("checking", check);
@@ -894,7 +898,7 @@ function renderCaseList() {
     cards.appendChild(b);
   }
   if (!samples.length) cards.innerHTML = '<p class="empty">샘플 파일이 설치되지 않았습니다.</p>';
-  // patient rows: one per scan, four columns (환자 · 상태 · 처방 · 최근 계획). Violations and the plan count wait in
+  // patient rows: one per scan, four columns (환자 · 상태 · 처방 · 대표 계획 — the server's representative plan: latest approved, else latest). Violations and the plan count wait in
   // the detail under the row; the status column already says 위반 있음 / 통과
   const box = $("clRows");
   box.innerHTML = "";

@@ -423,7 +423,7 @@ body.start .side, body.checking .side { display: none; }
 body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0; }
 body.start .intro { flex: 1; }
 body.no-case .composer { display: none; }   /* the panel is a chat; the input appears with a case (lockComposer) */
-body.start .chips { display: none; }
+body.no-case .chips { display: none; }   /* the example chips wait for a case too */
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0; }
 body.start .splitter { pointer-events: none; }
