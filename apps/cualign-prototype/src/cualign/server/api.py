@@ -69,7 +69,8 @@ def _summary(pid):
     return {"plan_id": pid, "case_id": p["case_id"], "parent_plan_id": p["parent_plan_id"],
             "strategy": p["strategy"], "n_stages": p["info"]["n_stages"], "months": p["info"]["months"],
             "passed": p["passed"], "violations": len(p["violations"]), "by_type": planner.summarize(p["violations"]),
-            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"]}
+            "constraints": p["constraints"], "review": p["review"], "approval": p["approval"],
+            "input_stale": p["input_stale"]}   # same rule as GET /api/plans/{id}: the scan was renumbered since
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
@@ -232,12 +233,15 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
+        out = {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
+               "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
         try:
             ensure_case_plan(cid)
         except ValueError as e:
-            raise HTTPException(400, str(e))
-        return {"case_id": cid, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
-                "constraints": STORE.constraints_for(cid).model_dump(mode="json")}
+            # The case still opens, with no plan: the screen shows the failure card (v2 board 07) with this text and
+            # «이 조건으로 다시 계산» calls POST /api/plan. Mesh and constraint failures above stay 404/400.
+            out["plan_error"] = str(e)
+        return out
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str):

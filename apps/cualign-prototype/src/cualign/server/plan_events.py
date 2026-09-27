@@ -32,7 +32,8 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     constraints.check_case(case.ids)
     store.case_constraints[cid] = constraints
     run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints)
-    context = {"case_id": cid, "base_plan_id": ctx.base_plan_id, "constraints": constraints.model_dump(mode="json")}
+    context = {"case_id": cid, "base_plan_id": ctx.base_plan_id, "constraints": constraints.model_dump(mode="json"),
+               "conditions_ko": constraints.describe_ko()}   # the answer's 조건 line, FDI, written by the server (#113)
     if preload is not None:
         context.update(preload(cid, case, constraints))
     return run, {"role": "system", "content": "cuAlign server context: " + json.dumps(context, ensure_ascii=False)}

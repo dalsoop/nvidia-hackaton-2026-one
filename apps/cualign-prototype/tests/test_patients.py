@@ -193,6 +193,7 @@ def test_renumbering_makes_earlier_plans_stale(client):
     assert client.post("/api/patients/P0001/scans/S1/confirm", json={"revision": 1}).status_code == 409
     assert client.post("/api/patients/P0001/scans/S1/confirm", json={"revision": 2}).status_code == 200
     assert client.get(f"/api/plans/{plan_id}").json()["input_stale"]      # still the old numbering
+    assert [p["input_stale"] for p in client.get("/api/plans", params={"case_id": "P0001-S1"}).json()["plans"]] == [True]
     assert target["input_revision"] == 1
 
 
@@ -215,3 +216,46 @@ def test_patient_ids_are_never_used_as_paths(client, pid):
     client.post("/api/patients", json={"alias": "경로"})
     assert client.get(f"/api/patients/{pid}").status_code == 404
     assert client.delete(f"/api/patients/{pid}").status_code in (404, 405)
+
+
+def test_closed_crowns_without_gum_keep_the_input_orientation_but_are_plannable(client):
+    """#104 «방향 판정 불가» (v2 board 09-c): closed crowns (no cut rim to vote from) and no gingiva give no evidence
+    for the occlusal side, so the scan keeps its input orientation (basis none) while still being ready to plan.
+    The default `_scan_files()` is exactly that scan; the screen session uses it for the state (scripts/orientation_none_scan.py)."""
+    client.post("/api/patients", json={"alias": "방향 판정 불가"})
+    scan = client.post("/api/patients/P0001/scans", files=_scan_files()).json()
+    assert scan["orientation"]["basis"] == "none" and scan["orientation"]["side"] == "ok"
+    assert scan["check"]["ready"] and scan["check"]["n_teeth"] >= 6 and scan["check"]["unsupported"] == []
+    assert client.post("/api/patients/P0001/scans/S1/confirm").status_code == 200   # the dentist may still confirm
+
+
+def test_v2_rejections_and_blocks_use_the_design_wording(client, monkeypatch):
+    """#112: v2 boards 08 (upload rejected, 5 kinds) and 09 (input check blocked, 3 kinds) — status codes and wording as
+    designed, so the screen can show them as they are."""
+    from cualign.server import api
+    client.post("/api/patients", json={"alias": "설계 문구"})
+    post = lambda files: client.post("/api/patients/P0001/scans", files=files)   # noqa: E731
+
+    r = post(_scan_files() + [("files", ("18.stl", b"solid x\nendsolid x\n", "model/stl"))])
+    assert (r.status_code, r.json()["detail"]) == (400, "18.stl: 하악(Universal 17~32) 번호입니다. 지금은 상악 스캔만 받습니다.")
+    r = post([("files", ("upper_arch.stl", b"solid x\nendsolid x\n", "model/stl"))])
+    assert (r.status_code, r.json()["detail"]) == (400, "upper_arch.stl: 한 덩어리 악궁 스캔으로 보입니다. 지금은 치아별로 나뉜 파일"
+                                                        "(2.stl … 15.stl, 선택 gingiva.stl)만 받습니다. 자동 치아 분리는 실험 단계입니다.")
+    assert (api.MAX_FILE_BYTES >> 20, api.MAX_UPLOAD_BYTES >> 20) == (60, 400)
+    monkeypatch.setattr(api, "MAX_FILE_BYTES", 1 << 20)                       # same wording, a 1 MB limit for the test
+    r = post([("files", ("8.stl", b"\0" * ((1 << 20) + 1), "model/stl"))])
+    assert (r.status_code, r.json()["detail"]) == (413, "파일이 너무 큽니다(파일당 1MB, 한 번에 400MB까지).")
+    monkeypatch.setattr(api, "MAX_FILE_BYTES", 60 << 20)
+    r = post(_scan_files() + [("files", ("8.stl", b"solid x\nendsolid x\n", "model/stl"))])
+    assert (r.status_code, r.json()["detail"]) == (400, "8.stl: 같은 번호의 파일이 두 개 있습니다.")
+    r = post(_scan_files(drop=(8,)) + [("files", ("8.stl", b"this is not an stl file at all", "model/stl"))])
+    assert r.status_code == 400 and r.json()["detail"].startswith("스캔을 읽지 못했습니다: "), r.text
+    assert client.get("/api/patients/P0001").json()["scans"] == []               # rejected uploads are not kept
+
+    check = post(_scan_files(drop=(7,))).json()["check"]
+    assert not check["ready"] and check["unsupported"] == ["치아 [7] 결손: 결손 공간이 있는 악궁은 아직 계획하지 않음 (연속된 치열만 지원)"]
+    check = post(_scan_files(drop=tuple(range(2, 12)))).json()["check"]            # 12..15: four teeth
+    assert not check["ready"] and check["unsupported"] == ["치아 4개: 악궁을 맞추기에 부족 (6개 이상 필요)"]
+    scan = post(_scan_files()).json()                                              # closed crowns, no gum: no evidence
+    assert scan["check"]["ready"] and scan["orientation"]["basis"] == "none"
+    assert scan["orientation"]["note"] == "치아 14개 — 방향을 정할 수 없어 입력 방향 그대로 둠"

@@ -59,3 +59,17 @@ def test_a_reloaded_plan_is_readable_as_a_plan(monkeypatch, tmp_path):
     assert 2 in plan["stages"][0]
     assert plan["stages"][0].yaw[2] == 1.5
     assert loaded.plan_json("pdisk")["case_id"] == "moderate"
+
+
+def test_activate_opens_the_case_even_when_the_rule_plan_fails(monkeypatch, tmp_path):
+    """v2 board 07 (#112): a failed rule computation is a failure card on an open case, not a closed case. The response
+    keeps its fields and carries the ValueError text as plan_error; mesh/constraint failures stay 404/400."""
+    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(api, "rule_based_plan", lambda *a, **k: (_ for _ in ()).throw(ValueError("규칙 계산 실패: 시험용")))
+    r = client.post("/api/cases/moderate/activate")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["plan_error"] == "규칙 계산 실패: 시험용" and body["case_id"] == "moderate" and body["n_teeth"] > 0
+    assert "crowding_mm" in body and "constraints" in body
+    assert client.get("/api/plans", params={"case_id": "moderate"}).json()["plans"] == []
+    assert client.post("/api/cases/no-such-case/activate").status_code == 404

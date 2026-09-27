@@ -13,6 +13,7 @@ from nat.data_models.component_ref import LLMRef
 from pydantic import BaseModel
 
 from cualign.core import limits as L
+from cualign.core.fdi import teeth_to_fdi
 from cualign.core.store import STORE
 from .context import CURRENT_RUN
 
@@ -25,9 +26,12 @@ class ReviewInput(BaseModel):
 # live there, next to the planner's); this default is the text from before that key existed, so an absent key
 # changes nothing.
 DEFAULT_INSTRUCTIONS = ("You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: "
-                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number "
+                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Every tooth "
+                        "number in the plan data is already FDI (11..18, 21..28): copy them as given, never convert or renumber. Each number "
                         "means what field_notes says: never call a total movement a per-aligner value or a tooth-width sum a "
-                        "space shortage. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval. "
+                        "space shortage. The dentist reads this memo: never write a field name, a JSON key, an English enum "
+                        "value or any snake_case token (no word ending in _mm or _deg); use the Korean names in "
+                        "field_notes. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval. "
                         "End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다.")
 
 
@@ -67,29 +71,39 @@ def upstream_error(exc: Exception) -> str:
 # The plan data names several totals and per-aligner values alike (a live memo called the 4.35 mm total movement of one
 # tooth "per stage", and the 99.5 mm sum of tooth widths a space need). The reviewer gets what each number means;
 # the stored plan and the API keep their field names.
+# Each note starts with the Korean name the memo must use for that field (#106: a live memo wrote shape_room_mm).
 FIELD_NOTES = {
-    "n_stages": "number of aligners (stages) in the plan",
-    "months": f"n_stages x {L.WEAR_DAYS} days per aligner, in months",
-    "max_move_mm": "largest TOTAL movement of one tooth from start to the end of the plan, not per aligner",
-    "mean_move_mm": "mean TOTAL movement of the moving teeth from start to the end of the plan, not per aligner",
-    "per_stage_mm": f"largest movement of one tooth in one aligner; the rule limit is {L.MAX_LINEAR_PER_ALIGNER} mm",
-    "stages_per_group": "aligners per movement group; with anterior_first or sequential the groups move one after another",
-    "needed_mm": "sum of the tooth widths along the arch (arch length the teeth take up), not a space shortage",
-    "crowding_mm": "crowding of the case before treatment",
-    "space_gain_mm": "space the strategy creates",
-    "space_deficit_mm": f"space still missing after the strategy; the plan fails the rule above {L.SPACE_DEFICIT_TOLERANCE_MM} mm",
-    "expansion_mm_per_side": f"arch expansion per side; the limit is {L.MAX_EXPANSION_PER_SIDE} mm",
-    "ipr_mm_per_surface": f"IPR per tooth surface; the limit is {L.IPR_PER_SURFACE} mm",
-    "extraction": "teeth the dentist prescribed to extract (Universal numbers); the plan removes exactly these, "
+    "n_stages": "단계 수: number of aligners (stages) in the plan",
+    "months": f"기간: n_stages x {L.WEAR_DAYS} days per aligner, in months",
+    "max_move_mm": "총 이동량(최대): largest TOTAL movement of one tooth from start to the end of the plan, not per aligner",
+    "mean_move_mm": "총 이동량(평균): mean TOTAL movement of the moving teeth from start to the end of the plan, not per aligner",
+    "per_stage_mm": f"단계당 이동량: largest movement of one tooth in one aligner; the rule limit is {L.MAX_LINEAR_PER_ALIGNER} mm",
+    "stages_per_group": "그룹당 단계 수: aligners per movement group; with anterior_first or sequential the groups move one after another",
+    "needed_mm": "치아 폭 합계: sum of the tooth widths along the arch (arch length the teeth take up), not a space shortage",
+    "crowding_mm": "총생량: crowding of the case before treatment",
+    "space_gain_mm": "확보 공간: space the strategy creates",
+    "space_deficit_mm": f"공간 부족: space still missing after the strategy; the plan fails the rule above {L.SPACE_DEFICIT_TOLERANCE_MM} mm",
+    "open_space_mm": "남은 발치 공간: extraction space the plan could not close",
+    "shape_room_mm": "치관 모양 여유 공간: extra room left beyond contact widths because of crown shape",
+    "expansion_mm_per_side": f"양측 확장(한쪽당): arch expansion per side; the limit is {L.MAX_EXPANSION_PER_SIDE} mm",
+    "ipr_mm_per_surface": f"IPR 면당: IPR per tooth surface; the limit is {L.IPR_PER_SURFACE} mm",
+    "ipr_applied_teeth": "IPR 적용 치아: teeth whose surfaces the plan reduces",
+    "ipr_exclude": "IPR 제외 치아: teeth the dentist excluded from IPR",
+    "rotation_deg": "회전 보정: derotation per tooth in degrees",
+    "vertical_mm": "수직 보정: vertical correction per tooth",
+    "locked": "고정 치아: teeth the dentist locked; they do not move",
+    "extraction": "발치 치아: teeth the dentist prescribed to extract (FDI numbers); the plan removes exactly these, "
                   "the app never chooses them; empty means non-extraction",
-    "removed": "teeth this plan removes (must equal the prescribed extraction)",
+    "removed": "발치 치아: teeth this plan removes (must equal the prescribed extraction)",
 }
 
 
 def review_messages(snapshot: dict, instructions: str = DEFAULT_INSTRUCTIONS) -> list[dict]:
+    """The reviewer reads the plan with FDI tooth numbers (#113): the conversion is done here, not by the model
+    (a live memo asked to convert wrote lower-arch numbers 31..35 for upper teeth)."""
     return [
         {"role": "system", "content": instructions},
-        {"role": "user", "content": json.dumps({"plan": snapshot, "field_notes": FIELD_NOTES}, ensure_ascii=False)},
+        {"role": "user", "content": json.dumps({"plan": teeth_to_fdi(snapshot), "field_notes": FIELD_NOTES}, ensure_ascii=False)},
     ]
 
 

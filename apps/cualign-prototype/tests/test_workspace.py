@@ -13,8 +13,9 @@ from cualign.core import skills as S
 
 ROOT = Path(__file__).resolve().parents[1]
 WS = ROOT / "workspace"
-# sha256 of workflow.additional_instructions as inlined in configs/workflow.yml at c98bef0 on main, after #98 (6193 chars).
-INSTRUCTIONS_SHA256 = "30bb803055cfdc0c55f39741026e2dde9df4765932a9e87a8da97c34faaf1e2b"
+# sha256 of workspace/AGENTS.md after the #120 batch merged into main (7231 chars): the c98bef0 snapshot (6193 chars,
+# 30bb8030…) plus the #113 FDI table, the conditions_ko line, the IPR-cap rule and the Korean-question rule.
+INSTRUCTIONS_SHA256 = "5502db79c3c2c4aa29ab7357c8904550c846d7839ca49dfe6824eee1ff15ab82"
 OPENCLAW = ROOT / "nemoclaw" / "openclaw-2026.7.1"
 HANGUL = re.compile("[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]")
 
@@ -32,7 +33,7 @@ def test_nat_reads_the_instructions_from_workspace_agents_md():
 
 def test_instructions_are_byte_identical_to_the_pre_move_snapshot():
     text = _instructions()
-    assert len(text) == 6193
+    assert len(text) == 7231
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == INSTRUCTIONS_SHA256
     assert hashlib.sha256((WS / "AGENTS.md").read_bytes()).hexdigest() == INSTRUCTIONS_SHA256
 

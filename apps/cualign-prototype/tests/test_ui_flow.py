@@ -87,6 +87,7 @@ def test_patient_registration_to_plan_start(store, tmp_path, monkeypatch):
         context = server_context(llm.requests[0])
         assert context["case_id"] == case_id and context["base_plan_id"] is None
         assert context["constraints"] == EXPECT["constraints"]
+        assert context["conditions_ko"].startswith("발치 치아 없음 · 고정 치아 16, 26번 · IPR 제외 치아 11, 21번")   # FDI (#113)
 
         # (b) 스트림 끝의 plan_context 도 같은 조건이고, 상한은 비어 있다 (clear_stage_cap 이 서버에 닿았다)
         plan_context = sse_event(text, "plan_context")

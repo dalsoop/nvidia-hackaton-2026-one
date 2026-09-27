@@ -89,6 +89,12 @@ def limits_view() -> dict:
             "wear_days_per_aligner": L.WEAR_DAYS, "strategies": list(L.STRATEGIES)}
 
 
+def constraints_json(c) -> dict:
+    """What the model reads for a Constraints: the fields (Universal, for tool calls) plus the dentist's 조건 line
+    (conditions_ko, FDI) to copy into the answer as it is (#113)."""
+    return {**c.model_dump(mode="json"), "conditions_ko": c.describe_ko()}
+
+
 def case_view(case) -> dict:
     """The case summary the load_case tool returns (without id and constraints); also preloaded into the server context."""
     return {"teeth": case.ids, "n_teeth": len(case.ids), "crowding_mm": planner.crowding_mm(case),
@@ -165,12 +171,12 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         """화면에서 선택한 케이스를 읽는다. 서버 문맥에 case 가 있으면 다시 부르지 않는다. 다른 케이스로 임의 전환할 수 없다.
         unsupported 가 비어 있지 않으면 이 케이스는 계획하지 말고 그 이유를 의사에게 그대로 전한다."""
         cid, case = current_case(inp.case_id)
-        return {"case_id": cid, **case_view(case), "constraints": constraints_for(cid).model_dump(mode="json")}
+        return {"case_id": cid, **case_view(case), "constraints": constraints_json(constraints_for(cid))}
 
     async def _get_constraints(inp: NoInput) -> dict:
         """확정 조건을 읽는다. 서버 문맥의 constraints 와 같으니 그것이 있으면 다시 부르지 않는다. 비교·수정 시 이 조건을 유지한다."""
         cid, _ = current_case()
-        return constraints_for(cid).model_dump(mode="json")
+        return constraints_json(constraints_for(cid))
 
     async def _set_constraints(inp: ConstraintPatch) -> dict:
         """사용자가 명시적으로 변경한 조건만 전달한다. null과 생략은 모두 유지를 뜻한다. []는 치아 목록 해제, clear_stage_cap:true는 기간 상한 해제. IPR 한도는 면당 mm."""
@@ -184,25 +190,25 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
             # Extraction without teeth, a tooth that cannot be extracted or is not in the case, stage_cap with
             # clear_stage_cap, ...: a normal result, like the rejection below (raising makes the agent retry), so the
             # agent asks the dentist instead (#56). The request is echoed as sent, never re-derived (that could raise).
-            return {**current.model_dump(mode="json"), "rejected": inp.model_dump(mode="json", exclude_none=True),
+            return {**constraints_json(current), "rejected": inp.model_dump(mode="json", exclude_none=True),
                     "note": reason_ko(e) + " 조건은 바꾸지 않았습니다. 의사에게 확인한 뒤 다시 설정하세요."}
         # Re-stating the same conditions mid-loop is harmless; only a real change after targets
         # exist would make the computed plans disagree with the stored constraints.
         if c == current:
-            return c.model_dump(mode="json")
+            return constraints_json(c)
         if run and run.target_ids:
             # Refuse the change, but as a normal result: raising here reads as "you called me
             # wrong", so the agent retries with new arguments until it runs out of iterations.
             # The conditions are unchanged either way — this only stops the retry loop and lets
             # the agent tell the dentist which change it could not apply.
-            return {**current.model_dump(mode="json"), "rejected": inp.changes(),
+            return {**constraints_json(current), "rejected": inp.changes(),
                     "note": "이번 요청의 조건은 이미 확정됐습니다. 현재 조건으로 계획을 마치고, "
                             "반영하지 못한 변경은 최종 답변에서 의사에게 알리세요."}
         c.check_case(case.ids)
         STORE.case_constraints[cid] = c
         if run:
             run.constraints = c
-        return c.model_dump(mode="json")
+        return constraints_json(c)
 
     async def _propose_target(inp: StrategyInput) -> dict:
         """확정 조건으로 목표를 생성한다. 조건 변경은 먼저 set_constraints로 처리한다."""
@@ -212,7 +218,7 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         if run:
             run.target_ids.add(tid)
         t = STORE.targets[tid]
-        return {"target_id": tid, "case_id": cid, "constraints": t["constraints"].model_dump(mode="json"), **t["info"]}
+        return {"target_id": tid, "case_id": cid, "constraints": constraints_json(t["constraints"]), **t["info"]}
 
     async def _plan_stages(inp: PlanInput) -> dict:
         """목표에 저장된 조건으로 단계 생성과 검증을 수행한다. 수정은 선택된 부모 계획을 보존한다."""
@@ -239,7 +245,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
             run.plan_ids.update(ids)
             run.target_ids.update(STORE.plans[pid]["target_id"] for pid in ids)
             run.compared = True
-        return {"case_id": cid, "constraints": constraints_for(cid).model_dump(mode="json"),
+        c = constraints_for(cid)   # plans carry the same constraints (golden set tool contract); the FDI line beside them
+        return {"case_id": cid, "constraints": c.model_dump(mode="json"), "conditions_ko": c.describe_ko(),
                 "plans": [summary(pid) for pid in ids]}
 
     async def _select_plan(inp: PlanIdInput) -> dict:
