@@ -71,17 +71,20 @@ textarea { resize: vertical; }
 
 /* ---------- layout ---------- */
 .layout {
-  flex: 1; display: grid; grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 400px;
-  /* fixed columns: rail · agent panel · splitter · 3D · sidebar. A hidden panel leaves its column empty instead of shifting the rest */
+  flex: 1; display: grid; grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 6px var(--side-w, 400px);
+  /* fixed columns: rail · agent panel · splitter · 3D · splitter · sidebar (--side-w, #14). A hidden panel leaves its column empty instead of shifting the rest */
   gap: 0; padding: 0; min-height: 0;
 }
 /* drag handle between the agent panel and the 3D (#90) */
-.splitter { cursor: col-resize; background: var(--line); touch-action: none; }
+.splitter { position: relative; cursor: col-resize; background: var(--line); touch-action: none; }
 .splitter:hover, .splitter:focus-visible, .splitter.dragging { background: var(--green); outline: none; }
+/* the handle (#13 polish): three dots at mid-height so the 6px line reads as draggable */
+.splitter::after { content: ""; position: absolute; left: 2px; top: calc(50% - 6px); width: 2px; height: 2px; border-radius: 50%; background: var(--muted); box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); }
+.splitter:hover::after, .splitter:focus-visible::after, .splitter.dragging::after { background: #000; box-shadow: 0 5px 0 #000, 0 10px 0 #000; }
 body.resizing { cursor: col-resize; user-select: none; }
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .layout > * { grid-column: auto; } .splitter { display: none; } .side { border-left: 0; border-top: 1px solid var(--line); } }
 
-.rail { grid-column: 1; } .chat { grid-column: 2; } .splitter { grid-column: 3; } .viewer { grid-column: 4; } .side { grid-column: 5; }
+.rail { grid-column: 1; } .chat { grid-column: 2; } .splitter { grid-column: 3; } .viewer { grid-column: 4; } .side-splitter { grid-column: 5; } .side { grid-column: 6; }
 .chat, .viewer {
   background: var(--panel); display: flex; flex-direction: column; min-height: 0; overflow: hidden;
 }
@@ -155,6 +158,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .decision button { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--green); cursor: pointer; }
 .decision button:hover { text-decoration: underline; }
 .decision.done { color: var(--muted); }
+.composer .send { width: 44px; padding: 0; flex: none; }
 .composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
@@ -187,6 +191,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: var(--radius); margin-right: 4px; vertical-align: -1px; }
 .legend { flex-wrap: wrap; row-gap: 4px; }
 .legend small { color: var(--faint); }
+.legend [hidden] { display: none; }
 .legend .red { background: var(--red); }
 .legend .amber { background: var(--amber); }
 .legend .blue { background: var(--blue); }
@@ -199,13 +204,20 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* floating toolbar over the 3D (#90): only the decision (내보내기) at the top right; views and tools are on the rail */
 .view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; margin-left: auto; }
 .view-actions { display: flex; gap: 4px; }
-/* vertical rail at the right edge of the 3D (Dentone style): six views, then 겹쳐 · 크게 (#90) */
+/* vertical icon bar at the right edge of the 3D (#90, #13 polish): four views, then 겹쳐 · 크게. Icons are grey PNG
+   glyphs from static/icons (26px); the label appears to the left on hover/focus, from aria-label */
 .view-rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 4px; }
-.view-rail .btn { width: 36px; height: 36px; padding: 0; font-size: 11px; }
-.rail-tools .btn { height: 44px; flex-direction: column; gap: 1px; font-size: 10px; }
+.view-rail .btn { position: relative; width: 40px; height: 40px; padding: 0; background: none; border-color: transparent; color: var(--muted); }
+.view-rail .btn:hover { color: var(--text); background: var(--hover); border-color: transparent; }
+.view-rail .btn[aria-pressed="true"] { color: var(--green); border-color: transparent; background: none; }   /* the view on screen */
+/* the PNG glyph as a mask, so the icon takes the button's colour */
+.view-rail .vic { width: 26px; height: 26px; display: block; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.view-rail .btn::after { content: attr(aria-label); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; font-weight: 400; color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s; }
+.view-rail .btn:hover::after, .view-rail .btn:focus-visible::after { opacity: 1; }
 .rail-tools { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .export { position: relative; }
-.export-pop { position: absolute; right: 0; top: calc(100% + 6px); width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
+#exportBtn, #exportWhy { display: none; }   /* the rail item is the visible 내보내기 (#13 polish); these keep the state */
+.export-pop { position: fixed; width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
 .export-pop p { margin: 0 0 8px; }
 .export-pop div { display: flex; gap: 6px; }
 .export-pop[hidden] { display: none; }
@@ -218,7 +230,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .legend .before { background: transparent; border: 1px solid #ffffff; }
 .legend .picked { background: var(--green); }
 /* collapse the agent panel to see the 3D large */
-body.focus3d .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0; }
+body.focus3d .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0 0; }
 body.focus3d .chat, body.focus3d .splitter, body.focus3d .side { display: none; }
 /* waiting state: the 3D dims and a pill over it repeats the running step */
 #viewCanvas { transition: opacity 0.3s; }
@@ -226,6 +238,8 @@ body.streaming #viewCanvas { opacity: 0.45; }
 .work-note { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; white-space: nowrap; }
 .work-note i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1s steps(2) infinite; }
 body.streaming .work-note { display: flex; }
+.pick-hint { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 4; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; color: var(--muted); white-space: nowrap; pointer-events: none; }
+.pick-hint[hidden] { display: none; }
 .tip { position: absolute; z-index: 3; pointer-events: none; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; white-space: nowrap; }
 
 /* ---------- case gate (start point) ---------- */
@@ -245,12 +259,19 @@ body.streaming .work-note { display: flex; }
 .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 .stage-bar input[type=range] { width: 100%; accent-color: var(--green); }
 /* marks over the stage slider: stages with a collision (red) or a per-stage limit breach (amber) (#90) */
-.slider-wrap { flex: 1; position: relative; padding-top: 10px; }
-.stage-marks { position: absolute; left: 8px; right: 8px; top: 0; height: 8px; }
+.slider-wrap { flex: 1; position: relative; padding-top: 26px; }
+.stage-marks { position: absolute; left: 8px; right: 8px; top: 16px; height: 8px; }
 .stage-mark { position: absolute; top: 0; width: 6px; height: 8px; margin-left: -3px; border: 0; padding: 0; cursor: pointer; border-radius: 1px; }
 .stage-mark.collision { background: var(--red); }
 .stage-mark.move_limit { background: var(--amber); }
-.stage-label { min-width: 190px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* hover on a mark: 단계 k · 충돌 N건 */
+.stage-mark::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 4px 8px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 5; }
+.stage-mark:hover::after, .stage-mark:focus-visible::after { opacity: 1; }
+/* the stage on screen, above the thumb */
+.stage-tip { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.ibtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.ibtn:hover { color: var(--text); }
+.stage-label { min-width: 110px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- result ---------- */
 /* the stage bar and the result panel appear with the first plan (#90) */
@@ -277,9 +298,7 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .legend { display: none; }
 .pop-confirm p { margin: 0 0 8px; }
 .pop-confirm div { display: flex; gap: 6px; }
 .case-pop .link-btn { align-self: flex-start; padding: 2px 4px; }
-.case-head .thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius); background: #000; }
 .case-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.case-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .case-text b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag { flex: none; font-size: 11px; line-height: 1.4; color: var(--green); border: 1px solid var(--green); border-radius: var(--radius); padding: 0 4px; }
 .case-text span { font-size: 12px; color: var(--muted); }
@@ -344,20 +363,17 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 /* ---- rail (v2 보드 11) */
 .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
 .rail button { width: 56px; padding: 7px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font: inherit; font-size: 10.5px; line-height: 1.2; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
-.rail button small { font-size: 9px; color: var(--faint); }
 .rail button:hover { background: var(--hover); color: var(--text); }
 .rail button.on { color: var(--green); background: var(--panel-2); border-color: var(--green); font-weight: 700; }
 .rail button.done { color: var(--text); }
 .rail button:disabled { color: var(--faint); cursor: not-allowed; background: none; }
-.rail button:not(:disabled) small { display: none; }
 /* ---- case list (v2 보드 02) */
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; background: var(--text); vertical-align: middle; }
 .dot.amber { background: var(--amber); } .dot.faint { background: var(--faint); } .dot.red { background: var(--red); } .dot.green { background: var(--green); }
-.start-body { max-width: 1100px; padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.start-body { width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .start-sub { margin: 12px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); }
 .cl-head { display: flex; align-items: center; gap: 12px; }
 .cl-head h1 { margin: 0; font-size: 22px; flex: 1; }
-.cl-head .count { font-size: 14px; font-weight: 400; color: var(--faint); margin-left: 6px; }
 .cl-table { border: 1px solid var(--line); border-radius: var(--radius); }
 .cl-row { display: grid; grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr; gap: 16px; padding: 10px 16px; font-size: 13px; align-items: center; text-align: left; }
 .cl-thead { font-size: 12px; color: var(--faint); background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -378,18 +394,17 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .cl-dbody > div { display: flex; flex-direction: column; gap: 8px; }
 #dArch { width: 100%; max-width: 300px; }
 @media (max-width: 1200px) { .cl-dbody { grid-template-columns: 1fr; } }
-.cl-dhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 16px; }
+.cl-dhead { display: flex; justify-content: flex-end; }
 .cl-detail .muted { color: var(--muted); font-size: 12px; }
 .cl-detail p { margin: 0; font-size: 13px; }
 .cl-detail .cl-label { padding: 8px 0 2px; border-top: 1px solid var(--line); margin-top: 4px; }
-.cl-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.cl-facts div { background: var(--panel-2); border-radius: var(--radius); padding: 6px 8px; font-size: 13px; font-weight: 700; }
-.cl-facts div small { display: block; font-size: 11px; font-weight: 400; color: var(--faint); }
+.cl-facts { font-size: 13px; font-weight: 700; }
 #dArch { width: 100%; height: auto; }
 #dArch circle { fill: var(--panel-2); stroke: var(--line-strong); }
 #dArch circle.extract { stroke: var(--red); stroke-width: 2; }
+#dArch circle.ipr-dot { fill: var(--faint); stroke: none; }
 #dArch text { fill: var(--text); font-size: 11px; text-anchor: middle; dominant-baseline: central; }
-#dArch text.legend { fill: var(--faint); font-size: 10px; }
+#dArch text.key { fill: var(--faint); font-size: 10px; }   /* not .legend: that is the 3D legend, hidden until a plan */
 #dOpen { margin-top: auto; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
@@ -409,13 +424,13 @@ body.start .case-head, body.start .plans, body.start .plan-notice, body.start .t
 body.start .view-head, body.start .legend, body.start .stage-bar,
 body.start .sel-chips, body.start .view-rail { display: none; }
 /* before a case is open, and during the input check, the sidebar has nothing to say: the 3D takes its column */
-body.start .side, body.checking .side { display: none; }
-body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0; }
+body.start .side, body.checking .side, body.start .side-splitter, body.checking .side-splitter { display: none; }
+body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0 0; }
 body.start .intro { flex: 1; }
 body.start .composer textarea, body.start .composer button { opacity: 0.5; pointer-events: none; }   /* the panel is a chat; input waits for a case */
 body.start .chips { display: none; }
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
-body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0; }
+body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 body.start .splitter { pointer-events: none; }
 
 /* ---------- plans (#111): cards on the agent panel top, one per plan of this case ---------- */
@@ -423,7 +438,6 @@ body.start .splitter { pointer-events: none; }
 .plans[hidden] { display: none; }
 .plans-head { display: flex; align-items: baseline; gap: 8px; }
 .plans-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
-.plans-head .count { font-size: 13px; color: var(--faint); }
 .plan-list { display: flex; flex-direction: column; gap: 8px; }
 /* many plans: the list scrolls; the conversation keeps its room */
 #planList { max-height: 32vh; overflow-y: auto; padding-right: 2px; }
@@ -440,6 +454,12 @@ body.start .splitter { pointer-events: none; }
 .pill.pass { background: var(--pass-surface); color: var(--pass-text); }
 .pill.ok { border-color: var(--green); background: var(--pass-surface); color: var(--pass-text); }
 .pill.warn { border-color: var(--amber); background: var(--amber-surface); color: var(--amber-text); }
+/* on a plan card the state is words, not a badge (#14): 규칙 통과 · 검토 전 / 위반 7건 · 검토 전 / 승인됨 */
+.plan-row .pill { border: 0; background: none; padding: 0; font-weight: 400; color: var(--muted); }
+.plan-row .pill.fail { color: var(--red-text); }
+.plan-row .pill.ok { color: var(--pass-text); }
+.plan-row .pill.warn { color: var(--amber-text); }
+.plan-review[hidden] { display: none; }
 .old-plans > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
 .old-plans > summary::before { content: "\25B8"; margin-right: 6px; }
 .old-plans[open] > summary::before { content: "\25BE"; }
@@ -471,8 +491,9 @@ body.start .splitter { pointer-events: none; }
 .pane .sub { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .pane .sub:empty { display: none; }
 .pane-sub { margin: 16px 20px 6px; font-size: 11px; font-weight: 700; color: var(--muted); }
-.facts-line { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--muted); }
-.facts-line b { color: var(--text); }
+.facts-line { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+.facts-line .l1 { font-size: 15px; font-weight: 700; color: var(--text); }
+.facts-line .l2:empty { display: none; }
 .facts-line:empty::before { content: "계획이 없어 단계가 없습니다."; }
 /* the stage table: rows are stages, columns teeth; a cell's colour is the kind of movement in that stage */
 .stage-grid { padding: 12px 12px 8px; display: grid; grid-auto-rows: 24px; gap: 1px; font-size: 10px; font-variant-numeric: tabular-nums; flex: none; }
@@ -482,6 +503,8 @@ body.start .splitter { pointer-events: none; }
 .stage-grid .row > * { cursor: pointer; }
 .stage-grid .k { display: grid; place-items: center; color: var(--faint); padding-right: 4px; justify-content: end; }
 .stage-grid .c { border-bottom: 1px solid #1f1f1f; }
+.stage-grid .c.nil { border-bottom: 0; }   /* a tooth that never moves: blank column */
+.stage-grid .hd.nil { color: var(--faint); font-weight: 400; }
 .stage-grid .row.cur > * { background: rgba(118, 185, 0, 0.14); }
 .stage-grid .row.cur .k { color: var(--green); font-weight: 700; }
 .stage-grid .row:hover > * { background: var(--hover); }
@@ -492,6 +515,7 @@ body.start .splitter { pointer-events: none; }
 .stage-grid .c.coll { box-shadow: inset 0 0 0 2px var(--red); }
 .stage-grid .c.warn { box-shadow: inset 0 0 0 2px var(--amber); }
 .grid-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 16px 16px; font-size: 11px; color: var(--muted); }
+.grid-legend [hidden] { display: none; }
 .grid-legend .sw { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 1px; vertical-align: -1px; }
 .grid-legend .move { background: #2f6b9a; } .grid-legend .vert { background: #8a5cc7; } .grid-legend .rot { background: #c48a1a; } .grid-legend .mixed { background: #d6d0c4; } .grid-legend .coll { box-shadow: inset 0 0 0 2px var(--red); }
 /* rules: four cards, then the violations grouped by tooth pair */
@@ -501,6 +525,9 @@ body.start .splitter { pointer-events: none; }
 .rule .why { display: block; font-size: 12px; color: var(--faint); }
 .rule .st { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; color: var(--muted); text-align: right; }
 .rule .pill { font-size: 12px; padding: 2px 7px; }
+.rule.passed { border-color: transparent; background: var(--panel-2); }   /* a passed rule is quiet: a grey check, no box */
+.rule .mark.ok { display: inline-flex; color: var(--muted); }
+.rule .mark.na { font-size: 12px; color: var(--faint); }
 .viol-groups { padding: 0 20px 20px; display: flex; flex-direction: column; gap: 10px; }
 .viol-groups .empty { margin: 0; font-size: 12px; color: var(--muted); }
 .vg { border: 1px solid var(--red); background: var(--red-surface); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -523,7 +550,7 @@ body.start .splitter { pointer-events: none; }
 .cond-state.changed { color: var(--amber-text); }
 .cond-state:empty { display: none; }
 .pane-foot { margin-top: auto; padding: 16px 20px 20px; border-top: 1px solid var(--line); flex: none; }
-.pane-foot .btn { width: 100%; height: 46px; font-size: 15px; }
+.pane-foot .btn { width: 100%; height: 40px; font-size: 14px; }
 
 /* ---------- error and blocked states (#112) ---------- */
 .upload-status { font-size: 12px; color: var(--muted); }
@@ -559,14 +586,12 @@ body.start .splitter { pointer-events: none; }
 /* ---------- start screen sample cards (③, 2026-09-28): thumbnail, title, plain finding, badges, status dot ---------- */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
 .sample-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 16px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; }
-.case-card::before { content: ""; position: absolute; top: 0; left: 0; width: 10px; height: 10px; background: var(--green); }  /* corner-square */
-.case-card:hover { border-color: var(--line-strong); }
-.case-card.on { border-color: var(--green); }
-.case-card .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
-.case-card .cid { font-weight: 700; font-size: 16px; }
-.case-card .rx { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: keep-all; }
-.case-card .st { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; padding: 0 0 14px; background: var(--panel-2); border: 1px solid var(--line); border-bottom: 2px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.case-card:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.case-card.on { border-bottom-color: var(--green); }   /* the pressed card: one green line under it */
+.case-card .thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--bg); border: 0; border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; margin: 0 0 10px; }
+.case-card .cid { font-weight: 700; font-size: 16px; padding: 0 14px; }
+.case-card .rx { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: keep-all; padding: 2px 14px 0; }
+.case-card .meta { font-size: 12px; color: var(--faint); padding: 6px 14px 0; }
 .case-card > span:empty { display: none; }
 .cards .empty, #clRows .empty { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 13px; }
-.case-card { transition: border-color 0.15s ease; }

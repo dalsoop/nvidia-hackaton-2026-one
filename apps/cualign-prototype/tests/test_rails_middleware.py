@@ -568,6 +568,35 @@ QUOTING_KOREAN = ('We need to parse the user\'s request: "처방은 비발치, I
                   'So 11-21 is across midline? universal numbering...')
 
 
+DELIBERATION_THEN_ANSWER = (
+    "We have the reviewer output. It says status: 'passed'? Actually the message says \"규칙 통과: 실패\". The rails field says "
+    "'passed'? Let's check: the reviewer returned a list with a dict containing status passed, attempts 1, a message with "
+    "Korean text, error None, rails passed. The message includes failures (collisions), so we report the review as failed and "
+    "keep the memo's figures.\n\nWe need to output final answer in Korean, following format: lead with one sentence, e.g. "
+    "\"**확장 전략으로 12단계(약 2.8개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\"\n\n- 조건: copy conditions_ko exactly: "
+    "\"발치 치아 없음 · 고정 치아 없음\"\n\nNow bullets:\n\n"
+    "**확장 전략으로 18단계(약 4.1개월) 계획을 만들었습니다.** 규칙 위반: 충돌 7건\n\n"
+    "- 조건: 발치 치아 없음 · 고정 치아 없음 · IPR 제외 치아 17, 16, 26, 27번 · IPR 한도 면당 0.25mm · 단계 상한 없음 · 이동 순서 동시\n"
+    "- 검토: 실패 (충돌 7건, 단계당 이동량 0.238mm, IPR 미적용)\n- 의사 확인 필요: 충돌을 줄이려면 단계 수를 늘리거나 이동 순서를 조정해야 합니다.\n\n"
+    "이 계획은 초안입니다. 최종 판단은 의사가 합니다.")
+
+
+def test_deliberation_before_the_korean_answer_is_dropped_and_the_plan_is_kept(store, tmp_path, monkeypatch):
+    """E2E 2026-09-28: the model wrote 4000 letters of English deliberation and then the real answer in one message.
+    The dentist gets the answer only, and the plan the turn selected still arrives (no plan_error)."""
+    from cualign.server.rails_middleware import _strip_deliberation
+    kept = _strip_deliberation(DELIBERATION_THEN_ANSWER)
+    assert kept.startswith("**확장 전략으로 18단계") and kept.endswith("최종 판단은 의사가 합니다.") and "We have" not in kept
+    assert _strip_deliberation(kept) == kept                                    # a Korean answer is left alone
+    assert _strip_deliberation(ENGLISH_ONLY) == ENGLISH_ONLY                    # nothing to keep: the guard's case
+    with PlanningLLM(DELIBERATION_THEN_ANSWER) as llm, serve(tmp_path, monkeypatch, llm) as client:
+        stream = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+        plain = ask(client, "/generate")
+    assert "We have the reviewer output" not in stream and "**확장 전략으로 18단계" in stream
+    assert sse_event(stream, "plan_selected") and "plan_error" not in stream
+    assert "We have the reviewer output" not in plain and "**확장 전략으로 18단계" in plain
+
+
 def test_deliberation_that_quotes_the_korean_request_is_still_no_answer():
     """2026-09-28 live (sample 000131 after the FDI-only card text): the deliberation quoted the Korean request, so it
     held Hangul and passed the old no-Hangul guard. Hangul share and the opener catch it; real answers pass."""
