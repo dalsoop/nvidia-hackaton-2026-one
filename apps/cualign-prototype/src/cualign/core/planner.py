@@ -17,6 +17,7 @@ from .arch import Arch, symmetric_arch
 from .case import MD_WINDOW_DEG, Case
 from .constraints import Constraints
 from .fdi import label, to_fdi
+from .ipr_cut import cut_ipr, surfaces_from_info
 from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER,
                      PREMOLARS, SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
 
@@ -345,6 +346,22 @@ def _ipr_gain(ids, ipr_exclude, ipr_limit_mm=IPR_PER_SURFACE) -> float:
     return surf * ipr_limit_mm * 0.5
 
 
+def cut_case(case: Case, info: dict | None) -> Case:
+    """The case with a target's IPR cut from its crowns (ipr_cut.py; `info` from propose_target or a plan's info),
+    or `case` itself when there is nothing to cut. The target, the stages, the collision check and the exports use
+    this dentition (#62); the scan stays as it is. Cached on the case per surface list."""
+    if not info or getattr(case, "ipr_cut", None):
+        return case
+    surfaces, exclude = surfaces_from_info(case, info)
+    if not surfaces:
+        return case
+    key = (tuple(tuple(s) for s in surfaces), tuple(sorted(exclude)))
+    cache = case.__dict__.setdefault("_ipr_cut_cache", {})
+    if key not in cache:
+        cache[key] = cut_ipr(case, surfaces, exclude)
+    return cache[key]
+
+
 def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[int] = frozenset(),
                    lock: set[int] | frozenset[int] = frozenset(), constraints: Constraints | None = None,
                    extraction: tuple[int, ...] = ()):
@@ -384,11 +401,12 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
         expandable = strategy in ("expansion", "expansion_ipr") and info["expansion_mm_per_side"] < MAX_EXPANSION_PER_SIDE
         if not fits and not expandable:   # the span is short and cannot be widened: the overlap is what is missing
             break
-        # measured as the validator measures (the meshes are not cut by IPR, #61), so a plan is not built on overlap
+        # measured as the validator measures, on the crowns with the IPR cut (#62), so a plan is not built on overlap
         # the validator will reject
+        cut = cut_case(case, info)
         grow = [(a, b) for a, b in pairs if not (a in lock and b in lock)
-                and case._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b))
-                - case.pair_baseline(a, b) > TARGET_OVERLAP_MM3]
+                and cut._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b))
+                - cut.pair_baseline(a, b) > TARGET_OVERLAP_MM3]
         if not grow:
             break
         for pr in grow:
@@ -521,6 +539,10 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             "open_space_mm": round(open_mm, 2),
             "ipr_mm_per_surface": ipr_limit_mm if strategy in ("ipr", "expansion_ipr") else 0.0,
             "ipr_applied_teeth": sorted(red) if ipr_limit_mm > 0 else [],
+            # contact surfaces the IPR is cut from (ipr_cut.py): [a, b, mm at that contact], half from each tooth
+            # that gets IPR - the list a per-contact prescription (#57) will supply
+            "ipr_surfaces": [[a, b, round(ipr_limit_mm / 2 * ((a in red) + (b in red)), 4)]
+                             for a, b in case.neighbors() if (a in red or b in red)] if red and ipr_limit_mm > 0 else [],
             "ipr_exclude": sorted(ipr_exclude), "expansion_mm_per_side": round(float(offset), 2),
             "rotation_deg": {i: y for i, y in sorted(target.yaw.items())},
             "vertical_mm": {i: round(v, 2) for i, v in sorted(lift.items())},
@@ -640,6 +662,7 @@ def _touching_pairs(case: Case, disp: dict) -> list[tuple[int, int]]:
 def validate(case: Case, stages: list[dict], stage_cap: int | None = None,
              space_deficit_mm: float | None = None, constraints: Constraints | None = None,
              target_info: dict | None = None) -> list[dict]:
+    case = cut_case(case, target_info)      # collisions are checked on the crowns with the IPR cut (#62)
     viol: list[dict] = []
     if constraints:
         constraints.check_case(case.ids)

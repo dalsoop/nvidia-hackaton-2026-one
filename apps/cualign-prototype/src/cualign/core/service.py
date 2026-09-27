@@ -23,8 +23,11 @@ class PlanningService:
         stages, info = planner.plan_stages(case, t["target"], order=c.order)
         violations = planner.validate(case, stages, space_deficit_mm=t["info"]["space_deficit_mm"],
                                       constraints=c, target_info=t["info"])
+        # the plan record carries what the IPR cut needs (planner.cut_case) so exports and the mesh view can rebuild
+        # the cut dentition from the plan alone
+        ipr = {k: t["info"].get(k, v) for k, v in (("ipr_mm_per_surface", 0.0), ("ipr_applied_teeth", []), ("ipr_surfaces", []))}
         return self.store.put_plan(t["case_id"], target_id, stages,
-            {**info, "space_deficit_mm": t["info"]["space_deficit_mm"]}, violations,
+            {**info, "space_deficit_mm": t["info"]["space_deficit_mm"], **ipr}, violations,
             c.stage_cap, t["info"]["strategy"], constraints=c, parent_plan_id=parent_plan_id)
 
     def validate(self, plan_id):
