@@ -67,7 +67,10 @@ llms:
     _type: nim
     model_name: nvidia/nemotron-3-super-120b-a12b
     temperature: 0.0
-    max_tokens: 2048
+    max_tokens: 4096  # 2026-09-28 E2E: the planner sometimes drafts its answer inside ~5000 chars of reasoning that NAT
+                      # takes as the direct answer; 2048 cut the real answer at the end. rails_middleware drops the
+                      # reasoning prefix. Thinking stays on: with enable_thinking false the planner skipped the strategy
+                      # loop, the reviewer and select_plan, and once answered with a plan it never computed.
     num_retries: 5  # NAT default; retries raised errors only. A 503 inside a stream is asked again in nim_stream_patch.py.
   nim_review:
     _type: nim

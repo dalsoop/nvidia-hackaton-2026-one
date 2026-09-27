@@ -206,9 +206,48 @@ HANGUL = re.compile(r"[\uac00-\ud7a3]")
 LATIN = re.compile(r"[A-Za-z]")
 DELIBERATION_OPENER = re.compile(r"^\W*(?:We need|We should|We must|Let's|Let me|The user|The dentist|I should|I need|I will|"
                                  r"First,|Okay|Ok,|Thought:)", re.I)
+DELIBERATION_MIN_LATIN = 200   # a dropped prefix has at least this many Latin letters (the E2E case had 4000)
 HANGUL_SHARE = 0.3     # a Korean answer with IPR/mm/FDI tokens keeps well above this; deliberation quoting one Korean
                        # sentence sits far below (the 2026-09-28 leak: about 6 percent)
 NO_ANSWER = "모델이 계획 대신 자기 추론문만 돌려보내 답을 만들지 못했습니다. 같은 요청을 다시 보내 주세요."
+
+
+def _korean_line(line: str) -> bool:
+    hangul, latin = len(HANGUL.findall(line)), len(LATIN.findall(line))
+    return bool(hangul) and hangul >= HANGUL_SHARE * (hangul + latin) and not DELIBERATION_OPENER.match(line)
+
+
+def _strip_deliberation(answer: str) -> str:
+    """The Korean answer at the end of `answer` when the model wrote its deliberation first (E2E 2026-09-28: 4000
+    Latin letters of "We have the reviewer output..." and then the real answer, in one message that NAT accepted as
+    a direct answer); `answer` unchanged when it is Korean throughout or holds no Korean tail. The answer opens with
+    one bold sentence (AGENTS.md), so the tail starts at the last line that opens with `**`; without one, at the
+    first line after which every non-blank line is Korean (deliberation lines open in English or quote one Korean
+    phrase inside an English sentence). The dropped prefix must hold a lot of English: a short "plan_id: p…" first
+    line is not deliberation."""
+    lines = answer.splitlines()
+    first = next((ln for ln in lines if ln.strip()), "")
+    if not first or _korean_line(first):      # opens in Korean: no deliberation prefix
+        return answer
+    start = None
+    bold = [i for i, ln in enumerate(lines) if ln.startswith("**")]
+    if bold:
+        start = bold[-1]
+    else:
+        for i in range(len(lines) - 1, -1, -1):
+            if not lines[i].strip():
+                continue
+            if _korean_line(lines[i]):
+                start = i
+            else:
+                break
+    if start is None or start == 0:
+        return answer
+    head, tail = "\n".join(lines[:start]), "\n".join(lines[start:]).strip()
+    if len(HANGUL.findall(tail)) < 20 or len(LATIN.findall(head)) < DELIBERATION_MIN_LATIN:
+        return answer
+    logger.warning("cuAlign: dropped %d chars of deliberation before the Korean answer (head %r)", len(head), first[:80])
+    return tail
 
 
 def _no_korean(answer: str) -> str | None:
@@ -320,6 +359,9 @@ class RailsMiddleware(FunctionMiddleware):
             except Exception as e:
                 raise self._failed(e) from None
             answer = _text(out)
+            stripped = _strip_deliberation(answer)
+            if stripped != answer:
+                out, answer = response_like(value, stripped), stripped
             fixed = _checked_rule_status(answer)
             if fixed is not None:
                 out, answer = response_like(value, fixed), fixed
@@ -336,6 +378,9 @@ class RailsMiddleware(FunctionMiddleware):
             except Exception as e:
                 raise self._failed(e) from None
             answer = "".join(_text(c) for c in held)
+            stripped = _strip_deliberation(answer)
+            if stripped != answer:
+                held, answer = [ChatResponseChunk.create_streaming_chunk(stripped)], stripped
             fixed = _checked_rule_status(answer)
             if fixed is not None:
                 held, answer = [ChatResponseChunk.create_streaming_chunk(fixed)], fixed
