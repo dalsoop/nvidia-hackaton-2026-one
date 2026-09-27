@@ -1,0 +1,13 @@
+:root {
+  --color-move-complex: #8a93a6;
+  --color-move-buccolingual: #3ec5f0;
+  --color-move-extrusion: #b58bff;
+  --color-move-rotation: #f06fb0;
+  --color-move-parallel: #76b900;
+
+  --color-staging-grid: #1f1f1f;
+  --color-staging-band: rgba(118, 185, 0, 0.14);
+  --color-staging-dot-bg: #6f7686;
+  --color-staging-dot-border: #111111;
+  --color-staging-ring-bg: #111111;
+}

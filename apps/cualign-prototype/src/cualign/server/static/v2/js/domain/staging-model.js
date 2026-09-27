@@ -7,22 +7,6 @@ export const STANDARD_FDI_TEETH = Object.freeze([
   17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27
 ]);
 
-export const MOVE_TYPE_COLORS = Object.freeze({
-  complex: 'var(--color-move-complex, #8a93a6)',
-  buccolingual: 'var(--color-move-buccolingual, #3ec5f0)',
-  extrusion: 'var(--color-move-extrusion, #b58bff)',
-  rotation: 'var(--color-move-rotation, #f06fb0)',
-  parallel: 'var(--color-move-parallel, #76b900)'
-});
-
-export const MOVE_TYPE_HEX = Object.freeze({
-  complex: '#8a93a6',
-  buccolingual: '#3ec5f0',
-  extrusion: '#b58bff',
-  rotation: '#f06fb0',
-  parallel: '#76b900'
-});
-
 /**
  * Determine tooth movement classification.
  *
@@ -299,7 +283,6 @@ export function buildStagingModel(planJson = null) {
         endStage: sEnd,
         moveType: t.moveType,
         moveTypeKey: t.moveTypeKey,
-        color: MOVE_TYPE_HEX[t.moveTypeKey] || '#8a93a6',
         x: barX,
         y: barY,
         width: 4,

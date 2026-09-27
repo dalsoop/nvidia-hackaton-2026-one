@@ -3,7 +3,7 @@
 import { clear, h } from '../../../ui/dom.js';
 import { fdiToUniversal, universalToFdi } from '../../../domain/teeth.js';
 import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
-import { buildStagingModel, STANDARD_FDI_TEETH, MOVE_TYPE_HEX } from '../../../domain/staging-model.js';
+import { buildStagingModel, STANDARD_FDI_TEETH } from '../../../domain/staging-model.js';
 import { planStageIndex, selectViewingPlan, planId } from './plan-state.js';
 
 export const STRATEGY_KO = SIDEBAR_VOCAB.staging.strategies;
@@ -265,8 +265,8 @@ export function renderStaging(container, ctx) {
   // F. Vertical Movement Bars
   for (const bar of model.bars) {
     const barEl = h('div', {
-      class: 'staging-bar',
-      style: `left: ${bar.x}px; top: ${bar.y}px; width: ${bar.width}px; height: ${bar.height}px; background: ${bar.color}`,
+      class: `staging-bar move-${bar.moveTypeKey || 'complex'}`,
+      style: `left: ${bar.x}px; top: ${bar.y}px; width: ${bar.width}px; height: ${bar.height}px`,
       title: `${bar.fdi}번 치아 (${bar.moveType}): ${bar.startStage}–${bar.endStage}단계`
     });
     chartCanvas.appendChild(barEl);
@@ -306,19 +306,19 @@ export function renderStaging(container, ctx) {
   // 3. Legend at Bottom
   const legend = h('div', { class: 'staging-legend' }, [
     h('span', { class: 'staging-legend-item' }, [
-      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.complex}` }),
+      h('span', { class: 'staging-legend-swatch move-complex' }),
       SIDEBAR_VOCAB.staging.legendComplex
     ]),
     h('span', { class: 'staging-legend-item' }, [
-      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.buccolingual}` }),
+      h('span', { class: 'staging-legend-swatch move-buccolingual' }),
       SIDEBAR_VOCAB.staging.legendBuccolingual
     ]),
     h('span', { class: 'staging-legend-item' }, [
-      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.extrusion}` }),
+      h('span', { class: 'staging-legend-swatch move-extrusion' }),
       SIDEBAR_VOCAB.staging.legendExtrusion
     ]),
     h('span', { class: 'staging-legend-item' }, [
-      h('span', { class: 'staging-legend-swatch', style: `background: ${MOVE_TYPE_HEX.rotation}` }),
+      h('span', { class: 'staging-legend-swatch move-rotation' }),
       SIDEBAR_VOCAB.staging.legendRot
     ]),
     h('span', { class: 'staging-legend-item' }, [

@@ -1,3 +1,5 @@
+@import url("tokens-staging.css");
+
 /* cuAlign UI v2: Workspace Right Sidebar Styles (J8 contract) */
 
 .sidebar-root {
@@ -210,7 +212,7 @@
   left: 30px;
   width: 342px;
   height: 1px;
-  background: #1f1f1f;
+  background: var(--color-staging-grid);
   pointer-events: none;
 }
 
@@ -218,7 +220,7 @@
   position: absolute;
   left: 30px;
   width: 342px;
-  background: rgba(118, 185, 0, 0.14);
+  background: var(--color-staging-band);
   pointer-events: none;
   transition: top 0.12s ease, height 0.12s ease;
 }
@@ -288,14 +290,34 @@
   filter: brightness(1.2);
 }
 
+.move-complex {
+  background: var(--color-move-complex);
+}
+
+.move-buccolingual {
+  background: var(--color-move-buccolingual);
+}
+
+.move-extrusion {
+  background: var(--color-move-extrusion);
+}
+
+.move-rotation {
+  background: var(--color-move-rotation);
+}
+
+.move-parallel {
+  background: var(--color-move-parallel);
+}
+
 .staging-dot {
   position: absolute;
   width: 8px;
   height: 8px;
   box-sizing: border-box;
   border-radius: var(--radius-full);
-  background: #6f7686;
-  border: 1.5px solid #111111;
+  background: var(--color-staging-dot-bg);
+  border: 1.5px solid var(--color-staging-dot-border);
   z-index: 3;
   pointer-events: none;
 }
@@ -314,7 +336,7 @@
   height: 10px;
   box-sizing: border-box;
   border-radius: var(--radius-full);
-  background: #111111;
+  background: var(--color-staging-ring-bg);
   border: 2px solid var(--color-danger);
   z-index: 4;
   pointer-events: none;

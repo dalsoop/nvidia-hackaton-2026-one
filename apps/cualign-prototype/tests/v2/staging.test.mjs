@@ -4,8 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildStagingModel,
   classifyToothMove,
-  STANDARD_FDI_TEETH,
-  MOVE_TYPE_HEX
+  STANDARD_FDI_TEETH
 } from '../../src/cualign/server/static/v2/js/domain/staging-model.js';
 
 // ============================================================================
@@ -190,7 +189,7 @@ test('buildStagingModel: plan 000001 tooth movement types and bar ranges', () =>
   assert.equal(model.bars.length, 14);
   const bar11 = model.bars.find(b => b.fdi === 11);
   assert.ok(bar11);
-  assert.equal(bar11.color, MOVE_TYPE_HEX.rotation);
+  assert.equal(bar11.moveTypeKey, 'rotation');
   assert.equal(bar11.startStage, 1);
   assert.equal(bar11.endStage, 18);
 });
