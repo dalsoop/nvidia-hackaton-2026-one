@@ -39,7 +39,8 @@ Python 3.12와 uv를 사용합니다. 아래 명령은 **앱 폴더 apps/cualign
 
 ```sh
 uv sync --frozen --extra dev
-uv run pytest -q -p no:warnings
+uv run pytest -q -p no:warnings          # 병렬(-n auto). 1분 넘는 slow 시험은 빠짐: 약 1분
+uv run pytest -q -p no:warnings --slow   # slow 시험까지 전부 (CI 와 같음): 약 3분
 uv run nat validate --config_file configs/workflow.yml
 uv run cualign plan "발치 없이 12개월 안에, 앞니 먼저" --case moderate
 ```
