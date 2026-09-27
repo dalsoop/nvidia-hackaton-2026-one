@@ -107,6 +107,18 @@ body.resizing { cursor: col-resize; user-select: none; }
 .chip:hover { border-color: var(--green); }
 
 .composer { display: flex; gap: 8px; padding: 0 16px 16px; }
+.composer #micBtn.listening { border-color: var(--green); color: var(--green); }
+.sel-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 8px; font-size: 12px; color: var(--muted); }
+.sel-chips[hidden] { display: none; }
+.sel-chips button { font: inherit; font-size: 12px; color: #000000; background: var(--green); border: 0; border-radius: var(--radius); padding: 2px 6px; cursor: pointer; }
+.sel-chips button.clear { color: var(--muted); background: transparent; border: 1px solid var(--line-strong); }
+.chat-tools { display: flex; justify-content: flex-end; padding: 8px 16px 0; }
+/* activity: only the step in progress (or the last one) shows unless the dentist opens the record */
+.trace .step:not(:last-child):not(.running) { display: none; }
+body.show-trace .trace .step:not(:last-child):not(.running) { display: block; }
+.decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 12px; }
+.decision span { flex: 1; min-width: 180px; }
+.decision.done { border-left-color: var(--line-strong); color: var(--muted); }
 .composer textarea { flex: 1; }
 
 .trace { align-self: stretch; display: flex; flex-direction: column; gap: 2px; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -145,6 +157,18 @@ body.resizing { cursor: col-resize; user-select: none; }
 .view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
 .view-head .arch { color: var(--muted); font-size: 12px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: var(--radius); }
 .view-head .view-btns { display: flex; gap: 4px; pointer-events: auto; }
+/* floating toolbar over the 3D (#90): views | tools | decision, one place like a CAD viewport */
+.view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; }
+.view-tools, .view-actions { display: flex; gap: 4px; }
+.view-actions { padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
+.canvas-wrap canvas.view-cube { position: absolute; inset: auto 12px 12px auto; width: 96px; height: 96px; cursor: pointer; }
+.coll-label { font: 700 11px/1 var(--font); color: #ffffff; background: var(--red); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
+.legend .before { background: transparent; border: 1px solid #ffffff; }
+.legend .picked { background: var(--green); }
+/* collapse the agent panel to see the 3D large */
+body.focus3d .layout { grid-template-columns: 1fr; }
+body.focus3d .chat, body.focus3d .splitter { display: none; }
 .tip { position: absolute; z-index: 3; pointer-events: none; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; white-space: nowrap; }
 
 /* ---------- case gate (start point) ---------- */
@@ -176,7 +200,13 @@ body.resizing { cursor: col-resize; user-select: none; }
 .case-pill .k { color: var(--muted); font-weight: 400; margin-right: 4px; }
 
 .stage-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
-.stage-bar input[type=range] { flex: 1; accent-color: var(--green); }
+.stage-bar input[type=range] { width: 100%; accent-color: var(--green); }
+/* marks over the stage slider: stages with a collision (red) or a per-stage limit breach (amber) (#90) */
+.slider-wrap { flex: 1; position: relative; padding-top: 10px; }
+.stage-marks { position: absolute; left: 8px; right: 8px; top: 0; height: 8px; }
+.stage-mark { position: absolute; top: 0; width: 6px; height: 8px; margin-left: -3px; border: 0; padding: 0; cursor: pointer; border-radius: 1px; }
+.stage-mark.collision { background: var(--red); }
+.stage-mark.move_limit { background: var(--amber); }
 .stage-label { min-width: 190px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- result ---------- */
@@ -257,6 +287,6 @@ body.start .intro { display: block; }
 body.start .start-pane { display: flex; }
 body.start .constraints, body.start .transcript, body.start .retry-bar, body.start .chips,
 body.start .view-head, body.start .legend, body.start .stage-bar, body.start .result,
-body.start #fallbackBtn, body.start #caseBtn { display: none; }
+body.start #fallbackBtn, body.start #caseBtn, body.start .chat-tools, body.start .sel-chips, body.start .view-cube { display: none; }
 body.start .intro { flex: 1; }
 body.start .composer { opacity: 0.4; pointer-events: none; }
