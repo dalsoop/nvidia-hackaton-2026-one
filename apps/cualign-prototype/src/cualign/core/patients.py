@@ -25,7 +25,7 @@ import numpy as np
 import trimesh
 
 from .intake import mirror_numbers, orient_scan
-from .rail_patterns import PII
+from cualign.server.rail_patterns import PII   # the regex rail list lives with the harness (#79)
 
 ALIAS_MAX = 40
 MEMO_MAX = 200

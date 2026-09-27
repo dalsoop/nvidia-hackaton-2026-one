@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from cualign.core.rail_patterns import PII, PRESCRIPTIVE
+from cualign.server.rail_patterns import PII, PRESCRIPTIVE
 from cualign.server.rails_middleware import REFUSAL, matches
 
 ROOT = Path(__file__).resolve().parents[1]
