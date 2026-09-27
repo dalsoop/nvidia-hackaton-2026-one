@@ -2,13 +2,55 @@
 
 import { PlanStream } from '../../../plan-stream.js';
 import { chatStream, listPlans, rulePlan } from '../api/endpoints.js';
+import { T_AGENT } from '../domain/vocab/agent.js';
 import { createTurnState, applyStreamEvent, finalizeTurn } from './events.js';
-import { STRINGS } from './strings.js';
+
+function plansFrom(state) {
+  const raw = state.plans;
+  return Array.isArray(raw) ? raw : (raw?.plans || []);
+}
+
+function viewingPlanFrom(state) {
+  if ((state.viewingPlan?.plan_id || state.viewingPlan?.id) === state.viewingPlanId) {
+    return state.viewingPlan;
+  }
+  return plansFrom(state).find((plan) => (plan.plan_id || plan.id) === state.viewingPlanId);
+}
+
+export function resolvePlanConstraints(state, supplied) {
+  if (supplied && typeof supplied === 'object' && !Array.isArray(supplied)) {
+    return supplied;
+  }
+  const current = viewingPlanFrom(state)?.constraints ?? state.constraints;
+  return current && typeof current === 'object' && !Array.isArray(current) ? current : undefined;
+}
+
+export function buildChatRequest({ state, text, requestId, constraints, isResend = false }) {
+  const messages = (state.chat || [])
+    .filter((item) => !item.caseId || item.caseId === state.caseId)
+    .filter((item) => item.role === 'user' || item.role === 'assistant')
+    .map((item) => ({ role: item.role, content: item.content }));
+
+  if (isResend && messages.at(-1)?.role === 'user') {
+    messages.pop();
+  }
+  messages.push({ role: 'user', content: text });
+
+  const cualign = {
+    request_id: requestId,
+    case_id: state.caseId,
+    base_plan_id: state.viewingPlanId || null
+  };
+  if (constraints !== undefined) {
+    cualign.constraints = constraints;
+  }
+  return { messages, cualign };
+}
 
 export async function executeChatStream({
   ctx,
   text,
-  constraints = null,
+  constraints,
   isResend = false,
   onTurnChange = null
 }) {
@@ -20,30 +62,13 @@ export async function executeChatStream({
     throw new Error('No active case selected');
   }
 
-  const prevPlanId = state.viewingPlanId || null;
   const requestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
     : ('req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7));
 
-  const rawPlans = state.plans;
-  const currentPlans = Array.isArray(rawPlans) ? rawPlans : (rawPlans?.plans || []);
+  const currentPlans = plansFrom(state);
   const nextPlanNumber = currentPlans.length + 1;
-
-  // Build transcript for model request
-  const currentChat = state.chat || [];
-  const modelMessages = [];
-  for (const item of currentChat) {
-    if (item.role === 'user' || item.role === 'assistant') {
-      modelMessages.push({ role: item.role, content: item.content });
-    }
-  }
-
-  if (isResend && modelMessages.length > 0 && modelMessages[modelMessages.length - 1].role === 'user') {
-    modelMessages.pop();
-  }
-  modelMessages.push({ role: 'user', content: text });
-
-  const activeConstraints = constraints !== null ? constraints : (state.constraints || null);
+  const activeConstraints = resolvePlanConstraints(state, constraints);
 
   const turnState = createTurnState({
     requestId,
@@ -57,15 +82,7 @@ export async function executeChatStream({
     onTurnChange(turnState);
   }
 
-  const body = {
-    messages: modelMessages,
-    cualign: {
-      request_id: requestId,
-      case_id: caseId,
-      base_plan_id: prevPlanId,
-      constraints: activeConstraints
-    }
-  };
+  const body = buildChatRequest({ state, text, requestId, constraints: activeConstraints, isResend });
 
   try {
     const response = await (ctx.api?.chatStream ? ctx.api.chatStream(body) : chatStream(body));
@@ -111,8 +128,8 @@ export async function executeChatStream({
     turnState.status = 'error';
     const isOverload = turnState.hasOverload;
     turnState.error = {
-      title: STRINGS.requestFailed,
-      message: isOverload ? STRINGS.overloadNotice : (err.message || STRINGS.requestFailed),
+      title: T_AGENT.requestFailed,
+      message: err.message || (isOverload ? T_AGENT.overloadNotice : T_AGENT.requestFailed),
       isOverload
     };
     if (onTurnChange) {
@@ -124,7 +141,7 @@ export async function executeChatStream({
 
 export async function executeRulePlan({
   ctx,
-  constraints = null
+  constraints
 }) {
   const store = ctx.store;
   const state = store.get();
@@ -135,13 +152,13 @@ export async function executeRulePlan({
   }
 
   const viewingPlanId = state.viewingPlanId || null;
-  const activeConstraints = constraints !== null ? constraints : (state.constraints || {});
+  const activeConstraints = resolvePlanConstraints(state, constraints) || {};
 
   const ruleFn = ctx.api?.rulePlan || rulePlan;
   const res = await ruleFn({
     case_id: caseId,
-    parent_plan_id: viewingPlanId,
-    ...activeConstraints
+    ...activeConstraints,
+    parent_plan_id: viewingPlanId
   });
 
   const selected = res.chosen || res.best_failed;
@@ -153,6 +170,9 @@ export async function executeRulePlan({
       plans: freshPlans,
       viewingPlanId: selected.plan_id
     });
+  } else {
+    const unsupported = Array.isArray(res.unsupported) ? res.unsupported.join('\n') : '';
+    throw new Error(unsupported || T_AGENT.noPlanCreated);
   }
 
   return res;

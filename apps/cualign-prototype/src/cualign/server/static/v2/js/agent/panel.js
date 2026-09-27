@@ -1,12 +1,24 @@
 // Agent chat panel mounting and interaction (J7 contract)
 
 import { clear, h } from '../ui/dom.js';
-import { STRINGS } from './strings.js';
+import { T_AGENT } from '../domain/vocab/agent.js';
 import { turnToChatItems } from './events.js';
 import { executeChatStream, executeRulePlan } from './stream.js';
+import { createRuleIcon, renderChatTranscript } from './view.js';
+
+const CHAT_CASES = new WeakMap();
 
 export function mountAgent(el, ctx) {
   clear(el);
+
+  const initialCaseId = ctx.store?.get().caseId;
+  const priorCaseId = ctx.store ? CHAT_CASES.get(ctx.store) : null;
+  if (ctx.store && priorCaseId && priorCaseId !== initialCaseId) {
+    ctx.store.set({ chat: [] });
+  }
+  if (ctx.store) {
+    CHAT_CASES.set(ctx.store, initialCaseId);
+  }
 
   let isBusy = false;
   let activeTurn = null;
@@ -14,7 +26,7 @@ export function mountAgent(el, ctx) {
 
   const panel = h('div', { class: 'agent-panel' });
   const header = h('div', { class: 'agent-header' },
-    h('h2', { class: 'agent-title' }, STRINGS.agentTitle)
+    h('h2', { class: 'agent-title' }, T_AGENT.title)
   );
 
   const transcript = h('div', {
@@ -26,38 +38,27 @@ export function mountAgent(el, ctx) {
   const textarea = h('textarea', {
     class: 'agent-textarea',
     rows: 3,
-    placeholder: STRINGS.messagePlaceholder
+    placeholder: T_AGENT.messagePlaceholder
   });
 
   const sendBtn = h('button', {
     type: 'button',
     class: 'btn-send',
     disabled: true
-  }, STRINGS.send);
+  }, T_AGENT.send);
 
-  const ruleSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  ruleSvg.setAttribute('width', '13');
-  ruleSvg.setAttribute('height', '13');
-  ruleSvg.setAttribute('viewBox', '0 0 24 24');
-  ruleSvg.setAttribute('fill', 'none');
-  ruleSvg.setAttribute('stroke', 'currentColor');
-  ruleSvg.setAttribute('stroke-width', '2');
-  ruleSvg.setAttribute('stroke-linecap', 'round');
-  ruleSvg.setAttribute('stroke-linejoin', 'round');
-  const rulePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  rulePath.setAttribute('d', 'M13 3L5 13.5h6l-1 7.5 8-10.5h-6z');
-  ruleSvg.appendChild(rulePath);
+  const ruleSvg = createRuleIcon();
 
   const ruleCalcBtn = h('button', {
     type: 'button',
     class: 'btn-rule-calc'
-  }, ruleSvg, STRINGS.ruleCalc);
+  }, ruleSvg, T_AGENT.ruleCalc);
 
   const actions = h('div', { class: 'agent-actions' }, sendBtn, ruleCalcBtn);
 
   const inputContainer = h('div', { class: 'agent-input-container' },
     h('label', { class: 'agent-input-label' },
-      h('span', { class: 'sr-only' }, STRINGS.messageLabel),
+      h('span', { class: 'sr-only' }, T_AGENT.messageLabel),
       textarea
     ),
     actions
@@ -75,95 +76,23 @@ export function mountAgent(el, ctx) {
   }
 
   function renderTranscript() {
-    clear(transcript);
-
     const storeState = ctx.store ? ctx.store.get() : {};
-    const chatHistory = storeState.chat || [];
-
-    // All committed items plus current in-progress active turn items
-    const allItems = [...chatHistory];
+    const allItems = (storeState.chat || [])
+      .filter((item) => !item.caseId || item.caseId === storeState.caseId);
     if (activeTurn) {
-      const activeItems = turnToChatItems(activeTurn);
-      allItems.push(...activeItems);
+      allItems.push(...turnToChatItems(activeTurn));
     }
-
-    for (const item of allItems) {
-      if (item.role === 'user') {
-        const wrap = h('div', { class: 'agent-msg-user-wrap' },
-          h('div', { class: 'agent-bubble-user' }, item.content)
-        );
-        transcript.appendChild(wrap);
-      } else if (item.role === 'trace') {
-        const traceEl = h('div', { class: 'agent-trace' });
-        for (const step of item.steps) {
-          const dotClass = 'agent-trace-dot ' + (step.state || 'running');
-          const stateLabel = step.state === 'done'
-            ? STRINGS.done
-            : (step.state === 'failed' ? STRINGS.failed : STRINGS.running);
-
-          const stepEl = h('div', { class: 'agent-trace-step' },
-            h('span', { class: dotClass }),
-            h('span', { class: 'agent-trace-name' }, step.name),
-            h('span', { class: 'agent-trace-state' }, stateLabel)
-          );
-          traceEl.appendChild(stepEl);
-        }
-        transcript.appendChild(traceEl);
-      } else if (item.role === 'busy') {
-        const busyEl = h('div', { class: 'agent-busy-card', 'aria-busy': 'true' },
-          h('span', { class: 'agent-busy-title' }, item.title),
-          h('div', { class: 'agent-busy-bars' },
-            h('span', { class: 'agent-busy-bar-1' }),
-            h('span', { class: 'agent-busy-bar-2' })
-          )
-        );
-        transcript.appendChild(busyEl);
-      } else if (item.role === 'assistant') {
-        if (item.content) {
-          const bubble = h('div', { class: 'agent-bubble-assistant' }, item.content);
-          transcript.appendChild(bubble);
-        }
-      } else if (item.role === 'error') {
-        let bubble;
-        if (item.isOverload) {
-          bubble = h('div', { class: 'agent-bubble-error' }, item.message || STRINGS.overloadNotice);
-        } else {
-          const showTitle = item.title && item.message && item.title !== item.message;
-          bubble = h('div', { class: 'agent-bubble-error' },
-            showTitle ? h('b', null, item.title) : null,
-            item.message || item.title || STRINGS.requestFailed
-          );
-        }
-
-        const elements = [bubble];
-        if (item.canResend !== false) {
-          const resendBtn = h('button', {
-            type: 'button',
-            class: 'btn-resend',
-            disabled: isBusy,
-            onClick: () => {
-              const req = item.originalRequest || {};
-              handleSend(req.text, { isResend: true, constraints: req.constraints });
-            }
-          }, STRINGS.resend);
-          elements.push(resendBtn);
-        }
-
-        const wrap = h('div', { class: 'agent-error-wrap' }, ...elements);
-        transcript.appendChild(wrap);
-      } else if (item.role === 'system') {
-        const noticeEl = h('div', { class: 'agent-system-notice' },
-          ruleSvg.cloneNode(true),
-          item.content
-        );
-        transcript.appendChild(noticeEl);
+    renderChatTranscript(transcript, allItems, {
+      isBusy,
+      ruleIcon: ruleSvg,
+      onResend: (item) => {
+        const req = item.originalRequest || {};
+        handleSend(req.text, { isResend: true, constraints: req.constraints });
       }
-    }
-
-    transcript.scrollTop = transcript.scrollHeight;
+    });
   }
 
-  async function handleSend(customText = null, { isResend = false, constraints = null } = {}) {
+  async function handleSend(customText = null, { isResend = false, constraints } = {}) {
     if (isBusy) {
       return;
     }
@@ -201,6 +130,18 @@ export function mountAgent(el, ctx) {
       }
     } catch (err) {
       activeTurn = null;
+      if (ctx.store) {
+        const currentChat = ctx.store.get().chat || [];
+        ctx.store.set({
+          chat: [...currentChat, {
+            role: 'error',
+            title: T_AGENT.requestFailed,
+            message: err.message || T_AGENT.requestFailed,
+            canResend: false,
+            caseId: ctx.store.get().caseId
+          }]
+        });
+      }
     } finally {
       isBusy = false;
       updateControls();
@@ -223,7 +164,8 @@ export function mountAgent(el, ctx) {
 
     const noticeItem = {
       role: 'system',
-      content: STRINGS.ruleFallbackNotice
+      content: T_AGENT.ruleFallbackNotice,
+      caseId: storeState.caseId
     };
 
     if (ctx.store) {
@@ -250,9 +192,10 @@ export function mountAgent(el, ctx) {
             ...currentChat,
             {
               role: 'error',
-              title: STRINGS.requestFailed,
-              message: err.message || STRINGS.requestFailed,
-              canResend: false
+              title: T_AGENT.requestFailed,
+              message: err.message || T_AGENT.requestFailed,
+              canResend: false,
+              caseId: ctx.store.get().caseId
             }
           ]
         });

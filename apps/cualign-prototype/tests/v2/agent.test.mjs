@@ -9,22 +9,26 @@ import {
   eventsToTurn
 } from '../../src/cualign/server/static/v2/js/agent/events.js';
 
-import { executeChatStream, executeRulePlan } from '../../src/cualign/server/static/v2/js/agent/stream.js';
+import {
+  buildChatRequest,
+  executeChatStream,
+  executeRulePlan,
+  resolvePlanConstraints
+} from '../../src/cualign/server/static/v2/js/agent/stream.js';
 import { createStore } from '../../src/cualign/server/static/v2/js/state/store.js';
-import { STRINGS } from '../../src/cualign/server/static/v2/js/agent/strings.js';
 import { T_AGENT } from '../../src/cualign/server/static/v2/js/domain/vocab/agent.js';
 
-test('Agent strings: verify Korean strings match design specifications', () => {
-  assert.equal(STRINGS.send, '전송');
-  assert.equal(STRINGS.ruleCalc, '규칙으로 계산');
-  assert.equal(STRINGS.resend, '다시 보내기');
-  assert.equal(STRINGS.requestFailed, '계획 요청 실패');
-  assert.equal(STRINGS.overloadNotice, 'NVIDIA API가 일시적으로 과부하 상태입니다. 다시 시도해 주세요.');
-  assert.equal(STRINGS.makingPlan(4), '계획 4을 만드는 중');
-  assert.equal(STRINGS.makingPlan(1), '계획 1을 만드는 중');
-  assert.equal(STRINGS.running, '실행 중');
-  assert.equal(STRINGS.done, '완료');
-  assert.equal(STRINGS.failed, '실패');
+test('Agent vocabulary matches the design', () => {
+  assert.equal(T_AGENT.send, '전송');
+  assert.equal(T_AGENT.ruleCalc, '규칙으로 계산');
+  assert.equal(T_AGENT.resend, '다시 보내기');
+  assert.equal(T_AGENT.requestFailed, '계획 요청 실패');
+  assert.equal(T_AGENT.overloadNotice, 'NVIDIA API가 일시적으로 과부하 상태입니다. 다시 시도해 주세요.');
+  assert.equal(T_AGENT.makingPlan(4), '계획 4 만드는 중');
+  assert.equal(T_AGENT.makingPlan(1), '계획 1 만드는 중');
+  assert.equal(T_AGENT.running, '실행 중');
+  assert.equal(T_AGENT.done, '완료');
+  assert.equal(T_AGENT.failed, '실패');
 });
 
 test('createTurnState: initializes turn state with correct defaults', () => {
@@ -188,7 +192,7 @@ test('applyStreamEvent: plan_error marks running steps failed and records error'
 
   assert.equal(turn.hasStreamError, true);
   assert.equal(turn.steps[0].state, 'failed');
-  assert.equal(turn.error.title, STRINGS.requestFailed);
+  assert.equal(turn.error.title, T_AGENT.requestFailed);
   assert.equal(turn.error.message, 'Failed to find viable stage path');
   assert.equal(turn.error.isOverload, false);
 });
@@ -212,7 +216,7 @@ test('applyStreamEvent: nim_overload sets isOverload flag and friendly message',
   assert.equal(turn.hasOverload, true);
   assert.equal(turn.hasStreamError, true);
   assert.equal(turn.error.isOverload, true);
-  assert.equal(turn.error.message, STRINGS.overloadNotice);
+  assert.equal(turn.error.message, 'Overload from NIM server');
 });
 
 test('turnToChatItems: in streaming state produces user, trace, and busy card', () => {
@@ -241,7 +245,7 @@ test('turnToChatItems: in streaming state produces user, trace, and busy card', 
 
   assert.equal(items[2].role, 'busy');
   assert.equal(items[2].planNumber, 4);
-  assert.equal(items[2].title, '계획 4을 만드는 중');
+  assert.equal(items[2].title, '계획 4 만드는 중');
 });
 
 test('turnToChatItems: completed state produces user, trace, and assistant bubble', () => {
@@ -310,7 +314,7 @@ test('turnToChatItems: error state produces user, trace, and error card with res
   assert.equal(items[1].role, 'trace');
   assert.equal(items[2].role, 'error');
   assert.equal(items[2].title, '계획 요청 실패');
-  assert.equal(items[2].message, STRINGS.overloadNotice);
+  assert.equal(items[2].message, 'Server busy');
   assert.equal(items[2].isOverload, true);
   assert.equal(items[2].canResend, true);
   assert.deepEqual(items[2].originalRequest, {
@@ -358,7 +362,41 @@ test('eventsToTurn: empty stream without selected plan results in error', () => 
 
   assert.equal(turn.status, 'error');
   assert.equal(turn.selectedPlan, null);
-  assert.equal(turn.error.title, STRINGS.requestFailed);
+  assert.equal(turn.error.title, T_AGENT.requestFailed);
+});
+
+test('buildChatRequest omits absent constraints and excludes another case transcript', () => {
+  const body = buildChatRequest({
+    state: {
+      caseId: 'case-current',
+      viewingPlanId: 'plan-parent',
+      chat: [
+        { role: 'user', content: 'old case', caseId: 'case-old' },
+        { role: 'assistant', content: 'current answer', caseId: 'case-current' }
+      ]
+    },
+    text: 'current request',
+    requestId: 'request-current',
+    constraints: undefined
+  });
+
+  assert.equal(Object.hasOwn(body.cualign, 'constraints'), false);
+  assert.equal(body.cualign.base_plan_id, 'plan-parent');
+  assert.deepEqual(body.messages, [
+    { role: 'assistant', content: 'current answer' },
+    { role: 'user', content: 'current request' }
+  ]);
+});
+
+test('resolvePlanConstraints uses the viewed plan conditions', () => {
+  const state = {
+    viewingPlanId: 'plan-current',
+    viewingPlan: { plan_id: 'plan-current', constraints: { lock: [8] } },
+    plans: [{ plan_id: 'plan-summary', constraints: { lock: [9] } }]
+  };
+
+  assert.deepEqual(resolvePlanConstraints(state), { lock: [8] });
+  assert.deepEqual(resolvePlanConstraints(state, { lock: [10] }), { lock: [10] });
 });
 
 test('executeRulePlan: calls rulePlan with viewingPlanId as parent_plan_id and updates store', async () => {
@@ -516,13 +554,13 @@ test('executeChatStream: handles nim_overload stream error and formats error tur
   assert.equal(turn.status, 'error');
   assert.equal(turn.hasOverload, true);
   assert.equal(turn.error.isOverload, true);
-  assert.equal(turn.error.message, STRINGS.overloadNotice);
+  assert.equal(turn.error.message, 'Server 503');
 
   const items = turnToChatItems(turn);
   const errorItem = items.find((i) => i.role === 'error');
   assert.notEqual(errorItem, undefined);
   assert.equal(errorItem.isOverload, true);
-  assert.equal(errorItem.message, STRINGS.overloadNotice);
+  assert.equal(errorItem.message, 'Server 503');
   assert.equal(errorItem.canResend, true);
 });
 
@@ -682,7 +720,7 @@ test('T_AGENT: vocab dictionary provides accurate Korean terms and tool labels',
   assert.equal(T_AGENT.resend, '다시 보내기');
   assert.equal(T_AGENT.requestFailed, '계획 요청 실패');
   assert.equal(T_AGENT.overloadNotice, 'NVIDIA API가 일시적으로 과부하 상태입니다. 다시 시도해 주세요.');
-  assert.equal(T_AGENT.makingPlan(5), '계획 5을 만드는 중');
+  assert.equal(T_AGENT.makingPlan(5), '계획 5 만드는 중');
   assert.equal(T_AGENT.tools.load_case, '케이스 불러오기');
   assert.equal(T_AGENT.tools.set_constraints, '처방 반영');
   assert.equal(T_AGENT.tools.propose_target, '목표 배열 제안');
@@ -723,6 +761,24 @@ test('executeRulePlan: selects best_failed when chosen is not available', async 
   assert.equal(store.get().plans.length, 2);
 });
 
+test('executeRulePlan reports unsupported cases instead of silently finishing', async () => {
+  const store = createStore({
+    caseId: 'case-unsupported',
+    viewingPlanId: 'plan-parent',
+    plans: [{ plan_id: 'plan-parent', constraints: { allow_extraction: false } }]
+  });
+
+  await assert.rejects(
+    executeRulePlan({
+      ctx: {
+        store,
+        api: { async rulePlan() { return { chosen: null, unsupported: ['unsupported scan'] }; } }
+      }
+    }),
+    /unsupported scan/
+  );
+});
+
 test('executeChatStream: throws error when caseId is null', async () => {
   const store = createStore({
     caseId: null,
@@ -739,6 +795,4 @@ test('executeChatStream: throws error when caseId is null', async () => {
     /No active case selected/
   );
 });
-
-
 

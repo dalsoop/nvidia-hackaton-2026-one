@@ -1,14 +1,14 @@
 // Pure event transformation and turn state management for agent streaming
 
 import { matchesSelection } from '../../../plan-stream.js';
-import { STRINGS } from './strings.js';
+import { T_AGENT } from '../domain/vocab/agent.js';
 
 export function createTurnState({
   requestId,
   caseId,
   nextPlanNumber = 1,
   userMessage = '',
-  constraints = null
+  constraints
 }) {
   return {
     requestId,
@@ -73,11 +73,11 @@ export function applyStreamEvent(turnState, event) {
       turnState.hasOverload = true;
     }
     const message = isOverload
-      ? STRINGS.overloadNotice
-      : ((data && (data.message || data.detail)) || STRINGS.requestFailed);
+      ? ((data && (data.message || data.detail)) || T_AGENT.overloadNotice)
+      : ((data && (data.message || data.detail)) || T_AGENT.requestFailed);
 
     turnState.error = {
-      title: STRINGS.requestFailed,
+      title: T_AGENT.requestFailed,
       message,
       isOverload
     };
@@ -103,11 +103,11 @@ export function finalizeTurn(turnState) {
     }
     if (!turnState.error) {
       const message = turnState.hasOverload
-        ? STRINGS.overloadNotice
-        : (turnState.assistantText || STRINGS.requestFailed);
+        ? T_AGENT.overloadNotice
+        : (turnState.assistantText || T_AGENT.requestFailed);
 
       turnState.error = {
-        title: STRINGS.requestFailed,
+        title: T_AGENT.requestFailed,
         message,
         isOverload: turnState.hasOverload
       };
@@ -141,7 +141,7 @@ export function turnToChatItems(turnState) {
       id: 'busy-' + turnState.requestId,
       role: 'busy',
       planNumber: turnState.nextPlanNumber,
-      title: STRINGS.makingPlan(turnState.nextPlanNumber)
+      title: T_AGENT.makingPlan(turnState.nextPlanNumber)
     });
   } else if (turnState.status === 'completed') {
     items.push({
@@ -154,8 +154,8 @@ export function turnToChatItems(turnState) {
     items.push({
       id: 'error-' + turnState.requestId,
       role: 'error',
-      title: (turnState.error && turnState.error.title) || STRINGS.requestFailed,
-      message: (turnState.error && turnState.error.message) || STRINGS.requestFailed,
+      title: (turnState.error && turnState.error.title) || T_AGENT.requestFailed,
+      message: (turnState.error && turnState.error.message) || T_AGENT.requestFailed,
       isOverload: Boolean(turnState.error && turnState.error.isOverload),
       canResend: true,
       originalRequest: {
@@ -165,7 +165,7 @@ export function turnToChatItems(turnState) {
     });
   }
 
-  return items;
+  return items.map((item) => ({ ...item, caseId: turnState.caseId }));
 }
 
 export function eventsToTurn(events, initialConfig) {

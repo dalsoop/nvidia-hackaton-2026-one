@@ -1,4 +1,4 @@
-// Vocabulary dictionary for cuAlign Agent interface (J7 contract)
+// Vocabulary dictionary for the cuAlign agent interface
 
 export const T_AGENT = {
   title: '에이전트',
@@ -9,8 +9,9 @@ export const T_AGENT = {
   resend: '다시 보내기',
   requestFailed: '계획 요청 실패',
   overloadNotice: 'NVIDIA API가 일시적으로 과부하 상태입니다. 다시 시도해 주세요.',
-  makingPlan: (n) => `계획 ${n}을 만드는 중`,
+  makingPlan: (n) => `계획 ${n} 만드는 중`,
   ruleFallbackNotice: '규칙 기반 폴백 · 처방 조건으로 계획 계산',
+  noPlanCreated: '새 계획을 만들지 못했습니다.',
   running: '실행 중',
   done: '완료',
   failed: '실패',
