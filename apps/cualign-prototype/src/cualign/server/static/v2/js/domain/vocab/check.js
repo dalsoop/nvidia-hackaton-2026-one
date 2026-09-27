@@ -69,6 +69,8 @@ export const CHECK_VOCAB = {
   btnUnsupported: '계획할 수 없는 스캔',
   btnDelete: '스캔 삭제',
   confirmDeletePrompt: '이 스캔과 파일을 삭제하시겠습니까? 되돌릴 수 없습니다.',
+  deleteConfirm: '삭제 확인',
+  cancel: '취소',
   deleteFailed: '스캔 삭제에 실패했습니다.',
 
   // Confirm errors

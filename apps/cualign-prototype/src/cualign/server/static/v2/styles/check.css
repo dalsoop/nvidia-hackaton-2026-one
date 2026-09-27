@@ -290,6 +290,15 @@
   background: var(--color-danger-bg);
 }
 
+.check-delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  color: var(--color-danger-light);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Middle 3D Viewer Container */
 .check-viewer-container {
   flex-grow: 1;

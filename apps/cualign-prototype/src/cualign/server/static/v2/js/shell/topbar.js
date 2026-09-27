@@ -2,7 +2,7 @@
 
 import { clear, h } from '../ui/dom.js';
 import { T } from '../domain/vocab.js';
-import { isPatientCase, sampleCaseNumber } from '../domain/status.js';
+import { isPatientCase, isScanConfirmed, sampleCaseNumber } from '../domain/status.js';
 
 export function renderTopbar(el, ctx = {}) {
   clear(el);
@@ -21,9 +21,13 @@ export function renderTopbar(el, ctx = {}) {
     const fallbackLabel = isPatientCase(state.caseId, state.patients)
       ? state.caseId
       : sampleCaseNumber(state.caseId);
+    const isUnconfirmedPatient = isPatientCase(state.caseId, state.patients) &&
+      !isScanConfirmed(state.currentScan);
     const caseBtn = h('a', {
       class: 'topbar-case-btn',
-      href: `#/workspace/${encodeURIComponent(state.caseId)}`
+      href: isUnconfirmedPatient
+        ? `#/check/${encodeURIComponent(state.caseId)}`
+        : `#/workspace/${encodeURIComponent(state.caseId)}`
     }, state.caseDisplayId || state.caseTitle || fallbackLabel);
     actions.push(caseBtn);
   }

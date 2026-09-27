@@ -224,6 +224,7 @@ export function mount(root, params, ctx) {
   let isUnmounted = false;
   let activeCheck = null;
   let errorMessage = '';
+  let deletePending = false;
 
   function setErrorMessage(msg) {
     errorMessage = msg || '';
@@ -329,12 +330,6 @@ export function mount(root, params, ctx) {
 
   async function handleDelete() {
     setErrorMessage('');
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm(CHECK_VOCAB.confirmDeletePrompt)) {
-        return;
-      }
-    }
-
     try {
       if (isPatientCase) {
         await ctx.api.deleteScan(pid, sid);
@@ -475,11 +470,31 @@ export function mount(root, params, ctx) {
 
     footer.appendChild(primaryBtn);
 
-    if (state.showDelete && isPatientCase) {
+    if (state.showDelete && isPatientCase && deletePending) {
+      footer.appendChild(h('div', { class: 'check-delete-confirm', role: 'alert' },
+        h('span', null, CHECK_VOCAB.confirmDeletePrompt),
+        h('button', {
+          type: 'button',
+          class: 'btn btn-danger check-btn-delete',
+          onClick: handleDelete
+        }, CHECK_VOCAB.deleteConfirm),
+        h('button', {
+          type: 'button',
+          class: 'btn btn-ghost',
+          onClick: () => {
+            deletePending = false;
+            renderPanel();
+          }
+        }, CHECK_VOCAB.cancel)
+      ));
+    } else if (state.showDelete && isPatientCase) {
       const deleteBtn = h('button', {
         type: 'button',
         class: 'btn btn-danger check-btn-delete',
-        onClick: handleDelete
+        onClick: () => {
+          deletePending = true;
+          renderPanel();
+        }
       }, CHECK_VOCAB.btnDelete);
       footer.appendChild(deleteBtn);
     }
