@@ -202,6 +202,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* vertical rail at the right edge of the 3D (Dentone style): six views, then 겹쳐 · 크게 (#90) */
 .view-rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 4px; }
 .view-rail .btn { width: 36px; height: 36px; padding: 0; font-size: 11px; }
+.rail-tools .btn { height: 44px; flex-direction: column; gap: 1px; font-size: 10px; }
 .rail-tools { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .export { position: relative; }
 .export-pop { position: absolute; right: 0; top: calc(100% + 6px); width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
@@ -342,7 +343,7 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .start-pane .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
 /* ---- rail (v2 보드 11) */
 .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
-.rail button { width: 56px; padding: 8px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 10.5px; line-height: 1.2; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
+.rail button { width: 56px; padding: 7px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font: inherit; font-size: 10.5px; line-height: 1.2; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
 .rail button small { font-size: 9px; color: var(--faint); }
 .rail button:hover { background: var(--hover); color: var(--text); }
 .rail button.on { color: var(--green); background: var(--panel-2); border-color: var(--green); font-weight: 700; }
@@ -461,7 +462,7 @@ body.start .chat, body.start .splitter { display: none; }
 /* ---------- right sidebar (#111): 단계 표 · 규칙 · 조건 ---------- */
 .side { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .side-tabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
-.side-tab { flex: 1; height: 40px; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.side-tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
 .side-tab:hover { color: var(--text); }
 .side-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--green); }
 .pane { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
@@ -545,3 +546,13 @@ body.start .chat, body.start .splitter { display: none; }
 .plan-fail p { margin: 0; color: var(--red-text); overflow-wrap: anywhere; }
 .plan-fail .cond-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .plan-fail .tag { color: var(--muted); border-color: var(--line-strong); }
+
+/* ---------- icons: Lucide symbols from the sprite at the top of index.html ---------- */
+.sprite { display: none; }   /* the HTML hidden attribute does not reach an inline <svg> */
+.ic { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rail .ic { width: 20px; height: 20px; }
+.btn.small .ic { width: 16px; height: 16px; }
+/* a toggle shows one of its two icons */
+[aria-pressed] .ic-on, [aria-pressed="true"] .ic-off { display: none; }
+[aria-pressed="true"] .ic-on { display: inline-block; }
+#playBtn { width: 36px; padding: 0; height: 32px; }

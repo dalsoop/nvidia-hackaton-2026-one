@@ -18,6 +18,29 @@
   </script>
 </head>
 <body class="start">
+  <!-- Lucide 아이콘 스프라이트 (lucide-static v1.48.0, ISC, https://lucide.dev): 쓰는 것만 심볼로 넣고 <use href="#i-…"> 로 쓴다.
+       stroke 는 currentColor, 굵기·끝처리는 .ic 가 준다 — 오프라인·패키징에 외부 요청이 없다 -->
+  <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <symbol id="i-list-checks" viewBox="0 0 24 24"><path d="M13 5h8"/> <path d="M13 12h8"/> <path d="M13 19h8"/> <path d="m3 17 2 2 4-4"/> <path d="m3 7 2 2 4-4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/> <path d="M16 3.128a4 4 0 0 1 0 7.744"/> <path d="M22 21v-2a4 4 0 0 0-3-3.87"/> <circle cx="9" cy="7" r="4"/></symbol>
+    <symbol id="i-scan-search" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/> <path d="M17 3h2a2 2 0 0 1 2 2v2"/> <path d="M21 17v2a2 2 0 0 1-2 2h-2"/> <path d="M7 21H5a2 2 0 0 1-2-2v-2"/> <circle cx="12" cy="12" r="3"/> <path d="m16 16-1.9-1.9"/></symbol>
+    <symbol id="i-layout-panel-left" viewBox="0 0 24 24"><rect width="7" height="18" x="3" y="3" rx="1"/> <rect width="7" height="7" x="14" y="3" rx="1"/> <rect width="7" height="7" x="14" y="14" rx="1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3"/> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/> <path d="m7 10 5 5 5-5"/></symbol>
+    <symbol id="i-table-2" viewBox="0 0 24 24"><path d="M3 9h18"/> <path d="M9 3v18"/> <rect x="3" y="3" width="18" height="18" rx="2"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/> <path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3"/> <path d="M12 19H3"/> <path d="M14 3v4"/> <path d="M16 17v4"/> <path d="M21 12h-9"/> <path d="M21 19h-5"/> <path d="M21 5h-7"/> <path d="M8 10v4"/> <path d="M8 12H3"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/> <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/> <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></symbol>
+    <symbol id="i-maximize-2" viewBox="0 0 24 24"><path d="M15 3h6v6"/> <path d="m21 3-7 7"/> <path d="m3 21 7-7"/> <path d="M9 21H3v-6"/></symbol>
+    <symbol id="i-minimize-2" viewBox="0 0 24 24"><path d="m14 10 7-7"/> <path d="M20 10h-6V4"/> <path d="m3 21 7-7"/> <path d="M4 14h6v6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="3" width="5" height="18" rx="1"/> <rect x="5" y="3" width="5" height="18" rx="1"/></symbol>
+    <symbol id="i-skip-back" viewBox="0 0 24 24"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/> <path d="M3 20V4"/></symbol>
+    <symbol id="i-skip-forward" viewBox="0 0 24 24"><path d="M21 4v16"/> <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/> <path d="m6 6 12 12"/></symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/> <circle cx="9" cy="7" r="4"/> <line x1="19" x2="19" y1="8" y2="14"/> <line x1="22" x2="16" y1="11" y2="11"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/> <path d="m12 5 7 7-7 7"/></symbol>
+    <symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M10 11v6"/> <path d="M14 11v6"/> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/> <path d="M3 6h18"/> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  </svg>
   <header class="topbar">
     <button id="homeBtn" class="brand" type="button" title="처음 화면으로">
       <img class="logo" src="logo.png" alt="cuAlign" height="22" decoding="async">
@@ -28,7 +51,7 @@
   <!-- 내 스캔: 한 모달에서 새 환자 등록 · 기존 환자 펼쳐 스캔 열기/올리기. 입력 확인은 3D 위 막대 (#90, #53) -->
   <div id="caseGate" class="gate" hidden>
     <div id="screenPatients" class="gate-panel">
-      <button id="gateClose" class="btn ghost small gate-x" type="button">닫기</button>
+      <button id="gateClose" class="btn ghost small gate-x" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button>
       <h1>내 스캔 올리기</h1>
       <p class="muted">새 환자를 등록하며 상악 스캔을 올리거나, 아래에서 기존 환자를 펼쳐 스캔을 엽니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
       <form id="patientForm" class="new-patient">
@@ -57,7 +80,7 @@
         <input id="scanInput" type="file" accept=".stl" multiple hidden />
         <!-- 업로드 결과: 진행 중엔 한 줄, 거절되면 「올린 파일 …」 + 서버 문구 그대로 + 다시 고르기 (#112, 보드 08) -->
         <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
-        <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
+        <button id="deletePatient" class="btn ghost small danger" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash-2"></use></svg>환자 삭제</button>
       </div>
     </div>
   </div>
@@ -65,11 +88,11 @@
   <main class="layout">
     <!-- 작업 흐름 레일 (v2 설계 보드 11): 모든 화면 공통. 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled + 조건 -->
     <nav id="rail" class="rail" aria-label="작업 흐름">
-      <button type="button" data-go="start" title="케이스 목록"><span>케이스</span></button>
-      <button type="button" data-go="patients" title="환자·스캔 올리기"><span>환자·스캔</span></button>
-      <button type="button" data-go="check" title="입력 확인"><span>입력 확인</span><small>스캔 올린 뒤</small></button>
-      <button type="button" data-go="case" title="작업대"><span>작업대</span><small>케이스 연 뒤</small></button>
-      <button type="button" data-go="export" title="승인하고 STL 내보내기"><span>내보내기</span><small>계획 후</small></button>
+      <button type="button" data-go="start" title="케이스 목록"><svg class="ic" aria-hidden="true"><use href="#i-list-checks"></use></svg><span>케이스</span></button>
+      <button type="button" data-go="patients" title="환자·스캔 올리기"><svg class="ic" aria-hidden="true"><use href="#i-users"></use></svg><span>환자·스캔</span></button>
+      <button type="button" data-go="check" title="입력 확인"><svg class="ic" aria-hidden="true"><use href="#i-scan-search"></use></svg><span>입력 확인</span><small>스캔 올린 뒤</small></button>
+      <button type="button" data-go="case" title="작업대"><svg class="ic" aria-hidden="true"><use href="#i-layout-panel-left"></use></svg><span>작업대</span><small>케이스 연 뒤</small></button>
+      <button type="button" data-go="export" title="승인하고 STL 내보내기"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span><small>계획 후</small></button>
     </nav>
     <section class="chat">
       <div id="intro" class="intro">
@@ -138,7 +161,7 @@
             </aside>
             <section class="cl-main">
               <div class="cl-head"><h1>케이스 <span id="clCount" class="count"></span></h1>
-                <button id="toPatients" class="btn ghost small" type="button">새 환자</button></div>
+                <button id="toPatients" class="btn ghost small" type="button"><svg class="ic" aria-hidden="true"><use href="#i-user-plus"></use></svg>새 환자</button></div>
               <div class="cl-table">
                 <div class="cl-row cl-thead"><span>케이스</span><span>상태</span><span>대표 계획</span><span>위반</span><span>계획</span><span>처방</span></div>
                 <div id="clRows"></div>
@@ -146,7 +169,7 @@
               <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
             </section>
             <aside id="clDetail" class="cl-detail" hidden>
-              <div class="cl-dhead"><b id="dTitle"></b><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기">닫기</button></div>
+              <div class="cl-dhead"><b id="dTitle"></b><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button></div>
               <div id="dSub" class="muted"></div>
               <div class="cl-label">치아 정보 · 상악 · FDI</div>
               <svg id="dArch" viewBox="0 0 320 150" role="img" aria-label="치아 배열"></svg>
@@ -155,7 +178,7 @@
               <div class="cl-label">처방</div>
               <p id="dRx"></p>
               <div id="dChips" class="badges"></div>
-              <button id="dOpen" class="btn primary" type="button">작업대 열기</button>
+              <button id="dOpen" class="btn primary" type="button">작업대 열기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
             </aside>
           </div>
         </div>
@@ -171,7 +194,7 @@
             <button id="mirrorBtn" class="btn ghost small" type="button" hidden title="17번이 환자 오른쪽(화면 왼쪽)에 와야 합니다">좌우 번호 뒤집기</button>
             <button id="startPlan" class="btn primary small" type="button">이 스캔으로 계획</button>
             <span class="del-wrap">
-              <button id="deleteScan" class="btn ghost small danger" type="button" hidden>스캔 삭제</button>
+              <button id="deleteScan" class="btn ghost small danger" type="button" hidden><svg class="ic" aria-hidden="true"><use href="#i-trash-2"></use></svg>스캔 삭제</button>
               <div id="deleteScanPop" class="del-pop" hidden>
                 <p>이 스캔과 파일을 지웁니다. 되돌릴 수 없습니다.</p>
                 <div><button id="deleteScanGo" class="btn primary small" type="button">삭제</button><button id="deleteScanCancel" class="btn ghost small" type="button">취소</button></div>
@@ -181,7 +204,7 @@
           </div>
           <span class="view-bar">
             <span class="view-actions export">
-              <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다">내보내기</button>
+              <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다"><svg class="ic" aria-hidden="true"><use href="#i-download"></use></svg><span>내보내기</span></button>
               <div id="exportPop" class="export-pop" hidden>
                 <p>이 초안을 의사 승인으로 확정하고 단계별 치아 STL(zip)을 내려받습니다. 조건·3D·검토 결과를 확인하셨나요?</p>
                 <p id="exportSkip" class="export-skip" hidden>검토 에이전트를 거치지 않은 계획입니다.</p>
@@ -202,8 +225,8 @@
           <button class="btn ghost small" type="button" data-view="left" title="환자 왼쪽">좌</button>
           <button class="btn ghost small" type="button" data-view="right" title="환자 오른쪽">우</button>
           <span class="rail-tools">
-            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="전후 겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다">겹쳐</button>
-            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다">크게</button>
+            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="전후 겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다"><svg class="ic" aria-hidden="true"><use href="#i-layers"></use></svg><span>겹쳐</span></button>
+            <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg><span>크게</span></button>
           </span>
         </div>
         <!-- view cube: click a face to look from that side (#90) -->
@@ -220,13 +243,13 @@
       </div>
 
       <div class="stage-bar">
-        <button id="firstBtn" class="btn ghost small" type="button" title="치료 전으로">처음</button>
-        <button id="playBtn" class="btn ghost small" title="재생/정지">▶</button>
+        <button id="firstBtn" class="btn ghost small" type="button" title="치료 전으로"><svg class="ic" aria-hidden="true"><use href="#i-skip-back"></use></svg>처음</button>
+        <button id="playBtn" class="btn ghost small" type="button" title="재생/정지" aria-pressed="false"><svg class="ic ic-off" aria-hidden="true"><use href="#i-play"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-pause"></use></svg></button>
         <div class="slider-wrap">
           <div id="stageMarks" class="stage-marks"></div>
           <input id="stageSlider" type="range" min="0" max="0" value="0" step="1" disabled />
         </div>
-        <button id="lastBtn" class="btn ghost small" type="button" title="목표 배열로">목표</button>
+        <button id="lastBtn" class="btn ghost small" type="button" title="목표 배열로">목표<svg class="ic" aria-hidden="true"><use href="#i-skip-forward"></use></svg></button>
         <span id="stageLabel" class="stage-label">계획 없음</span>
       </div>
     </section>
@@ -234,9 +257,9 @@
     <!-- 작업대 오른쪽 사이드바 (#111): 단계 표 · 규칙 · 조건. 값은 보고 있는 계획(state.plan)에서 온다 -->
     <aside id="side" class="side">
       <div class="side-tabs" role="tablist">
-        <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="true">단계 표</button>
-        <button id="tabRules" class="side-tab" type="button" role="tab" data-tab="rules" aria-selected="false">규칙</button>
-        <button id="tabCond" class="side-tab" type="button" role="tab" data-tab="cond" aria-selected="false">조건</button>
+        <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-table-2"></use></svg><span>단계 표</span></button>
+        <button id="tabRules" class="side-tab" type="button" role="tab" data-tab="rules" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-shield-check"></use></svg><span>규칙</span></button>
+        <button id="tabCond" class="side-tab" type="button" role="tab" data-tab="cond" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders-horizontal"></use></svg><span>조건</span></button>
       </div>
       <section id="paneStages" class="pane" role="tabpanel">
         <div class="pane-head">

@@ -1664,11 +1664,11 @@ async function runFallback() {
 }
 
 // ------------------------------------------------------------------ stage playback
-function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; $("playBtn").textContent = "▶"; } }
+function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; $("playBtn").setAttribute("aria-pressed", "false"); } }
 function togglePlay() {
   if (!state.plan) return;
   if (state.playing) return stopPlay();
-  $("playBtn").textContent = "⏸";
+  $("playBtn").setAttribute("aria-pressed", "true");   // the pause icon shows while playing
   state.playing = setInterval(() => {
     const n = state.plan.stages.length;
     applyStage(state.stage >= n ? 0 : state.stage + 1);

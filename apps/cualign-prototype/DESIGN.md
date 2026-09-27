@@ -422,3 +422,4 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 - 디자인 언어: VoltAgent/awesome-design-md의 NVIDIA 분석 `design-md/nvidia/DESIGN.md`(MIT), https://github.com/VoltAgent/awesome-design-md , 접근일 2026-09-26. 색 값·2px 모서리·모서리 사각형·위계 원칙을 가져와 어두운 작업 화면에 맞게 바꿨다.
 - 형식: Google Labs DESIGN.md 명세, https://github.com/google-labs-code/design.md , 접근일 2026-09-26.
 - 글꼴: Pretendard(SIL OFL 1.1), https://github.com/orioncactus/pretendard , 접근일 2026-09-26.
+- 아이콘: Lucide(ISC), https://lucide.dev , lucide-static v1.48.0 에서 쓰는 아이콘만 `index.html` 맨 위 `<symbol id="i-…">` 스프라이트로 복사(외부 요청 없음), 접근일 2026-09-27. 크기 18~20px, `stroke: currentColor`.
