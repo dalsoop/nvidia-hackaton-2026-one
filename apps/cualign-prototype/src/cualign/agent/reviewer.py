@@ -21,11 +21,22 @@ class ReviewInput(BaseModel):
     plan_id: str
 
 
+# The review model's system message. workflow.yml `functions.reviewer.instructions` replaces it (the wording rules
+# live there, next to the planner's); this default is the text from before that key existed, so an absent key
+# changes nothing.
+DEFAULT_INSTRUCTIONS = ("You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: "
+                        "strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number "
+                        "means what field_notes says: never call a total movement a per-aligner value or a tooth-width sum a "
+                        "space shortage. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval. "
+                        "End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다.")
+
+
 class BoundedReviewerConfig(FunctionBaseConfig, name="cualign_reviewer"):
     llm_name: LLMRef
     max_attempts: int = Field(default=2, ge=1, le=2)
     timeout_seconds: float = Field(default=20, gt=0, le=30)
     total_seconds: float = Field(default=40, gt=0, le=60)
+    instructions: str = Field(default=DEFAULT_INSTRUCTIONS, min_length=1)
 
 
 def response_text(response):
@@ -72,15 +83,15 @@ FIELD_NOTES = {
 }
 
 
-def review_messages(snapshot: dict) -> list[dict]:
+def review_messages(snapshot: dict, instructions: str = DEFAULT_INSTRUCTIONS) -> list[dict]:
     return [
-        {"role": "system", "content": "You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: strategy, rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number means what field_notes says: never call a total movement a per-aligner value or a tooth-width sum a space shortage. Do not call tools, diagnose or prescribe. Rule validation is not clinical approval. End with: 검토 메모도 초안입니다. 최종 판단은 의사가 합니다."},
+        {"role": "system", "content": instructions},
         {"role": "user", "content": json.dumps({"plan": snapshot, "field_notes": FIELD_NOTES}, ensure_ascii=False)},
     ]
 
 
 async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_seconds=20, total_seconds=40,
-                      manual=False):
+                      manual=False, instructions=DEFAULT_INSTRUCTIONS):
     """`manual` is the dentist's explicit request from the UI (no request context): it reviews a `failed` plan again
     with a fresh budget. The agent path keeps returning the stored failure so it cannot loop on the model."""
     store = store or STORE
@@ -104,7 +115,7 @@ async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_secon
     snapshot = store.plan_json(plan_id)
     snapshot.pop("stages")
     snapshot.pop("approval")
-    messages = review_messages(snapshot)
+    messages = review_messages(snapshot, instructions)
     try:
         while attempts < max_attempts and (not run or run.review_attempts < max_attempts):
             remaining = total_seconds - (time.monotonic() - started)
@@ -121,8 +132,8 @@ async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_secon
                 if not text:
                     error = "empty_response"
                     continue
-                if getattr(response, "tool_calls", None) or text.startswith(("Thought:", "Action:")):
-                    error = "invalid_response"
+                if getattr(response, "tool_calls", None) or text.startswith(("Thought:", "Action:"))                         or getattr(response, "response_metadata", {}).get("finish_reason") == "length":
+                    error = "invalid_response"   # a reply cut at max_tokens (the NIM then returns the cut reasoning as content)
                     continue
                 rails, refuse = await MEMO_CHECK(text) if MEMO_CHECK else ("off", False)
                 if refuse:  # the memo is not stored; another attempt may write one that passes
@@ -151,6 +162,7 @@ async def bounded_reviewer(config: BoundedReviewerConfig, builder):
     async def run_review(inp: ReviewInput) -> dict:
         """선택한 계획의 검토 메모를 생성한다. 최대 2회/40초이며 실패도 명시적으로 반환한다. 재호출은 저장된 결과를 반환한다."""
         return await review_plan(inp.plan_id, llm, max_attempts=config.max_attempts,
-                                 timeout_seconds=config.timeout_seconds, total_seconds=config.total_seconds)
+                                 timeout_seconds=config.timeout_seconds, total_seconds=config.total_seconds,
+                                 instructions=config.instructions)
 
     yield FunctionInfo.from_fn(run_review, description=run_review.__doc__)
