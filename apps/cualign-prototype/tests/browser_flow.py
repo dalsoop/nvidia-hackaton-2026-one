@@ -27,6 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_patients import _scan_files   # noqa: E402  synthetic per-tooth scans, as the API tests use
 
 
+def document_has_plan(body_class: str) -> bool:
+    return "has-plan" in body_class.split()
+
+
 def write_scan(folder: Path, **kw) -> list[str]:
     """Synthetic scan files on disk for the file chooser: drop=(4,) leaves a gap, rename flips the numbering."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -97,27 +101,31 @@ async def main():
                 args=["--enable-unsafe-swiftshader", "--use-angle=swiftshader"])
             page = await browser.new_page(viewport={"width":1500,"height":1000})
             errors = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.on("pageerror", lambda error: (errors.append(str(error)), print("PAGEERROR:", error, file=sys.stderr)))   # visible when a step times out
             page.on("dialog", lambda dialog: dialog.accept())
             # ?case=<id> is the documented dev/test hook; "moderate" is a synthetic preset with no start-screen
             # card (#90 — the start screen only offers Poseidon3D samples), so it opens the workspace deterministically.
             await page.goto(url + "/ui/?case=moderate")
             await page.wait_for_function("!document.body.classList.contains('start')")
 
-            # Rule-based plan via the folded conditions panel (no model): open the details, then the fallback button.
-            # Also open the result panel's "자세히" details so #rPlan/#rParent/#rReview/... are visible (inner_text
-            # needs layout; their contents are correct but invisible while the <details> is closed).
-            await page.locator("#condBox").evaluate("(el) => { el.open = true; }")
-            await page.locator(".plan-meta").evaluate("(el) => { el.open = true; }")
+            # Rule-based plan from the sidebar's 조건 tab (no model). The plan on screen is the canvas's data-plan-id;
+            # the cards on the panel top mark it 보는 중 (#111). Helpers read the test hook, not the removed result card.
+            plan_on_screen = "(window.__cualign.state.plan?.plan_id ?? '')"
+            async def on_screen():
+                return await page.evaluate(plan_on_screen)
+            async def approval():
+                return await page.evaluate("window.__cualign.state.plan?.approval ?? null")
+            await page.locator("#tabCond").click()
             await page.locator("#fallbackBtn").click()
-            await page.wait_for_function("document.querySelector('#rPlan').textContent.startsWith('p') && !document.querySelector('#fallbackBtn').disabled"
-                " && document.querySelector('#viewCanvas').dataset.planId === document.querySelector('#rPlan').textContent")
-            parent = await page.locator("#rPlan").inner_text()
+            await page.wait_for_function(f"{plan_on_screen}.startsWith('p') && !document.querySelector('#fallbackBtn').disabled"
+                f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}")
+            parent = await on_screen()
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == parent
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"] .viewing').is_visible()
             assert await page.locator("#stlLink").get_attribute("href") is None
             parent_detail = store_module.STORE.plan_json(parent)
             assert parent_detail["passed"] and parent_detail["review"]["status"] == "skipped"
-            assert await page.locator("#rReview").inner_text() == "미실행 (규칙 폴백)"
+            assert "미실행 (규칙 폴백)" in await page.locator("#reviewLine").inner_text()
             assert int(await page.locator("#stageSlider").get_attribute("max")) == parent_detail["info"]["n_stages"]
             await page.locator("#stageSlider").fill(str(parent_detail["info"]["n_stages"]))
             await page.locator("#stageSlider").dispatch_event("input")
@@ -130,31 +138,35 @@ async def main():
             await page.wait_for_selector("#exportPop:not([hidden])")
             async with page.expect_download() as download:
                 await page.locator("#exportGo").click()
-            await page.wait_for_function("document.querySelector('#rApproval').textContent.startsWith('의사 승인됨')")
+            await page.wait_for_function("!!window.__cualign.state.plan?.approval")
+            assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
             assert (await page.locator("#exportBtn").inner_text()) == "STL 내려받기"
             await (await download.value).save_as(OUT / "approved-stages.zip")
 
-            # Revoke the approval (「자세히」 details, next to the review fields) and confirm export gates again.
+            # Revoke the approval (the 검토 fold under the plan cards) and confirm export gates again.
+            await page.locator("#planReview").evaluate("(el) => { el.open = true; }")
             await page.locator("#revokeBtn").click()
-            await page.wait_for_function("document.querySelector('#rApproval').textContent === '미승인'")
+            await page.wait_for_function("!window.__cualign.state.plan?.approval")
             assert (await page.locator("#exportBtn").inner_text()) == "내보내기"
             assert await page.locator("#stlLink").get_attribute("href") is None
             # Re-approve so the plan is on screen as approved again before the next edit invalidates it.
             await page.locator("#exportBtn").click()
             await page.wait_for_selector("#exportPop:not([hidden])")
             await page.locator("#exportGo").click()
-            await page.wait_for_function("document.querySelector('#rApproval').textContent.startsWith('의사 승인됨')")
+            await page.wait_for_function("!!window.__cualign.state.plan?.approval")
 
-            # Editing the folded conditions makes the on-screen (approved) plan stale for export until replanned.
+            # Editing the conditions makes the on-screen (approved) plan stale for export until replanned.
             await page.locator("#cLock").fill("13")
             assert await page.locator("#exportBtn").is_disabled()
+            assert "조건이 바뀜" in await page.locator("#condState").inner_text()
             await page.locator("#fallbackBtn").click()
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent !== p && !document.querySelector('#fallbackBtn').disabled"
-                " && document.querySelector('#viewCanvas').dataset.planId === document.querySelector('#rPlan').textContent", arg=parent)
-            child = await page.locator("#rPlan").inner_text()
-            assert await page.locator("#rParent").inner_text() == parent
-            assert await page.locator("#rApproval").inner_text() == "미승인"
+            await page.wait_for_function(f"(p) => {plan_on_screen} !== p && !document.querySelector('#fallbackBtn').disabled"
+                f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}", arg=parent)
+            child = await on_screen()
+            assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == parent
+            assert await approval() is None
+            assert "조건과 같음" in await page.locator("#condState").inner_text()
             assert await page.locator("#stlLink").get_attribute("href") is None
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
             await page.locator("#stageSlider").evaluate("(el) => { el.value=el.max; el.dispatchEvent(new Event('input')); }")
@@ -163,25 +175,37 @@ async def main():
             await page.screenshot(path=str(OUT / "revision.png"))
 
             # The decision bar for this revision lets the dentist undo it; revert, then pick the child plan again
-            # through #planSelect so the rest of the script continues from it.
+            # with the 보기 button of its card (#111) so the rest of the script continues from it.
             await page.locator(".decision").last.locator('[data-act="revert"]').click()
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=parent)
-            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", child)
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=child)
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=parent)
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"]').count() == 1
+            await page.locator(f'#plans .plan-row[data-plan="{child}"] button[data-act="view"]').click()
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child)
+            assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{child}"] .viewing').is_visible()
+            assert await page.locator(f'#plans .plan-row[data-plan="{parent}"] button[data-act="view"]').is_visible()
+            # the sidebar follows the card: its 규칙 tab names the plan on screen
+            await page.locator("#tabRules").click()
+            assert (await page.locator("#rulesFor").inner_text()).startswith("계획 ")
+            assert await page.locator("#ruleCards .rule").count() >= 4
+            await page.screenshot(path=str(OUT / "plan-cards.png"))
 
             # Send a real HTTP stream through PlanEventsASGI and the actual tool group. The fake reviewer fails and
             # the streamed text carries an unrelated plan id that must not steer selection.
             await page.locator("#chatInput").fill("IPR은 앞니 빼고 다시 짜줘")
             await page.locator("#sendBtn").click()
-            await page.wait_for_function("document.querySelector('#rReview').textContent === '검토 실패' && !document.querySelector('#sendBtn').disabled")
-            selected = await page.locator("#rPlan").inner_text()
+            await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'failed' && !document.querySelector('#sendBtn').disabled")
+            selected = await on_screen()
             assert selected != "p999" and selected != child
-            assert await page.locator("#rParent").inner_text() == child
+            assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == child
+            assert "검토 실패" in await page.locator("#reviewLine").inner_text()
             assert await page.locator("#cLock").input_value() == "13"
-            assert await page.locator("#cExclude").input_value() == "7, 8, 9, 10"
+            assert await page.locator("#cExclude").input_value() == "11, 12, 21, 22"      # Universal 7,8,9,10 in FDI (#113)
             assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
-            assert await page.locator(".plan-card").last.is_visible()
+            # a comparison turn adds one card per plan it made; the selected one is 보는 중
+            assert await page.locator("#planList .plan-row").count() >= 3
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{selected}"] .viewing').is_visible()
             assert await page.locator(".msg.error").last.is_visible()
             decision2 = page.locator(".decision").last
             assert await decision2.is_visible()
@@ -192,8 +216,9 @@ async def main():
             # The dentist asks for the failed review again on the same plan.
             assert await page.locator("#reviewBtn").is_visible()
             await page.locator("#reviewBtn").click()
-            await page.wait_for_function("document.querySelector('#rReview').textContent === '메모 생성 완료' && !document.querySelector('#sendBtn').disabled")
-            assert await page.locator("#rPlan").inner_text() == selected
+            await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'passed' && !document.querySelector('#sendBtn').disabled")
+            assert await on_screen() == selected
+            assert "메모 생성 완료" in await page.locator("#reviewLine").inner_text()
             assert await page.locator("#reviewBtn").is_hidden()
             if store_module.STORE.plan_json(selected)["passed"]:
                 assert await page.locator("#exportBtn").is_enabled()
@@ -209,13 +234,14 @@ async def main():
                 await release.wait()
                 await route.fulfill(json=parent_payload)
             await page.route("**/api/plans/" + parent, delayed_parent)
-            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", parent)
+            # the cards' buttons are disabled while a load runs, so the second choice goes through the test hook
+            await page.locator(f'#plans .plan-row[data-plan="{parent}"] button[data-act="view"]').click()
             await pending.wait()
-            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", child)
-            await page.wait_for_function("(p)=>document.querySelector('#rPlan').textContent===p", arg=child)
+            await page.evaluate("(p) => { window.__cualign.loadPlan(p).catch(() => {}); }", child)
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child)
             release.set()
             await page.wait_for_timeout(100)
-            assert await page.locator("#rPlan").inner_text() == child
+            assert await on_screen() == child
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
 
             # Reload keeps the case and the plan on screen via the #case=…&plan=… address (#90).
@@ -223,7 +249,8 @@ async def main():
             case_name_before = await page.locator("#caseName").inner_text()
             await page.reload()
             await page.wait_for_function("!document.body.classList.contains('start')")
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=child, timeout=120000)
+            await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child, timeout=120000)
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{child}"]').count() == 1
             assert await page.locator("#caseName").inner_text() == case_name_before
             assert await page.locator("#stlLink").get_attribute("href") is None   # approval was revoked above
 
@@ -231,10 +258,12 @@ async def main():
             # plan (#92), never the previous case's plan.
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
-            await page.locator('#clRows .case-row[data-id="poseidon-000097"]').click()      # row → detail panel
+            await page.locator('#sampleCards .case-card[data-id="poseidon-000097"]').click()      # card → detail under it
             assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14
+            assert await page.locator('#sampleCards > #clDetail.in-cards').count() == 1      # under the card row
+            assert await page.locator("#intro").is_visible()   # the intro panel is back on the left (③)
             await page.locator("#dOpen").click()
-            await page.wait_for_function("(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && document.querySelector('#rPlan').textContent !== p", arg=child)
+            await page.wait_for_function(f"(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && {plan_on_screen} !== p", arg=child)
             assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
             assert await page.locator("#stlLink").get_attribute("href") is None
 
@@ -250,9 +279,36 @@ async def main():
             await page.wait_for_function("!document.querySelector('#checkBar').hidden && document.querySelector('#checkFacts .bad')", timeout=120000)
             facts = await page.locator("#checkFacts").inner_text()
             assert "결손" in facts and "4" in facts, facts
-            assert await page.locator("#startPlan").is_disabled()
+            assert await page.locator("#startPlan").is_hidden()      # a blocked scan cannot start a plan (#112)
             assert await page.locator("#checkBar").evaluate("e => e.classList.contains('fail')")
+            assert await page.locator("#checkTitle").inner_text() == "계획할 수 없는 스캔입니다"
+            assert await page.locator("#deleteScan").is_visible()
             await page.screenshot(path=str(OUT / "check-unsupported.png"))
+            # 스캔 삭제 asks once in place, then the patient's scan list comes back without it
+            await page.locator("#deleteScan").click()
+            await page.wait_for_selector("#deleteScanPop:not([hidden])")
+            await page.locator("#deleteScanGo").click()
+            await page.wait_for_function("!document.querySelector('#caseGate').hidden && document.querySelector('#checkBar').hidden", timeout=60000)
+            assert await page.locator("#scanList .scan-row").count() == 0
+            # an upload the server refuses (#112, 보드 08): lower-arch numbers → 400 with the reason; the card shows the
+            # files, the sentence as it came, and 다시 고르기
+            lower = write_scan(OUT / "scans" / "lower", rename=lambda u: u + 16)
+            await page.set_input_files("#scanInput", lower)
+            await page.wait_for_selector("#uploadStatus .upload-fail", timeout=60000)
+            why = await page.locator("#uploadStatus .upload-fail .why").inner_text()
+            assert "하악" in why and "상악 스캔만" in why, why
+            assert "올린 파일" in await page.locator("#uploadStatus .upload-fail .files").inner_text()
+            assert await page.locator('#uploadStatus [data-act="repick"]').is_visible()
+            await page.screenshot(path=str(OUT / "upload-rejected.png"))
+            # a scan whose orientation cannot be decided (#104, 보드 09-c): closed synthetic crowns, no gum → basis none,
+            # yet plannable; the title says so and the button asks to confirm the numbers first
+            unoriented = write_scan(OUT / "scans" / "unoriented")
+            await page.set_input_files("#scanInput", unoriented)
+            await page.wait_for_function("!document.querySelector('#checkBar').hidden && !document.querySelector('#checkTitle').hidden", timeout=120000)
+            assert await page.locator("#checkTitle").inner_text() == "방향을 정하지 못했습니다"
+            assert "방향을 정할 수 없어 입력 방향 그대로 둠" in await page.locator("#checkFacts").inner_text()
+            assert await page.locator("#startPlan").is_enabled() and await page.locator("#startPlan").inner_text() == "번호 확인 — 계획 시작"
+            await page.screenshot(path=str(OUT / "check-unoriented.png"))
             await page.set_input_files("#scanInput", flipped)   # a second scan for the same patient
             await page.wait_for_function("document.querySelector('#checkFacts').textContent.includes('좌우 반대') && !document.querySelector('#mirrorBtn').hidden", timeout=120000)
             await page.screenshot(path=str(OUT / "check-reversed.png"))
@@ -262,10 +318,63 @@ async def main():
             assert "좌우 반대" not in facts and "문제 없음" in facts, facts
             pid = await page.evaluate("window.__cualign.state.patient.patient_id")
             await page.evaluate("(pid) => fetch('/api/patients/' + pid, { method: 'DELETE' }).then((r) => r.ok)", pid)   # reruns start empty
+
+            # A case that opens with no plan because the calculation failed (#112, 보드 07). The server contract for
+            # this state is not there yet, so the responses are shaped here: /activate carries plan_error, the plan
+            # list is empty. The card shows the sentence, the conditions, and 이 조건으로 다시 계산 brings a plan.
+            async def no_plan_activate(route):
+                r = await route.fetch(); body = await r.json(); body["plan_error"] = "규칙 계산 실패 (가짜): 접촉 폭을 맞출 수 없습니다."
+                await route.fulfill(json=body)
+            async def empty_plans(route):
+                await route.fulfill(json={"plans": []})
+            await page.route("**/api/cases/poseidon-000131/activate", no_plan_activate)
+            await page.route("**/api/plans?case_id=poseidon-000131", empty_plans)
+            await page.locator("#homeBtn").click()
+            await page.wait_for_function("document.body.classList.contains('start')")
+            await page.locator('#sampleCards .case-card[data-id="poseidon-000131"]').click()
+            await page.locator("#dOpen").click()
+            await page.wait_for_selector("#planFail:not([hidden])", timeout=60000)
+            assert "규칙 계산 실패 (가짜)" in await page.locator("#planFailMsg").inner_text()
+            assert await page.locator("#planFailCond .tag").count() >= 3
+            assert not document_has_plan(await page.evaluate("document.body.className"))
+            await page.screenshot(path=str(OUT / "plan-failed.png"))
+            await page.unroute("**/api/plans?case_id=poseidon-000131")
+            await page.locator("#planFailRetry").click()
+            await page.wait_for_function("document.querySelector('#planFail').hidden && document.body.classList.contains('has-plan')", timeout=120000)
+            assert await page.locator("#planList .plan-row").count() >= 1
+            await page.unroute("**/api/cases/poseidon-000131/activate")
+            # The 3D shows FDI numbers, never Universal (#113): the input-check screen's tooth-number labels.
+            # This sample's prescription extracts Universal 5·12 = FDI 14·24.
+            await page.goto(url + "/ui/#check=poseidon-000097")
+            await page.wait_for_function("document.querySelectorAll('.num-label').length > 0")
+            labels = await page.locator(".num-label").all_inner_texts()
+            assert "14" in labels and "24" in labels, labels     # FDI for this sample's extraction (Universal 5·12)
+            assert "5" not in labels, labels                     # never the bare Universal number
+
+            # A final answer with no Korean in it: the server swaps it for a notice and sends plan_error kind=no_answer.
+            # The notice shows as the server wrote it, with 다시 보내기 like an overload (server fix 2026-09-28).
+            await page.goto(url + "/ui/#case=poseidon-000131")
+            await page.wait_for_function("document.body.classList.contains('has-plan') && !document.querySelector('#sendBtn').disabled", timeout=120000)
+            async def no_answer_stream(route):
+                rid = route.request.post_data_json["cualign"]["request_id"]
+                nl = chr(10)
+                body = ('event: plan_error' + nl + 'data: {"request_id":"' + rid + '","case_id":"poseidon-000131","kind":"no_answer",'
+                        '"message":"모델이 답을 만들지 못했습니다 (가짜 안내문)."}' + nl + nl
+                        + 'data: {"value":"모델이 답을 만들지 못했습니다 (가짜 안내문)."}' + nl + nl)
+                await route.fulfill(status=200, content_type="text/event-stream", body=body)
+            await page.route("**/chat/stream", no_answer_stream)
+            await page.locator("#chatInput").fill("발치 없이 다시 짜줘")
+            await page.locator("#sendBtn").click()
+            await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            assert "가짜 안내문" in await page.locator(".msg.error").last.inner_text()
+            assert await page.locator("#resendBtn").is_visible()
+            await page.unroute("**/chat/stream")
+
             assert not errors, errors
-            print("PASS: browser rule-based plan, export/approval, revision, reviewer failure, manual re-review, "
+            print("PASS: browser rule-based plan, export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "
-                  "my scan: unsupported gap and reversed numbering → mirror")
+                  "my scan: unsupported gap → 스캔 삭제, rejected upload card, unoriented scan, reversed numbering → mirror, "
+                  "no-plan failure card → 이 조건으로 다시 계산, no_answer notice → 다시 보내기")
             await browser.close()
             browser = None
     finally:
