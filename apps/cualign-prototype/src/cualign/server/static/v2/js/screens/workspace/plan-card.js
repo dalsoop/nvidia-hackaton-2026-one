@@ -283,10 +283,13 @@ export function renderPlanCard(plan, {
             }
           } catch (err) {
             retryBtn.disabled = false;
-            retryBtn.textContent = T.workspace.requestReviewRetry;
-            const errorMsg = (err.status === 503 && (!err.message || err.message === 'Service Unavailable'))
-              ? '검토 모델이 연결되지 않았습니다.'
-              : (err.message || T.errors.requestFailed);
+            const is503 = err.status === 503 || String(err.message).includes('503');
+            let errorMsg = err.message || err.detail;
+            if (is503 && (!errorMsg || errorMsg === 'Service Unavailable' || errorMsg.includes('503'))) {
+              errorMsg = '검토 모델이 연결되지 않았습니다.';
+            } else if (!errorMsg) {
+              errorMsg = T.errors.requestFailed;
+            }
             retryErrEl.textContent = errorMsg;
             retryErrEl.style.display = 'block';
           }

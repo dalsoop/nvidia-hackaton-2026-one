@@ -350,3 +350,44 @@ test('Plan Card: calculateRailStage precedence and stage tokens', () => {
   };
   assert.equal(calculateRailStage(staleCleanPlan), 'none');
 });
+
+test('Plan Card: null and undefined inputs for badge and action states', () => {
+  const defaultBadges = getPlanBadgeState(null);
+  assert.equal(defaultBadges.isStale, false);
+  assert.equal(defaultBadges.isApproved, false);
+  assert.equal(defaultBadges.hasViolations, false);
+  assert.equal(defaultBadges.strategyLabel, '');
+
+  const defaultActions = getPlanCardActionState(null);
+  assert.equal(defaultActions.canApprove, false);
+  assert.equal(defaultActions.isApproved, false);
+  assert.equal(defaultActions.canRetryReview, false);
+  assert.equal(defaultActions.reviewStatus, 'not_requested');
+});
+
+test('Plan Card: stages fallback to info.n_stages and array violations count', () => {
+  const planWithInfo = {
+    plan_id: 'p-info',
+    info: { n_stages: 8 },
+    violations: [{ type: 'collision', stage: 2 }],
+    passed: true
+  };
+  const badges = getPlanBadgeState(planWithInfo);
+  assert.equal(badges.stagesLabel, '8장');
+  assert.equal(badges.hasViolations, true);
+  assert.equal(badges.violationsLabel, '위반 1건');
+});
+
+test('Plans: sortPlansByCreation does not mutate original array', () => {
+  const original = [
+    { plan_id: 'p-2', created_at: '2026-09-27T12:00:00Z' },
+    { plan_id: 'p-1', created_at: '2026-09-27T10:00:00Z' }
+  ];
+  const copy = [...original];
+  const sorted = sortPlansByCreation(original);
+
+  assert.deepEqual(original, copy);
+  assert.equal(sorted[0].plan_id, 'p-1');
+  assert.equal(sorted[1].plan_id, 'p-2');
+});
+

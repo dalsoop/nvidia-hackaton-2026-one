@@ -108,6 +108,9 @@ export function mountPlans(container, {
     renderList();
 
     const currentViewing = getViewingPlan();
+    if (ctx?.store) {
+      ctx.store.set({ plans: currentPlans });
+    }
     if (typeof onPlanUpdated === 'function') {
       onPlanUpdated(currentViewing, currentPlans);
     }

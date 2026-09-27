@@ -150,7 +150,16 @@ export function mount(root, params, ctx) {
 
     // Update rail stage based on the viewing plan
     const initialStage = calculateRailStage(viewingPlan);
-    ctx.store.set({ stage: initialStage, activePlanId: viewingPlanId });
+    ctx.store.set({
+      caseId,
+      plans: sortedPlans,
+      stage: initialStage,
+      activePlanId: viewingPlanId,
+      viewingPlanId: viewingPlanId
+    });
+
+    let lastHandledViewingPlanId = viewingPlanId;
+    let lastPlansRef = sortedPlans;
 
     // Grid container: 380px · 1fr · 400px · 56px (shell rail provides the 64px)
     const layoutEl = h('div', { class: 'screen-workspace-layout' });
@@ -198,10 +207,16 @@ export function mount(root, params, ctx) {
     function applyViewingPlan(plan) {
       if (!plan) return;
       viewingPlan = plan;
+      const pid = plan.plan_id || plan.id;
+      lastHandledViewingPlanId = pid;
 
-      // 1. Update rail stage
+      // 1. Update rail stage and store
       const stage = calculateRailStage(plan);
-      ctx.store.set({ stage, activePlanId: plan.plan_id || plan.id });
+      ctx.store.set({
+        stage,
+        activePlanId: pid,
+        viewingPlanId: pid
+      });
 
       // 2. Update viewer
       if (activeViewer) {
@@ -261,8 +276,8 @@ export function mount(root, params, ctx) {
     }
 
     if (ctx?.store && typeof ctx.store.subscribe === 'function') {
-      let lastHandledViewingPlanId = viewingPlanId;
-      let lastPlansRef = plans;
+      lastHandledViewingPlanId = viewingPlanId;
+      lastPlansRef = plans;
 
       unsubscribeStore = ctx.store.subscribe(() => {
         if (!isMounted) return;
