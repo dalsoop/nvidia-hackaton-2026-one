@@ -271,8 +271,8 @@ class ReferenceAgent:
 
     def _answer(self, text: str) -> str:
         if _diagnosis_request(text):
-            return ("발치 여부 같은 진단·치료 결정은 의사가 합니다. 원하시면 발치안과 비발치안을 같은 조건으로 계산해 "
-                    "비교해 드릴 수 있습니다. " + DISCLAIMER)
+            return ("발치 여부와 발치할 치아 같은 진단·치료 결정은 의사가 합니다. 처방(비발치, 또는 발치할 치아 번호)을 "
+                    "알려 주시면 그 처방으로 계획을 계산해 드리겠습니다. " + DISCLAIMER)
         if _delegation(text) and self.st["last"]:
             last = self.st["last"]
             return ("진단에서 정한 조건(발치 금지·기간 상한)은 의사 확인 없이 바꾸지 않습니다. "

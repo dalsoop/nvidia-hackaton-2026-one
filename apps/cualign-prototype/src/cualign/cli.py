@@ -25,13 +25,17 @@ def parse_constraints(text: str) -> dict:
     the prescribed teeth ("5번과 12번 발치", "14·24(앱 번호 5·12) 발치"; Universal numbers, #56), or "teeth-needed"
     when extraction is mentioned without teeth — the app does not pick them."""
     c = {"extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
-    if "비발치" in text or ("발치" in text and any(k in text for k in ("없", "피", "싫", "안 돼", "안돼", "금지"))):
+    # teeth first: "이전 안은 비발치였고 이번엔 5번과 12번 발치" is a prescription of 5 and 12, not non-extraction
+    teeth_list = r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
+    m = re.search(r"앱 번호\s*([\d\s·,]+)\)?\s*발치", text)     # "14·24(앱 번호 5·12) 발치": the app numbers
+    m = m or re.search(teeth_list + r"번?\s*(?:치아\s*)?발치", text) or re.search(r"발치\s*치아\s*[:：]?\s*" + teeth_list, text)
+    teeth = sorted({int(n) for n in re.findall(r"\d{1,2}", m.group(1))}) if m else []
+    if teeth:
+        c["extraction"] = teeth
+    elif "비발치" in text or ("발치" in text and any(k in text for k in ("없", "피", "싫", "안 돼", "안돼", "금지"))):
         c["extraction"] = []
     elif "발치" in text:
-        m = re.search(r"앱 번호\s*([\d\s·,]+)", text) or \
-            re.search(r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번?\s*(?:치아\s*)?발치", text)
-        teeth = sorted({int(n) for n in re.findall(r"\d{1,2}", m.group(1))}) if m else []
-        c["extraction"] = teeth or "teeth-needed"
+        c["extraction"] = "teeth-needed"
     m = re.search(r"(\d+)\s*개월", text)
     if m:
         from cualign.core.limits import stage_cap_from_months

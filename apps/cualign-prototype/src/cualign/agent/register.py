@@ -168,11 +168,13 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         current = constraints_for(cid)
         try:
             c = current.patched(inp.changes())
+            c.check_case(case.ids)
         except ValueError as e:
-            # Extraction without teeth, a tooth that cannot be extracted, ...: a normal result, like the rejection
-            # below (raising makes the agent retry), so the agent asks the dentist instead (#56).
-            return {**current.model_dump(mode="json"), "rejected": inp.changes(), "note": reason_ko(e)
-                    + " 조건은 바꾸지 않았습니다. 의사에게 확인한 뒤 다시 설정하세요."}
+            # Extraction without teeth, a tooth that cannot be extracted or is not in the case, stage_cap with
+            # clear_stage_cap, ...: a normal result, like the rejection below (raising makes the agent retry), so the
+            # agent asks the dentist instead (#56). The request is echoed as sent, never re-derived (that could raise).
+            return {**current.model_dump(mode="json"), "rejected": inp.model_dump(mode="json", exclude_none=True),
+                    "note": reason_ko(e) + " 조건은 바꾸지 않았습니다. 의사에게 확인한 뒤 다시 설정하세요."}
         # Re-stating the same conditions mid-loop is harmless; only a real change after targets
         # exist would make the computed plans disagree with the stored constraints.
         if c == current:

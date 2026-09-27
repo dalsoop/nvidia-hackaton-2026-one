@@ -231,7 +231,8 @@ def _isotonic(y: list[float]) -> list[float]:
 
 def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float, extra: dict,
                      lock=frozenset(), close: bool = False,
-                     close_sides: tuple[bool, bool] = (True, True)) -> tuple[list, dict, bool, tuple[float, float]]:
+                     close_sides: tuple[bool, bool] = (True, True),
+                     removed=()) -> tuple[list, dict, bool, tuple[float, float]]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
     Returns (arc position per active tooth, None for the anchors; lateral offset kept per span tooth; whether the span
@@ -276,7 +277,8 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
             L = t[a] if a >= 0 else lo
             R = t[b] if b < len(span) else top
             fits = fits and L <= R
-            t[a + 1:b] = np.clip(_isotonic(list(y[a + 1:b])), L, max(L, R))
+            at = _closing_position(span, removed, a, b, L, R, y) if close else None
+            t[a + 1:b] = np.clip(_isotonic(list(y[a + 1:b])) if at is None else np.full(b - a - 1, at), L, max(L, R))
     pos = {i: float(t[m] + D[m]) for m, i in enumerate(span)}
     lateral = {}
     for i in span:
@@ -284,6 +286,34 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
         e = float((case.anchor[i][:2] - arch.point(s0)) @ arch.normal(s0))
         lateral[i] = e if abs(e) < LATERAL_TOL_MM or i in lock else 0.0
     return [pos.get(i) for i in active], lateral, fits, (float(t[0] - lo), float(top - t[-1]))
+
+
+def _closing_position(span: list, removed, a: int, b: int, L: float, R: float, y) -> float | None:
+    """Where a free run (span[a+1:b], between locked teeth or the molars) sits as one closed chain after an extraction,
+    or None when no extraction space touches it (least movement, as without an extraction). The run closes onto the
+    extraction space: a space at one edge pulls the run to that edge; a space inside it packs the run against the
+    side away from the molars that can close what is left (the run's outer edge), else it is centred."""
+    def index(tooth, side):          # index in span of the nearest remaining tooth on that side of an extracted one
+        near = [m for m, i in enumerate(span) if (i < tooth if side < 0 else i > tooth)]
+        return (max(near) if side < 0 else min(near)) if near else (-1 if side < 0 else len(span))
+    inside = left = right = False
+    for e in removed:
+        ml, mr = index(e, -1), index(e, 1)
+        if a < ml and mr < b:
+            inside = True
+        elif ml == a and a < mr <= b - 1:
+            left = True
+        elif mr == b and a + 1 <= ml < b:
+            right = True
+    if not (inside or left or right):
+        return None
+    if inside:
+        if a == -1 and b < len(span):
+            return R                  # the molars before the run close the space left
+        if b == len(span) and a >= 0:
+            return L
+        return float(np.mean(y[a + 1:b]))
+    return L if left else R
 
 
 def _ipr_gain(ids, ipr_exclude, ipr_limit_mm=IPR_PER_SURFACE) -> float:
@@ -397,10 +427,12 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     if anchored:
         sides = (any(i < 9 for i in extraction), any(i >= 9 for i in extraction))
         s_new, lateral, fits, room = _anchored_layout(case, active, width, s_cur, offset, extra, lock,
-                                                      close=strategy == "extraction", close_sides=sides)
+                                                      close=strategy == "extraction", close_sides=sides,
+                                                      removed=tuple(extraction) if strategy == "extraction" else ())
         if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
-            closing = tuple(0.0 if (lock & blk or not side) else max(r, 0.0)
-                            for r, blk, side in zip(room, ({2, 3}, {14, 15}), sides))
+            # the molars close whatever room is left on their side (unless one of them is locked): the layout leaves it
+            # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
+            closing = tuple(0.0 if lock & blk else max(r, 0.0) for r, blk in zip(room, ({2, 3}, {14, 15})))
             if any(c > 0.05 for c in closing):
                 notes.append(f"남는 발치 공간은 대구치를 앞으로 옮겨 닫음 (3번 쪽 {closing[0]:.1f}mm, 14번 쪽 {closing[1]:.1f}mm)")
     else:

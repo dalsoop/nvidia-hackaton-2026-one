@@ -142,3 +142,102 @@ def test_plan_files_from_before_56_read_back():
     assert Constraints.from_saved({**old, "allow_extraction": False}).extraction == ()
     new = Constraints(extraction=(4, 13)).model_dump(mode="json")
     assert Constraints.from_saved(new, removed=[]).extraction == (4, 13)          # new files carry the teeth
+
+
+# ------------------------------------------------------------------------------------------------ PR #98 review
+def test_a_forbidden_extraction_in_an_old_file_stays_forbidden(moderate):
+    # an old plan that extracted although extraction was not allowed must not read back as a prescription
+    old = {"allow_extraction": False, "lock": [], "ipr_exclude": [], "ipr_limit_mm": 0.25, "stage_cap": None,
+           "order": "simultaneous"}
+    c = Constraints.from_saved(old, removed=[5, 12])
+    assert c.extraction == ()
+    target, _ = propose_target(moderate, "extraction", extraction=(5, 12))
+    stages, _ = plan_stages(moderate, target)
+    assert any(v["type"] == "extraction_forbidden" for v in validate(moderate, stages, constraints=c))
+
+
+def test_space_behind_a_locked_neighbour_is_reported_not_passed():
+    # 13 out, 12 locked: the space lies behind the locked 12, so the incisors cannot use it (mild still needs ~2 mm in
+    # front). The molar closes the space; the crowding in front is left and reported as collisions, not passed.
+    c = Case.synthetic("mild")
+    cons = Constraints(extraction=(13,), lock=(12,))
+    target, info = propose_target(c, "extraction", constraints=cons)
+    stages, _ = plan_stages(c, target)
+    assert _max_neighbour_gap(c, target) < 2.0
+    assert any(v["type"] == "collision" for v in validate(c, stages, space_deficit_mm=info["space_deficit_mm"], constraints=cons))
+
+
+def _max_neighbour_gap(case, target):
+    from scipy.spatial import cKDTree
+    from cualign.core.planner import yaw_of
+    act = [i for i in case.ids if target[i] is not None]
+    gaps = []
+    for a, b in zip(act, act[1:]):
+        A = case.placed(a, target[a], yaw_of(target, a), hull=True)
+        B = case.placed(b, target[b], yaw_of(target, b), hull=True)
+        gaps.append(float(cKDTree(B.vertices).query(A.vertices)[0].min()))
+    return max(gaps)
+
+
+@pytest.mark.parametrize("tooth, lock", [(5, 13), (12, 4), (5, 4), (12, 13)])
+def test_a_locked_tooth_does_not_leave_the_extraction_space_open(tooth, lock):
+    # before the review fix any locked tooth switched the closing off: 5 out + 13 locked left 4-6 open by 3.4 mm
+    c = Case.synthetic("mild")
+    target, info = propose_target(c, "extraction", lock={lock}, extraction=(tooth,))
+    assert np.allclose(target[lock], 0)
+    assert _max_neighbour_gap(c, target) < 2.0, info["notes"]      # without extraction the widest is ~1.4 mm here
+    stages, _ = plan_stages(c, target)
+    assert not validate(c, stages, space_deficit_mm=info["space_deficit_mm"],
+                        constraints=Constraints(extraction=(tooth,), lock=(lock,)))
+
+
+@pytest.mark.parametrize("text, teeth", [
+    ("이전 안은 비발치였고 이번엔 5번과 12번 발치로 다시 짜줘", [5, 12]),     # teeth win over a mentioned 비발치
+    ("발치 치아 5, 12번으로 계획해줘", [5, 12]),
+    ("처방은 비발치, IPR 11-21·11-12·21-22(앱 번호 8-9·7-8·9-10) 접촉면에 각 0.4mm입니다.", []),   # IPR numbers are not teeth
+])
+def test_cli_reads_the_prescribed_teeth(text, teeth):
+    from cualign.cli import parse_constraints
+    assert parse_constraints(text)["extraction"] == teeth
+
+
+def test_the_agent_tool_refuses_as_a_normal_result(tmp_path, monkeypatch):
+    import asyncio
+    from cualign.agent import register
+    from cualign.agent.context import CURRENT_RUN, PlanRun
+    s = store.Store()
+    monkeypatch.setattr(store, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(register, "STORE", s)
+    s.load_case("mild")
+
+    async def scenario():
+        gen = register.cualign(register.CuAlignToolConfig(), None)
+        group = await gen.__aenter__()
+        tools = await group.get_all_functions()
+        tool = next(fn for key, fn in tools.items() if key.split("__")[-1] == "set_constraints")
+        token = CURRENT_RUN.set(PlanRun("r1", "mild", None, Constraints()))
+        try:
+            for patch, why in ((ConstraintPatch(allow_extraction=True), "발치할 치아 번호"),
+                               (ConstraintPatch(extraction=[7]), "소구치"),
+                               (ConstraintPatch(stage_cap=40, clear_stage_cap=True), "")):
+                r = await tool.ainvoke(patch)            # never raises: the agent would retry
+                assert r["rejected"] and why in r["note"] and r["extraction"] == []
+            without_5 = Case({i: m for i, m in s.cases["mild"].mesh.items() if i != 5}, name="no-5")
+            s.cases["mild"] = without_5
+            r = await tool.ainvoke(ConstraintPatch(extraction=[5, 12]))   # a tooth the case does not have
+            assert r["rejected"] and r["extraction"] == []
+        finally:
+            CURRENT_RUN.reset(token)
+            await gen.__aexit__(None, None, None)
+    asyncio.run(scenario())
+
+
+def test_a06_catches_a_claimed_extraction_plan():
+    import re
+    import yaml
+    from pathlib import Path
+    spec = yaml.safe_load((Path(__file__).resolve().parents[1] / "evals/golden_a/specs/A06_compare.yaml").read_text())
+    pats = next(c for c in spec["checks"] if c["id"] == "A06-no-picked-teeth")["patterns"]
+    claim = "5·12번 발치 계획을 만들었습니다. 발치할 치아 번호를 알려 주세요."
+    ask = "발치안을 만들려면 발치할 치아 번호가 필요합니다. 어느 치아를 발치할까요? (예: 5번과 12번)"
+    assert any(re.search(p, claim) for p in pats) and not any(re.search(p, ask) for p in pats)

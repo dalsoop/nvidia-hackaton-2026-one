@@ -94,8 +94,11 @@ class Constraints(BaseModel):
         teeth: an extraction plan's prescription is the teeth it removed; a plan that removed none only had
         extraction allowed, which is non-extraction now. Never picks teeth."""
         if "extraction" not in data and "allow_extraction" in data:
+            allowed = bool(data["allow_extraction"])
             data = {k: v for k, v in data.items() if k != "allow_extraction"}
-            data["extraction"] = sorted(set(removed or ()))
+            # only an extraction the plan was allowed to make becomes its prescription; a forbidden one stays
+            # forbidden, so the validator still reports it (#98 review)
+            data["extraction"] = sorted(set(removed or ())) if allowed else []
         return cls.model_validate(data)
 
     def patched(self, changes: dict) -> "Constraints":

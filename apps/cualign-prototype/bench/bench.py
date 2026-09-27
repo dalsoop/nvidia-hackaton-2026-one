@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from cualign.core import Case, limits as L, planner  # noqa: E402
+from cualign.core.constraints import Constraints  # noqa: E402
 
 PRESETS = ["aligned", "mild", "moderate", "severe", "extraction"]
 BENCH_EXTRACTION = (5, 12)   # the prescription the extraction column assumes
@@ -29,7 +30,8 @@ def ladder(case: Case, allowed, stage_cap=None, order="simultaneous"):
     for s in allowed:
         target, info = planner.propose_target(case, s, extraction=BENCH_EXTRACTION if s == "extraction" else ())
         stages, sinfo = planner.plan_stages(case, target, order=order)
-        viol = planner.validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"])
+        viol = planner.validate(case, stages, stage_cap=stage_cap, space_deficit_mm=info["space_deficit_mm"],
+                                constraints=Constraints(extraction=BENCH_EXTRACTION if s == "extraction" else ()))
         tried.append((s, sinfo["n_stages"], sinfo["months"], viol))
         if not viol:
             break

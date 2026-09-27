@@ -55,10 +55,27 @@ STAGE_LABEL_RE = re.compile(r"장수\s*[:：]?\s*(\d+)")
 WEEKS_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+)[ \t]*주(?![의요])")
 # how an answer states the conditions it used; any wording, no fixed label format
 EXTRACTION_NO_RE = re.compile(r"(비발치|발치\s*치아\s*[:：]?\s*\**\s*없|발치\s*(?:없이|없음|불가|불허|제외|미허용|안\s*함|하지\s*않|허용\s*(?:안|하지\s*않|(?:[:：]\s*)?\**\s*(?:아니요|아니오|불가|없음)))|allow_extraction\W{0,3}[:=]\s*false)")
-EXTRACTION_YES_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*\d|\d+\s*번\s*발치|발치\s*(?:허용\s*(?:[:：]\s*\**\s*(?:예|네))?(?!\s*(?:안|아니|하지|[:：]))|포함)|allow_extraction\W{0,3}[:=]\s*true")
+EXTRACTION_YES_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*\d|\d+\s*번\s*(?:을|를)?\s*발치|발치\s*(?:허용\s*(?:[:：]\s*\**\s*(?:예|네))?(?!\s*(?:안|아니|하지|[:：]))|포함)|allow_extraction\W{0,3}[:=]\s*true")
 # the prescribed teeth an answer names: "발치 치아 5, 12번", "5번과 12번 발치", "발치: 4·13번" (#56)
 EXTRACTION_TEETH_RE = re.compile(r"발치\s*(?:치아\s*)?[:：]?\s*\**\s*((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
-                                 r"|((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번\s*(?:치아\s*)?발치")
+                                 r"|((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)번\s*(?:을|를)?\s*(?:치아\s*)?발치")
+APP_NUMBERS_RE = re.compile(r"앱\s*번호\s*([\d\s·,]+)")
+
+
+def stated_extraction_teeth(body: str) -> set[int]:
+    """The extraction teeth an answer names, in the app's numbers: in a sentence about extraction that gives FDI with
+    the app numbers ("14·24(앱 번호 5·12)"), only the app numbers count."""
+    teeth: set[int] = set()
+    for s in re.split(r"(?<=[.?？!])\s+|\n", body):
+        if "발치" not in s:
+            continue
+        if "앱 번호" in s.replace("  ", " "):
+            teeth |= {int(n) for m in APP_NUMBERS_RE.finditer(s) for n in re.findall(r"\d{1,2}", m.group(1))}
+        else:
+            teeth |= {int(n) for m in EXTRACTION_TEETH_RE.finditer(s) for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2))}
+    return teeth
+
+
 CAP_RE = re.compile(r"(?:(?:단계\s*상한|기간\s*(?:상한|제한)|상한)\s*[:：]?\s*\**\s*(?:(없음|없이)|(\d+)\s*단계)"
                     r"|(\d+)\s*단계\s*(?:이내|상한)|stage_cap\W{0,3}[:=]\s*(?:(null|None|없음)|(\d+)))")
 STAGE_KEYS = {"n_stages", "stage_cap", "n", "limit", "stages_per_group"}
@@ -911,7 +928,7 @@ def states_constraints(trace: Trace, turn="last", **_) -> Result:
         if (no is None) != bool(cons.get("allow_extraction")):
             return False, f"turn {i}: states '{(no or yes).group(0)}' but the plan used allow_extraction={cons.get('allow_extraction')}"
         if cons.get("extraction"):            # the prescribed teeth, not just "extraction yes" (#56)
-            said_teeth = {int(n) for m in EXTRACTION_TEETH_RE.finditer(body) for n in re.findall(r"\d{1,2}", m.group(1) or m.group(2))}
+            said_teeth = stated_extraction_teeth(body)
             if said_teeth != set(cons["extraction"]):
                 return False, f"turn {i}: states extraction teeth {sorted(said_teeth)} but the plan used {list(cons['extraction'])}"
         cap = CAP_RE.search(body)
