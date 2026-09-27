@@ -17,6 +17,8 @@ def test_artifact_flow(tmp_path, monkeypatch):
     with TestClient(app) as client:
         assert client.get("/ui/").status_code == 200
         assert client.get("/ui/app.js").status_code == 200
+        for icon in ("favicon.png", "apple-touch-icon.png"):
+            assert client.get(f"/ui/{icon}").headers["content-type"] == "image/png"
         result = client.post("/api/plan", json={"case_id": "moderate", "allow_extraction": False}).json()
         plan = result["chosen"] or result["best_failed"]
         pid = plan["plan_id"]

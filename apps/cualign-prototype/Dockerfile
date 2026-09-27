@@ -5,7 +5,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY configs ./configs
 COPY guardrails ./guardrails
-COPY skills ./skills
+COPY workspace ./workspace
 COPY bench ./bench
 RUN uv sync --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH" CUALIGN_OUT=/app/out NAT_TELEMETRY_ENABLED=0

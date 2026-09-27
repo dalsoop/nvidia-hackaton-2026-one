@@ -180,6 +180,20 @@ class PlanningLLM(FakeLLM):
         return {"role": "assistant", "content": self.thought, "tool_calls": [call]}
 
 
+class ComparingLLM(PlanningLLM):
+    """Calls compare_strategies, selects the first plan of its result, then answers with `content`."""
+
+    def reply(self, req):
+        seen = json.dumps(req.get("messages", []), ensure_ascii=False)
+        plan = re.findall(r"plan_id\W+(p[0-9a-f]{32})", seen)
+        if "plan_selected" in seen:
+            return FakeLLM.reply(self, req)
+        name, args = ("cualign__select_plan", {"plan_id": plan[0]}) if plan else ("cualign__compare_strategies", {})
+        call = {"id": f"call_{len(self.requests)}", "type": "function",
+                "function": {"name": name, "arguments": json.dumps(args)}}
+        return {"role": "assistant", "content": self.thought, "tool_calls": [call]}
+
+
 class SkippingPlanner(PlanningLLM):
     """PlanningLLM never calls the reviewer (the skipped-review turn in KNOWN_ISSUES). The same fake server answers
     the reviewer's own call with `memo`."""

@@ -34,11 +34,11 @@ def test_react_prompt_has_no_stray_template_variables():
 
     `nat validate` does not build the prompt, so this is the only offline check that catches it.
     """
-    import yaml
+    from nat.utils.io.yaml_tools import yaml_load
     from nat.plugins.langchain.agent.react_agent.agent import create_react_agent_prompt
     from nat.plugins.langchain.agent.react_agent.register import ReActAgentWorkflowConfig
 
-    cfg = yaml.safe_load((ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8"))["workflow"]
+    cfg = yaml_load(ROOT / "configs" / "workflow.yml")["workflow"]
     cfg.pop("_type")
     prompt = create_react_agent_prompt(ReActAgentWorkflowConfig(**cfg))
     assert set(prompt.input_variables) <= {"question", "chat_history", "agent_scratchpad", "tools", "tool_names"}, \
@@ -67,14 +67,15 @@ def test_planner_instructions_convert_fdi_to_universal():
     conversion table and the extraction example in FDI, and the skill text (preloaded into the same context) agrees."""
     import re
     import yaml
-    text = yaml.safe_load((ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8"))["workflow"]["additional_instructions"]
+    from nat.utils.io.yaml_tools import yaml_load   # resolves the file:// include (workspace/AGENTS.md)
+    text = yaml_load(ROOT / "configs" / "workflow.yml")["workflow"]["additional_instructions"]
     flat = " ".join(text.split())
     assert "FDI 18 17 16 15 14 13 12 11 -> Universal 1 2 3 4 5 6 7 8" in flat
     assert "FDI 21 22 23 24 25 26 27 28 -> Universal 9 10 11 12 13 14 15 16" in flat
     assert '"14번과 24번 발치" -> [5, 12]' in flat and "Never write a Universal number to the dentist" in flat
     for fdi, u in ((18, 1), (11, 8), (21, 9), (28, 16), (14, 5), (15, 4), (24, 12), (25, 13)):   # the stated formula
         assert (19 - fdi if fdi < 20 else fdi - 12) == u
-    skill = (ROOT / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
+    skill = (ROOT / "workspace" / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
     assert "14번과 24번 발치" in skill and re.search(r"5번과 12번 발치", skill) is None
     # the review memo is shown on the same screen: its tooth numbers are FDI too (configured and built-in instructions)
     from cualign.agent.reviewer import DEFAULT_INSTRUCTIONS

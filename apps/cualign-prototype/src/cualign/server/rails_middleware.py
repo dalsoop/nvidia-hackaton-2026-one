@@ -23,6 +23,12 @@ Regex rails (cualign.core.rail_patterns) run before the rail models, only while 
   * personal identifiers in any message of the request (system included) refuse the turn before any model;
   * a prescriptive sentence in the answer blocks it without asking the output rail model.
 The reviewer's memo goes to the plan card, not the answer, so reviewer.MEMO_CHECK gives it the same output check.
+
+The held answer also gets its rule status checked, with the rails on or off, since it is the plan's safety status and
+not a rail verdict (#91). The answer opens with the selected plan's rule status (workflow.yml), and the planner has
+written "규칙 위반은 없습니다" for a plan that failed validation. So on a UI turn (or a golden-set run) that selected a failed
+plan, a clause of the opening that says no rule was broken is replaced with the plan's real status. A turn that compared
+strategies is left as it is: its answer describes several plans, and a clause cannot be tied to one of them.
 """
 from __future__ import annotations
 
@@ -31,6 +37,7 @@ import logging
 import os
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -49,6 +56,7 @@ from cualign.agent.context import CURRENT_RUN
 from cualign.agent.overload import is_overload_error
 from cualign.keys import nvidia_key_available
 from cualign.core.rail_patterns import PII, PRESCRIPTIVE
+from cualign.core.store import STORE
 from cualign.server.rails import ROOT
 
 logger = logging.getLogger(__name__)
@@ -62,6 +70,24 @@ MEMO_REQUEST = "이 계획의 검토 메모를 써줘."
 _RANK = {"passed": 0, "flagged": 1, "off": 1, "error": 2, "blocked": 3}
 # A caller without a PlanRun sets a dict here before the turn; the middleware writes "state" into it.
 RAIL_RECORD: ContextVar[dict | None] = ContextVar("cualign_rail_record", default=None)
+# The violation names workflow.yml gives the planner for its rule status line, one per type core/planner.py emits
+# (tests/test_rule_status.py fails when a type or a name is missing; a missing type would be written «기타»).
+VIOLATION_KO = {"space_deficit": "공간 부족", "collision": "충돌", "move_limit": "이동량 초과", "rotation_limit": "회전량 초과",
+                "stage_cap": "단계 상한 초과", "locked_tooth": "고정 치아 이동", "ipr_limit": "IPR 한도 초과",
+                "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치",
+                "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간"}
+# Says the plan broke no rule: "규칙 위반은 없습니다", "위반 사항 없음", "위반 0건", "모든 규칙을 통과했습니다".
+# Not "검토: 통과" (the reviewer wrote a memo, #91), "규칙을 통과하지 못했습니다" or "규칙 위반: 충돌 3건".
+NO_VIOLATION = (r"위반\s*(?:사항)?\s*(?:[은는이가도]|[:：])?\s*(?:없|0\s*건|(?:발견|확인)되지\s*않)"
+                r"|규칙\s*(?:검증|검사)?\s*[을를은는이가도]?\s*(?:모두\s*)?(?:통과|만족|준수)"
+                r"(?!\s*(?:하지|를|을|가|는|은)?\s*(?:못|않|아니|아닙|실패))")
+# The clause that says it: from the line start, a sentence end, a comma or a bold mark to the end of the sentence.
+# A decimal point ("약 2.8개월") ends nothing.
+NO_VIOLATION_CLAUSE = re.compile(r"(?:[^.!?,*\n]|(?<=\d)\.(?=\d))*"
+                                 rf"(?:{NO_VIOLATION})"
+                                 r"(?:[^.!?*\n]|(?<=\d)\.(?=\d))*[.!?]?")
+# A list line ("- 조건: …", "1. …"); the answer's opening is everything before the first one.
+BULLET = re.compile(r"\s*(?:[-•]|\*(?!\*)|\d+[.)])\s")
 
 
 class RailsMiddlewareConfig(FunctionMiddlewareBaseConfig, name="cualign_rails"):
@@ -117,9 +143,46 @@ def _text(out: Any) -> str:
     return getattr(part, "content", None) or ""
 
 
-def refusal_like(value: Any, text: str) -> Any:
+def response_like(value: Any, text: str) -> Any:
     """The workflow returns a plain string for `input_message` requests and a ChatResponse otherwise."""
     return text if getattr(value, "is_string", False) else ChatResponse.from_string(text, usage=Usage())
+
+
+def rule_status(violations: list[dict]) -> str:
+    """A failed plan's rule status in workflow.yml's words, e.g. 규칙 위반: 충돌 3건."""
+    counts = Counter(v.get("type") for v in violations)
+    return "규칙 위반: " + ", ".join(f"{VIOLATION_KO.get(t, '기타')} {n}건" for t, n in counts.items()) + "."
+
+
+def fix_rule_status(answer: str, violations: list[dict]) -> str:
+    """The answer with each clause of its opening (the lines before the first list line) that says the plan broke no
+    rule replaced: the first by rule_status(violations), any later one by nothing. List lines are left as they are."""
+    lines = answer.split("\n")
+    head = "\n".join(lines[:next((i for i, line in enumerate(lines) if BULLET.match(line)), len(lines))])
+    status, done = rule_status(violations), []
+
+    def replace(m: re.Match) -> str:
+        if done:
+            return ""
+        done.append(True)
+        return m.group(0)[:len(m.group(0)) - len(m.group(0).lstrip())] + status   # keeps the space before it
+    return NO_VIOLATION_CLAUSE.sub(replace, head) + answer[len(head):]
+
+
+def _checked_rule_status(answer: str) -> str | None:
+    """The answer with its opening's rule status fixed when this turn selected a plan that failed validation and did
+    not compare strategies; None to let it out as it is. The plan comes from the turn's PlanRun, so a route without one
+    (/generate, /v1/chat/completions, the websocket, nat run) is not checked."""
+    run = CURRENT_RUN.get()
+    if run is None or run.selected_plan_id is None or run.compared:
+        return None
+    violations = STORE.plans[run.selected_plan_id]["violations"]
+    fixed = fix_rule_status(answer, violations) if violations else answer
+    if fixed == answer:
+        return None
+    logger.warning("cuAlign: the answer said plan %s broke no rule; the server wrote its real rule status",
+                   run.selected_plan_id)
+    return fixed
 
 
 def _record(kind: str, state: str, prev: str | None = None) -> str:
@@ -246,8 +309,12 @@ class RailsMiddleware(FunctionMiddleware):
                 out = await call_next(*args, **kwargs)
             except Exception as e:
                 raise self._failed(e) from None
-            refusal = _no_korean(_text(out)) or await self._check_output(user, _text(out), state)
-        return refusal_like(value, refusal) if refusal else out
+            answer = _text(out)
+            fixed = _checked_rule_status(answer)
+            if fixed is not None:
+                out, answer = response_like(value, fixed), fixed
+            refusal = _no_korean(answer) or await self._check_output(user, answer, state)
+        return response_like(value, refusal) if refusal else out
 
     async def function_middleware_stream(self, *args: Any, call_next, context, **kwargs: Any) -> AsyncIterator[Any]:
         """Holds every chunk until the output verdict (the base class passes each chunk on at once)."""
@@ -259,6 +326,9 @@ class RailsMiddleware(FunctionMiddleware):
             except Exception as e:
                 raise self._failed(e) from None
             answer = "".join(_text(c) for c in held)
+            fixed = _checked_rule_status(answer)
+            if fixed is not None:
+                held, answer = [ChatResponseChunk.create_streaming_chunk(fixed)], fixed
             refusal = _no_korean(answer) or await self._check_output(user, answer, state)
         if refusal:
             yield ChatResponseChunk.create_streaming_chunk(refusal)
