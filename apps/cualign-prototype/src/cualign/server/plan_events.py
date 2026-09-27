@@ -34,9 +34,29 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints)
     context = {"case_id": cid, "base_plan_id": ctx.base_plan_id, "constraints": constraints.model_dump(mode="json"),
                "conditions_ko": constraints.describe_ko()}   # the answer's 조건 line, FDI, written by the server (#113)
+    if ctx.base_plan_id is not None:
+        context["base_plan_ko"] = base_plan_ko(store, cid, ctx.base_plan_id)   # the plan on screen, and a revert (#90)
     if preload is not None:
         context.update(preload(cid, case, constraints))
     return run, {"role": "system", "content": "cuAlign server context: " + json.dumps(context, ensure_ascii=False)}
+
+
+STRATEGY_KO = {"expansion": "확장", "ipr": "IPR", "expansion_ipr": "확장 + IPR", "extraction": "발치"}
+
+
+def base_plan_ko(store, case_id: str, base_plan_id: str) -> str:
+    """One Korean line about the plan the screen shows (base_plan_id) for the agent's context (#90). The screen sends
+    the plan it shows; when newer plans of the case exist, the dentist went back to this one («이전 안으로 되돌리기»),
+    and the line says so, so the next revision starts from the plan on screen and the newer plans are not "이전 안"."""
+    p = store._record(base_plan_id)
+    words = f"{STRATEGY_KO.get(p['strategy'], p['strategy'])} 전략, {p['info']['n_stages']}단계(약 {p['info']['months']}개월), " \
+            f"{'규칙 위반 ' + str(len(p['violations'])) + '건' if p['violations'] else '규칙 통과'}"
+    later = store.plan_ids_for(case_id)
+    later = later[later.index(base_plan_id) + 1:] if base_plan_id in later else []
+    if later:
+        return (f"의사가 화면에서 이 계획({words})으로 되돌렸다. 그 뒤에 만든 계획 {len(later)}개는 버렸다: "
+                f"다음 수정은 이 계획을 기준으로 하고, 버린 계획을 이전 안으로 부르지 않는다.")
+    return f"화면에 보이는 계획: {words}. 수정 요청은 이 계획을 기준으로 한다."
 
 
 def event(name, payload):
