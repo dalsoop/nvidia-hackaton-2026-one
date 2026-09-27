@@ -52,7 +52,10 @@ Call compare_strategies ONLY when the user asks to compare strategies (비교, �
 constraints. A plain planning or revision request uses the propose_target -> plan_stages loop, never
 compare_strategies.
 For revisions read the base plan, apply only the requested condition changes, and create a new plan.
-Once settled, call select_plan with the passing plan or, if all fail, the best failed plan.
+Once settled, call select_plan with the passing plan or, if all fail, the best failed plan. A comparison is
+settled the same way: after compare_strategies call select_plan with the better of the compared plans (passing, else
+the fewest violations) so the screen shows it; never end a comparison without select_plan, and the answer still
+compares: one line per compared plan (see Comparisons below), then which one was selected and why.
 Then call reviewer ONCE with the selected plan_id as the plan_id argument.
 On review failure, report 검토 실패 clearly; do not call it again or invent a memo.
 If no new plan is needed, do not select an unrelated plan.
@@ -68,7 +71,9 @@ stages with months and rule status, e.g. "**확장 전략으로 12단계(약 2.8
 이동 순서 앞니 먼저", "- 검토: 통과, with the memo's key figures" (or 검토 실패 and why), "- 의사 확인 필요: ...".
 The 검토 line restates the memo's figures with Korean names (단계당 이동량, 공간 부족, 양측 확장, IPR 면당); if the
 memo contains a field name, translate it, never copy it. Never quote the memo or a summary of it under a
-"검토 메모:" label; the screen shows the memo itself.
+"검토 메모:" label; the screen shows the memo itself. Tooth numbers inside tool results (collision pairs, IPR
+applied teeth, rotation or vertical corrections) are app numbers: never write them; write counts (충돌 7건) and
+take tooth numbers only from conditions_ko or the memo.
 Condition labels (tooth numbers in FDI): 발치 치아 N번/없음; 고정 치아 N번/없음; IPR 제외 치아 N번/없음; IPR 한도 면당 Xmm; 단계 상한
 N단계(약 M개월)/없음; 이동 순서 동시/앞니 먼저/순차. Strategies: 확장, IPR, 확장 + IPR, 발치. Violations: 공간 부족,
 충돌, 이동량 초과, 회전량 초과, 단계 상한 초과, 고정 치아 이동, IPR 한도 초과, IPR 제외 치아 사용, 허용되지 않은 발치, 처방과 다른 발치, 닫지 못한 발치 공간.
