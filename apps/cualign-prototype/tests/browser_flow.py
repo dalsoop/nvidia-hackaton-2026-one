@@ -281,7 +281,7 @@ async def main():
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
             await page.locator('#sampleCards .case-card[data-id="poseidon-000001"]').click()      # card → detail under it
-            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14
+            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle:not(.ipr-dot)").count() == 14   # crowns only: 000001 also draws IPR-exclusion dots
             assert await page.locator('#sampleCards > #clDetail.in-cards').count() == 1      # under the card row
             assert await page.locator("#intro").is_visible()   # the intro panel is back on the left (③)
             await page.locator("#dOpen").click()
@@ -406,7 +406,8 @@ async def main():
                     "plan_selected": {"plan_id": recorded_plan, "parent_plan_id": None, "review": {"status": "skipped"}},
                     "plans": [], "recorded_at": "2026-09-28T10:00:00"}))
             await page.route("**/api/cases/poseidon-000131/replay", replay_route)
-            await page.locator("#resendBtn").click()
+            await page.locator("#chatInput").fill("처방대로 계획 짜줘")      # a new failed turn (건너뛰기 hid the retry bar)
+            await page.locator("#sendBtn").click()
             await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
             await page.locator("#skipBtn").click()
             await page.wait_for_selector(".msg.assistant.recorded")
