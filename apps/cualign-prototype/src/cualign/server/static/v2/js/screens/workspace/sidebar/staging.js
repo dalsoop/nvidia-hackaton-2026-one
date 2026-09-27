@@ -3,6 +3,7 @@
 import { clear, h } from '../../../ui/dom.js';
 import { fdiToUniversal, universalToFdi } from '../../../domain/teeth.js';
 import { T } from '../../../domain/vocab.js';
+import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { preferredPlan } from '../../../domain/status.js';
 
 export const STRATEGY_KO = Object.freeze({
@@ -121,7 +122,7 @@ export function hasToothCollision(plan, stageIdx, uTooth) {
   }
   const uStr = String(uTooth);
   return plan.violations.some(v =>
-    v.stage === stageIdx &&
+    Number(v.stage) === stageIdx &&
     v.type === 'collision' &&
     Array.isArray(v.teeth) &&
     (v.teeth.includes(uTooth) || v.teeth.includes(uStr))
@@ -135,11 +136,17 @@ export function hasToothCollision(plan, stageIdx, uTooth) {
  * @param {Object} ctx - App context
  */
 export function renderStaging(container, ctx) {
+  // Save previous scroll positions if table already rendered
+  const prevWrap = container.querySelector('.staging-table-wrap');
+  const prevScrollTop = prevWrap ? prevWrap.scrollTop : null;
+  const prevScrollLeft = prevWrap ? prevWrap.scrollLeft : null;
+
   clear(container);
 
   const state = ctx.store.get();
   const plans = state.plans || [];
   const currentPlan = (state.viewingPlanId && plans.find(p => (p.plan_id || p.id) === state.viewingPlanId))
+    || state.viewingPlan
     || preferredPlan(plans)
     || plans[0]
     || null;
@@ -152,7 +159,7 @@ export function renderStaging(container, ctx) {
 
   if (!currentPlan || !currentPlan.stages || currentPlan.stages.length === 0) {
     const emptyNotice = h('div', { class: 'sidebar-empty-state' }, [
-      h('p', null, '표시할 단계 계획이 없습니다.')
+      h('p', null, SIDEBAR_VOCAB.staging.noPlan)
     ]);
     panelRoot.appendChild(emptyNotice);
     container.appendChild(panelRoot);
@@ -162,7 +169,8 @@ export function renderStaging(container, ctx) {
   // 2. Staging Table (FDI columns x Stage rows)
   const fdiColumns = getFdiColumnsForPlan(currentPlan);
   const nStages = currentPlan.stages.length;
-  const currentStage = typeof state.stage === 'number' ? state.stage : 0;
+  const rawStage = Number(state.stage);
+  const currentStage = Number.isInteger(rawStage) && rawStage >= 0 ? rawStage : 0;
 
   const tableWrap = h('div', { class: 'staging-table-wrap' });
   const tableEl = h('table', { class: 'staging-table' });
@@ -170,7 +178,7 @@ export function renderStaging(container, ctx) {
   // Table Header (FDI teeth)
   const theadEl = h('thead', null, [
     h('tr', null, [
-      h('th', { class: 'staging-th-stage' }, '단계'),
+      h('th', { class: 'staging-th-stage' }, SIDEBAR_VOCAB.staging.stageCol),
       ...fdiColumns.map(fdi => h('th', {
         class: 'staging-th-tooth',
         title: `치아 FDI ${fdi}`
@@ -185,7 +193,7 @@ export function renderStaging(container, ctx) {
   // Stage rows: 0 (Initial) through nStages
   for (let s = 0; s <= nStages; s++) {
     const isCurrent = s === currentStage;
-    const stageLabel = s === 0 ? '0 (초기)' : `${s}`;
+    const stageLabel = s === 0 ? SIDEBAR_VOCAB.staging.initialStage : `${s}`;
 
     const trEl = h('tr', {
       class: `staging-row ${isCurrent ? 'current-stage' : ''}`,
@@ -255,24 +263,41 @@ export function renderStaging(container, ctx) {
   const legendEl = h('div', { class: 'staging-legend' }, [
     h('div', { class: 'legend-item' }, [
       h('span', { class: 'cell-dot cell-move-trans' }),
-      h('span', null, '이동/확장')
+      h('span', null, SIDEBAR_VOCAB.staging.legendTrans)
     ]),
     h('div', { class: 'legend-item' }, [
       h('span', { class: 'cell-dot cell-move-rot' }),
-      h('span', null, '회전')
+      h('span', null, SIDEBAR_VOCAB.staging.legendRot)
     ]),
     h('div', { class: 'legend-item' }, [
       h('span', { class: 'cell-dot cell-move-vert' }),
-      h('span', null, '수직')
+      h('span', null, SIDEBAR_VOCAB.staging.legendVert)
     ]),
     h('div', { class: 'legend-item' }, [
       h('span', { class: 'collision-ring legend-ring' }),
-      h('span', null, '충돌 고리')
+      h('span', null, SIDEBAR_VOCAB.staging.legendCollision)
+    ]),
+    h('div', { class: 'legend-item' }, [
+      h('span', { class: 'cell-locked-icon' }, '🔒'),
+      h('span', null, SIDEBAR_VOCAB.staging.legendLocked)
+    ]),
+    h('div', { class: 'legend-item' }, [
+      h('span', { class: 'cell-extracted-mark' }, '✕'),
+      h('span', null, SIDEBAR_VOCAB.staging.legendExtracted)
     ])
   ]);
   panelRoot.appendChild(legendEl);
 
   container.appendChild(panelRoot);
+
+  // Restore scroll position
+  if (prevScrollTop != null && prevWrap) {
+    const newWrap = container.querySelector('.staging-table-wrap');
+    if (newWrap) {
+      newWrap.scrollTop = prevScrollTop;
+      newWrap.scrollLeft = prevScrollLeft;
+    }
+  }
 }
 
 /**

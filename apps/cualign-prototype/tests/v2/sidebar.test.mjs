@@ -346,3 +346,114 @@ test('getToothMovementInfo and hasToothCollision: identify movements and collisi
   assert.equal(hasToothCollision(plan, 1, 10), false);
   assert.equal(hasToothCollision(plan, 2, 8), false); // Stage 2 has no collision
 });
+
+test('calculateConditionDiff: handles explicit clear_stage_cap flag', () => {
+  const base = { stage_cap: 20 };
+  const diff = calculateConditionDiff({ clear_stage_cap: true }, base);
+  assert.deepEqual(diff, { clear_stage_cap: true });
+
+  // If already null, clear_stage_cap is not added
+  const diffNull = calculateConditionDiff({ clear_stage_cap: true }, { stage_cap: null });
+  assert.deepEqual(diffNull, {});
+});
+
+test('calculateConditionDiff: clamps negative ipr_limit_mm to 0', () => {
+  const base = { ipr_limit_mm: 0.25 };
+  const diff = calculateConditionDiff({ ipr_limit_mm: -0.1 }, base);
+  assert.equal(diff.ipr_limit_mm, 0);
+});
+
+test('groupViolations: handles numeric strings in teeth and stages', () => {
+  const rawViolations = [
+    { stage: '2', type: 'collision', teeth: ['8', '9'], overlap_mm3: '0.22' },
+    { stage: 2, type: 'collision', teeth: ['9', '8'], overlap_mm3: 0.1 }
+  ];
+
+  const grouped = groupViolations(rawViolations);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped.total, 2);
+
+  const colGroup = grouped.byType.collision;
+  assert.equal(colGroup.pairs.length, 1);
+  assert.deepEqual(colGroup.pairs[0].teeth, [8, 9]);
+  assert.deepEqual(colGroup.pairs[0].stages, [2]);
+  assert.equal(colGroup.pairs[0].maxOverlap, 0.22);
+});
+
+test('groupViolations: handles extraction_forbidden and general violations with stage', () => {
+  const raw = [
+    { stage: 3, type: 'extraction_forbidden', teeth: [4] },
+    { stage: 5, type: 'space_deficit', mm: 1.2, limit: 0 }
+  ];
+
+  const grouped = groupViolations(raw);
+  assert.equal(grouped.length, 2);
+  const extGroup = grouped.byType.extraction_forbidden;
+  assert.equal(extGroup.count, 1);
+  assert.equal(extGroup.byTooth[0].tooth, 4);
+  assert.deepEqual(extGroup.byTooth[0].stages, [3]);
+
+  const spaceGroup = grouped.byType.space_deficit;
+  assert.equal(spaceGroup.count, 1);
+  assert.equal(spaceGroup.general[0].stage, 5);
+});
+
+test('hasToothCollision: handles string stage and string tooth in teeth array', () => {
+  const plan = {
+    violations: [
+      { stage: '3', type: 'collision', teeth: ['8', '9'] }
+    ]
+  };
+
+  assert.equal(hasToothCollision(plan, 3, 8), true);
+  assert.equal(hasToothCollision(plan, 3, 9), true);
+  assert.equal(hasToothCollision(plan, 3, 10), false);
+  assert.equal(hasToothCollision(plan, 1, 8), false);
+  assert.equal(hasToothCollision(null, 3, 8), false);
+});
+
+test('getFdiColumnsForPlan: handles null, missing stages, and full maxillary arch', () => {
+  // Null plan returns standard 14 teeth (17..11, 21..27)
+  const defaultCols = getFdiColumnsForPlan(null);
+  assert.equal(defaultCols.length, 14);
+  assert.equal(defaultCols[0], 17);
+  assert.equal(defaultCols[defaultCols.length - 1], 27);
+
+  // Full 16 teeth arch including wisdom teeth 1 (18) and 16 (28)
+  const fullPlan = {
+    stages: [
+      { '1': [0, 0, 0], '8': [0, 0, 0], '9': [0, 0, 0], '16': [0, 0, 0] }
+    ]
+  };
+  const fullCols = getFdiColumnsForPlan(fullPlan);
+  assert.deepEqual(fullCols, [18, 11, 21, 28]);
+});
+
+test('getToothMovementInfo: returns idle for zero displacement and handles stage 0', () => {
+  const plan = {
+    stages: [{ '8': [0, 0, 0] }],
+    rotations: [{ '8': 0 }]
+  };
+
+  assert.equal(getToothMovementInfo(plan, 0, 8).kind, 'idle');
+  assert.equal(getToothMovementInfo(plan, 1, 8).kind, 'idle');
+});
+
+test('SIDEBAR_VOCAB: contains all required Korean strings for tabs, staging, rules, and conditions', async () => {
+  const { SIDEBAR_VOCAB } = await import('../../src/cualign/server/static/v2/js/domain/vocab/sidebar.js');
+
+  assert.equal(SIDEBAR_VOCAB.tabs.stages, '단계 표');
+  assert.equal(SIDEBAR_VOCAB.tabs.rules, '규칙');
+  assert.equal(SIDEBAR_VOCAB.tabs.conditions, '조건');
+
+  assert.equal(SIDEBAR_VOCAB.conditions.recalculate, '이 조건으로 계산');
+  assert.equal(SIDEBAR_VOCAB.conditions.allowExtraction, '발치 허용');
+  assert.equal(SIDEBAR_VOCAB.conditions.prescriptionBannerTitle, '처방 문장 (의사 진단)');
+
+  assert.equal(SIDEBAR_VOCAB.rules.violations.collision, '치아 충돌');
+  assert.equal(SIDEBAR_VOCAB.rules.violations.move_limit, '이동량 한도 초과');
+  assert.equal(SIDEBAR_VOCAB.rules.violations.rotation_limit, '회전 한도 초과');
+  assert.equal(SIDEBAR_VOCAB.rules.violations.locked_tooth, '고정 치아 이동');
+  assert.equal(SIDEBAR_VOCAB.rules.violations.stage_cap, '단계 상한 초과');
+});
+

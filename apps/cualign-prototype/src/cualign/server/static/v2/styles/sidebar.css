@@ -452,6 +452,17 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+.checks-item-clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-radius: var(--radius-xs);
+  padding: var(--space-6) var(--space-8);
+}
+
+.checks-item-clickable:hover {
+  background: var(--color-surface-base);
+}
+
 .checks-item-row:last-child {
   border-bottom: none;
 }

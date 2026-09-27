@@ -1,0 +1,67 @@
+// Sidebar vocabulary dictionary for cuAlign UI v2 (J8 contract)
+
+export const SIDEBAR_VOCAB = Object.freeze({
+  tabs: {
+    stages: '단계 표',
+    rules: '규칙',
+    conditions: '조건'
+  },
+  staging: {
+    title: '단계 표',
+    stageCol: '단계',
+    initialStage: '0 (초기)',
+    noPlan: '표시할 단계 계획이 없습니다.',
+    legendTrans: '이동/확장',
+    legendRot: '회전',
+    legendVert: '수직',
+    legendCollision: '충돌 고리',
+    legendLocked: '고정',
+    legendExtracted: '발치'
+  },
+  rules: {
+    title: '규칙',
+    allPassedTitle: '모든 규칙 검사 통과',
+    allPassedDesc: '충돌, 단계별 이동 한계, 회전 한계 및 공간 제약을 모두 충족합니다.',
+    noPlan: '검사할 계획이 선택되지 않았습니다.',
+    stageLabel: '발생 단계:',
+    stageChip: (st) => `${st}단계`,
+    stageJumpTitle: (st) => `단계 ${st}로 이동`,
+    violations: {
+      collision: '치아 충돌',
+      move_limit: '이동량 한도 초과',
+      rotation_limit: '회전 한도 초과',
+      locked_tooth: '고정 치아 이동',
+      space_deficit: '공간 부족',
+      stage_cap: '단계 상한 초과',
+      extraction_forbidden: '비발치 규칙 위반',
+      ipr_limit: 'IPR 한도 초과',
+      ipr_excluded: 'IPR 제외 치아 절제'
+    }
+  },
+  conditions: {
+    title: '조건',
+    prescriptionBannerTitle: '처방 문장 (의사 진단)',
+    allowExtraction: '발치 허용',
+    allowExtractionHint: '해제 시 비발치 전략(확장 또는 IPR)만 생성합니다.',
+    lock: '고정 치아',
+    lockPlaceholder: '예: 13, 14 (또는 FDI 25, 26)',
+    lockHint: '지정한 치아는 초기 위치에서 이동하지 않습니다.',
+    iprExclude: 'IPR 제외 치아',
+    iprExcludePlaceholder: '예: 7, 8, 9, 10 (앞니 제외)',
+    iprExcludeHint: '지정한 치아 접촉면은 치간 삭제 대상에서 제외합니다.',
+    iprLimit: '면당 IPR 한도 (≤ 0.25 mm)',
+    iprLimitHint: '치아 한 면당 최대 치간 삭제 허용량 (최대 0.25mm)',
+    stageCap: '장수 상한 (단계 수 제한)',
+    stageCapPlaceholder: '상한 없음',
+    stageCapHint: '빈칸이면 상한 제한 없이 최적 단계로 계획합니다.',
+    order: '이동 순서',
+    orderHint: '악궁 내 치아들의 이동 타이밍 그룹을 결정합니다.',
+    orderSimultaneous: '동시 (전체 치아 동시 이동)',
+    orderAnteriorFirst: '앞니 먼저 (전치부 우선 정렬)',
+    orderSequential: '순차 (구치부 고정원 순차 이동)',
+    recalculate: '이 조건으로 계산',
+    recalculating: '계산 중...',
+    errorStageCapPositiveInt: '단계 상한은 1 이상의 정수여야 합니다.',
+    errorNoCase: '케이스가 선택되지 않았습니다.'
+  }
+});

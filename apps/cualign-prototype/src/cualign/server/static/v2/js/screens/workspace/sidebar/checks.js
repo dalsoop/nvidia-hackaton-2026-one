@@ -3,19 +3,10 @@
 import { clear, h } from '../../../ui/dom.js';
 import { universalToFdi } from '../../../domain/teeth.js';
 import { T } from '../../../domain/vocab.js';
+import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { preferredPlan } from '../../../domain/status.js';
 
-export const VIOLATION_LABELS = Object.freeze({
-  collision: '치아 충돌',
-  move_limit: '이동량 한도 초과',
-  rotation_limit: '회전 한도 초과',
-  locked_tooth: '고정 치아 이동',
-  space_deficit: '공간 부족',
-  stage_cap: '단계 상한 초과',
-  extraction_forbidden: '비발치 규칙 위반',
-  ipr_limit: 'IPR 한도 초과',
-  ipr_excluded: 'IPR 제외 치아 절제'
-});
+export const VIOLATION_LABELS = SIDEBAR_VOCAB.rules.violations;
 
 /**
  * Group violations by violation type and tooth pairs / teeth.
@@ -53,7 +44,9 @@ export function groupViolations(violations = []) {
     group.count++;
     group.items.push(v);
 
-    const teeth = Array.isArray(v.teeth) ? v.teeth.map(Number) : [];
+    const teeth = Array.isArray(v.teeth)
+      ? v.teeth.map(Number).filter(n => Number.isInteger(n))
+      : [];
 
     if (teeth.length >= 2) {
       // Tooth pair grouping (e.g. collision between 2 teeth)
@@ -79,7 +72,7 @@ export function groupViolations(violations = []) {
 
       if (v.stage != null) {
         const stageNum = Number(v.stage);
-        if (!pairEntry.stages.includes(stageNum)) {
+        if (Number.isInteger(stageNum) && !pairEntry.stages.includes(stageNum)) {
           pairEntry.stages.push(stageNum);
           pairEntry.stages.sort((a, b) => a - b);
         }
@@ -109,7 +102,7 @@ export function groupViolations(violations = []) {
 
       if (v.stage != null) {
         const stageNum = Number(v.stage);
-        if (!toothEntry.stages.includes(stageNum)) {
+        if (Number.isInteger(stageNum) && !toothEntry.stages.includes(stageNum)) {
           toothEntry.stages.push(stageNum);
           toothEntry.stages.sort((a, b) => a - b);
         }
@@ -142,6 +135,7 @@ export function renderChecks(container, ctx) {
   const state = ctx.store.get();
   const plans = state.plans || [];
   const currentPlan = (state.viewingPlanId && plans.find(p => (p.plan_id || p.id) === state.viewingPlanId))
+    || state.viewingPlan
     || preferredPlan(plans)
     || plans[0]
     || null;
@@ -150,7 +144,7 @@ export function renderChecks(container, ctx) {
 
   // Header
   const headerEl = h('div', { class: 'sidebar-panel-header' }, [
-    h('h3', { class: 'sidebar-panel-title' }, T.workspace.rules),
+    h('h3', { class: 'sidebar-panel-title' }, SIDEBAR_VOCAB.rules.title),
     h('span', {
       class: `sidebar-status-pill ${!currentPlan ? 'neutral' : (currentPlan.violations?.length ? 'danger' : 'success')}`
     }, !currentPlan ? '계획 없음' : (currentPlan.violations?.length ? T.violations(currentPlan.violations.length) : T.workspace.passed))
@@ -159,7 +153,7 @@ export function renderChecks(container, ctx) {
 
   if (!currentPlan) {
     const emptyNotice = h('div', { class: 'sidebar-empty-state' }, [
-      h('p', null, '검사할 계획이 선택되지 않았습니다.')
+      h('p', null, SIDEBAR_VOCAB.rules.noPlan)
     ]);
     panelRoot.appendChild(emptyNotice);
     container.appendChild(panelRoot);
@@ -173,13 +167,15 @@ export function renderChecks(container, ctx) {
     // All checks passed
     const passCard = h('div', { class: 'checks-pass-card' }, [
       h('div', { class: 'checks-pass-icon' }, '✓'),
-      h('h4', { class: 'checks-pass-title' }, '모든 규칙 검사 통과'),
-      h('p', { class: 'checks-pass-desc' }, '충돌, 단계별 이동 한계, 회전 한계 및 공간 제약을 모두 충족합니다.')
+      h('h4', { class: 'checks-pass-title' }, SIDEBAR_VOCAB.rules.allPassedTitle),
+      h('p', { class: 'checks-pass-desc' }, SIDEBAR_VOCAB.rules.allPassedDesc)
     ]);
     panelRoot.appendChild(passCard);
     container.appendChild(panelRoot);
     return;
   }
+
+  const currentStage = Number(state.stage);
 
   // Violations list
   const listEl = h('div', { class: 'checks-group-list' });
@@ -204,6 +200,14 @@ export function renderChecks(container, ctx) {
         const fdiText = pair.fdiTeeth.length ? pair.fdiTeeth.join(' · ') : pair.teeth.join(' · ');
         const itemEl = h('div', { class: 'checks-item-row' });
 
+        if (pair.stages.length > 0) {
+          itemEl.classList.add('checks-item-clickable');
+          itemEl.title = SIDEBAR_VOCAB.rules.stageJumpTitle(pair.stages[0]);
+          itemEl.onclick = () => {
+            ctx.store.set({ stage: pair.stages[0] });
+          };
+        }
+
         const infoEl = h('div', { class: 'checks-item-info' }, [
           h('span', { class: 'checks-tooth-badge' }, `치아 FDI ${fdiText}`),
           pair.maxOverlap > 0
@@ -215,16 +219,16 @@ export function renderChecks(container, ctx) {
         // Stage jump buttons
         if (pair.stages.length > 0) {
           const stagesWrap = h('div', { class: 'checks-stages-wrap' }, [
-            h('span', { class: 'checks-stages-label' }, '발생 단계:'),
+            h('span', { class: 'checks-stages-label' }, SIDEBAR_VOCAB.rules.stageLabel),
             ...pair.stages.map(st => h('button', {
               type: 'button',
-              class: `checks-stage-chip ${state.stage === st ? 'active' : ''}`,
-              title: `단계 ${st}로 이동`,
+              class: `checks-stage-chip ${currentStage === st ? 'active' : ''}`,
+              title: SIDEBAR_VOCAB.rules.stageJumpTitle(st),
               onClick: (e) => {
                 e.stopPropagation();
                 ctx.store.set({ stage: st });
               }
-            }, `${st}단계`))
+            }, SIDEBAR_VOCAB.rules.stageChip(st)))
           ]);
           itemEl.appendChild(stagesWrap);
         }
@@ -239,6 +243,14 @@ export function renderChecks(container, ctx) {
         const fdiText = tEntry.fdiTooth ? `FDI ${tEntry.fdiTooth}` : `${tEntry.tooth}번`;
         const itemEl = h('div', { class: 'checks-item-row' });
 
+        if (tEntry.stages.length > 0) {
+          itemEl.classList.add('checks-item-clickable');
+          itemEl.title = SIDEBAR_VOCAB.rules.stageJumpTitle(tEntry.stages[0]);
+          itemEl.onclick = () => {
+            ctx.store.set({ stage: tEntry.stages[0] });
+          };
+        }
+
         const infoEl = h('div', { class: 'checks-item-info' }, [
           h('span', { class: 'checks-tooth-badge' }, `치아 ${fdiText}`),
           h('span', { class: 'checks-metric' }, `${tEntry.count}회 위반`)
@@ -247,16 +259,16 @@ export function renderChecks(container, ctx) {
 
         if (tEntry.stages.length > 0) {
           const stagesWrap = h('div', { class: 'checks-stages-wrap' }, [
-            h('span', { class: 'checks-stages-label' }, '발생 단계:'),
+            h('span', { class: 'checks-stages-label' }, SIDEBAR_VOCAB.rules.stageLabel),
             ...tEntry.stages.map(st => h('button', {
               type: 'button',
-              class: `checks-stage-chip ${state.stage === st ? 'active' : ''}`,
-              title: `단계 ${st}로 이동`,
+              class: `checks-stage-chip ${currentStage === st ? 'active' : ''}`,
+              title: SIDEBAR_VOCAB.rules.stageJumpTitle(st),
               onClick: (e) => {
                 e.stopPropagation();
                 ctx.store.set({ stage: st });
               }
-            }, `${st}단계`))
+            }, SIDEBAR_VOCAB.rules.stageChip(st)))
           ]);
           itemEl.appendChild(stagesWrap);
         }
@@ -282,6 +294,25 @@ export function renderChecks(container, ctx) {
         const itemEl = h('div', { class: 'checks-item-row checks-item-general' }, [
           h('span', { class: 'checks-general-desc' }, desc)
         ]);
+
+        if (gItem.stage != null) {
+          const st = Number(gItem.stage);
+          if (Number.isInteger(st)) {
+            const stagesWrap = h('div', { class: 'checks-stages-wrap' }, [
+              h('button', {
+                type: 'button',
+                class: `checks-stage-chip ${currentStage === st ? 'active' : ''}`,
+                title: SIDEBAR_VOCAB.rules.stageJumpTitle(st),
+                onClick: (e) => {
+                  e.stopPropagation();
+                  ctx.store.set({ stage: st });
+                }
+              }, SIDEBAR_VOCAB.rules.stageChip(st))
+            ]);
+            itemEl.appendChild(stagesWrap);
+          }
+        }
+
         groupBody.appendChild(itemEl);
       }
     }

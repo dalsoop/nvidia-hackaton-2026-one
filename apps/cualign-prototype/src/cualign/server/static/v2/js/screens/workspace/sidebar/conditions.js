@@ -3,6 +3,7 @@
 import { clear, h } from '../../../ui/dom.js';
 import { fdiToUniversal, universalToFdi } from '../../../domain/teeth.js';
 import { T } from '../../../domain/vocab.js';
+import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { preferredPlan } from '../../../domain/status.js';
 
 export const DEFAULT_CONSTRAINTS = Object.freeze({
@@ -105,7 +106,11 @@ export function calculateConditionDiff(current = {}, base = null) {
   }
 
   // 5. stage_cap and clear_stage_cap
-  if (current.stage_cap !== undefined) {
+  if (current.clear_stage_cap === true) {
+    if (b.stage_cap !== null && b.stage_cap !== undefined) {
+      diff.clear_stage_cap = true;
+    }
+  } else if (current.stage_cap !== undefined) {
     const curCap = current.stage_cap === '' || current.stage_cap === null ? null : Number(current.stage_cap);
     const baseCap = b.stage_cap === '' || b.stage_cap === null ? null : Number(b.stage_cap);
 
@@ -140,14 +145,15 @@ export function renderConditions(container, ctx) {
   clear(container);
 
   const state = ctx.store.get();
-  const caseId = state.caseId;
-  const isSample = !caseId || !PATIENT_CASE_RE.test(caseId);
-
   const plans = state.plans || [];
   const currentPlan = (state.viewingPlanId && plans.find(p => (p.plan_id || p.id) === state.viewingPlanId))
+    || state.viewingPlan
     || preferredPlan(plans)
     || plans[0]
     || null;
+
+  const caseId = state.caseId || currentPlan?.case_id || null;
+  const isSample = !caseId || !PATIENT_CASE_RE.test(caseId);
 
   const currentConstraints = currentPlan?.constraints || DEFAULT_CONSTRAINTS;
 
@@ -155,7 +161,7 @@ export function renderConditions(container, ctx) {
 
   // Header
   const headerEl = h('div', { class: 'sidebar-panel-header' }, [
-    h('h3', { class: 'sidebar-panel-title' }, T.workspace.conditions),
+    h('h3', { class: 'sidebar-panel-title' }, SIDEBAR_VOCAB.conditions.title),
     currentPlan
       ? h('span', { class: 'sidebar-header-plan-id' }, currentPlan.plan_id || currentPlan.id || '')
       : null
@@ -167,12 +173,22 @@ export function renderConditions(container, ctx) {
 
   // If sample case: show prescription sentence above the form
   if (isSample) {
-    const currentCase = (state.cases || []).find(c => c.case_id === caseId);
-    const prescriptionText = currentCase?.prescription || currentCase?.prescription_text || currentCase?.title || '';
+    const currentCase = state.currentCase || state.activeCase || (state.cases || []).find(c => (c.case_id || c.id) === caseId);
+    const prescriptionText = currentCase?.prescription || currentCase?.prescription_text || currentCase?.title || state.prescription || currentPlan?.prescription || '';
+
+    if (!prescriptionText && typeof ctx.api?.listCases === 'function' && caseId) {
+      ctx.api.listCases().then((res) => {
+        const list = res?.cases || res || [];
+        const found = list.find(c => (c.case_id || c.id) === caseId);
+        if (found && (found.prescription || found.prescription_text)) {
+          ctx.store.set({ cases: list, currentCase: found });
+        }
+      }).catch(() => {});
+    }
 
     if (prescriptionText) {
       const rxBanner = h('div', { class: 'conditions-prescription-banner' }, [
-        h('div', { class: 'prescription-badge' }, '처방 문장 (의사 진단)'),
+        h('div', { class: 'prescription-badge' }, SIDEBAR_VOCAB.conditions.prescriptionBannerTitle),
         h('div', { class: 'prescription-content' }, prescriptionText)
       ]);
       bodyEl.appendChild(rxBanner);
@@ -197,9 +213,9 @@ export function renderConditions(container, ctx) {
   const extGroup = h('div', { class: 'form-group form-group-checkbox' }, [
     h('label', { for: 'cond_allow_extraction', class: 'checkbox-label' }, [
       extCheck,
-      h('span', { class: 'label-text' }, '발치 허용')
+      h('span', { class: 'label-text' }, SIDEBAR_VOCAB.conditions.allowExtraction)
     ]),
-    h('span', { class: 'form-hint' }, '해제 시 비발치 전략(확장 또는 IPR)만 생성합니다.')
+    h('span', { class: 'form-hint' }, SIDEBAR_VOCAB.conditions.allowExtractionHint)
   ]);
   formEl.appendChild(extGroup);
 
@@ -208,13 +224,13 @@ export function renderConditions(container, ctx) {
     type: 'text',
     id: 'cond_lock',
     class: 'form-input',
-    placeholder: '예: 13, 14 (또는 FDI 25, 26)',
+    placeholder: SIDEBAR_VOCAB.conditions.lockPlaceholder,
     value: (currentConstraints.lock || []).join(', ')
   });
   const lockGroup = h('div', { class: 'form-group' }, [
-    h('label', { for: 'cond_lock', class: 'form-label' }, '고정 치아'),
+    h('label', { for: 'cond_lock', class: 'form-label' }, SIDEBAR_VOCAB.conditions.lock),
     lockInput,
-    h('span', { class: 'form-hint' }, '지정한 치아는 초기 위치에서 이동하지 않습니다.')
+    h('span', { class: 'form-hint' }, SIDEBAR_VOCAB.conditions.lockHint)
   ]);
   formEl.appendChild(lockGroup);
 
@@ -223,13 +239,13 @@ export function renderConditions(container, ctx) {
     type: 'text',
     id: 'cond_ipr_exclude',
     class: 'form-input',
-    placeholder: '예: 7, 8, 9, 10 (앞니 제외)',
+    placeholder: SIDEBAR_VOCAB.conditions.iprExcludePlaceholder,
     value: (currentConstraints.ipr_exclude || []).join(', ')
   });
   const exclGroup = h('div', { class: 'form-group' }, [
-    h('label', { for: 'cond_ipr_exclude', class: 'form-label' }, 'IPR 제외 치아'),
+    h('label', { for: 'cond_ipr_exclude', class: 'form-label' }, SIDEBAR_VOCAB.conditions.iprExclude),
     exclInput,
-    h('span', { class: 'form-hint' }, '지정한 치아 접촉면은 치간 삭제 대상에서 제외합니다.')
+    h('span', { class: 'form-hint' }, SIDEBAR_VOCAB.conditions.iprExcludeHint)
   ]);
   formEl.appendChild(exclGroup);
 
@@ -244,9 +260,9 @@ export function renderConditions(container, ctx) {
     value: String(currentConstraints.ipr_limit_mm ?? 0.25)
   });
   const iprGroup = h('div', { class: 'form-group' }, [
-    h('label', { for: 'cond_ipr_limit', class: 'form-label' }, '면당 IPR 한도 (≤ 0.25 mm)'),
+    h('label', { for: 'cond_ipr_limit', class: 'form-label' }, SIDEBAR_VOCAB.conditions.iprLimit),
     iprInput,
-    h('span', { class: 'form-hint' }, '치아 한 면당 최대 치간 삭제 허용량 (최대 0.25mm)')
+    h('span', { class: 'form-hint' }, SIDEBAR_VOCAB.conditions.iprLimitHint)
   ]);
   formEl.appendChild(iprGroup);
 
@@ -257,13 +273,13 @@ export function renderConditions(container, ctx) {
     class: 'form-input',
     min: '1',
     step: '1',
-    placeholder: '상한 없음',
+    placeholder: SIDEBAR_VOCAB.conditions.stageCapPlaceholder,
     value: currentConstraints.stage_cap != null ? String(currentConstraints.stage_cap) : ''
   });
   const capGroup = h('div', { class: 'form-group' }, [
-    h('label', { for: 'cond_stage_cap', class: 'form-label' }, '장수 상한 (단계 수 제한)'),
+    h('label', { for: 'cond_stage_cap', class: 'form-label' }, SIDEBAR_VOCAB.conditions.stageCap),
     capInput,
-    h('span', { class: 'form-hint' }, '빈칸이면 상한 제한 없이 최적 단계로 계획합니다.')
+    h('span', { class: 'form-hint' }, SIDEBAR_VOCAB.conditions.stageCapHint)
   ]);
   formEl.appendChild(capGroup);
 
@@ -272,14 +288,14 @@ export function renderConditions(container, ctx) {
     id: 'cond_order',
     class: 'form-select'
   }, [
-    h('option', { value: 'simultaneous', selected: currentConstraints.order === 'simultaneous' }, '동시 (전체 치아 동시 이동)'),
-    h('option', { value: 'anterior_first', selected: currentConstraints.order === 'anterior_first' }, '앞니 먼저 (전치부 우선 정렬)'),
-    h('option', { value: 'sequential', selected: currentConstraints.order === 'sequential' }, '순차 (구치부 고정원 순차 이동)')
+    h('option', { value: 'simultaneous', selected: currentConstraints.order === 'simultaneous' }, SIDEBAR_VOCAB.conditions.orderSimultaneous),
+    h('option', { value: 'anterior_first', selected: currentConstraints.order === 'anterior_first' }, SIDEBAR_VOCAB.conditions.orderAnteriorFirst),
+    h('option', { value: 'sequential', selected: currentConstraints.order === 'sequential' }, SIDEBAR_VOCAB.conditions.orderSequential)
   ]);
   const orderGroup = h('div', { class: 'form-group' }, [
-    h('label', { for: 'cond_order', class: 'form-label' }, '이동 순서'),
+    h('label', { for: 'cond_order', class: 'form-label' }, SIDEBAR_VOCAB.conditions.order),
     orderSelect,
-    h('span', { class: 'form-hint' }, '악궁 내 치아들의 이동 타이밍 그룹을 결정합니다.')
+    h('span', { class: 'form-hint' }, SIDEBAR_VOCAB.conditions.orderHint)
   ]);
   formEl.appendChild(orderGroup);
 
@@ -295,7 +311,7 @@ export function renderConditions(container, ctx) {
     type: 'button',
     class: 'btn-calculate-conditions',
     onClick: handleRecalculate
-  }, T.workspace.recalculateWithConditions);
+  }, SIDEBAR_VOCAB.conditions.recalculate);
 
   const footerEl = h('div', { class: 'conditions-footer' }, [recalcBtn]);
   panelRoot.appendChild(footerEl);
@@ -305,6 +321,12 @@ export function renderConditions(container, ctx) {
   async function handleRecalculate() {
     errorBox.hidden = true;
     errorBox.textContent = '';
+
+    if (!caseId) {
+      errorBox.textContent = SIDEBAR_VOCAB.conditions.errorNoCase;
+      errorBox.hidden = false;
+      return;
+    }
 
     const currentFormValues = {
       allow_extraction: extCheck.checked,
@@ -316,7 +338,7 @@ export function renderConditions(container, ctx) {
     };
 
     if (currentFormValues.stage_cap !== null && (!Number.isInteger(currentFormValues.stage_cap) || currentFormValues.stage_cap < 1)) {
-      errorBox.textContent = '단계 상한은 1 이상의 정수여야 합니다.';
+      errorBox.textContent = SIDEBAR_VOCAB.conditions.errorStageCapPositiveInt;
       errorBox.hidden = false;
       return;
     }
@@ -326,17 +348,19 @@ export function renderConditions(container, ctx) {
 
     const payload = {
       case_id: caseId,
-      parent_plan_id: parentPlanId,
       ...diff
     };
+    if (parentPlanId) {
+      payload.parent_plan_id = parentPlanId;
+    }
 
     recalcBtn.disabled = true;
-    recalcBtn.textContent = '계산 중...';
+    recalcBtn.textContent = SIDEBAR_VOCAB.conditions.recalculating;
 
     try {
       const res = await ctx.api.rulePlan(payload);
 
-      // Fetch fresh plans list
+      // Fetch fresh plans list: "plans 새로 받기"
       const plansRes = await ctx.api.listPlans(caseId);
       const updatedPlans = plansRes?.plans || plansRes || [];
 
@@ -352,7 +376,7 @@ export function renderConditions(container, ctx) {
       errorBox.hidden = false;
     } finally {
       recalcBtn.disabled = false;
-      recalcBtn.textContent = T.workspace.recalculateWithConditions;
+      recalcBtn.textContent = SIDEBAR_VOCAB.conditions.recalculate;
     }
   }
 }

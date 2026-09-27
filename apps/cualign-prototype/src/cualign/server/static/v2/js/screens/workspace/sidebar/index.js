@@ -2,6 +2,7 @@
 
 import { clear, h } from '../../../ui/dom.js';
 import { T } from '../../../domain/vocab.js';
+import { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 import { renderStaging, getFdiColumnsForPlan } from './staging.js';
 import { renderChecks, groupViolations } from './checks.js';
 import { renderConditions, calculateConditionDiff } from './conditions.js';
@@ -9,21 +10,22 @@ import { renderConditions, calculateConditionDiff } from './conditions.js';
 export { groupViolations } from './checks.js';
 export { calculateConditionDiff } from './conditions.js';
 export { getFdiColumnsForPlan } from './staging.js';
+export { SIDEBAR_VOCAB } from '../../../domain/vocab/sidebar.js';
 
 const TABS = Object.freeze([
   {
     id: 'stages',
-    label: T.workspace.stages,
+    label: SIDEBAR_VOCAB.tabs.stages,
     icon: 'M4 6h16M4 10h16M4 14h16M4 18h16' // Staging table icon
   },
   {
     id: 'rules',
-    label: T.workspace.rules,
+    label: SIDEBAR_VOCAB.tabs.rules,
     icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' // Checklist / rules icon
   },
   {
     id: 'conditions',
-    label: T.workspace.conditions,
+    label: SIDEBAR_VOCAB.tabs.conditions,
     icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4' // Sliders / conditions icon
   }
 ]);
@@ -48,14 +50,15 @@ export function mountSidebar(el, ctx) {
   // Check if an external tab rail exists in parent hierarchy (e.g. from workspace screen)
   const externalTabRail = el.parentElement?.querySelector('.workspace-panel-tabrail');
 
-  // If no external tab rail exists, we mount internal tab rail inside el
+  // Place content area, then internal tab rail on the right if external tab rail does not exist
+  sidebarContainer.appendChild(contentArea);
+
   let internalTabRail = null;
   if (!externalTabRail) {
     internalTabRail = h('nav', { class: 'sidebar-tab-rail' });
     sidebarContainer.appendChild(internalTabRail);
   }
 
-  sidebarContainer.appendChild(contentArea);
   el.appendChild(sidebarContainer);
 
   function syncTabRail(activeTab) {
