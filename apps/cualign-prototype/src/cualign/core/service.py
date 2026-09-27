@@ -32,7 +32,10 @@ class PlanningService:
         self.store.require_current_input(p["case_id"], p.get("input_revision"))
         _, case = self.store.load_case(p["case_id"])
         c = p["constraints"]
-        info = self.store.targets[p["target_id"]]["info"]
+        if isinstance(c, dict):
+            c = Constraints.model_validate(c)
+        tid = p.get("target_id")
+        info = self.store.targets[tid]["info"] if tid and tid in self.store.targets else (p.get("target") or {})
         violations = planner.validate(case, p["stages"], space_deficit_mm=info["space_deficit_mm"],
                                       constraints=c, target_info=info)
         # Approval is invalidated on any changed validation outcome.
