@@ -86,28 +86,59 @@ async def main():
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on("dialog", lambda dialog: dialog.accept())
-            await page.goto(url + "/ui/?case=moderate")      # the synthetic case is not on the start screen (#46)
-            await page.wait_for_function("document.querySelector('#caseGate').hidden")
+            # ?case=<id> is the documented dev/test hook; "moderate" is a synthetic preset with no start-screen
+            # card (#90 — the start screen only offers Poseidon3D samples), so it opens the workspace deterministically.
+            await page.goto(url + "/ui/?case=moderate")
+            await page.wait_for_function("!document.body.classList.contains('start')")
+
+            # Rule-based plan via the folded conditions panel (no model): open the details, then the fallback button.
+            # Also open the result panel's "자세히" details so #rPlan/#rParent/#rReview/... are visible (inner_text
+            # needs layout; their contents are correct but invisible while the <details> is closed).
+            await page.locator("#condBox").evaluate("(el) => { el.open = true; }")
+            await page.locator(".plan-meta").evaluate("(el) => { el.open = true; }")
             await page.locator("#fallbackBtn").click()
-            await page.wait_for_function("document.querySelector('#rPlan').textContent.startsWith('p') && !document.querySelector('#fallbackBtn').disabled")
+            await page.wait_for_function("document.querySelector('#rPlan').textContent.startsWith('p') && !document.querySelector('#fallbackBtn').disabled"
+                " && document.querySelector('#viewCanvas').dataset.planId === document.querySelector('#rPlan').textContent")
             parent = await page.locator("#rPlan").inner_text()
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == parent
             assert await page.locator("#stlLink").get_attribute("href") is None
             parent_detail = store_module.STORE.plan_json(parent)
+            assert parent_detail["passed"] and parent_detail["review"]["status"] == "skipped"
+            assert await page.locator("#rReview").inner_text() == "미실행 (규칙 폴백)"
             assert int(await page.locator("#stageSlider").get_attribute("max")) == parent_detail["info"]["n_stages"]
             await page.locator("#stageSlider").fill(str(parent_detail["info"]["n_stages"]))
             await page.locator("#stageSlider").dispatch_event("input")
             before = await page.locator("#viewCanvas").screenshot()
-            await page.locator("#approveBtn").click()
+
+            # Export is gated on a passing, reviewed plan; approving happens through the export popover, which then
+            # clicks the hidden download link itself.
+            assert await page.locator("#exportBtn").is_enabled()
+            await page.locator("#exportBtn").click()
+            await page.wait_for_selector("#exportPop:not([hidden])")
+            async with page.expect_download() as download:
+                await page.locator("#exportGo").click()
             await page.wait_for_function("document.querySelector('#rApproval').textContent.startsWith('의사 승인됨')")
             assert parent in await page.locator("#stlLink").get_attribute("href")
-            async with page.expect_download() as download:
-                await page.locator("#stlLink").click()
+            assert (await page.locator("#exportBtn").inner_text()) == "STL 내려받기"
             await (await download.value).save_as(OUT / "approved-stages.zip")
-            await page.locator("#cLock").fill("13")
+
+            # Revoke the approval (「자세히」 details, next to the review fields) and confirm export gates again.
+            await page.locator("#revokeBtn").click()
+            await page.wait_for_function("document.querySelector('#rApproval').textContent === '미승인'")
+            assert (await page.locator("#exportBtn").inner_text()) == "내보내기"
             assert await page.locator("#stlLink").get_attribute("href") is None
+            # Re-approve so the plan is on screen as approved again before the next edit invalidates it.
+            await page.locator("#exportBtn").click()
+            await page.wait_for_selector("#exportPop:not([hidden])")
+            await page.locator("#exportGo").click()
+            await page.wait_for_function("document.querySelector('#rApproval').textContent.startsWith('의사 승인됨')")
+
+            # Editing the folded conditions makes the on-screen (approved) plan stale for export until replanned.
+            await page.locator("#cLock").fill("13")
+            assert await page.locator("#exportBtn").is_disabled()
             await page.locator("#fallbackBtn").click()
-            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent !== p && !document.querySelector('#fallbackBtn').disabled", arg=parent)
+            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent !== p && !document.querySelector('#fallbackBtn').disabled"
+                " && document.querySelector('#viewCanvas').dataset.planId === document.querySelector('#rPlan').textContent", arg=parent)
             child = await page.locator("#rPlan").inner_text()
             assert await page.locator("#rParent").inner_text() == parent
             assert await page.locator("#rApproval").inner_text() == "미승인"
@@ -117,7 +148,16 @@ async def main():
             after = await page.locator("#viewCanvas").screenshot()
             assert before != after
             await page.screenshot(path=str(OUT / "revision.png"))
-            # Send a real HTTP stream through PlanEventsASGI and the actual tool group.
+
+            # The decision bar for this revision lets the dentist undo it; revert, then pick the child plan again
+            # through #planSelect so the rest of the script continues from it.
+            await page.locator(".decision").last.locator('[data-act="revert"]').click()
+            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=parent)
+            await page.locator("#planSelect").evaluate("(el,p)=>{el.value=p;el.dispatchEvent(new Event('change'));}", child)
+            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=child)
+
+            # Send a real HTTP stream through PlanEventsASGI and the actual tool group. The fake reviewer fails and
+            # the streamed text carries an unrelated plan id that must not steer selection.
             await page.locator("#chatInput").fill("IPR은 앞니 빼고 다시 짜줘")
             await page.locator("#sendBtn").click()
             await page.wait_for_function("document.querySelector('#rReview').textContent === '검토 실패' && !document.querySelector('#sendBtn').disabled")
@@ -126,9 +166,16 @@ async def main():
             assert await page.locator("#rParent").inner_text() == child
             assert await page.locator("#cLock").input_value() == "13"
             assert await page.locator("#cExclude").input_value() == "7, 8, 9, 10"
-            assert await page.locator("#approveBtn").is_disabled()
+            assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
+            assert await page.locator(".plan-card").last.is_visible()
+            assert await page.locator(".msg.error").last.is_visible()
+            decision2 = page.locator(".decision").last
+            assert await decision2.is_visible()
+            await decision2.locator('[data-act="keep"]').click()   # keep this plan; the bar loses its buttons
+            assert await decision2.locator("button").count() == 0
             await page.screenshot(path=str(OUT / "review-failure.png"))
+
             # The dentist asks for the failed review again on the same plan.
             assert await page.locator("#reviewBtn").is_visible()
             await page.locator("#reviewBtn").click()
@@ -136,7 +183,8 @@ async def main():
             assert await page.locator("#rPlan").inner_text() == selected
             assert await page.locator("#reviewBtn").is_hidden()
             if store_module.STORE.plan_json(selected)["passed"]:
-                assert await page.locator("#approveBtn").is_enabled()
+                assert await page.locator("#exportBtn").is_enabled()
+
             # A stale HTTP response must not overwrite a later manual selection.
             pending = asyncio.Event()
             release = asyncio.Event()
@@ -156,12 +204,26 @@ async def main():
             await page.wait_for_timeout(100)
             assert await page.locator("#rPlan").inner_text() == child
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
-            await page.locator("#caseBtn").click()
-            await page.locator('.case-card[data-id="severe"]').click()
-            await page.wait_for_function("document.querySelector('#rPlan').textContent === '—'")
+
+            # Reload keeps the case on screen via the #case= hash address (#90); the plan panel resets because the
+            # reload carries no ?plan= link.
+            assert (await page.evaluate("location.hash")) == "#case=moderate"
+            case_name_before = await page.locator("#caseName").inner_text()
+            await page.reload()
+            await page.wait_for_function("!document.body.classList.contains('start')")
+            assert await page.locator("#caseName").inner_text() == case_name_before
+            assert await page.locator("#rPlan").inner_text() == "—"
+            assert await page.locator("#stlLink").get_attribute("href") is None
+
+            # Going home and opening a different (real) sample card resets the plan panel for the new case.
+            await page.locator("#homeBtn").click()
+            await page.wait_for_function("document.body.classList.contains('start')")
+            await page.locator('#sampleCards .case-card[data-id="poseidon-000097"]').click()
+            await page.wait_for_function("!document.body.classList.contains('start') && document.querySelector('#rPlan').textContent === '—'")
             assert await page.locator("#stlLink").get_attribute("href") is None
             assert not errors, errors
-            print("PASS: browser revision, 3D/card/file identity, constraints, reviewer failure, manual re-review, approval, stale response, case reset")
+            print("PASS: browser rule-based plan, export/approval, revision, reviewer failure, manual re-review, "
+                  "stale response, reload keeps case, case switch resets plan")
             await browser.close()
             browser = None
     finally:
