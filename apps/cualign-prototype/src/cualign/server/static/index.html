@@ -38,6 +38,8 @@
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/> <path d="m6 6 12 12"/></symbol>
     <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/> <circle cx="9" cy="7" r="4"/> <line x1="19" x2="19" y1="8" y2="14"/> <line x1="22" x2="16" y1="11" y2="11"/></symbol>
     <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/> <path d="m12 5 7 7-7 7"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-send-horizontal" viewBox="0 0 24 24"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/> <path d="M6 12h16"/></symbol>
     <symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M10 11v6"/> <path d="M14 11v6"/> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/> <path d="M3 6h18"/> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
   </svg>
   <header class="topbar">
@@ -100,7 +102,7 @@
       </div>
       <div id="caseCard" class="case-head">
         <div class="case-text"><b id="caseName">—</b></div>
-        <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">바꾸기</button>
+        <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">다른 케이스</button>
         <div id="casePop" class="case-pop" hidden>
           <div id="popCases"></div>
           <button id="popPatients" class="link-btn" type="button">내 스캔 올리기 →</button>
@@ -118,8 +120,9 @@
         </div>
         <details id="oldPlans" class="old-plans" hidden><summary>지난 계획 <span id="oldPlansN"></span>개</summary><div id="oldPlanList" class="plan-list"></div></details>
         <div id="planList" class="plan-list"></div>
-        <details id="planReview" class="plan-review">
-          <summary><span id="reviewLine">검토</span></summary>
+        <!-- the review memo, folded; the plan card already says 검토 전/완료/실패. Hidden until there is a memo or an action (#14) -->
+        <details id="planReview" class="plan-review" hidden>
+          <summary><span id="reviewLine">검토 메모</span></summary>
           <p id="reviewMemo" class="review-memo"></p>
           <div class="plan-review-acts">
             <button id="reviewBtn" class="btn ghost small" type="button" hidden>검토 다시 요청</button>
@@ -137,8 +140,8 @@
 
       <div id="selChips" class="sel-chips" hidden></div>
       <form id="chatForm" class="composer">
-        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요"></textarea>
-        <button id="sendBtn" type="submit" class="btn primary">전송</button>
+        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요 · Enter 로 보내기"></textarea>
+        <button id="sendBtn" type="submit" class="btn primary send" aria-label="보내기" title="보내기 · Enter"><svg class="ic" aria-hidden="true"><use href="#i-send-horizontal"></use></svg></button>
       </form>
     </section>
 
@@ -183,6 +186,7 @@
           </div>
         </div>
         <div id="labels" class="labels"></div>
+        <div id="pickHint" class="pick-hint" hidden>치아를 누르면 번호가 대화에 들어갑니다</div>
         <!-- while a turn runs: the 3D dims and this pill repeats the running step -->
         <div id="workNote" class="work-note" aria-live="polite"><i></i><span>계획을 준비하는 중…</span></div>
         <div class="view-head">
@@ -222,12 +226,12 @@
         <!-- 오른쪽 세로 아이콘 막대 (#90, #13 polish): 시점 넷 + 겹쳐 보기 + 크게. 아이콘은 static/icons/view-*.png(96px 회색 글리프, 26px 표시),
              hover 라벨(aria-label → ::after)이 원본 스캔에서 무엇을 보는지 짚는다 -->
         <div class="view-rail" aria-label="3D 보기">
-          <button class="btn ghost small" type="button" data-view="occlusal" aria-label="교합면 — 위에서 내려본 치열"><img class="vic" src="icons/view-occlusal.png" alt=""></button>
-          <button class="btn ghost small" type="button" data-view="frontal" aria-label="정면 — 환자 앞에서 본 앞니"><img class="vic" src="icons/view-front.png" alt=""></button>
-          <button class="btn ghost small" type="button" data-view="left" aria-label="좌측 — 환자 왼쪽 볼 쪽에서"><img class="vic" src="icons/view-left.png" alt=""></button>
-          <button class="btn ghost small" type="button" data-view="right" aria-label="우측 — 환자 오른쪽 볼 쪽에서"><img class="vic" src="icons/view-right.png" alt=""></button>
+          <button class="btn ghost small" type="button" data-view="occlusal" aria-label="교합면 — 위에서 내려본 치열"><span class="vic" style="--icon: url(icons/view-occlusal.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="frontal" aria-label="정면 — 환자 앞에서 본 앞니"><span class="vic" style="--icon: url(icons/view-front.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="left" aria-label="좌측 — 환자 왼쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-left.png)"></span></button>
+          <button class="btn ghost small" type="button" data-view="right" aria-label="우측 — 환자 오른쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-right.png)"></span></button>
           <span class="rail-tools">
-            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다"><img class="vic" src="icons/view-overlay.png" alt=""></button>
+            <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="겹쳐 보기 — 치료 전 치열을 흰 윤곽으로 겹칩니다"><span class="vic" style="--icon: url(icons/view-overlay.png)"></span></button>
             <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="크게 — 대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg></button>
           </span>
         </div>
@@ -244,19 +248,23 @@
         </div>
       </div>
 
+      <!-- stage bar (#14): one play button, the slider with the stage number above the thumb and the rule marks (hover: 충돌 N건),
+           치료 전/목표 as icons at the slider's ends, the plan's length at the right -->
       <div class="stage-bar">
-        <button id="firstBtn" class="btn ghost small" type="button" title="치료 전으로"><svg class="ic" aria-hidden="true"><use href="#i-skip-back"></use></svg>처음</button>
         <button id="playBtn" class="btn ghost small" type="button" title="재생/정지" aria-pressed="false"><svg class="ic ic-off" aria-hidden="true"><use href="#i-play"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-pause"></use></svg></button>
+        <button id="firstBtn" class="ibtn" type="button" aria-label="치료 전으로" title="치료 전으로"><svg class="ic" aria-hidden="true"><use href="#i-skip-back"></use></svg></button>
         <div class="slider-wrap">
+          <span id="stageTip" class="stage-tip">치료 전</span>
           <div id="stageMarks" class="stage-marks"></div>
           <input id="stageSlider" type="range" min="0" max="0" value="0" step="1" disabled />
         </div>
-        <button id="lastBtn" class="btn ghost small" type="button" title="목표 배열로">목표<svg class="ic" aria-hidden="true"><use href="#i-skip-forward"></use></svg></button>
+        <button id="lastBtn" class="ibtn" type="button" aria-label="목표 배열로" title="목표 배열로"><svg class="ic" aria-hidden="true"><use href="#i-skip-forward"></use></svg></button>
         <span id="stageLabel" class="stage-label">계획 없음</span>
       </div>
     </section>
 
-    <!-- 작업대 오른쪽 사이드바 (#111): 단계 표 · 규칙 · 조건. 값은 보고 있는 계획(state.plan)에서 온다 -->
+    <div id="sideSplitter" class="splitter side-splitter" role="separator" aria-orientation="vertical" aria-label="사이드바 크기 조정" tabindex="0" title="끌어서 너비 조절 · 두 번 눌러 원래대로"></div>
+    <!-- 작업대 오른쪽 사이드바 (#111): 단계 표 · 규칙 · 조건. 값은 보고 있는 계획(state.plan)에서 온다. 폭은 --side-w (#14) -->
     <aside id="side" class="side">
       <div class="side-tabs" role="tablist">
         <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-table-2"></use></svg><span>단계 표</span></button>
@@ -269,7 +277,7 @@
         </div>
         <div id="stageGrid" class="stage-grid" aria-label="단계 표"></div>
         <div class="grid-legend">
-          <span><i class="sw mixed"></i>복합</span><span><i class="sw move"></i>수평 이동</span><span><i class="sw vert"></i>정출·함입</span><span><i class="sw rot"></i>회전</span><span><i class="sw coll"></i>충돌</span>
+          <span data-kind="mixed" hidden><i class="sw mixed"></i>복합</span><span data-kind="move" hidden><i class="sw move"></i>수평 이동</span><span data-kind="vert" hidden><i class="sw vert"></i>정출·함입</span><span data-kind="rot" hidden><i class="sw rot"></i>회전</span><span data-kind="coll" hidden><i class="sw coll"></i>충돌</span>
         </div>
       </section>
       <section id="paneRules" class="pane" role="tabpanel" hidden>
@@ -282,16 +290,18 @@
         <div class="pane-head"><h2>조건</h2><p id="condFor" class="sub"></p></div>
         <div class="rx"><h3 class="pane-sub">처방</h3><p id="condRx"></p><p id="condRxNote" class="sub"></p></div>
         <fieldset id="constraints" class="constraints">
-          <label>발치 치아 (빈칸: 비발치) <input id="cExtract" placeholder="예: 14, 24"></label>
+          <label>발치 치아 <input id="cExtract" placeholder="빈칸이면 비발치 · 예: 14, 24"></label>
           <label>고정 치아 <input id="cLock" placeholder="예: 25, 26"></label>
           <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 11, 12, 21, 22"></label>
-          <label>IPR 한도 (면당 mm, 0.25 이하) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
-          <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
+          <label>IPR 한도 · 면당 mm <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25" placeholder="0.25 이하"></label>
+          <label>단계 상한 <input id="cCap" type="number" min="1" step="1" placeholder="빈칸이면 없음"></label>
+          <!-- 기간 ↔ 단계 상한: 한쪽을 적으면 다른 쪽이 따라 바뀐다 (stage_cap = round(months × 30.4 / 7), 서버 limits.py 와 같은 식). 서버엔 stage_cap 만 간다 -->
+          <label>기간 · 개월 <input id="cMonths" type="number" min="0.5" step="0.5" placeholder="빈칸이면 없음"></label>
           <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
         </fieldset>
         <p id="condState" class="cond-state" aria-live="polite"></p>
         <div class="pane-foot">
-          <button id="fallbackBtn" class="btn primary cond-run" type="button" title="에이전트 없이 이 조건으로 계산합니다">이 조건으로 계산</button>
+          <button id="fallbackBtn" class="btn ghost cond-run" type="button" title="에이전트 없이 이 조건으로 계산합니다 — 주 동작은 대화">에이전트 없이 계산</button>
         </div>
       </section>
     </aside>
