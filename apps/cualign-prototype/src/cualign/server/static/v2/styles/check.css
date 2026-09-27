@@ -65,6 +65,12 @@
   gap: var(--space-16);
 }
 
+/* Body blocks keep their size and the body scrolls instead (the width table
+   would otherwise shrink to nothing on short screens). */
+.check-body > * {
+  flex-shrink: 0;
+}
+
 .check-loading {
   padding: var(--space-24) 0;
   text-align: center;
@@ -89,12 +95,14 @@
 
 .check-box-warning {
   background: var(--color-warning-bg);
-  border: var(--line-1) solid var(--color-warning);
+  border: var(--line-1) solid var(--color-border-subtle);
+  border-left: var(--line-3) solid var(--color-warning);
   color: var(--color-warning-light);
+  gap: var(--space-10);
 }
 
 .check-box-warning b {
-  color: var(--color-warning);
+  color: var(--color-warning-light);
   font-size: var(--font-size-13);
 }
 
@@ -140,9 +148,9 @@
 .check-dl {
   margin: 0;
   display: grid;
-  grid-template-columns: var(--width-check-label) 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   row-gap: var(--space-8);
-  column-gap: var(--space-12);
+  column-gap: var(--space-18);
   font-size: var(--font-size-13);
   line-height: 1.45;
   padding-bottom: var(--space-10);
@@ -157,6 +165,7 @@
 .check-dd {
   margin: 0;
   color: var(--color-text-primary);
+  font-weight: 700;
   word-break: break-word;
 }
 
@@ -168,11 +177,9 @@
 /* Section Title */
 .check-section-title {
   margin: 0 0 var(--space-4) 0;
-  font-size: var(--font-size-12);
+  font-size: var(--font-size-11);
   font-weight: 700;
   color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 /* FDI Tooth Width Table */
@@ -243,8 +250,7 @@
 .check-btn-primary {
   width: 100%;
   height: var(--btn-height-primary);
-  height: var(--btn-height-primary);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-15);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -257,26 +263,28 @@
   border-color: var(--color-border-strong);
   color: var(--color-text-muted);
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 1;
 }
 
 /* Action Buttons inside body */
-.check-btn-mirror {
-  margin-top: var(--space-4);
-  width: 100%;
+.check-btn-mirror,
+.check-btn-mirror:hover:not(:disabled) {
+  align-self: flex-start;
   height: var(--btn-height-default);
+  padding: 0 var(--space-14);
   font-size: var(--font-size-13);
-  background: var(--color-surface-raised);
-  border: var(--line-1) solid var(--color-warning);
-  color: var(--color-warning-light);
+  background: var(--color-surface-base);
+  border: var(--line-1) solid var(--color-border-strong);
+  color: var(--color-text-primary);
 }
 
-.check-btn-mirror:hover {
-  background: var(--color-surface-lock);
+.check-btn-mirror:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
 }
 
 /* Delete Button */
-.check-btn-delete {
+.check-btn-delete,
+.check-btn-delete:hover:not(:disabled) {
   width: 100%;
   height: var(--btn-height-default);
   font-size: var(--font-size-13);
@@ -285,7 +293,7 @@
   color: var(--color-danger-light);
 }
 
-.check-btn-delete:hover {
+.check-btn-delete:hover:not(:disabled) {
   background: var(--color-danger-bg);
 }
 
@@ -312,5 +320,5 @@
 @media (max-width: 768px) {
   .screen-check { height: auto; flex-direction: column; overflow: visible; }
   .check-panel { height: auto; border-right: 0; border-bottom: var(--line-1) solid var(--color-border-subtle); }
-  .check-viewer-container { height: auto; overflow: visible; }
+  .check-viewer-container { height: var(--height-viewer-stacked); flex-grow: 0; }
 }

@@ -23,7 +23,7 @@
   padding: var(--space-20);
   display: flex;
   flex-direction: column;
-  gap: var(--space-24);
+  gap: var(--space-22);
   box-sizing: border-box;
   overflow-y: auto;
   user-select: none;
@@ -116,7 +116,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Header and rows are separate grids, so every column is minmax(0, …) and the
+   status column is fixed: rows then line up whatever their content is. */
 .cases-table-container {
+  --cases-columns: minmax(0, 2.3fr) var(--width-cases-status) minmax(0, 1.5fr) minmax(0, 0.8fr) minmax(0, 0.6fr) minmax(0, 2.6fr);
   display: flex;
   flex-direction: column;
   border: var(--line-1) solid var(--color-border-subtle);
@@ -128,7 +131,7 @@
 .cases-table-header {
   display: grid;
   white-space: nowrap;
-  grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr;
+  grid-template-columns: var(--cases-columns);
   gap: var(--space-16);
   padding: var(--space-10) var(--space-16);
   font-size: var(--font-size-12);
@@ -143,7 +146,7 @@
 
 .cases-table-row {
   display: grid;
-  grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2.6fr;
+  grid-template-columns: var(--cases-columns);
   gap: var(--space-16);
   align-items: center;
   padding: var(--space-14) var(--space-16);
@@ -164,7 +167,7 @@
 .cases-cell-id { font-size: var(--font-size-15); font-weight: 700; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cases-cell-title { font-size: var(--font-size-12); color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cases-cell-plan { font-size: var(--font-size-13); color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cases-cell-viol { font-size: var(--font-size-13); font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.cases-cell-viol { font-size: var(--font-size-13); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
 .cases-cell-nplans { font-size: var(--font-size-13); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .cases-cell-rx { font-size: var(--font-size-13); color: var(--color-text-secondary); line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cases-table-empty { padding: var(--space-36); text-align: center; color: var(--color-text-muted); font-size: var(--font-size-14); }
@@ -185,7 +188,7 @@
 .cases-panel-detail.cases-detail-empty { display: none; }
 
 .cases-detail-header {
-  padding: var(--space-20) var(--space-20) var(--space-14);
+  padding: var(--space-18) var(--space-20) var(--space-14);
   border-bottom: var(--line-1) solid var(--color-border-subtle);
   display: flex;
   align-items: flex-start;
@@ -215,10 +218,10 @@
 .cases-detail-close-btn:hover { background: var(--color-surface-raised); color: var(--color-text-primary); }
 
 .cases-detail-body {
-  padding: var(--space-20);
+  padding: var(--space-18) var(--space-20);
   display: flex;
   flex-direction: column;
-  gap: var(--space-24);
+  gap: var(--space-22);
   flex-grow: 1;
   overflow-y: auto;
   min-height: 0;
@@ -318,14 +321,15 @@
   .cases-detail-closed .cases-panel-detail { display: none; }
 
   .cases-table-header,
-  .cases-table-row { grid-template-columns: 2.3fr 1fr 1.5fr 0.8fr 0.6fr 2fr; gap: var(--space-12); }
+  .cases-table-row { gap: var(--space-12); }
 }
 
 /* ------------------------------------------------------------- 1024px and below
    Prescription column is dropped from the table (it stays in the detail drawer). */
 @media (max-width: 1024px) {
-  .cases-table-header,
-  .cases-table-row { grid-template-columns: 2fr 1.1fr 1.5fr 0.7fr 0.6fr; }
+  .cases-table-container {
+    --cases-columns: minmax(0, 2fr) var(--width-cases-status) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 0.6fr);
+  }
 
   .cases-table-header > :nth-child(6),
   .cases-table-row > :nth-child(6) { display: none; }
@@ -348,8 +352,9 @@
 
   .cases-panel-list { padding: var(--space-20) var(--space-16); overflow: visible; }
 
-  .cases-table-header,
-  .cases-table-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 0.6fr); }
+  .cases-table-container {
+    --cases-columns: minmax(0, 2fr) var(--width-cases-status) minmax(0, 0.6fr);
+  }
 
   .cases-table-header > :nth-child(3),
   .cases-table-row > :nth-child(3),
@@ -358,5 +363,6 @@
 
   .cases-panel-detail { border-left: 0; border-top: var(--line-1) solid var(--color-border-subtle); }
   .cases-detail-closed .cases-panel-detail { display: none; }
-  .cases-chart-box { max-width: 100%; }
+  /* The chart is laid out in fixed design pixels; scale it down to fit a phone width. */
+  .cases-chart-box { zoom: var(--scale-tooth-chart-compact); }
 }

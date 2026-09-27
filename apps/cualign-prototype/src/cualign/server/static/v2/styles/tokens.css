@@ -41,6 +41,19 @@
   /* Info (Blue) */
   --color-info: #4f8fd6;
 
+  /* Staging table: move-type colours and table chrome (moved here from
+     tokens-staging.css; colours may only live in this file) */
+  --color-move-complex: #8a93a6;
+  --color-move-buccolingual: #3ec5f0;
+  --color-move-extrusion: #b58bff;
+  --color-move-rotation: #f06fb0;
+  --color-move-parallel: #76b900;
+  --color-staging-grid: #1f1f1f;
+  --color-staging-band: rgba(118, 185, 0, 0.14);
+  --color-staging-dot-bg: #6f7686;
+  --color-staging-dot-border: #111111;
+  --color-staging-ring-bg: #111111;
+
   /* Keyboard focus: light green ring, 2px outside the element */
   --color-focus-ring: #c6f27a;
   --focus-ring-width: 2px;
@@ -92,8 +105,8 @@
   --width-stage-bar: 440px;
   --width-chips-bar: 480px;
   --width-readable: 480px;
-  --width-check-label: 104px;
   --width-agent-actions: 124px;
+  --width-cases-status: 112px;
   --height-check-scroll: 180px;
   --height-plans-min: 190px;
   --height-viewer-stacked: 60vh;
@@ -103,6 +116,8 @@
   --size-tooth-chart-label-w: 140px;
   --size-busy-bar-short: 64px;
   --size-busy-bar-long: 120px;
+  /* Tooth chart scale when the detail panel is narrower than the chart (phones) */
+  --scale-tooth-chart-compact: 0.88;
 
   /* Border Radii */
   --radius-xs: 2px;
@@ -125,6 +140,7 @@
   --space-16: 16px;
   --space-18: 18px;
   --space-20: 20px;
+  --space-22: 22px;
   --space-24: 24px;
   --space-28: 28px;
   --space-30: 30px;

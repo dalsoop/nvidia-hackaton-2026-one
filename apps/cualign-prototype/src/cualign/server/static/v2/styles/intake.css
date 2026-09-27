@@ -54,12 +54,12 @@
 .intake-input {
   height: var(--btn-height-default);
   padding: 0 var(--space-10);
-  background: var(--color-surface-base);
+  background: var(--color-surface-raised);
   border: var(--line-1) solid var(--color-border-strong);
   border-radius: var(--radius-xs);
   color: var(--color-text-primary);
   font-family: inherit;
-  font-size: var(--font-size-13);
+  font-size: var(--font-size-14);
   box-sizing: border-box;
   transition: border-color 0.15s ease;
 }
@@ -136,7 +136,7 @@
 }
 
 .intake-card-alias {
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-15);
   font-weight: 700;
   color: var(--color-text-primary);
   white-space: nowrap;
@@ -162,7 +162,8 @@
   color: var(--color-text-muted);
 }
 
-.intake-card-meta {
+.intake-card-meta,
+.intake-card-date {
   color: var(--color-text-secondary);
 }
 
@@ -172,10 +173,10 @@
   min-width: 0;
   height: 100%;
   overflow-y: auto;
-  padding: var(--space-28) var(--space-36);
+  padding: var(--space-28) var(--space-40);
   display: flex;
   flex-direction: column;
-  gap: var(--space-28);
+  gap: var(--space-24);
 }
 
 .intake-empty-view {
@@ -208,8 +209,14 @@
   justify-content: space-between;
   padding-bottom: var(--space-20);
   border-bottom: var(--line-1) solid var(--color-border-subtle);
-  gap: var(--space-16);
+  gap: var(--space-24);
   flex-wrap: wrap;
+}
+
+.intake-patient-header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .intake-patient-header-text {
@@ -220,22 +227,24 @@
 
 .intake-patient-alias {
   margin: 0;
-  font-size: var(--font-size-24);
+  font-size: var(--font-size-28);
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .intake-patient-meta {
-  font-size: var(--font-size-13);
+  font-size: var(--font-size-14);
   color: var(--color-text-secondary);
 }
 
-.intake-delete-patient-btn {
+.intake-delete-patient-btn,
+.intake-delete-patient-btn:hover:not(:disabled) {
+  background: var(--color-surface-base);
   color: var(--color-danger-light);
   border-color: var(--color-danger);
 }
 
-.intake-delete-patient-btn:hover {
+.intake-delete-patient-btn:hover:not(:disabled) {
   background: var(--color-danger-bg);
 }
 
@@ -257,12 +266,6 @@
   font-weight: 500;
 }
 
-.btn.small {
-  height: var(--btn-height-default);
-  padding: 0 var(--space-10);
-  font-size: var(--font-size-13);
-}
-
 /* Scans Section */
 .intake-scans-section {
   display: flex;
@@ -278,9 +281,9 @@
 
 .intake-section-title {
   margin: 0;
-  font-size: var(--font-size-17);
+  font-size: var(--font-size-14);
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
 }
 
 .intake-section-badge {
@@ -301,18 +304,21 @@
 .intake-scans-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  border: var(--line-1) solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
 }
 
 .intake-scan-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-12) var(--space-16);
+  padding: var(--space-14) var(--space-16);
   background: var(--color-surface-base);
-  border: var(--line-1) solid var(--color-border-subtle);
-  border-radius: var(--radius-xs);
   gap: var(--space-16);
+}
+
+.intake-scan-row + .intake-scan-row {
+  border-top: var(--line-1) solid var(--color-border-subtle);
 }
 
 .intake-scan-info {
@@ -329,13 +335,13 @@
 }
 
 .intake-scan-id {
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-15);
   font-family: var(--font-family-mono);
   color: var(--color-text-primary);
 }
 
 .intake-scan-meta {
-  font-size: var(--font-size-12);
+  font-size: var(--font-size-13);
   color: var(--color-text-secondary);
 }
 
@@ -346,20 +352,27 @@
   flex-shrink: 0;
 }
 
-.intake-check-btn {
+.intake-check-btn,
+.intake-check-btn:hover:not(:disabled) {
+  background: var(--color-surface-base);
   color: var(--color-text-primary);
+  border-color: var(--color-accent);
 }
 
-.intake-check-btn:hover {
+.intake-check-btn:hover:not(:disabled) {
   background: var(--color-surface-raised);
 }
 
-.intake-scan-del-btn {
+.intake-scan-del-btn,
+.intake-scan-del-btn:hover:not(:disabled) {
+  background: transparent;
   color: var(--color-danger-light);
+  border-color: var(--color-border-subtle);
 }
 
-.intake-scan-del-btn:hover {
+.intake-scan-del-btn:hover:not(:disabled) {
   background: var(--color-danger-bg);
+  border-color: var(--color-danger);
 }
 
 /* Upload Container */
@@ -394,19 +407,19 @@
 
 /* Dropzone */
 .upload-dropzone {
-  border: var(--line-2) dashed var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  padding: var(--space-36) var(--space-20);
+  border: var(--line-1) dashed var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-sunken);
+  padding: var(--space-32);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-8);
+  gap: var(--space-12);
   cursor: pointer;
   text-align: center;
   user-select: none;
-  transition: all 0.2s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
   color: var(--color-text-secondary);
 }
 
@@ -421,11 +434,12 @@
   border-color: var(--color-accent) !important;
   background: var(--color-accent-bg) !important;
   color: var(--color-accent) !important;
-  transform: scale(0.995);
 }
 
+.upload-dropzone svg { color: var(--color-accent); }
+
 .upload-dropzone-primary-text {
-  font-size: var(--font-size-15);
+  font-size: var(--font-size-18);
   font-weight: 700;
   color: var(--color-text-primary);
 }
@@ -438,6 +452,25 @@
 .upload-dropzone-limit-text {
   font-size: var(--font-size-11);
   color: var(--color-text-muted);
+}
+
+/* Upload slots that are empty until a selection exists take no room. */
+.upload-status-area:empty,
+.upload-actions-area:empty {
+  display: none;
+}
+
+.upload-status-area,
+.upload-actions-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.intake-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
 }
 
 /* Error Card (UploadErrors design) */
@@ -637,4 +670,10 @@
   .intake-panel-list { height: auto; border-right: 0; border-bottom: var(--line-1) solid var(--color-border-subtle); }
   .intake-main-panel { height: auto; overflow: visible; padding: var(--space-20) var(--space-16); }
   .intake-scan-row { flex-wrap: wrap; }
+  .upload-container { padding: var(--space-16); }
+  .upload-dropzone { padding: var(--space-24) var(--space-16); }
+  /* The mapping table keeps its columns and scrolls sideways instead of wrapping each letter. */
+  .upload-table-section { overflow-x: auto; }
+  .upload-table th,
+  .upload-table td { white-space: nowrap; }
 }
