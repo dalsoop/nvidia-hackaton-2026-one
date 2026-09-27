@@ -25,13 +25,12 @@
     </button>
   </header>
 
-  <!-- 내 스캔: 환자 → 스캔 업로드 → 입력 확인 → 계획. 샘플 케이스는 작업 화면의 시작 상태에서 고른다 (#90) -->
+  <!-- 내 스캔: 한 모달에서 새 환자 등록 · 기존 환자 펼쳐 스캔 열기/올리기. 입력 확인은 3D 위 막대 (#90, #53) -->
   <div id="caseGate" class="gate" hidden>
-    <button id="gateClose" class="btn ghost small gate-x" type="button" hidden>닫기</button>
-    <!-- 1. 환자 목록 -->
-    <div id="screenPatients" class="gate-panel screen" hidden>
+    <div id="screenPatients" class="gate-panel">
+      <button id="gateClose" class="btn ghost small gate-x" type="button">닫기</button>
       <h1>내 스캔 올리기</h1>
-      <p class="muted">새 환자를 등록하며 상악 스캔을 올리거나, 아래에서 기존 환자를 고릅니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
+      <p class="muted">새 환자를 등록하며 상악 스캔을 올리거나, 아래에서 기존 환자를 펼쳐 스캔을 엽니다. 환자 정보는 이 컴퓨터에만 저장되고, 모델에는 가명 케이스 번호만 전달됩니다.</p>
       <form id="patientForm" class="new-patient">
         <h2>새 환자</h2>
         <label>별칭 <input id="pAlias" maxlength="40" placeholder="예: 3월 상담 A" required></label>
@@ -46,46 +45,20 @@
         <p class="hint">실명·주민번호·연락처는 입력하지 마세요. 가명만 사용합니다.</p>
       </form>
       <h2>기존 환자</h2>
-      <div id="patientCards" class="cards"></div>
-      <div class="gate-foot">
-        <button id="toSamples" class="btn ghost small" type="button">← 샘플 케이스</button>
+      <div id="patientCards" class="patient-list"></div>
+      <!-- 펼친 환자의 본문: 스캔 목록 + 업로드. JS가 펼친 환자 아래로 옮긴다 -->
+      <div id="patientBody" class="p-body" hidden>
+        <div id="scanList" class="scan-list"></div>
+        <label id="dropZone" class="drop" for="scanInput">
+          <b>이 환자에게 상악 스캔 올리기</b>
+          <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
+          <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
+        </label>
+        <input id="scanInput" type="file" accept=".stl" multiple hidden />
+        <p id="uploadStatus" class="muted" aria-live="polite"></p>
+        <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
       </div>
     </div>
-
-    <!-- 2. 환자 화면: 스캔 목록 + 업로드 -->
-    <div id="screenPatient" class="gate-panel screen" hidden>
-      <button class="btn ghost small back" data-go="patients" type="button">← 환자 목록</button>
-      <h1 id="patientTitle">환자</h1>
-      <p id="patientMeta" class="muted"></p>
-      <button id="deletePatient" class="btn ghost small danger" type="button">환자 삭제</button>
-      <h2>스캔</h2>
-      <div id="scanList" class="scan-list"></div>
-      <label id="dropZone" class="drop" for="scanInput">
-        <b>상악 스캔 올리기</b>
-        <span>치아별 STL(<code>2.stl</code> … <code>15.stl</code>, Universal 번호) · 선택: <code>gingiva.stl</code></span>
-        <span class="muted">파일을 끌어다 놓거나 눌러서 고르세요. 한 덩어리 스캔의 자동 치아 분리는 아직 지원하지 않습니다.</span>
-      </label>
-      <input id="scanInput" type="file" accept=".stl" multiple hidden />
-      <p id="uploadStatus" class="muted" aria-live="polite"></p>
-    </div>
-
-    <!-- 3. 입력 확인: 3D는 오른쪽 뷰어에 표시 -->
-    <div id="screenCheck" class="gate-panel screen side" hidden>
-      <button class="btn ghost small back" data-go="patient" type="button">← 환자 화면</button>
-      <h1>입력 확인</h1>
-      <p id="checkMeta" class="muted"></p>
-      <div id="checkBadge" class="badge neutral"></div>
-      <dl id="checkList" class="check"></dl>
-      <div id="sideWarn" class="warn-box" hidden>
-        <b>치아 번호가 좌우 반대로 보입니다.</b> 2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다. 파일 번호를 확인하세요.
-        <button id="mirrorBtn" class="btn ghost small" type="button">좌우 번호 뒤집기 (u → 17−u)</button>
-      </div>
-      <p class="hint">오른쪽 3D에서 치아 번호(마우스를 올리면 표시)와 위치가 맞는지 확인하세요. 주황: 회전 보정 대상 · 파랑: 높이 보정 대상.</p>
-      <div class="gate-foot">
-        <button id="startPlan" class="btn primary" type="button">번호 확인 — 계획 시작</button>
-      </div>
-    </div>
-
   </div>
 
   <main class="layout">
@@ -149,6 +122,13 @@
         </div>
         <div id="labels" class="labels"></div>
         <div class="view-head">
+          <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
+          <div id="checkBar" class="check-bar" hidden>
+            <span id="checkFacts" class="facts"></span>
+            <button id="mirrorBtn" class="btn ghost small" type="button" hidden title="2번이 환자 오른쪽(화면 왼쪽)에 와야 합니다">좌우 번호 뒤집기</button>
+            <button id="startPlan" class="btn primary small" type="button">이 스캔으로 계획</button>
+            <button id="otherScan" class="btn ghost small" type="button">다른 스캔</button>
+          </div>
           <span class="view-bar">
             <span class="view-btns">
               <button class="btn ghost small" data-view="occlusal" title="교합면(위에서)">교합면</button>

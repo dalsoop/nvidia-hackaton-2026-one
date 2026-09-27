@@ -294,10 +294,8 @@ button:disabled { cursor:not-allowed; }
 .viol tr.space_deficit td.type, .viol tr.stage_cap td.type { color: var(--amber); }
 .viol td.empty { color: var(--muted); text-align: center; padding: 12px; }
 
-/* ---- patient flow: 환자 목록 → 환자(스캔·업로드) → 입력 확인 → 계획 */
-.screen[hidden] { display: none; }
+/* ---- patient flow (#90): one modal — new patient, then the patients as an accordion with their scans */
 .gate-panel h2 { margin: 16px 0 8px; font-size: 14px; color: var(--muted); font-weight: 700; }
-.gate-panel .back { margin-bottom: 12px; }
 .gate-panel .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .new-patient { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
 .new-patient h2 { width: 100%; }
@@ -305,25 +303,39 @@ button:disabled { cursor:not-allowed; }
 .new-patient input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px 12px; min-width: 200px; }
 .new-patient .hint { width: 100%; }
 .new-patient .drop { width: 100%; margin-top: 0; }
-.cards .empty, .scan-list .empty { color: var(--muted); font-size: 13px; }
+.cards .empty, .patient-list .empty, .scan-list .empty { color: var(--muted); font-size: 13px; }
+.patient-list { display: flex; flex-direction: column; gap: 8px; }
+.patient { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.patient.open { border-color: var(--line-strong); }
+.p-head { width: 100%; display: flex; align-items: baseline; gap: 12px; padding: 12px 16px; font: inherit; color: var(--text); background: none; border: 0; text-align: left; cursor: pointer; }
+.p-head::before { content: "\25B8"; color: var(--muted); }
+.patient.open .p-head::before { content: "\25BE"; }
+.p-head:hover .alias { color: var(--green); }
+.p-head .alias { font-weight: 700; }
+.p-head .pid { flex: 1; color: var(--muted); font-size: 12px; }
+.p-head .meta { color: var(--faint); font-size: 12px; }
+.p-body { padding: 0 16px 16px; }
+.p-body[hidden] { display: none; }
+.p-body .danger { margin-top: 8px; }
 .scan-list { display: flex; flex-direction: column; gap: 8px; }
-.scan-row { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.scan-row { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .scan-row .sid { font-weight: 700; min-width: 90px; }
 .scan-row .meta { color: var(--muted); font-size: 12px; flex: 1; }
 .drop { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--radius); cursor: pointer; text-align: center; }
 .drop:hover, .drop.over { border-color: var(--green); background: var(--panel-2); }
 .drop span { font-size: 12px; }
-.gate.side { background: transparent; justify-content: flex-start; align-items: stretch; pointer-events: none; padding: 12px; }
-.gate.side .gate-panel { pointer-events: auto; width: min(420px, 100%); overflow: auto; border-color: var(--line-strong); }
-.check { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 16px 0 0; font-size: 13px; }
-.check dt { color: var(--muted); }
-.check dd { margin: 0; }
-.check dd.bad { color: var(--red-text); }
-#checkBadge { display: inline-block; margin-top: 4px; }
 .btn.danger { color: var(--red-text); border-color: var(--red); }
-.warn-box { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-left: 3px solid var(--amber); background: var(--amber-surface); color: var(--amber-text); border-radius: var(--radius); font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
-.warn-box[hidden] { display: none; }
 .scan-row .del { color: var(--muted); }
+/* input check over the 3D (#53): the facts in one line, then 이 스캔으로 계획 / 다른 스캔 */
+.check-bar { margin-right: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; pointer-events: auto; max-width: 100%; padding: 6px 8px 6px 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; }
+.check-bar[hidden] { display: none; }
+.check-bar.fail { border-left: 3px solid var(--red); }
+.check-bar .facts { color: var(--muted); }
+.check-bar .facts > span:first-child { color: var(--text); font-weight: 700; }
+.check-bar .facts .warn { color: var(--amber-text); }
+.check-bar .facts .bad { color: var(--red-text); }
+body.checking .view-tools, body.checking .view-actions { display: none; }
+.num-label { font: 700 11px/1 var(--font); color: var(--muted); background: rgba(0,0,0,0.6); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 
 /* ---------- start state (#90): the work screen before a case is open ---------- */
 /* start state of the agent panel: mark + one line, centred like an empty chat (#90) */

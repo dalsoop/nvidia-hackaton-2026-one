@@ -1,4 +1,4 @@
-// cuAlign web UI — patient → scan upload → input check → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
+// cuAlign web UI — patient → scan upload → input check on the 3D → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
@@ -37,6 +37,7 @@ const state = {
   selected: new Set(),   // teeth the dentist clicked in the 3D; named in the next chat message (#90)
   overlay: false,        // 전후 겹쳐 보기: the untreated arch drawn as a white ghost (#90)
   violLabels: [],        // CSS2DObject collision labels of the stage on screen
+  numLabels: [],         // CSS2DObject tooth numbers shown during the input check
 };
 
 // ------------------------------------------------------------------ three.js
@@ -467,23 +468,32 @@ async function reviewCurrent() {
 }
 
 // ------------------------------------------------------------------ patient flow (start point)
-// 환자 목록 → 환자(스캔 목록·업로드) → 입력 확인 → 계획. Samples sit outside the flow. The alias stays in the UI;
-// the chat and tools only see the pseudonymous case id (P0001-S1).
-const SCREENS = { patients: "screenPatients", patient: "screenPatient", check: "screenCheck" };
+// One modal (#90): new patient on top, existing patients below; a patient opens in place with its scans and an
+// upload. The input check is a bar over the 3D (#53), not a screen. Samples sit outside the flow. The alias stays in
+// the UI; the chat and tools only see the pseudonymous case id (P0001-S1).
+// "patients" = the modal, "patient" = the modal with state.patient open, "check" = the scan in the 3D with the check bar.
 function showScreen(name) {
   setHash(name === "patient" ? "#patient=" + state.patient.patient_id : name === "check" ? "#check=" + state.checkCase : "#" + name);
-  document.body.classList.remove("start");   // the check screen shows its scan in the viewer
-  for (const [k, id] of Object.entries(SCREENS)) $(id).hidden = k !== name;
-  $(SCREENS[name]).prepend($("gateClose"));   // inside the open panel, not over the top bar
-  $("caseGate").classList.toggle("side", name === "check");   // keep the 3D viewer visible while checking
-  $("gateClose").hidden = name === "check" || !state.activeCase;   // leave the check screen by confirming or going back
-  $("caseGate").hidden = false;
+  document.body.classList.remove("start");   // the check shows its scan in the viewer
+  const check = name === "check";
+  if (!check) endCheck();
+  $("checkBar").hidden = !check;
+  document.body.classList.toggle("checking", check);
+  $("caseGate").hidden = check;
+}
+// Leave the input check: the bar and the tooth numbers go; the mesh stays until something else loads.
+function endCheck() {
+  $("checkBar").hidden = true;
+  document.body.classList.remove("checking");
+  for (const l of state.numLabels) l.parent?.remove(l);
+  state.numLabels = [];
 }
 // Start state (#90): no modal. The work screen itself shows the intro on the left and the sample cards where the
 // 3D goes; the conditions, chips, legend and result wait until a case is open.
 async function showStart() {
   setHash("#start");
   await loadCases();
+  endCheck();
   $("caseGate").hidden = true;
   document.body.classList.add("start");
   lockComposer(true);
@@ -510,7 +520,7 @@ async function route(hash) {
   try {
     if (key === "case" && id) {
       if (id === state.activeCase) {
-        $("caseGate").hidden = true; leaveStart();
+        $("caseGate").hidden = true; endCheck(); leaveStart();
         if (state.meshCase !== state.activeCase) { await loadMesh(state.activeCase); await refreshPlans(); }
       }
       else await activateCase(id);
@@ -560,31 +570,32 @@ function setChatWidth(px) {
 }
 const fmtDate = (iso) => (iso ?? "").slice(0, 16).replace("T", " ");
 
-async function loadPatients() {
+// The patient list of the modal. `open` (a GET /api/patients/{id} payload) is shown expanded with its scans.
+async function loadPatients(open = null) {
   const { patients } = await api("/api/patients");
-  const wrap = $("patientCards");
+  const wrap = $("patientCards"), body = $("patientBody");
+  body.hidden = true; $("screenPatients").append(body);   // keep the shared body out of the list being rebuilt
   wrap.innerHTML = "";
   if (!patients.length) wrap.innerHTML = '<p class="empty">등록된 환자가 없습니다. 위에서 새 환자를 등록하세요.</p>';
   for (const p of patients) {
-    const b = document.createElement("button");
-    b.className = "case-card";
-    b.dataset.pid = p.patient_id;
-    b.innerHTML = `<span class="cid"></span><span class="sev"></span><span class="meta"></span>`;
-    b.querySelector(".cid").textContent = p.alias;
-    b.querySelector(".sev").textContent = p.patient_id + (p.memo ? " · " + p.memo : "");
-    b.querySelector(".meta").textContent = `스캔 ${p.n_scans}개 · 등록 ${fmtDate(p.created_at)}`;
-    if (state.patient?.patient_id === p.patient_id) b.classList.add("current");
-    wrap.appendChild(b);
+    const item = document.createElement("div");
+    item.className = "patient";
+    item.dataset.pid = p.patient_id;
+    item.innerHTML = `<button class="p-head" type="button" aria-expanded="false"><span class="alias"></span><span class="pid"></span><span class="meta"></span></button>`;
+    item.querySelector(".alias").textContent = p.alias;
+    item.querySelector(".pid").textContent = p.patient_id + (p.memo ? " · " + p.memo : "");
+    item.querySelector(".meta").textContent = `스캔 ${p.n_scans}개 · 등록 ${fmtDate(p.created_at)}`;
+    if (open?.patient_id === p.patient_id) {
+      item.classList.add("open");
+      item.querySelector(".p-head").setAttribute("aria-expanded", "true");
+      renderScans(open);
+      item.append(body); body.hidden = false;
+    }
+    wrap.appendChild(item);
   }
 }
 
-async function openPatient(pid) {
-  const v = ++state.gateVersion;
-  const p = await api("/api/patients/" + encodeURIComponent(pid));
-  if (v !== state.gateVersion) return;
-  state.patient = p;
-  $("patientTitle").textContent = p.alias;
-  $("patientMeta").textContent = `${p.patient_id} · 등록 ${fmtDate(p.created_at)}` + (p.memo ? ` · ${p.memo}` : "");
+function renderScans(p) {
   const list = $("scanList");
   list.innerHTML = "";
   if (!p.scans.length) list.innerHTML = '<p class="empty">아직 스캔이 없습니다. 아래에 상악 스캔을 올리세요.</p>';
@@ -593,16 +604,24 @@ async function openPatient(pid) {
     row.className = "scan-row";
     const ok = sc.confirmed_revision != null && sc.confirmed_revision === (sc.revision ?? 1);   // confirmed this revision
     row.innerHTML = `<span class="sid"></span><span class="meta"></span>
-      <button class="btn ghost small" data-act="check" type="button">입력 확인</button>
-      <button class="btn ${ok ? "primary" : "ghost"} small" data-act="${ok ? "plan" : "check"}" type="button">${ok ? "계획" : "확인 필요"}</button>
+      <button class="btn ghost small" data-act="${ok ? "plan" : "check"}" type="button">열기</button>
       <button class="btn ghost small del" data-act="delete" type="button" title="스캔 삭제">삭제</button>`;
     row.querySelector(".sid").textContent = sc.scan_id + " · 상악";
-    row.querySelector(".meta").textContent = `치아 ${sc.teeth.length}개${sc.gingiva ? " · 잇몸 포함" : ""} · ${fmtDate(sc.uploaded_at)} · ` +
-      (ok ? `번호 확인됨 · 계획 ${sc.plans ?? 0}개` : "번호 확인 전");
+    row.querySelector(".meta").textContent = `치아 ${sc.teeth.length}개 · ${sc.gingiva ? "잇몸 포함" : "잇몸 없음"} · ${fmtDate(sc.uploaded_at)} · ` +
+      `계획 ${sc.plans ?? 0}개` + (ok ? "" : " · 입력 확인 전");
     row.dataset.case = sc.case_id;
     list.appendChild(row);
   }
   $("uploadStatus").textContent = "";
+}
+
+async function openPatient(pid) {
+  const v = ++state.gateVersion;
+  const p = await api("/api/patients/" + encodeURIComponent(pid));
+  if (v !== state.gateVersion) return;
+  state.patient = p;
+  await loadPatients(p);
+  if (v !== state.gateVersion) return;
   if (!state.meshCase) $("caseName").textContent = p.alias;
   showScreen("patient");
 }
@@ -647,34 +666,42 @@ async function openCheck(caseId, check) {
     else if (id in vert) m.material.color.setHex(BLUE);
   }
   const sid = caseId.split("-")[1] ?? caseId;
-  $("checkMeta").textContent = `${state.patient ? state.patient.alias + " · " : ""}${sid} · 상악 · 케이스 ${caseId}`;
-  const badge = $("checkBadge");
-  badge.textContent = check.ready ? "계획 가능" : "지원 불가 — 계획할 수 없음";
-  badge.className = "badge " + (check.ready ? "pass" : "fail");
-  const rows = [
-    ["인식된 치아", `${check.n_teeth}개 · ${check.teeth.join(", ")}`],
-    ["빠진 치아", check.missing.length ? check.missing.join(", ") : "없음", check.missing.length > 0],
-    ["총생 추정", `${check.crowding_mm} mm`],
-    ["앞니 회전", Object.keys(rot).length ? Object.entries(rot).map(([i, d]) => `${i}번 ${d > 0 ? "+" : ""}${d}°`).join(", ") : "보정할 회전 없음"],
-    // + = past the neighbours toward the occlusal plane, − = short of it (toward the gum)
-    ["높이 차이", Object.keys(vert).length ? Object.entries(vert).map(([i, d]) => `${i}번 ${d > 0 ? "교합면 쪽" : "잇몸 쪽"} ${Math.abs(d)}mm`).join(", ") : "보정할 차이 없음"],
-    ["잇몸", check.scanned_gingiva ? "스캔 잇몸" : "표시용 생성 잇몸"],
-  ];
-  const o = check.orientation;
-  if (o) rows.push(["방향 정렬", ({ gingiva: "잇몸 기준", cervical: "치관 아래 경계 기준", none: "근거 없음 — 입력의 +z를 교합면 쪽으로 가정, 방향 확인 필요" })[o.basis] +
-    (o.rotation_deg ? ` · ${o.rotation_deg}° 회전` : "") + (o.renumbered ? " · 번호 좌우 뒤집음" : ""), o.basis === "none"]);
-  if (check.revision) rows.push(["번호 확인", (check.confirmed ? "확인됨 " + fmtDate(check.confirmed_at) : "확인 전") + ` · 입력 버전 ${check.revision}`]);
-  $("sideWarn").hidden = o?.side !== "reversed";
-  if (check.outside.length) rows.splice(2, 0, ["스캔에 없는 끝 치아", check.outside.join(", ")]);
-  for (const why of check.unsupported) rows.push(["지원 불가", why, true]);
-  const dl = $("checkList");
-  dl.innerHTML = "";
-  for (const [k, v, bad] of rows) {
-    const dt = document.createElement("dt"), dd = document.createElement("dd");
-    dt.textContent = k; dd.textContent = v;
-    if (bad) dd.className = "bad";
-    dl.append(dt, dd);
+  // tooth numbers on the 3D: what the dentist confirms with 이 스캔으로 계획
+  for (const l of state.numLabels) l.parent?.remove(l);
+  state.numLabels = [];
+  for (const [id, m] of Object.entries(state.teeth)) {
+    const el = document.createElement("div");
+    el.className = "num-label";
+    el.textContent = id;
+    const obj = new CSS2DObject(el);
+    obj.position.copy(state.center[id]);
+    obj.position.z = m.geometry.boundingBox.max.z + 1.5;
+    group.add(obj);
+    state.numLabels.push(obj);
   }
+  // the check facts in one line, in the dentist's words
+  const o = check.orientation;
+  const facts = [["입력 확인"], [`치아 ${check.n_teeth}개` + (check.missing.length ? ` (빠진 치아 ${check.missing.join(", ")}번)` : "")],
+    [check.scanned_gingiva ? "잇몸 포함" : "잇몸 없음 · 표시용 잇몸"]];
+  if (check.outside.length) facts.push([`스캔에 없는 끝 치아 ${check.outside.join(", ")}번`]);
+  if (Object.keys(rot).length) facts.push([`회전 보정 ${Object.keys(rot).join("·")}번 (주황)`]);
+  if (Object.keys(vert).length) facts.push([`높이 보정 ${Object.keys(vert).join("·")}번 (파랑)`]);
+  if (o?.basis === "none") facts.push(["방향 근거 없음 — 교합면 방향 확인 필요", "warn"]);
+  if (o?.side === "reversed") facts.push(["치아 번호가 좌우 반대로 보임", "warn"]);
+  if (check.confirmed) facts.push([`번호 확인됨 ${fmtDate(check.confirmed_at)}`]);
+  for (const why of check.unsupported) facts.push([why, "bad"]);
+  if (check.ready && !check.unsupported.length && o?.basis !== "none" && o?.side !== "reversed") facts.push(["문제 없음"]);
+  const box = $("checkFacts");
+  box.innerHTML = "";
+  facts.forEach(([text, cls], k) => {
+    if (k) box.append(" · ");
+    const span = document.createElement("span");
+    span.textContent = text;
+    if (cls) span.className = cls;
+    box.append(span);
+  });
+  $("checkBar").classList.toggle("fail", !check.ready);
+  $("mirrorBtn").hidden = o?.side !== "reversed";
   $("startPlan").disabled = !check.ready;
   $("caseName").textContent = (state.patient ? state.patient.alias + " · " : "") + sid + " · 입력 확인 중";
   showScreen("check");
@@ -766,7 +793,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.activeCase = caseId;
   renderChips();
   $("caseGate").hidden = true;
-  $("gateClose").hidden = false;
+  endCheck();
   setHash("#case=" + caseId);
   leaveStart();
   if (greet) {
@@ -1224,8 +1251,15 @@ $("sampleCards").addEventListener("click", async (e) => {
   finally { document.body.classList.remove("leaving"); card.classList.remove("picked"); }
 });
 $("patientCards").addEventListener("click", (e) => {
-  const card = e.target.closest(".case-card");
-  if (card) openPatient(card.dataset.pid).catch((err) => addMsg("error", "환자 불러오기 실패: " + err.message));
+  const head = e.target.closest(".p-head");
+  if (!head) return;
+  const item = head.closest(".patient");
+  if (item.classList.contains("open")) {   // fold it again; the list stays
+    ++state.gateVersion;
+    loadPatients().then(() => showScreen("patients")).catch((err) => addMsg("error", err.message));
+    return;
+  }
+  openPatient(item.dataset.pid).catch((err) => addMsg("error", "환자 불러오기 실패: " + err.message));
 });
 $("patientForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1292,11 +1326,11 @@ $("deletePatient").addEventListener("click", async () => {
     await loadPatients(); showScreen("patients");
   } catch (err) { alert("삭제 실패: " + err.message); }
 });
-$("toSamples").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
 $("toPatients").addEventListener("click", () => loadPatients().then(() => showScreen("patients")).catch((err) => addMsg("error", "환자 목록 로드 실패: " + err.message)));
-for (const b of document.querySelectorAll("#caseGate .back")) b.addEventListener("click", () => {
-  if (b.dataset.go === "patient" && state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
-  else loadPatients().then(() => showScreen("patients"));
+// 다른 스캔: back to the modal with this patient open
+$("otherScan").addEventListener("click", () => {
+  const go = state.patient ? openPatient(state.patient.patient_id) : loadPatients().then(() => showScreen("patients"));
+  go.catch((err) => addMsg("error", err.message));
 });
 function renderCasePop() {
   const wrap = $("popCases");
@@ -1327,10 +1361,13 @@ $("popPatients").addEventListener("click", () => { $("casePop").hidden = true; l
 document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".case-head")) $("casePop").hidden = true; });
 $("introPick").addEventListener("click", () => $("sampleCards").querySelector(".case-card:not(:disabled)")?.focus());
 $("gateClose").addEventListener("click", async () => {
+  // no case open yet: the start state (the sample cards) is where the modal came from
+  if (!state.activeCase) { showStart().catch((err) => addMsg("error", err.message)); return; }
   $("caseGate").hidden = true;
-  // the input-check screen may have put another scan in the viewer: go back to the case being planned, whose
+  setHash("#case=" + state.activeCase);
+  // the input check may have put another scan in the viewer: go back to the case being planned, whose
   // constraints and chips are still on screen (#70 review)
-  if (state.activeCase && state.meshCase !== state.activeCase) {
+  if (state.meshCase !== state.activeCase) {
     try { await loadMesh(state.activeCase); await refreshPlans(); } catch (err) { addMsg("error", err.message); }
   }
 });
