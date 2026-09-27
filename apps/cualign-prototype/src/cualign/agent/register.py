@@ -227,6 +227,7 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         if run:
             run.plan_ids.update(ids)
             run.target_ids.update(STORE.plans[pid]["target_id"] for pid in ids)
+            run.compared = True
         return {"case_id": cid, "constraints": constraints_for(cid).model_dump(mode="json"),
                 "plans": [summary(pid) for pid in ids]}
 
