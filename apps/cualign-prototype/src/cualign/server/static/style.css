@@ -447,4 +447,6 @@ body.start .composer textarea, body.start .composer button { opacity: 0.5; point
 body.start .chips { display: none; }
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
 body.start .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr); }
-body.start .panel, body.start .splitter { display: none; }
+body.start .chat, body.start .splitter { display: none; }
+/* each child keeps its column even when a sibling is hidden, so nothing slides into a phantom column */
+.layout > .rail { grid-column: 1; } .layout > .chat { grid-column: 2; } .layout > .splitter { grid-column: 3; } .layout > .viewer { grid-column: 4; }
