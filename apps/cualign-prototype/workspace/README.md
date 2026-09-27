@@ -10,13 +10,13 @@ The English files are the originals. [README.ko.md](README.ko.md) is the Korean 
 |---|---|---|---|
 | `AGENTS.md` | NAT planner in the cuAlign server | Make a draft plan from the conditions of this request, and report it in the answer format | Golden set #73 on these bytes |
 | `skills/cualign-clinical-rules/` | NAT planner | Apply the clinical limits and the strategy rules in the tool sequence | Golden set #73 |
-| `SOUL.md` | OpenClaw desk (`cualign-desk`) | Answer an approval request in text, use the planner skill for other requests, and keep the persona file unchanged | Pass, 2026-09-27: the approval request got 0 tool calls in 3 of 3 runs |
+| `SOUL.md` | OpenClaw desk (`cualign-desk`) | Answer an approval request in text, use the planner skill for other requests, and keep the persona file unchanged | Pass, 2026-09-27: the approval request got no `cualign_*` call and no new plan in 3 of 3 runs. Without rule 1, 3 of 3 runs called `cualign_*` tools |
 | `IDENTITY.md` | OpenClaw desk | Name itself as the cuAlign front desk | Not done: no test prompt asks for the name |
 | `USER.md` | OpenClaw desk | Pass the conditions of the dentist as decisions, and accept tooth numbers and case ids | Not done: no test prompt gives conditions |
 | `TOOLS.md` | OpenClaw desk | Find the skill that tells when to call each tool | Pass, 2026-09-27: the case list request got 1 `cualign_list_cases` call in 3 of 3 runs |
 | `HEARTBEAT.md` | OpenClaw heartbeat | Skip the scheduled model call | No run. `tests/test_workspace.py` checks that the bytes are the OpenClaw default, which has comments only |
-| `MEMORY.md` | OpenClaw desk | Keep no memory, and write no patient identifier | Partly, 2026-09-27: after 9 runs, no `memory/` folder and no change to `MEMORY.md`. No run gave a patient identifier |
-| `skills/cualign-planner/` | OpenClaw desk | Call `cualign_plan` once for each request, and report the result in Korean | Fail, 2026-09-27: a plan request with a case id only got a plan with `ui_url` in 1 of 3 runs. The other 2 runs asked for the conditions, as step 2 of the skill says |
+| `MEMORY.md` | OpenClaw desk | Keep no memory, and write no patient identifier | Partly, 2026-09-27: after 15 runs, no `memory/` folder and no change to `MEMORY.md`. No run gave a patient identifier |
+| `skills/cualign-planner/` | OpenClaw desk | Call `cualign_plan` once for each request, and report the result in Korean | Pass, 2026-09-27: the plan request got 1 `cualign_plan` call with `ui_url` in 3 of 3 runs. One question for the conditions, then that call after the reply, also passes |
 | `README.md` | Maintainer | Find which agent reads a file, find the source of a tool or a boundary, and install the desk files | Not done: no maintainer session yet |
 
 A reader test uses a new session with no other context, and it runs more than once. `docs/nemoclaw.md` records the prompts and each run. Source: R-004 and `guides/new-project.md` §1 in https://github.com/dalsoop/stable-agent-documentation-guidebook.

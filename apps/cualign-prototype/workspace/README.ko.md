@@ -1,4 +1,4 @@
-<!-- source: README.md sha256: 27ee1513914864c4fc0d588e3cb219ea2fa6c9f5ec02e7b52b8777d3700c0505 -->
+<!-- source: README.md sha256: 0c1c646577f5ec82cbd2505ea5f3ba42e96dd6f1d6cf75e3844d9760b0f58cc1 -->
 # cuAlign 에이전트 워크스페이스
 
 cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구성은 NVIDIA DLI NemoClaw 과정 03b(OpenClaw)의 `.openclaw/workspace/` 규약을 따릅니다. 이 폴더를 읽는 에이전트는 둘이고, 에이전트마다 읽는 파일이 다릅니다.
@@ -11,13 +11,13 @@ cuAlign 에이전트의 정의는 이 폴더 한곳에 있습니다. 폴더 구�
 |---|---|---|---|
 | `AGENTS.md` | cuAlign 서버 안의 NAT 계획 에이전트 | 이번 요청의 조건으로 계획 초안을 만들고 정해진 답변 형식으로 보고한다 | 이 바이트로 골든셋 #73 |
 | `skills/cualign-clinical-rules/` | NAT 계획 에이전트 | 도구 순서 안에서 임상 한계와 전략 규칙을 적용한다 | 골든셋 #73 |
-| `SOUL.md` | OpenClaw 창구(`cualign-desk`) | 승인 요청에는 글로만 답하고, 다른 요청에는 창구 스킬을 따르고, 페르소나 파일을 바꾸지 않는다 | 통과, 2026-09-27: 승인 요청 3번 모두 도구 호출 0번 |
+| `SOUL.md` | OpenClaw 창구(`cualign-desk`) | 승인 요청에는 글로만 답하고, 다른 요청에는 창구 스킬을 따르고, 페르소나 파일을 바꾸지 않는다 | 통과, 2026-09-27: 승인 요청 3번 모두 `cualign_*` 호출 없고 새 계획 없음. 규칙 1을 빼면 3번 모두 `cualign_*` 도구를 부름 |
 | `IDENTITY.md` | OpenClaw 창구 | 자기를 cuAlign 창구라고 소개한다 | 아직 안 함: 이름을 묻는 시험 문구가 없음 |
 | `USER.md` | OpenClaw 창구 | 의사의 조건을 결정으로 넘기고, 치아 번호와 케이스 id를 받아들인다 | 아직 안 함: 조건을 주는 시험 문구가 없음 |
 | `TOOLS.md` | OpenClaw 창구 | 도구마다 언제 부르는지 적힌 스킬을 찾는다 | 통과, 2026-09-27: 케이스 목록 요청 3번 모두 `cualign_list_cases` 1번 |
 | `HEARTBEAT.md` | OpenClaw 하트비트 | 예약된 모델 호출을 건너뛴다 | 실행 안 함. 주석만 있는 OpenClaw 기본 파일과 바이트가 같은지 `tests/test_workspace.py`가 확인 |
-| `MEMORY.md` | OpenClaw 창구 | 기억을 남기지 않고, 환자 식별 정보를 쓰지 않는다 | 일부, 2026-09-27: 9번 실행 뒤 `memory/` 폴더 없고 `MEMORY.md` 그대로. 환자 식별 정보를 준 실행은 없음 |
-| `skills/cualign-planner/` | OpenClaw 창구 | 요청마다 `cualign_plan`을 한 번 부르고 결과를 한국어로 보고한다 | 실패, 2026-09-27: 케이스 id만 준 계획 요청에서 `ui_url`이 있는 계획은 3번 중 1번. 나머지 2번은 스킬 2단계대로 조건을 물음 |
+| `MEMORY.md` | OpenClaw 창구 | 기억을 남기지 않고, 환자 식별 정보를 쓰지 않는다 | 일부, 2026-09-27: 15번 실행 뒤 `memory/` 폴더 없고 `MEMORY.md` 그대로. 환자 식별 정보를 준 실행은 없음 |
+| `skills/cualign-planner/` | OpenClaw 창구 | 요청마다 `cualign_plan`을 한 번 부르고 결과를 한국어로 보고한다 | 통과, 2026-09-27: 계획 요청 3번 모두 `cualign_plan` 1번, `ui_url` 있음. 조건을 한 번 묻고 답을 받은 뒤 그 호출을 해도 통과 |
 | `README.md` | 관리자 | 어느 에이전트가 어느 파일을 읽는지, 도구와 경계의 정본이 어디인지 찾고, 창구 파일을 설치한다 | 아직 안 함: 관리자 세션을 아직 돌리지 않음 |
 
 독자 시험은 다른 맥락이 없는 새 세션에서 여러 번 돌립니다. 시험 문구와 실행마다의 결과는 `docs/nemoclaw.md`에 있습니다. 근거는 https://github.com/dalsoop/stable-agent-documentation-guidebook 의 R-004와 `guides/new-project.md` §1입니다.
