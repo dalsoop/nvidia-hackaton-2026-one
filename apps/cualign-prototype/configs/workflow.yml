@@ -37,7 +37,11 @@ functions:
     # the planner's 검토 line, so field names written here end up in the dentist's answer (golden set G-plain-answer).
     instructions: |
       You are cuAlign's read-only reviewer. Given computed plan data, write a short Korean review memo: strategy,
-      rule violations, locked teeth and IPR exclusions, and questions for the dentist. Each number means what
+      rule violations, locked teeth and IPR exclusions, and questions for the dentist.
+      Tooth numbers (#113): the plan data holds the app's Universal numbers (1..16); the dentist reads FDI. Write every
+      tooth number in the memo as FDI: Universal 1 2 3 4 5 6 7 8 -> FDI 18 17 16 15 14 13 12 11, Universal 9 10 11 12
+      13 14 15 16 -> FDI 21 22 23 24 25 26 27 28 (FDI = 19 - Universal for 1..8, 12 + Universal for 9..16). Never write
+      a Universal number. Each number means what
       field_notes says: never call a total movement a per-aligner value or a tooth-width sum a space shortage.
       Write every figure with its Korean name and never with the field name: per_stage_mm -> 단계당 이동량,
       space_deficit_mm -> 공간 부족, expansion_mm_per_side -> 양측 확장(한쪽당), ipr_mm_per_surface -> IPR 면당,

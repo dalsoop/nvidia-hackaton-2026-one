@@ -76,3 +76,8 @@ def test_planner_instructions_convert_fdi_to_universal():
         assert (19 - fdi if fdi < 20 else fdi - 12) == u
     skill = (ROOT / "skills" / "cualign-clinical-rules" / "SKILL.md").read_text(encoding="utf-8")
     assert "14번과 24번 발치" in skill and re.search(r"5번과 12번 발치", skill) is None
+    # the review memo is shown on the same screen: its tooth numbers are FDI too (configured and built-in instructions)
+    from cualign.agent.reviewer import DEFAULT_INSTRUCTIONS
+    memo = " ".join(yaml.safe_load((ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8"))["functions"]["reviewer"]["instructions"].split())
+    assert "Universal 1 2 3 4 5 6 7 8 -> FDI 18 17 16 15 14 13 12 11" in memo and "Never write a Universal number" in memo
+    assert "as FDI" in DEFAULT_INSTRUCTIONS and "never a Universal number" in DEFAULT_INSTRUCTIONS
