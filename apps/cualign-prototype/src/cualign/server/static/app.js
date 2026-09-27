@@ -1147,19 +1147,29 @@ function renderCaseList() {
 function renderCaseDetail(c) {
   const cons = state.cases.find((x) => x.case_id === c.case_id)?.constraints ?? null;
   const extract = new Set(cons?.extraction ?? []), iprOff = new Set((cons?.ipr_exclude ?? []).map(Number));
+  // IPR happens between two teeth: a blue line on each contact whose both crowns are allowed. Extraction prescriptions
+  // make room by the extraction, not by IPR, so they draw none.
+  const iprOn = !extract.size && (cons?.ipr_limit_mm ?? 0) > 0;
   // 14 crowns on an arch, FDI 17…11 · 21…27 (Universal 2…15 from the patient's right)
   const svg = $("dArch"); svg.innerHTML = "";
   const ns = "http://www.w3.org/2000/svg";
+  const at = (k) => { const a = Math.PI - (Math.PI * (k + 0.5)) / 14; return [160 + 140 * Math.cos(a), 130 - 118 * Math.sin(a)]; };
+  let iprCount = 0;
   for (let k = 0; k < 14; k++) {
-    const u = k + 2, a = Math.PI - (Math.PI * (k + 0.5)) / 14, x = 160 + 140 * Math.cos(a), y = 130 - 118 * Math.sin(a);
+    const u = k + 2, [x, y] = at(k);
+    if (iprOn && k < 13 && !iprOff.has(u) && !iprOff.has(u + 1)) {
+      const [x2, y2] = at(k + 1), mx = (x + x2) / 2, my = (y + y2) / 2, nx = -(y2 - y), ny = x2 - x, n = Math.hypot(nx, ny);
+      const line = document.createElementNS(ns, "line");   // across the contact, perpendicular to the arch
+      line.setAttribute("x1", mx + (nx / n) * 9); line.setAttribute("y1", my + (ny / n) * 9);
+      line.setAttribute("x2", mx - (nx / n) * 9); line.setAttribute("y2", my - (ny / n) * 9);
+      line.classList.add("ipr"); svg.append(line); iprCount++;
+    }
     const circle = document.createElementNS(ns, "circle"); circle.setAttribute("cx", x); circle.setAttribute("cy", y); circle.setAttribute("r", 11);
     if (extract.has(u)) circle.classList.add("extract");
     const t = document.createElementNS(ns, "text"); t.setAttribute("x", x); t.setAttribute("y", y); t.textContent = fdi(u);
     svg.append(circle, t);
-    // IPR-excluded teeth: a grey dot under the crown instead of a long chip (#13 polish)
-    if (iprOff.has(u)) { const d = document.createElementNS(ns, "circle"); d.setAttribute("cx", x); d.setAttribute("cy", y + 16); d.setAttribute("r", 3); d.classList.add("ipr-dot"); svg.append(d); }
   }
-  const keys = [extract.size && "빨간 테두리 · 발치 대상", iprOff.size && "회색 점 · IPR 제외"].filter(Boolean);
+  const keys = [extract.size && "빨간 테두리 · 발치 대상", iprCount && "파란 선 · IPR 접촉면"].filter(Boolean);
   if (keys.length) { const l = document.createElementNS(ns, "text"); l.setAttribute("x", 160); l.setAttribute("y", 142); l.classList.add("key"); l.textContent = keys.join(" · "); svg.append(l); }
   // the scan in one line. A sample's 총생 is already on its card (.meta) so it is not repeated here; a patient row has
   // no 총생 column, so the detail carries it, with the plan count and the violations the table leaves out
