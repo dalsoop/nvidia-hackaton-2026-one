@@ -1,7 +1,7 @@
 // cuAlign web UI — patient → scan upload → input check on the 3D → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
-import { TrackballControls } from "three/addons/controls/TrackballControls.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const $ = (id) => document.getElementById(id);
@@ -19,6 +19,9 @@ const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.e
 const state = {
   messages: [],          // full transcript sent to /chat/stream
   streaming: false,
+  step: "initial",       // the design flow: initial · setup · target · stages (#15)
+  skippedPlans: new Set(),   // plans adopted with 건너뛰기: the card says 건너뜀 instead of a review state (#15)
+  abort: null, skippedTurn: null,
   stlBusy: false,        // the server is building the STL zip for a download (#119)
   meshCase: null,        // case_id currently loaded in the viewer
   activeCase: null,      // case_id being planned (the input-check screen can show another scan in the viewer)
@@ -60,12 +63,12 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const labelRenderer = new CSS2DRenderer({ element: $("labels") });
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
-camera.up.set(0, 1, 0);
-// Trackball, not orbit: the views set camera.up to +y or -z, and OrbitControls fixes its pole axis once at
-// construction, so after a view change it blocked near the poles and turned the wrong way (#90).
-const controls = new TrackballControls(camera, canvas);
-controls.rotateSpeed = 3.5; controls.zoomSpeed = 1.2; controls.panSpeed = 0.6;
-controls.dynamicDampingFactor = 0.18;
+// Orbit with one fixed up axis (#15): apical (−z) is up, so every side view hangs the crowns down and a drag never
+// rolls the arch (the trackball did). The occlusal view sits at the pole, a hair off it so the anterior stays at the top.
+camera.up.set(0, 0, -1);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.12;
+controls.rotateSpeed = 0.9; controls.zoomSpeed = 1.2; controls.panSpeed = 0.6; controls.screenSpacePanning = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
@@ -79,7 +82,6 @@ function resize() {
   labelRenderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  controls.handleResize();
 }
 new ResizeObserver(resize).observe($("canvasWrap"));
 
@@ -193,27 +195,87 @@ function setView(kind) {
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.25;
+  // camera.up stays (0, 0, −1): the presets only place the camera and the target
   if (kind === "frontal") {            // look from the anterior (+y) side; upper arch → crowns hang down (occlusal z=0 at the bottom)
-    camera.up.set(0, 0, -1);
     camera.position.set(c.x, c.y + dist, c.z - size.z * 0.3);
   } else if (kind === "back") {        // from the palate side, crowns down
-    camera.up.set(0, 0, -1);
     camera.position.set(c.x, c.y - dist, c.z - size.z * 0.3);
   } else if (kind === "left" || kind === "right") {   // buccal side views; +x is the patient's left
-    camera.up.set(0, 0, -1);
     camera.position.set(c.x + (kind === "left" ? dist : -dist), c.y, c.z - size.z * 0.3);
-  } else if (kind === "base") {        // from above the base of the scan
-    camera.up.set(0, 1, 0);
-    camera.position.set(c.x, c.y, c.z - dist);
-  } else {                             // occlusal: look down -z, anterior at larger y
+  } else if (kind === "base") {        // from below the base of the scan
+    camera.position.set(c.x, c.y - dist * 0.02, c.z - dist);
+  } else {                             // occlusal: look down −z from just off the pole, anterior (+y) at the top
     kind = "occlusal";
-    camera.up.set(0, 1, 0);
-    camera.position.set(c.x, c.y, c.z + dist);
+    camera.position.set(c.x, c.y + dist * 0.02, c.z + dist);
   }
   controls.target.copy(c);
   controls.update();
   for (const b of document.querySelectorAll(".view-rail [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === kind));
 }
+
+// ---- the design flow (#15): 초기 → 셋업 → 목표 → 단계. The server computed the plan when the case opened; the
+// screen reveals it in steps. The step lives in body.step-* and in the address (&step=).
+const STEPS = ["initial", "setup", "target", "stages"];
+const STEP_NEXT = { initial: "셋업 보기", setup: "목표 배열 보기", target: "단계 만들기" };
+function setStep(step) {
+  if (!STEPS.includes(step)) step = "initial";
+  state.step = step;
+  for (const s of STEPS) document.body.classList.toggle("step-" + s, s === step);
+  stopPlay();
+  const n = state.plan?.stages?.length ?? 0;
+  applyStage(step === "target" ? n : 0);   // 목표 = the last stage; the others start at the scan
+  renderSetupMarks();
+  renderFlow();
+  renderPlanList();
+  // before the target only the conditions matter on the right; from the target on, the table and rules
+  if (step === "initial" || step === "setup") showTab("cond");
+  else if (state.tab === "cond") showTab("stages");
+  if (state.activeCase) setHash(caseHash());
+}
+function renderFlow() {
+  for (const b of document.querySelectorAll("#flow button")) {
+    const i = STEPS.indexOf(b.dataset.step), cur = STEPS.indexOf(state.step);
+    b.classList.toggle("on", i === cur); b.classList.toggle("done", i < cur);
+  }
+  const plan = state.plan, t = plan?.target ?? {}, sample = sampleOf(state.meshCase);
+  const removed = (t.removed ?? []).map(String);
+  const line = state.step === "initial" ? (sample?.prescription ?? (state.meshCase ? "처방 없음 · 조건 기본값" : ""))
+    : state.step === "setup" ? (plan ? [`총생 ${t.crowding_mm ?? "—"} mm → 확보 ${t.space_gain_mm ?? "—"} mm`, STRATEGY_KO[plan.strategy] ?? plan.strategy,
+                                        removed.length ? `발치 ${fdiList(removed)}` : null, (plan.info?.expansion_mm_per_side ?? 0) > 0 ? `확장 편측 ${plan.info.expansion_mm_per_side} mm` : null].filter(Boolean).join(" · ")
+                                      : "계획이 없어 셋업을 보일 수 없습니다")
+    : state.step === "target" ? (plan ? `목표 배열 · ${plan.stages?.length ?? 0}단계 뒤 · 약 ${plan.info?.months ?? "—"}개월` : "계획이 없어 목표 배열이 없습니다")
+    : "";
+  $("stepLine").textContent = line;
+  $("stepNext").textContent = STEP_NEXT[state.step] ?? "";
+  $("stepNext").disabled = !plan && state.step !== "initial";
+}
+// 셋업 marks over the 3D: a yellow dot at each IPR contact (the same contacts the mm labels use), arrows on the
+// last crowns when the arch widens. Only in the 셋업 state.
+function renderSetupMarks() {
+  for (const o of state.setupMarks ?? []) o.parent?.remove(o);
+  state.setupMarks = [];
+  const t = state.plan?.target;
+  if (state.step !== "setup" || !t) return;
+  const per = t.ipr_mm_per_surface ?? 0, excl = new Set((t.ipr_exclude ?? []).map(String)), removed = new Set((t.removed ?? []).map(String));
+  const order = state.archOrder.filter((id) => state.teeth[id] && !removed.has(id));
+  const put = (el, pos) => { const o = new CSS2DObject(el); o.position.copy(pos); group.add(o); state.setupMarks.push(o); };
+  if (per) for (let k = 0; k + 1 < order.length; k++) {
+    const a = order[k], b = order[k + 1];
+    if (excl.has(a) && excl.has(b)) continue;
+    const el = document.createElement("div"); el.className = "ipr-mark"; el.title = "IPR 접촉면";
+    const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
+    put(el, p);
+  }
+  if ((state.plan.info?.expansion_mm_per_side ?? 0) > 0 && order.length >= 2) {
+    for (const [id, arrow] of [[order[0], "←"], [order[order.length - 1], "→"]]) {
+      const el = document.createElement("div"); el.className = "exp-arrow"; el.textContent = arrow; el.title = `악궁 확장 편측 ${state.plan.info.expansion_mm_per_side} mm`;
+      const p = state.center[id].clone(); p.x += arrow === "←" ? -7 : 7;   // outward of the last crown (+x is the patient's left)
+      put(el, p);
+    }
+  }
+}
+$("flow").addEventListener("click", (e) => { const s = e.target.closest("button")?.dataset.step; if (s && state.meshCase) setStep(s); });
+$("stepNext").addEventListener("click", () => { const i = STEPS.indexOf(state.step); if (i >= 0 && i < 3) setStep(STEPS[i + 1]); });
 
 // ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
 function clearLabels() { for (const l of state.labels) l.parent?.remove(l); state.labels = []; }
@@ -268,13 +330,14 @@ function applyStage(k) {
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
   const removed = new Set((plan?.target?.removed ?? []).map(String));
+  const plain = state.step === "initial", setup = state.step === "setup";   // #15: before the target, the crowns all stay
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
-    const gone = hasPlan && removed.has(id);
+    const gone = hasPlan && removed.has(id) && !plain && !setup;
     m.visible = !gone || k === 0;
     // extracted teeth at stage 0: a translucent white silhouette (#14); materials are per tooth and reused across
     // plans, so every other tooth gets its solid look back
@@ -285,6 +348,8 @@ function applyStage(k) {
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
     if (gone) m.material.color.setHex(0xffffff);
+    else if (plain) m.material.color.copy(IVORY);
+    else if (setup) m.material.color.setHex(removed.has(id) ? RED : IVORY.getHex());   // 셋업: what the prescription removes
     else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
@@ -635,6 +700,7 @@ async function showStart() {
   endCheck();
   $("caseGate").hidden = true;
   document.body.classList.add("start");
+  resize();
   lockComposer(true);
   renderRail();
 }
@@ -645,12 +711,17 @@ function lockComposer(on) {
 lockComposer(true);
 function leaveStart() {
   document.body.classList.remove("start");
+  resize();   // the 3D column just changed width: size the renderer now, not a frame later (no stretched frame, #15)
   lockComposer(false);
   renderRail();
 }
 // Each screen gets an address (#start, #case=<id>[&plan=<planId>], #patients, #patient=<id>, #check=<case>) so the browser's back
 // and forward buttons move between screens (#90). Moves made by back/forward replace instead of pushing.
 let routing = false;
+// the case's address: #case=<id>[&plan=<planId>][&step=setup|target|stages] (#15)
+function caseHash() {
+  return `#case=${state.activeCase}` + (state.plan ? `&plan=${state.plan.plan_id}` : "") + (state.step !== "initial" ? `&step=${state.step}` : "");
+}
 function setHash(h) {
   if (location.hash === h) return;
   if (routing) history.replaceState(null, "", h); else history.pushState(null, "", h);
@@ -658,7 +729,7 @@ function setHash(h) {
 async function route(hash) {
   // key=value pairs split by "&": #case=<id>&plan=<planId>; the first pair names the screen
   const pairs = decodeURIComponent(hash.slice(1)).split("&").map((kv) => { const i = kv.indexOf("="); return i < 0 ? [kv, ""] : [kv.slice(0, i), kv.slice(i + 1)]; });
-  const [key, id] = pairs[0], plan = Object.fromEntries(pairs).plan;
+  const [key, id] = pairs[0], { plan, step } = Object.fromEntries(pairs);
   routing = true;
   try {
     if (key === "case" && id) {
@@ -670,6 +741,7 @@ async function route(hash) {
       // a plan in the address opens once the case is on screen, if this case has it
       if (plan && state.activeCase === id && !state.streaming && plan !== state.plan?.plan_id
           && plan in state.planRows) await loadPlan(plan);
+      if (state.activeCase === id) setStep(step ?? "initial");   // back/forward and reload keep the step
     } else if (key === "patients") { await loadPatients(); showScreen("patients"); }
     else if (key === "patient" && id) await openPatient(id);
     else if (key === "check" && id) {
@@ -1122,7 +1194,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   renderChips();
   $("caseGate").hidden = true;
   endCheck();
-  setHash("#case=" + caseId);
+  setStep("initial");   // the flow starts at the scan as it is (#15); the address follows
   leaveStart();
   if (greet) {
     // The agent opens the conversation (clinical SW: case first, then constraints). Kept in the transcript
@@ -1219,7 +1291,7 @@ function planPill(row) {
   const viol = typeof row.violations === "number" ? row.violations : (row.violations ?? []).length;
   if (row.input_stale) return ["이전 스캔 기준", "warn"];
   if (row.approval || row.approved) return ["승인됨", "ok"];
-  const review = REVIEW_SHORT[row.review?.status] ?? "검토 전";   // rules and review in one line (#14)
+  const review = state.skippedPlans.has(row.plan_id) ? "건너뜀" : REVIEW_SHORT[row.review?.status] ?? "검토 전";   // rules and review in one line (#14)
   return viol ? [`위반 ${viol}건 · ${review}`, "fail"] : [`규칙 통과 · ${review}`, "pass"];
 }
 // The plan cards on the panel top (#111): one row per plan, the plan on screen marked 보는 중, the rest with 보기.
@@ -1228,7 +1300,7 @@ function renderPlanList() {
   const rows = Object.values(state.planRows), cur = state.plan?.plan_id;
   if (rows.length) state.planError = null;
   renderPlanFail();
-  $("plans").hidden = !rows.length && !state.planError;
+  $("plans").hidden = !(rows.length && state.step === "stages") && !state.planError;
   const old = rows.filter((r) => state.oldPlans.has(r.plan_id)), now = rows.filter((r) => !state.oldPlans.has(r.plan_id));
   const make = (row) => {
     const div = document.createElement("div");
@@ -1270,7 +1342,7 @@ async function loadPlan(planId) {
     $("viewCanvas").dataset.planId = planId;
     $("planNotice").textContent = "";
     // the plan joins the address: a new plan pushes, so back/forward walk through plans; while routing it replaces
-    if (state.activeCase === caseId) setHash(`#case=${caseId}&plan=${planId}`);
+    if (state.activeCase === caseId) setHash(caseHash());
   } catch (e) {
     if (version === state.selectionVersion) {
       $("planNotice").textContent = "계획 로드 실패 — 이전 결과를 유지합니다.";
@@ -1707,6 +1779,13 @@ async function send(text, constraints = null, { resend = false } = {}) {
   addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
+  // a sample case may skip the agent (#15): after 8 s of streaming a 건너뛰기 sits under the answer; a failed turn offers it too
+  const sample = !!sampleOf(caseId), ac = new AbortController();
+  state.abort = ac; state.skippedTurn = null;
+  state.turnStep = stepOf(text);   // which recorded answer 건너뛰기 would play for this turn
+  let skipRow = null;
+  const skipTimer = sample ? setTimeout(() => { if (state.requestId === requestId) skipRow = addSkipRow(bubble, requestId); }, 8000) : null;
+  $("retryFallback").hidden = sample; $("skipBtn").hidden = !sample;
   let answer = "", selected = null, streamError = false, overload = null;
   const handle = ({type, data: obj}) => {
     if (type === "plan_selected") {
@@ -1728,7 +1807,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     const r = await fetch("/chat/stream", { method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify({ messages: state.messages, cualign: { request_id: requestId,
-        case_id: caseId, base_plan_id: state.plan?.plan_id ?? null, constraints } }) });
+        case_id: caseId, base_plan_id: state.plan?.plan_id ?? null, constraints } }), signal: ac.signal });
     if (!r.ok || !r.body) throw new Error("HTTP " + r.status);
     const reader = r.body.getReader(), parser = new PlanStream();
     for (;;) {
@@ -1742,6 +1821,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     const followup = answer && !streamError ? requestFollowup() : null;   // overlaps the plan reload below
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
+      setStep("stages");
       if (state.plan?.plan_id === selected.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
       addDecision(prevPlanId, selected.plan_id);
       if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
@@ -1754,6 +1834,7 @@ async function send(text, constraints = null, { resend = false } = {}) {
     }
     if (followup) askFollowup(caseId, followup);   // not awaited: the card arrives when the fast model answers
   } catch (e) {
+    if (state.skippedTurn === requestId) { await replayOrAdopt(bubble, caseId, prevPlanId); return; }   // 건너뛰기 stopped the stream
     if (answer) setAnswer(bubble, answer); else bubble.remove();
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 현재 3D는 이전 계획입니다." : "";
     if (!Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
@@ -1763,9 +1844,69 @@ async function send(text, constraints = null, { resend = false } = {}) {
       : "계획을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 「에이전트 없이 계산」할 수 있습니다.");
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
+    clearTimeout(skipTimer); skipRow?.remove();
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
 }
+// 건너뛰기 (#15): the rule plan on screen is the plan; a running turn is cut, its answer dropped
+function addSkipRow(bubble, requestId) {
+  const row = document.createElement("div");
+  row.className = "skip-row";
+  row.innerHTML = '<span>에이전트가 답하는 중입니다.</span><button class="btn ghost small" type="button">건너뛰기</button>';
+  row.querySelector("button").addEventListener("click", () => skipTurn(requestId));
+  bubble.after(row);
+  $("transcript").scrollTop = $("transcript").scrollHeight;
+  return row;
+}
+function skipTurn(requestId) {
+  if (state.requestId !== requestId || !state.streaming) return;
+  state.skippedTurn = requestId;
+  state.abort?.abort();
+}
+// the turn's kind for the recorded answers: a time cap, a strategy comparison, or the plan itself
+const stepOf = (text) => /개월|기간/.test(text) ? "cap" : /비교|둘 ?다/.test(text) ? "compare" : "plan";
+// 건너뛰기 plays the recorded answer for this step (contract 12-replay.md); with none recorded (404) the rule plan on
+// screen is adopted. The recorded answer sits where the agent's would, marked grey with its date.
+async function replayOrAdopt(bubble, caseId, prevPlanId) {
+  $("retryBar").hidden = true;
+  try {
+    const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step: state.turnStep ?? "plan", base_plan_id: state.plan?.plan_id ?? null }) });
+    if (r.status === 404) { bubble.remove(); adoptCurrentPlan(); return; }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const rec = await r.json();
+    setAnswer(bubble, rec.answer_md ?? "");
+    bubble.classList.add("recorded");
+    const tag = document.createElement("small"); tag.className = "recorded-tag"; tag.textContent = "녹화된 답 · " + (rec.recorded_at ?? "").slice(0, 10);
+    tag.title = "녹화 시각 " + (rec.recorded_at ?? "");   // the full stamp in the badge's tooltip
+    bubble.prepend(tag);
+    state.messages.push({ role: "assistant", content: rec.answer_md ?? "" });
+    addMsg("system", "에이전트 답을 건너뛰고 녹화된 답을 보였습니다.");
+    const sel = rec.plan_selected;   // null on a compare of an extraction case (the answer only asks back): the bubble alone, cards and 3D stay
+    if (sel?.plan_id) {
+      await refreshPlans(sel.plan_id);
+      setStep("stages");
+      addDecision(prevPlanId, sel.plan_id);
+      if (state.plan?.plan_id === sel.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
+    }
+  } catch (e) {
+    bubble.remove();
+    addMsg("error", "녹화된 답을 불러오지 못했습니다 (" + e.message + ").");
+    adoptCurrentPlan();
+  }
+}
+function adoptCurrentPlan() {
+  $("retryBar").hidden = true;
+  $("planNotice").textContent = "";
+  if (state.plan) state.skippedPlans.add(state.plan.plan_id);
+  renderPlanList();
+  addMsg("system", "에이전트 답을 건너뛰었습니다 — 지금 화면의 계획을 그대로 씁니다.");
+  if (state.plan) setStep("stages");
+}
+$("skipBtn").addEventListener("click", () => {
+  if (state.streaming) skipTurn(state.requestId);
+  else replayOrAdopt(addMsg("assistant", ""), state.meshCase, state.plan?.plan_id ?? null).catch((e) => addMsg("error", e.message));
+});
 
 // ------------------------------------------------------------------ fallback / upload
 
@@ -1783,7 +1924,7 @@ async function runFallback() {
       body: JSON.stringify({ case_id: caseId, parent_plan_id: state.plan?.plan_id ?? null, ...constraints }) });
     for (const t of res.tried ?? []) addStep("fallback: " + t.strategy, t, "fallback");
     const selected = res.chosen || res.best_failed, prevPlanId = state.plan?.plan_id ?? null;
-    if (selected) { await refreshPlans(selected.plan_id); addDecision(prevPlanId, selected.plan_id); }
+    if (selected) { await refreshPlans(selected.plan_id); setStep("stages"); addDecision(prevPlanId, selected.plan_id); }
     if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
   } catch (e) {
     addMsg("error", "계산 실패: " + e.message);
@@ -1989,7 +2130,7 @@ $("gateClose").addEventListener("click", async () => {
   // no case open yet: the start state (the sample cards) is where the modal came from
   if (!state.activeCase) { showStart().catch((err) => addMsg("error", err.message)); return; }
   $("caseGate").hidden = true;
-  setHash("#case=" + state.activeCase);
+  setHash(caseHash());
   // the input check may have put another scan in the viewer: go back to the case being planned, whose
   // constraints and chips are still on screen (#70 review)
   if (state.meshCase !== state.activeCase) {
@@ -2077,10 +2218,12 @@ $("cMonths").addEventListener("input", () => { const m = Number($("cMonths").val
 $("cCap").addEventListener("input", () => { const cap = Number($("cCap").value); $("cMonths").value = cap > 0 ? monthsOfCap(cap) : ""; });
 $("constraints").addEventListener("input", () => updateActions());
 canvas.addEventListener("pointermove", onPointerMove);
+canvas.addEventListener("dblclick", () => setView("occlusal"));   // back to the first view (#15)
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
 
 (async function init() {
+  try {
   resize();
   let active = null;
   try { active = await loadCases(); } catch (e) { addMsg("error", `케이스 목록 로드 실패: ${e.message}`); }
@@ -2098,6 +2241,7 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
     if (m) { try { state.patient = await api("/api/patients/" + m[1]); } catch { /* deleted patient: show the plan read-only */ } }
     await activateCase(linkedPlan.case_id, { greet: false });
     await refreshPlans(params.get("plan"));
+    setStep("stages");   // a plan link lands on the stages
     return;
   }
   } catch (e) { addMsg("error", "계획 링크를 불러오지 못했습니다: " + e.message); }
@@ -2115,5 +2259,6 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
     try { await route(location.hash); } catch (e) { addMsg("error", e.message); }
     routing = false;
   } else history.replaceState(null, "", "#start");
+  } finally { document.documentElement.classList.remove("booting"); }   // the address's screen is on: show it (#15)
 })();
 window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, scriptedFollowup, loadPlan, state };   // test hook (scratch browser checks)
