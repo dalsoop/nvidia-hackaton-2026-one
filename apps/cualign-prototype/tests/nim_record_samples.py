@@ -80,7 +80,10 @@ async def record_case(client, url, case_id, log, out, only=None):
         rec["step_done"] = done
         saved = None
         common = {"step": step, "request": text, "recorded_at": now, "model": _model()}
-        if step == "setup" and done and done.get("step") == "setup" and _question(rec):
+        if only and step not in only:                  # a turn run only to reach a later step: not recorded, file kept
+            if rec["plan_selected"]:
+                base = rec["plan_selected"]
+        elif step == "setup" and done and done.get("step") == "setup" and _question(rec):
             final = {k: v for k, v in done["constraints"].items() if k in FINAL}
             saved = recorded.save(case_id, step, {**common, "constraints": final, "answer_md": rec["answer"].strip(), "review": None})
         elif step == "target" and done and done.get("step") == "target" and _question(rec):
@@ -96,9 +99,6 @@ async def record_case(client, url, case_id, log, out, only=None):
         elif step == "compare" and sample.constraints.get("extraction") and _question(rec):   # asked back, no plan made
             answer = re.sub(r"^\s*Final Answer:\s*", "", rec["answer"]).strip()
             saved = recorded.save(case_id, step, {**common, "constraints": {}, "answer_md": answer, "review": None})
-        if only and step not in only and saved:      # a turn run only to reach a later step: not recorded
-            saved.unlink()
-            saved = None
         results[step] = {"saved": str(saved.relative_to(ROOT)) if saved else None, "elapsed_s": rec["elapsed_s"], "tools": rec["tools"],
                          "plan_selected": rec["plan_selected"], "review": (rec["review"] or {}).get("status"),
                          "step_done": (done or {}).get("step"), **answer_checks(rec["answer"])}
