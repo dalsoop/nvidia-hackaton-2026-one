@@ -1,7 +1,6 @@
 // cuAlign web UI — patient → scan upload → input check on the 3D → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const $ = (id) => document.getElementById(id);
@@ -63,12 +62,60 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const labelRenderer = new CSS2DRenderer({ element: $("labels") });
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
-// Orbit with one fixed up axis (#15): apical (−z) is up, so every side view hangs the crowns down and a drag never
-// rolls the arch (the trackball did). The occlusal view sits at the pole, a hair off it so the anterior stays at the top.
-camera.up.set(0, 0, -1);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = 0.12;
-controls.rotateSpeed = 0.9; controls.zoomSpeed = 1.2; controls.panSpeed = 0.6; controls.screenSpacePanning = true;
+// Free arc rotation (#18): a horizontal drag always turns about the root axis (world z), a vertical drag pitches about
+// the camera's own right axis, both accumulated on the camera quaternion. No pole clamp (OrbitControls stopped at the
+// poles, #132) and no roll drift: the right axis starts level with the arch plane and neither turn tilts it. The
+// presets place the camera with lookAt (up = −z, apical) and then only the quaternion is kept; camera.up is unused.
+const controls = {
+  target: new THREE.Vector3(), dist: 100, vel: { yaw: 0, pitch: 0 }, damping: 0.85, speed: 0.006, minDist: 5, maxDist: 1500,
+  place() { camera.position.copy(controls.target).add(new THREE.Vector3(0, 0, controls.dist).applyQuaternion(camera.quaternion)); },
+  rotate(yaw, pitch) {
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    camera.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(right, pitch))
+      .premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), yaw)).normalize();
+  },
+  pan(dx, dy) {   // screen-space: the target slides with the pointer
+    const k = (2 * controls.dist * Math.tan((camera.fov * Math.PI) / 360)) / canvas.clientHeight;
+    controls.target.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), -dx * k)
+      .addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion), dy * k);
+  },
+  zoom(f) { controls.dist = Math.min(controls.maxDist, Math.max(controls.minDist, controls.dist * f)); },
+  lookFrom(pos, up) {   // the presets: the camera at pos looking at the target, the arch plane level
+    controls.dist = pos.distanceTo(controls.target);
+    camera.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(pos, controls.target, up));
+    controls.vel.yaw = controls.vel.pitch = 0;
+    controls.place();
+  },
+  dragging: false,
+  update() {   // the inertia runs after the pointer lets go; during a drag the pointer moves the camera itself
+    if (controls.dragging) { controls.place(); return; }
+    if (Math.abs(controls.vel.yaw) > 1e-4 || Math.abs(controls.vel.pitch) > 1e-4) {
+      controls.rotate(controls.vel.yaw, controls.vel.pitch);
+      controls.vel.yaw *= controls.damping; controls.vel.pitch *= controls.damping;
+    } else controls.vel.yaw = controls.vel.pitch = 0;
+    controls.place();
+  },
+};
+canvas.style.touchAction = "none";
+{
+  let drag = null, lastMove = 0;
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+    drag = { x: e.clientX, y: e.clientY, pan: e.button !== 0 || e.shiftKey }; controls.dragging = true;
+    controls.vel.yaw = controls.vel.pitch = 0;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; lastMove = performance.now();
+    if (drag.pan) controls.pan(dx, dy);
+    else { controls.rotate(dx * controls.speed, -dy * controls.speed); controls.vel.yaw = dx * controls.speed * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
+  });
+  const end = () => { if (!drag) return; drag = null; controls.dragging = false; if (performance.now() - lastMove > 80) controls.vel.yaw = controls.vel.pitch = 0; };
+  canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); controls.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+}
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
@@ -94,9 +141,9 @@ const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽",
 
 const ghost = new THREE.Group(); scene.add(ghost);
 const GHOST_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false });
-// Each gum vertex follows the three nearest crowns, weighted by distance (σ 5 mm), so the scanned gum moves with
+// Each gum vertex follows the four nearest crowns, weighted by distance (σ 7 mm), so the scanned gum moves with
 // the teeth instead of swallowing them. Translation only; crown rotation is small at the gum line.
-const GUM_K = 3, GUM_SIGMA = 5;
+const GUM_K = 4, GUM_SIGMA = 7, GUM_SMOOTH = 3;   // #18: 3 / 5 mm tore the gum between crowns that part (the extraction sites)
 function gumSkin(geo) {
   const pos = geo.attributes.position.array, n = pos.length / 3;
   const ids = Object.keys(state.center), centers = ids.map((id) => state.center[id]);
@@ -116,7 +163,14 @@ function gumSkin(geo) {
     const scale = sum > 1e-4 ? Math.min(1, sum) / sum : 0;
     for (let j = 0; j < GUM_K; j++) w[v * GUM_K + j] *= scale;
   }
-  return { base, ids: skinIds, w, toothIds: ids };
+  // vertex adjacency for smoothing the displacement field (#18): where neighbouring vertices follow different crowns
+  // that part (the extraction sites) the raw field tore the gum into dark seams
+  const idx = geo.index.array, adj = Array.from({ length: n }, () => []);
+  for (let f = 0; f < idx.length; f += 3) {
+    const a = idx[f], b = idx[f + 1], c = idx[f + 2];
+    adj[a].push(b, c); adj[b].push(a, c); adj[c].push(a, b);
+  }
+  return { base, ids: skinIds, w, toothIds: ids, adj, disp: new Float32Array(n * 3), tmp: new Float32Array(n * 3) };
 }
 // Each vertex is carried to where its nearest crowns would take it: R(v − c) + c + d per crown (yaw about the
 // crown's pivot, then the translation), blended by the skin weights (#14: rotation included).
@@ -147,8 +201,22 @@ function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
       dy += g * (t.sin * rx + t.cos * ry + t.c[1] + t.d[1] - y);
       dz += g * t.d[2];
     }
-    pos[3 * v] = x + dx; pos[3 * v + 1] = y + dy; pos[3 * v + 2] = skin.base[3 * v + 2] + dz;
+    skin.disp[3 * v] = dx; skin.disp[3 * v + 1] = dy; skin.disp[3 * v + 2] = dz;
   }
+  // two Laplacian passes over the displacement (not the surface): the seams between crown territories blend, the scan's detail stays
+  let src = skin.disp, dst = skin.tmp;
+  for (let pass = 0; pass < GUM_SMOOTH; pass++) {
+    for (let v = 0; v < n; v++) {
+      const nb = skin.adj[v], m = nb.length;
+      let ax = 0, ay = 0, az = 0;
+      for (let i = 0; i < m; i++) { const u = nb[i]; ax += src[3 * u]; ay += src[3 * u + 1]; az += src[3 * u + 2]; }
+      dst[3 * v] = m ? 0.5 * src[3 * v] + 0.5 * ax / m : src[3 * v];
+      dst[3 * v + 1] = m ? 0.5 * src[3 * v + 1] + 0.5 * ay / m : src[3 * v + 1];
+      dst[3 * v + 2] = m ? 0.5 * src[3 * v + 2] + 0.5 * az / m : src[3 * v + 2];
+    }
+    [src, dst] = [dst, src];
+  }
+  for (let v = 0; v < n; v++) { pos[3 * v] = skin.base[3 * v] + src[3 * v]; pos[3 * v + 1] = skin.base[3 * v + 1] + src[3 * v + 1]; pos[3 * v + 2] = skin.base[3 * v + 2] + src[3 * v + 2]; }
   gum.geometry.attributes.position.needsUpdate = true;
   gum.geometry.computeVertexNormals();
 }
@@ -181,7 +249,8 @@ function buildTeeth(mesh) {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(gumMesh.v.flat(), 3));
     geo.setIndex(gumMesh.f.flat());
     geo.computeVertexNormals();
-    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1, side: THREE.FrontSide }));
+    // both sides (#18): the scanned gum is an open shell; from the base its inside showed black with FrontSide. The crowns stay FrontSide.
+    const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1, side: THREE.DoubleSide }));
     gum.userData.gum = true;
     state.gum = gum;
     state.gumSkin = gumSkin(geo);
@@ -196,22 +265,23 @@ function setView(kind) {
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
-  const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.25;
-  // camera.up stays (0, 0, −1): the presets only place the camera and the target
+  // the fit is by the vertical fov; a narrow viewer (1366 wide, #17-10) is limited by width, so the camera backs off by the aspect
+  const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.25 / Math.min(1, camera.aspect);
+  const pos = new THREE.Vector3();
   if (kind === "frontal") {            // look from the anterior (+y) side; upper arch → crowns hang down (occlusal z=0 at the bottom)
-    camera.position.set(c.x, c.y + dist, c.z - size.z * 0.3);
+    pos.set(c.x, c.y + dist, c.z - size.z * 0.3);
   } else if (kind === "back") {        // from the palate side, crowns down
-    camera.position.set(c.x, c.y - dist, c.z - size.z * 0.3);
+    pos.set(c.x, c.y - dist, c.z - size.z * 0.3);
   } else if (kind === "left" || kind === "right") {   // buccal side views; +x is the patient's left
-    camera.position.set(c.x + (kind === "left" ? dist : -dist), c.y, c.z - size.z * 0.3);
+    pos.set(c.x + (kind === "left" ? dist : -dist), c.y, c.z - size.z * 0.3);
   } else if (kind === "base") {        // from below the base of the scan
-    camera.position.set(c.x, c.y - dist * 0.02, c.z - dist);
+    pos.set(c.x, c.y - dist * 0.02, c.z - dist);
   } else {                             // occlusal: look down −z from just off the pole, anterior (+y) at the top
     kind = "occlusal";
-    camera.position.set(c.x, c.y + dist * 0.02, c.z + dist);
+    pos.set(c.x, c.y + dist * 0.02, c.z + dist);
   }
   controls.target.copy(c);
-  controls.update();
+  controls.lookFrom(pos, new THREE.Vector3(0, 0, -1));
   for (const b of document.querySelectorAll(".view-rail [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === kind));
 }
 
@@ -242,7 +312,7 @@ function renderFlow() {
   const plan = state.plan, t = plan?.target ?? {}, sample = sampleOf(state.meshCase);
   const removed = (t.removed ?? []).map(String);
   const line = state.step === "initial" ? (sample?.prescription ?? (state.meshCase ? "처방 없음 · 조건 기본값" : ""))
-    : state.step === "setup" ? (plan ? [`총생 ${t.crowding_mm ?? "—"} mm → 확보 ${t.space_gain_mm ?? "—"} mm`, STRATEGY_KO[plan.strategy] ?? plan.strategy,
+    : state.step === "setup" ? (plan ? [`총생 ${t.crowding_mm ?? "—"} mm → 확보 ${t.space_gain_mm ?? "—"} mm`, removed.length && plan.strategy === "extraction" ? null : STRATEGY_KO[plan.strategy] ?? plan.strategy,   // 발치 once, with its teeth
                                         removed.length ? `발치 ${fdiList(removed)}` : null, (plan.info?.expansion_mm_per_side ?? 0) > 0 ? `확장 편측 ${plan.info.expansion_mm_per_side} mm` : null].filter(Boolean).join(" · ")
                                       : "계획이 없어 셋업을 보일 수 없습니다")
     : state.step === "target" ? (plan ? `목표 배열 · ${plan.stages?.length ?? 0}단계 뒤 · 약 ${plan.info?.months ?? "—"}개월` : "계획이 없어 목표 배열이 없습니다")
@@ -340,9 +410,10 @@ function applyStage(k) {
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
-    const gone = hasPlan && removed.has(id) && !plain && !setup;
-    m.visible = !gone || k === 0;
-    // extracted teeth at stage 0: a translucent white silhouette (#14); materials are per tooth and reused across
+    // #18 decision: 치료 전 (k = 0) is the scan with every crown, stages 1..n−1 show the silhouette, the target (k = n) none
+    const gone = hasPlan && removed.has(id) && !plain && !setup && k > 0;
+    m.visible = !gone || k < (plan?.stages?.length ?? 0);
+    // extracted teeth from stage 1 on: a translucent white silhouette (#14, #18); materials are per tooth and reused across
     // plans, so every other tooth gets its solid look back
     m.material.opacity = gone ? 0.45 : 1;
     m.material.depthWrite = !gone;
@@ -399,7 +470,7 @@ function onPointerMove(e) {
   if (!hit) { tip.hidden = true; return; }
   const m = hit.object, id = m.userData.id;
   const parts = [`치아 ${fdi(id)}`];
-  if (state.plan) parts.push(`누적 이동 ${m.userData.moved.toFixed(2)} mm`);
+  if (state.plan) parts.push(`누적 이동 ${(m.userData.moved ?? 0).toFixed(2)} mm`);
   if (m.userData.viol?.length) parts.push(`위반: ${m.userData.viol.join(", ")}`);
   if ((state.plan?.target?.locked ?? []).map(String).includes(id)) parts.push("고정");
   if ((state.plan?.target?.removed ?? []).map(String).includes(id)) parts.push("발치");
@@ -522,7 +593,7 @@ function toggle(btn, cls, on) {
 $("focusBtn").addEventListener("click", (e) => {
   const on = !document.body.classList.contains("focus3d");
   toggle(e.currentTarget, "focus3d", on);
-  e.currentTarget.setAttribute("aria-label", on ? "대화 — 대화 패널을 다시 엽니다" : "크게 — 대화 패널을 접고 3D를 크게 봅니다");
+  e.currentTarget.setAttribute("aria-label", on ? "대화 · 대화 패널을 다시 엽니다" : "크게 · 대화 패널을 접고 3D를 크게 봅니다");
 });
 $("overlayBtn").addEventListener("click", (e) => {
   state.overlay = !state.overlay;
@@ -1174,7 +1245,8 @@ function renderChips() {
     : [sample ? { label: "에이전트 계획", message: sample.request } : { label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
        sample ? { label: "12개월 안에", message: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." }
               : { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
-       { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
+       sample ? { label: "비교해줘", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘." }   // the recorded compare request (#18)
+              : { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
   chips = withoutComparison(chips);
   const box = $("chips");
   box.hidden = !!document.querySelector("#transcript .question:not(.done):not(.pending)");   // the card asks first
@@ -1228,10 +1300,10 @@ async function activateCase(caseId, { greet = true } = {}) {
     if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 — 오른쪽 「조건」 탭을 확인해 주세요.");
     // the case opens with a rule-based preview of the prescription (#92): the first question is how to refine it
     const q = sample
-      ? { question: "처방대로 만든 미리보기입니다. 다음 중 하나로 이어가세요.",
+      ? { question: "처방대로 만든 미리보기입니다. 아래 칩을 누르거나 요청을 적어 이어가세요.",
           options: [{ label: "에이전트에게 계획 맡기기", hint: "처방을 읽고 계획을 짜고 검토까지 합니다", message: sample.request },
                     { label: "기간 상한을 정해서 맡기기", hint: "예: 12개월 안에 — 채워진 문장을 고쳐 보내세요", fill: "이 처방으로 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
-                    { label: "확장안과 IPR안 비교", hint: "두 전략을 나란히 계산해 비교합니다", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }] }
+                    { label: "비교해줘", hint: "확장안과 IPR안을 둘 다 만들어 비교합니다", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘." }] }
       : { question: "발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). 기간 상한이 있으면 함께 알려 주세요.",
           options: [{ label: "발치 없이 계획", message: "발치 없이 계획을 짜줘." },
                     { label: "발치 치아 정하기", fill: "14번과 24번 발치로 계획을 짜줘." },
@@ -1471,7 +1543,7 @@ function renderRulesPane(plan) {
   const rules = [
     ["충돌", "인접 치아 겹침이 치료 전 기준 이하", coll.length ? ["위반", "fail", `${coll.length}건 · 최대 ${maxOf(coll, "overlap_mm3")} mm³`] : ["통과", "pass", "겹침 기준 이하"]],
     ["장당 이동 한계", "장마다 이동량이 한계 이하", mv.length ? ["위반", "fail", `${mv.length}건 · 최대 ${maxOf(mv, "mm")} mm`] : ["통과", "pass", plan.info?.per_stage_mm != null ? `장당 ${plan.info.per_stage_mm} mm` : ""]],
-    ["장수 상한", "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["해당 없음", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
+    ["장수 상한", "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
     ["공간 부족", "처방 안에서 확보할 공간", sp.length ? ["위반", "fail", `${sp[0].mm} mm 부족 (허용 ${sp[0].limit})`] : ["통과", "pass", `부족 ${plan.target?.space_deficit_mm ?? 0} mm`]],
   ];
   for (const v of viol.filter((x) => x.type.startsWith("extraction")))
@@ -1901,6 +1973,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     state.messages.push({ role: "assistant", content: rec.answer_md ?? "" });
     addMsg("system", "에이전트 답을 건너뛰고 녹화된 답을 보였습니다.");
     const sel = rec.plan_selected;   // null on a compare of an extraction case (the answer only asks back): the bubble alone, cards and 3D stay
+    if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
       setStep("stages");
@@ -2290,4 +2363,4 @@ for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.add
   } else { history.replaceState(null, "", "#start"); renderRail(); }   // the rail lights 「환자」 on the very first paint too
   } finally { document.documentElement.classList.remove("booting"); }   // the address's screen is on: show it (#15)
 })();
-window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, scriptedFollowup, loadPlan, state };   // test hook (scratch browser checks)
+window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, scriptedFollowup, loadPlan, state, camera, controls, setView };   // test hook (scratch browser checks)
