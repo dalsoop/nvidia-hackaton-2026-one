@@ -12,6 +12,7 @@ import os
 import zipfile
 
 import numpy as np
+import trimesh
 
 from .arch import Arch, symmetric_arch
 from .case import MD_WINDOW_DEG, Case
@@ -115,17 +116,32 @@ class _SpanModel:
         # no molar beyond an end of the span: that end tooth's own half width is measured from its centre
         self.extra = (self.widths[span[0]] / 2 if self.first == 0 else 0.0) + \
             (self.widths[span[-1]] / 2 if self.last == len(order) - 1 else 0.0)
-        # The target arch form: the in-line arch made left-right symmetric about the midline (the central incisors'
-        # contact, along the line from between the first molars to it) and smoothed to degree 4, passing through the
-        # first molars. The crowding is measured on `base`; the crowns are placed on `target` (see target_s).
+        # The target arch form: the in-line arch made left-right symmetric and smoothed (x fifth, y fourth degree),
+        # passing through the first molars. The midline is the first molars' perpendicular bisector (they are the
+        # anchors and stay: the finished arch is symmetric about them), through the point of the in-line arch
+        # halfway between their mesial contacts; the extraction chain is centred on it too (_anchored_layout), so the
+        # central incisors' contact lands on the midline and the molars close symmetric amounts. (The current
+        # incisors' contact was the midline before: on 000097 it stands 1.35 mm off the arc midpoint, so the target
+        # was skewed with the crowding.) The crowding is measured on `base`; the crowns are placed on `target`.
         in_line = [j for j in order if j not in self.out]
         self.target = base
+        self.mid: np.ndarray | None = None
         self._target_ends: dict[float, tuple[float, float]] = {}
         if {3, 8, 9, 14} <= set(in_line):
-            mid = case.contact_point(8, 9)[:2]
-            axis = mid - (case.anchor[3][:2] + case.anchor[14][:2]) / 2
-            self.target = symmetric_arch(base, np.array([case.anchor[j] for j in in_line]), mid, axis,
+            a3, a14 = case.anchor[3][:2], case.anchor[14][:2]
+            across = (a14 - a3) / np.linalg.norm(a14 - a3)
+            axis = np.array([-across[1], across[0]])
+            if axis @ (case.contact_point(8, 9)[:2] - (a3 + a14) / 2) < 0:
+                axis = -axis
+            apex = base.point((sa + sb) / 2, self.e)
+            centre = (a3 + a14) / 2
+            self.mid = centre + axis * float((apex - centre) @ axis)     # the arc midpoint, on the bisector
+            self.target = symmetric_arch(base, np.array([case.anchor[j] for j in in_line]), self.mid, axis,
                                          np.array([j in (3, 14) for j in in_line]))
+
+    def midline_s(self, offset: float) -> float | None:
+        """Arc position of the midline on the in-line arch (offset by `offset`); None without one."""
+        return None if self.mid is None else float(self.base.s_of(self.mid, offset))
 
     def target_s(self, s: float, offset: float) -> float:
         """Arc position on the target arch (offset by `offset`) of arc position s on the in-line arch: the span's ends
@@ -232,6 +248,8 @@ def _span_expansion_for(case: Case, need_mm: float) -> tuple[float, float]:
 SHAPE_STEP_MM = 0.2      # more room per round for a pair of neighbours whose crowns still meet in the target
 SHAPE_ROUNDS = 12        # at most this many rounds (2.2 mm for one pair)
 TARGET_OVERLAP_MM3 = 0.5  # a pair may gain this much overlap in the target (half the validator's NEW_OVERLAP_MM3)
+GAP_TOL_MM = 0.1          # a pair whose crowns stand further than CLEARANCE + this apart in the target is pulled together
+PATH_ROOM_MAX = 2         # rounds of SHAPE_STEP_MM a pair may get so its crowns clear each other on the way (not only in the target)
 
 
 def _isotonic(y: list[float]) -> list[float]:
@@ -252,7 +270,7 @@ def _isotonic(y: list[float]) -> list[float]:
 def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, offset: float, extra: dict,
                      lock=frozenset(), close: bool = False,
                      close_sides: tuple[bool, bool] = (True, True),
-                     removed=(), closable: tuple[bool, bool] = (True, True)
+                     removed=(), closable: tuple[bool, bool] = (True, True), centre: float | None = None
                      ) -> tuple[list, bool, tuple[float, float], float]:
     """Least movement that aligns the span between the anchored first molars, on the in-line arch (_SpanModel.base).
 
@@ -265,7 +283,10 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
     runs inside the contacts and is shorter by the ratio k. When the span does not fit, the missing space is shared out
     as even overlap (the space deficit is reported by the caller). `extra`: more room for a pair of neighbours whose
     crown shapes still meet at contact width (see SHAPE_STEP_MM). `close`: close every space (after an extraction):
-    the span becomes one contiguous chain, and the room left is for the molars to close."""
+    the span becomes one contiguous chain, and the room left is for the molars to close. `centre`: arc position the
+    chain's middle (the central incisors' contact) is put on when both molars can close - the midline, so the
+    finished arch is symmetric and the two molars close different amounts only as far as the dentition is asymmetric
+    now (000097: 16 stands 2.5 mm further back than 26)."""
     model = _span_model(case)
     sa, sb = model.ends(offset)
     sa0, sb0 = model.ends(0.0)
@@ -288,7 +309,15 @@ def _anchored_layout(case: Case, active: list[int], width: dict, s_cur: dict, of
         # the room left goes to molars that can close it: the extraction side's if they can move, else the other
         # side's; both: centred. The chain closes toward the other side (one-sided extraction moves only one side).
         sides = [i for i in (0, 1) if close_sides[i] and closable[i]] or [i for i in (0, 1) if closable[i]]
-        at = {(0,): top, (1,): lo}.get(tuple(sides), float(np.mean(y)))
+        if tuple(sides) == (0,):
+            at = top
+        elif tuple(sides) == (1,):
+            at = lo
+        elif centre is not None:
+            k8, k9 = (span.index(t) for t in (8, 9)) if {8, 9} <= set(span) else (0, len(span) - 1)
+            at = centre - (D[k8] + D[k9]) / 2
+        else:
+            at = float(np.mean(y))
         t = np.full(len(span), float(np.clip(at, lo, max(lo, top))))
     else:
         t = y.copy()
@@ -375,25 +404,59 @@ def propose_target(case: Case, strategy: str, ipr_exclude: set[int] | frozenset[
         if set(extraction) & set(lock):
             raise ValueError("locked teeth cannot be extracted")
     ipr_limit_mm = constraints.ipr_limit_mm if constraints else IPR_PER_SURFACE
-    # Contact widths say how much room the teeth need; the crown shapes can need more (an incisor is widest labial of
-    # its contacts). Where two neighbours still meet in the target, give that pair more room and lay out again; the
-    # expansion is sized for it too; room that cannot be made shows as the collision it leaves.
+    # Contact widths say how much room the teeth need along the arch; the crowns' shapes decide where they actually
+    # meet (an incisor is widest labial of its contacts; the contact line runs outside the arch the crowns are placed
+    # on, so a spacing that is right on average leaves gaps where the arch bends most and overlap where it is flat).
+    # So the layout is repeated with each pair's spacing corrected: a pair whose hulls gain more than
+    # TARGET_OVERLAP_MM3 of overlap (measured as the validator measures) gets SHAPE_STEP_MM more room, a pair whose
+    # crowns stand more than CLEARANCE + GAP_TOL_MM apart is pulled together by the gap (a finished arch has every
+    # contact closed; a pair once pushed apart is not pulled back, so the two do not chase each other). When every
+    # contact is settled, the straight-line stages to that target are checked once more: a pair whose crowns clip each
+    # other on the way (a blocked-out canine coming into line past its neighbour's corner) gets up to PATH_ROOM_MAX
+    # steps of room in the target - a closed contact that cannot be reached is no plan. The expansion is sized for the
+    # corrected spacing too; room that cannot be made shows as the collision it leaves.
     extra: dict[tuple[int, int], float] = {}
-    for _ in range(SHAPE_ROUNDS):
+    pushed: set[tuple[int, int]] = set()
+    path_rounds: dict[tuple[int, int], int] = {}
+    for _ in range(SHAPE_ROUNDS + PATH_ROOM_MAX):
         target, info, pairs, fits = _place(case, strategy, ipr_exclude, lock, ipr_limit_mm, extra, extraction)
         expandable = strategy in ("expansion", "expansion_ipr") and info["expansion_mm_per_side"] < MAX_EXPANSION_PER_SIDE
+        adjust = {}
+        for a, b in pairs:
+            if a in lock and b in lock:
+                continue
+            ov = case._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b)) - case.pair_baseline(a, b)
+            if ov > TARGET_OVERLAP_MM3:
+                adjust[(a, b)] = SHAPE_STEP_MM
+                pushed.add((a, b))
+            elif (a, b) not in pushed:
+                gap = _target_gap(case, a, b, target)
+                if gap > CLEARANCE + GAP_TOL_MM:
+                    adjust[(a, b)] = CLEARANCE - gap
         if not fits and not expandable:   # the span is short and cannot be widened: the overlap is what is missing
-            break
-        # measured as the validator measures (the meshes are not cut by IPR, #61), so a plan is not built on overlap
-        # the validator will reject
-        grow = [(a, b) for a, b in pairs if not (a in lock and b in lock)
-                and case._overlap(a, b, target[a], target[b], yaw_of(target, a), yaw_of(target, b))
-                - case.pair_baseline(a, b) > TARGET_OVERLAP_MM3]
-        if not grow:
-            break
-        for pr in grow:
-            extra[pr] = extra.get(pr, 0.0) + SHAPE_STEP_MM
+            adjust = {pr: v for pr, v in adjust.items() if v < 0}      # only gaps are still closed
+        if not adjust:
+            stages, _ = plan_stages(case, target)
+            hit = {tuple(v["teeth"]) for v in validate(case, stages) if v["type"] == "collision"}
+            for pr in pairs:
+                if pr in hit and path_rounds.get(pr, 0) < PATH_ROOM_MAX:
+                    adjust[pr] = SHAPE_STEP_MM
+                    path_rounds[pr] = path_rounds.get(pr, 0) + 1
+                    pushed.add(pr)
+            if not adjust:
+                break
+        for pr, v in adjust.items():
+            extra[pr] = extra.get(pr, 0.0) + v
     return target, info
+
+
+def _target_gap(case: Case, a: int, b: int, target: dict) -> float:
+    """Closest the crowns of a and b come where the target puts them (mm, vertex to vertex on the scanned meshes;
+    0 or a little more when they touch, up to the mesh's vertex spacing over the true surface distance)."""
+    from scipy.spatial import cKDTree
+    ma = case.placed(a, target[a], yaw_of(target, a))
+    mb = case.placed(b, target[b], yaw_of(target, b))
+    return float(cKDTree(mb.vertices).query(ma.vertices)[0].min())
 
 
 def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, extra: dict, extraction=()):
@@ -441,7 +504,9 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             gain += width[i]
             active.remove(i)
         notes.append(f"처방대로 {label(rm)} 발치")
-    deficit = round(max(crowd - gain, 0.0), 2)       # the clinical deficit; shape room that does not fit shows as collision
+    # the clinical deficit; shape room that does not fit shows as collision, room the crowns' shapes give back
+    # (neighbours pulled closer than their contact widths, negative `extra`) counts as space found
+    deficit = round(max(crowd + min(sum(extra.values()), 0.0) - gain, 0.0), 2)
 
     # Order along the arch by current arc-length coordinate (on the offset curve for expansion).
     s_cur = {i: arch.s_of(case.anchor[i], offset) for i in active}
@@ -454,7 +519,8 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         closable = (not lock & {2, 3}, not lock & {14, 15})
         s_new, fits, room, open_mm = _anchored_layout(
             case, active, width, s_cur, offset, extra, lock, close=strategy == "extraction", close_sides=sides,
-            removed=tuple(extraction) if strategy == "extraction" else (), closable=closable)
+            removed=tuple(extraction) if strategy == "extraction" else (), closable=closable,
+            centre=_span_model(case).midline_s(offset))
         if strategy == "extraction":     # the molars close what the extraction leaves (unless a tooth of theirs is locked)
             # the molars close whatever room is left on their side (unless one of them is locked): the layout leaves it
             # on the extraction side, or on the other side when a locked tooth keeps the chain from closing there
@@ -509,9 +575,10 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         notes.append(f"{label(i)} 회전 {y:+.1f}° 보정")
     for i, dz in sorted(lift.items()):
         notes.append(f"{label(i)} 수직 {dz:+.1f}mm 보정")
-    if extra:
-        notes.append(f"치관 모양 때문에 접촉 폭보다 {sum(extra.values()):.1f}mm 더 둠 "
-                     + ", ".join(f"{to_fdi(a)}-{to_fdi(b)}" for a, b in sorted(extra)))
+    shown = {pr: v for pr, v in extra.items() if abs(v) >= 0.1}
+    if shown:
+        notes.append("치관 모양에 맞춰 접촉 간격 조정 "
+                     + ", ".join(f"{to_fdi(a)}-{to_fdi(b)} {v:+.1f}mm" for (a, b), v in sorted(shown.items())))
     disp = [float(np.linalg.norm(v)) for v in target.values() if v is not None]
     info = {"strategy": strategy, "space_gain_mm": round(gain, 2), "crowding_mm": crowd, "space_deficit_mm": deficit,
             "needed_mm": round(sum(width[i] for i in ids), 1),
@@ -533,16 +600,27 @@ def _corrections(case: Case, active: list[int], lock) -> tuple[dict[int, float],
     """(derotation deg, vertical move mm) for crowns that are clearly rotated or out of level; locked crowns stay."""
     rot = {i: -case.crown_yaw(i) for i in active
            if i not in lock and case.yaw_measurable(i) and abs(case.crown_yaw(i)) >= ROTATION_MIN_DEG}
-    order = sorted(case.ids, key=lambda i: case.arch.s_of(case.anchor[i]))
+    order = sorted((i for i in case.ids if i in active), key=lambda i: case.arch.s_of(case.anchor[i]))
     lift = {}
+    off = {}                      # how far each crown's top is from its two neighbours' mean
     for k, i in enumerate(order):
         # end crowns are skipped: one-sided reference, and the last molars sit lower on the occlusal curve by nature
-        if i not in active or i in lock or k in (0, len(order) - 1):
+        if k in (0, len(order) - 1):
             continue
         nb = [case.crown_top(j) for j in (order[k - 1], order[k + 1])]
-        dz = case.crown_top(i) - float(np.mean(nb))
-        if abs(dz) > VERTICAL_MIN_MM:
-            lift[i] = -dz
+        off[i] = case.crown_top(i) - float(np.mean(nb))
+        if i not in lock and abs(off[i]) > VERTICAL_MIN_MM:
+            lift[i] = -off[i]
+    # a crown out of level with its mirror twin (a canine hanging 1.4 mm below the other on 000097) without standing
+    # out from its own neighbours: the one further from its neighbours' level is brought to its twin's height
+    for i in order:
+        j = 17 - i
+        if i < j and j in off and i in off and i not in lift and j not in lift:
+            zi, zj = case.crown_top(i) + lift.get(i, 0.0), case.crown_top(j) + lift.get(j, 0.0)
+            if abs(zi - zj) > VERTICAL_MIN_MM:
+                mover, other = (i, j) if abs(off[i]) >= abs(off[j]) else (j, i)
+                if mover not in lock:
+                    lift[mover] = round(case.crown_top(other) - case.crown_top(mover), 2)
     return rot, lift
 
 
