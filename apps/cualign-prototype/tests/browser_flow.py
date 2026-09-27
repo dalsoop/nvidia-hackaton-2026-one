@@ -23,6 +23,19 @@ from cualign.core import store as store_module
 from cualign.core.constraints import ConstraintPatch
 from cualign.server import api, plan_events
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_patients import _scan_files   # noqa: E402  synthetic per-tooth scans, as the API tests use
+
+
+def write_scan(folder: Path, **kw) -> list[str]:
+    """Synthetic scan files on disk for the file chooser: drop=(4,) leaves a gap, rename flips the numbering."""
+    folder.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for _, (name, data, _mime) in _scan_files(**kw):
+        (folder / name).write_bytes(data)
+        paths.append(str(folder / name))
+    return paths
+
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "out" / "browser-acceptance"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -222,9 +235,35 @@ async def main():
             await page.wait_for_function("(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && document.querySelector('#rPlan').textContent !== p", arg=child)
             assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
             assert await page.locator("#stlLink").get_attribute("href") is None
+
+            # My scan, the two blocking states of 입력 확인 (#104): a gap in the arch is unsupported (no planning),
+            # numbers running the other way get the 좌우 번호 뒤집기 button, and after it the scan is ready.
+            missing = write_scan(OUT / "scans" / "missing", drop=(4,), gum=True)
+            flipped = write_scan(OUT / "scans" / "flipped", gum=True, rename=lambda u: 17 - u)
+            await page.evaluate("location.hash = '#patients'")
+            await page.wait_for_selector("#patientForm:visible")
+            await page.fill("#pAlias", "인수 스캔")
+            await page.set_input_files("#pScans", missing)
+            await page.locator("#patientForm button[type=submit]").click()
+            await page.wait_for_function("!document.querySelector('#checkBar').hidden && document.querySelector('#checkFacts .bad')", timeout=120000)
+            facts = await page.locator("#checkFacts").inner_text()
+            assert "결손" in facts and "4" in facts, facts
+            assert await page.locator("#startPlan").is_disabled()
+            assert await page.locator("#checkBar").evaluate("e => e.classList.contains('fail')")
+            await page.screenshot(path=str(OUT / "check-unsupported.png"))
+            await page.set_input_files("#scanInput", flipped)   # a second scan for the same patient
+            await page.wait_for_function("document.querySelector('#checkFacts').textContent.includes('좌우 반대') && !document.querySelector('#mirrorBtn').hidden", timeout=120000)
+            await page.screenshot(path=str(OUT / "check-reversed.png"))
+            await page.locator("#mirrorBtn").click()
+            await page.wait_for_function("document.querySelector('#mirrorBtn').hidden && !document.querySelector('#startPlan').disabled", timeout=120000)
+            facts = await page.locator("#checkFacts").inner_text()
+            assert "좌우 반대" not in facts and "문제 없음" in facts, facts
+            pid = await page.evaluate("window.__cualign.state.patient.patient_id")
+            await page.evaluate("(pid) => fetch('/api/patients/' + pid, { method: 'DELETE' }).then((r) => r.ok)", pid)   # reruns start empty
             assert not errors, errors
             print("PASS: browser rule-based plan, export/approval, revision, reviewer failure, manual re-review, "
-                  "stale response, reload keeps case and plan, case switch opens its own preview plan")
+                  "stale response, reload keeps case and plan, case switch opens its own preview plan, "
+                  "my scan: unsupported gap and reversed numbering → mirror")
             await browser.close()
             browser = None
     finally:
