@@ -25,7 +25,7 @@
 | `src/cualign/core/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`). `scripts/import_poseidon.py`로 만들었고 패키지에 포함 |
 | `src/cualign/core/samples/ATTRIBUTION.md` | 샘플 스캔의 출처·라이선스(CC-BY-4.0)·변경 내용. 자산과 함께 보존 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
-| `src/cualign/core/skills.py` | `skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
+| `src/cualign/core/skills.py` | `workspace/skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
 | `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
@@ -47,7 +47,7 @@
 | `src/cualign/agent/react_history_patch.py` | NAT ReAct 네이티브 도구 호출 모드가 다음 프롬프트에서 빠뜨리는 «실제로 부른 도구·인자»를 기록에 붙이는 호환 가드(같은 도구 반복 방지) |
 | `src/cualign/agent/nim_stream_patch.py` | NIM 스트림 첫 줄의 오류(과부하 503 등)와 스트림 요청의 HTTP 429·5xx 를 빈 답·즉시 실패 대신 재요청·예외로 바꾸고, 스트림이 아닌 호출(검토)의 429·5xx 를 짧게 재요청하는 호환 가드. 간격·코드·대체 모델은 `configs/workflow.yml` 의 `nim_retry` 에서 읽음(`NimRetryConfig`) |
 | `src/cualign/agent/overload.py` | 실패가 NVIDIA API 과부하인지 판정하는 하나의 기준(서버의 화면 안내와 골든셋 A 의 «판정 불가» 가 같이 씀) |
-| `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구, 지시문 연결 |
+| `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구 연결. 계획 에이전트 지시문은 `workspace/AGENTS.md` 를 `file://` 로 그대로 읽음 |
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트(과부하로 죽은 턴의 `plan_error` `kind`·안내 문장 포함), 에이전트가 건너뛴 검토의 서버 실행. `open_run` 이 서버 문맥 시스템 메시지를 만들고 `preload` 로 케이스 요약·한도·스킬을 덧붙임(#48) |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
@@ -110,9 +110,11 @@
 | `openshell/policy.yaml` | 도구 실행의 네트워크·파일 접근 경계 정책 |
 | `openshell/server-policy.yaml` | 서버 전체 샌드박스 정책(쓰기 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만) |
 | `docs/openshell.md` | 정책 검증 수준, 서버 샌드박스 실행 절차와 기록 |
-| `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차, OpenClaw 스킬 |
-| `skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
-| `skills/skillspector-report-static.md`, `skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
+| `docs/nemoclaw.md`, `nemoclaw/` | NemoClaw 창구 연결: 구조, MCP 도구와 차단 정책, Caddy·등록 절차 |
+| `workspace/` | 에이전트 정의의 유일한 원천(OpenClaw 워크스페이스 규약). 파일별 역할·옛 위치는 `workspace/README.md` |
+| `workspace/skills/cualign-clinical-rules/SKILL.md` | 도메인 규칙 검사 절차 |
+| `workspace/skills/cualign-planner/SKILL.md` | OpenClaw 창구 스킬(NemoClaw) |
+| `workspace/skills/skillspector-report-static.md`, `workspace/skills/skillspector-report.md` | 당시 정적·의미 스캔 결과 |
 | `scripts/scan_skill.py` | 위 스캔 재실행 스크립트 |
 | `scripts/import_tooth_templates.py` | 형상 원본에서 템플릿을 준비한 변환 과정 |
 | `docs/segmentation.md` | 선택적 분리 어댑터의 연결·미검증 상태 |

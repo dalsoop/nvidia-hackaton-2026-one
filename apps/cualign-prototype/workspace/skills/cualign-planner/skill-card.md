@@ -1,4 +1,4 @@
-<!-- Drafted on 2026-09-26 in the format of the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0), following skills/cualign-clinical-rules/skill-card.md, from SKILL.md, docs/nemoclaw.md and src/cualign/server/mcp_server.py. Not yet reviewed by the cuAlign team and not yet scanned with SkillSpector. -->
+<!-- Drafted on 2026-09-26 in the format of the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0), following workspace/skills/cualign-clinical-rules/skill-card.md, from SKILL.md, docs/nemoclaw.md and src/cualign/server/mcp_server.py. Not yet reviewed by the cuAlign team and not yet scanned with SkillSpector. -->
 ## Description: <br>
 Front-desk skill for an OpenClaw agent in a NemoClaw sandbox: it asks the cuAlign MCP server for clear-aligner (투명교정) staging plans and reports them to a Korean-speaking dentist as drafts, without computing, approving or exporting anything itself. <br>
 
@@ -28,8 +28,8 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [NemoClaw: Add an MCP Server](https://github.com/NVIDIA/NemoClaw/blob/main/docs/manage-sandboxes/add-mcp-server.mdx) <br>
-- [docs/nemoclaw.md (architecture, policy and setup)](../../docs/nemoclaw.md) <br>
-- [skills/cualign-clinical-rules (the rules the cuAlign agent applies)](../../skills/cualign-clinical-rules/SKILL.md) <br>
+- [docs/nemoclaw.md (architecture, policy and setup)](../../../docs/nemoclaw.md) <br>
+- [workspace/skills/cualign-clinical-rules (the rules the cuAlign agent applies)](../cualign-clinical-rules/SKILL.md) <br>
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis] <br>

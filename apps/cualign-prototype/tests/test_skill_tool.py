@@ -1,8 +1,8 @@
-"""Agent Skill wiring: the planner reads skills/<name>/SKILL.md through the load_skill tool."""
+"""Agent Skill wiring: the planner reads workspace/skills/<name>/SKILL.md through the load_skill tool."""
 from pathlib import Path
 
 import pytest
-import yaml
+from nat.utils.io.yaml_tools import yaml_load
 
 from cualign.core import skills as S
 
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _workflow() -> dict:
-    return yaml.safe_load((ROOT / "configs" / "workflow.yml").read_text(encoding="utf-8"))
+    return yaml_load(ROOT / "configs" / "workflow.yml")   # as NAT loads it: file:// references inlined
 
 
 def test_bundled_skill_is_readable():

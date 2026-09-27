@@ -1,4 +1,4 @@
-<!-- Drafted with the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0) on 2026-09-25 from SKILL.md, README.md, SECURITY.md, docs/clinical-sources.md and skills/skillspector-report*.md; reviewed by the cuAlign team (#39). -->
+<!-- Drafted with the NVIDIA skills catalog skill skill-card-generator (github.com/NVIDIA/skills, commit d8519c5, CC-BY-4.0 AND Apache-2.0) on 2026-09-25 from SKILL.md, README.md, SECURITY.md, docs/clinical-sources.md and workspace/skills/skillspector-report*.md; reviewed by the cuAlign team (#39). -->
 ## Description: <br>
 Validate and stage clear-aligner (투명교정) treatment plans against published clinical limits using the cuAlign tool set, producing draft-only output that never diagnoses or prescribes. <br>
 
@@ -28,7 +28,7 @@ Mitigation: Review and scan skill before deployment. <br>
 - [Applied Sciences 2024 staging review (MDPI)](https://www.mdpi.com/2076-3417/14/15/6690) <br>
 - [IJOS 2025 expert consensus (Nature)](https://www.nature.com/articles/s41368-025-00350-2) <br>
 - [Align Technology 2016 one-week aligner wear announcement](https://investor.aligntech.com/news-releases/news-release-details/align-technology-introduces-one-week-aligner-wear-invisalignr) <br>
-- [docs/clinical-sources.md (PoC limit values and how far each source was checked)](../../docs/clinical-sources.md) <br>
+- [docs/clinical-sources.md (PoC limit values and how far each source was checked)](../../../docs/clinical-sources.md) <br>
 
 
 ## Skill Output: <br>
@@ -38,7 +38,7 @@ Mitigation: Review and scan skill before deployment. <br>
 **Other Properties Related to Output:** [Draft-only: rule failures and reviewer failures block approval, only the dentist can approve in the UI, and patient meshes stay local (only computed plan summaries reach the reviewer model)] <br>
 
 ## Evaluation Tasks: <br>
-SkillSpector static and semantic security scans of the skill directory on 2026-09-22 (two reports in skills/, one markdown component of 62 lines, same result). The reports are a snapshot of the skill on that date and not a safety certification of the current file or of the service (docs/NVIDIA_STACK.md, SECURITY.md). <br>
+SkillSpector static and semantic security scans of the skill directory on 2026-09-22 (two reports in workspace/skills/, one markdown component of 62 lines, same result). The reports are a snapshot of the skill on that date and not a safety certification of the current file or of the service (docs/NVIDIA_STACK.md, SECURITY.md). <br>
 
 ## Evaluation Results: <br>
 | Metric | Value |

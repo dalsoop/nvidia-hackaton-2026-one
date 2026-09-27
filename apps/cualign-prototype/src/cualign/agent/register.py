@@ -258,7 +258,7 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         return summary(inp.plan_id)
 
     async def _load_skill(inp: SkillInput) -> dict:
-        """설치된 Agent Skill 의 지시문(skills/<name>/SKILL.md)을 읽는다. 서버 문맥에 skill 이 있으면 다시 부르지 않는다.
+        """설치된 Agent Skill 의 지시문(workspace/skills/<name>/SKILL.md)을 읽는다. 서버 문맥에 skill 이 있으면 다시 부르지 않는다.
         없으면 계획·비교를 시작할 때 cualign-clinical-rules 를 한 번 읽고 따른다."""
         return S.read_skill(inp.name)
 

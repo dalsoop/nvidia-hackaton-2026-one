@@ -11,9 +11,9 @@
 | NeMo Guardrails | `guardrails/`, `src/cualign/server/rails.py`, `src/cualign/server/rails_middleware.py`, `scripts/run_guardrails.py`, `docs/demo/guardrails*.md` | NAT 워크플로 미들웨어로 에이전트 호출마다 입력 범위 검사와, 답을 판정까지 쥐는 출력 검사. 그 앞에서 같은 미들웨어가 표준 라이브러리 정규식으로 식별정보·처방 문구를 봄(NeMo Guardrails 기능은 아님) | 진행 표시·`/full`·`/atif` 원 단계는 쥐지 않음. 타임아웃·오류 시 ERROR 로그 후 진행(`CUALIGN_RAILS_FAIL_CLOSED=1`이면 거절), 계산 API는 별도 |
 | OpenShell | `openshell/server-policy.yaml`, `Dockerfile.openshell`, `docs/openshell.md` | cuAlign 서버(NAT·Guardrails·UI)를 샌드박스에서 실행. 쓰기는 `/sandbox`·`/tmp`, 네트워크는 NIM chat POST만, 키는 provider placeholder(#5) | 2026-09-26 통합 브랜치(#45)에서 macOS·colima Docker 29.5·OpenShell 0.0.116 으로 재확인(`docs/openshell.md` «통합 브랜치 재확인»): 시나리오 1 통과(89초), NIM chat POST 허용 47건, `example.com` 403, `/app` 쓰기 거부, 키는 placeholder. 다른 호스트·드라이버에서는 다시 확인해야 함. 인증·사용자 격리가 없는 로컬 시연 구성 |
 | NemoClaw | `src/cualign/server/mcp_server.py`, `nemoclaw/`, `docs/nemoclaw.md` | NemoClaw 샌드박스의 OpenClaw가 창구가 되어 cuAlign을 MCP 서버(`/mcp`)로 부름. 계획은 cuAlign NAT 에이전트가 하고, 승인·내보내기 도구는 `--deny-tool`로 OpenShell 프록시가 막음 | cuAlign 쪽은 오프라인 시험만 통과. NemoClaw 설치·등록·차단 기록은 검증 대기(알파, macOS 제한 지원) |
-| Agent Skill | `skills/cualign-clinical-rules/SKILL.md`, `skills/cualign-clinical-rules/skill-card.md`, `src/cualign/core/skills.py`, `agent/register.py`(`load_skill`) | 계획 에이전트가 계획·비교를 시작할 때 지시문을 읽음(#7). 2026-09-26 부터는 서버 문맥이 스킬 본문을 미리 실어(`context_preload`, #48) `cualign__load_skill` 은 문맥에 없을 때만 부름. 거버넌스 카드는 카탈로그 스킬 `skill-card-generator`(github.com/NVIDIA/skills, d8519c5)로 오프라인 생성하고 팀이 검토함(#39) | 이름 검증·도구 등록·지시문 연결은 오프라인 테스트로 확인. 실호출 확인은 2026-09-24 옛 브랜치 기록(서버 단계 기록의 `FUNCTION_END cualign__load_skill`)이며 현재 main 기준 재확인 필요. 카드는 초안이며 서명·카탈로그 제출은 하지 않음 |
+| Agent Skill | `workspace/skills/cualign-clinical-rules/SKILL.md`, `workspace/skills/cualign-clinical-rules/skill-card.md`, `src/cualign/core/skills.py`, `agent/register.py`(`load_skill`) | 계획 에이전트가 계획·비교를 시작할 때 지시문을 읽음(#7). 2026-09-26 부터는 서버 문맥이 스킬 본문을 미리 실어(`context_preload`, #48) `cualign__load_skill` 은 문맥에 없을 때만 부름. 거버넌스 카드는 카탈로그 스킬 `skill-card-generator`(github.com/NVIDIA/skills, d8519c5)로 오프라인 생성하고 팀이 검토함(#39) | 이름 검증·도구 등록·지시문 연결은 오프라인 테스트로 확인. 실호출 확인은 2026-09-24 옛 브랜치 기록(서버 단계 기록의 `FUNCTION_END cualign__load_skill`)이며 현재 main 기준 재확인 필요. 카드는 초안이며 서명·카탈로그 제출은 하지 않음 |
 | NVIDIA 스킬 카탈로그 (`nemotron-policy-generator` v0.1.0) | `guardrails/policy/`, `guardrails/config.yml` | build.nvidia.com/skills 의 스킬로 cuAlign 안전 정책(md·json·프롬프트)을 오프라인 생성하고, 그 Categories·Allow-list 를 content-safety 모델의 `custom_policy` 로 보냄(#37) | 스킬은 코딩 에이전트가 읽는 절차서라 실행 자체는 모델 호출이 아님. 호스팅 3.5 모델이 `custom_policy` 를 받는지는 실호출로 확인 |
-| SkillSpector | `scripts/scan_skill.py`, `skills/skillspector-report*.md` | 위 Skill의 과거 정적·의미 검사 결과와 재실행 방법 | 현재 Skill은 당시 스냅샷과 다를 수 있음. 서버·제품 전체 보안 인증 아님 |
+| SkillSpector | `scripts/scan_skill.py`, `workspace/skills/skillspector-report*.md` | 위 Skill의 과거 정적·의미 검사 결과와 재실행 방법 | 현재 Skill은 당시 스냅샷과 다를 수 있음. 서버·제품 전체 보안 인증 아님 |
 
 의미 검사 보고서 본문에는 0/100이 기록되어 있다. 이 점수는 검사 당시 Skill에 대한 결과이며,
 현재 파일이나 서비스 전체의 안전성을 증명하지 않는다.
@@ -29,7 +29,7 @@ NIM 추론 API와 같은 개념이 아니다. 현재 레포는 자체 Skill과 �
 공고의 ‘Skill API’ 표현이 인정하는 구체적인 활용 범위는 공개 문언만으로 확정하기 어렵다.
 
 확인한 공개 안내에서는 특정 디렉터리 트리나 `AGENTS.md`·`CLAUDE.md`를 필수로 지정한 근거를 찾지 못했다.
-현재 `src/`, `configs/`, `guardrails/`, `skills/`, `openshell/`, `tests/`, `docs/` 구조는
+현재 `src/`, `configs/`, `guardrails/`, `workspace/`, `openshell/`, `tests/`, `docs/` 구조는
 기존 구현을 유지하고 역할을 구분하기 위한 팀 구성이다. NVIDIA 예제의 관례를 대회 의무 사항으로 표기하지 않는다.
 
 | 항목 | 현재 판단 | 후속 확인 |

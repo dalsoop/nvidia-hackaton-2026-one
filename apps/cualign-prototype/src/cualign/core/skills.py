@@ -1,4 +1,4 @@
-"""Agent Skills bundled with the repo (skills/<name>/SKILL.md), read on demand by the agent.
+"""Agent Skills bundled with the repo (workspace/skills/<name>/SKILL.md), read on demand by the agent.
 
 The planner calls the `load_skill` tool with a skill name; this module resolves the name to a
 SKILL.md file, splits the frontmatter (name, description) from the instructions, and returns both.
@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
+SKILLS_DIR = Path(__file__).resolve().parents[3] / "workspace" / "skills"
 _NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 

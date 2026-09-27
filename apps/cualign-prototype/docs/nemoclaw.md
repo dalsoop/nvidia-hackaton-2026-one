@@ -10,7 +10,7 @@ NemoClaw 샌드박스 안의 OpenClaw 에이전트가 의사와 대화하는 창
 
 ```
 의사 ─▶ OpenClaw  [NemoClaw 샌드박스 · 추론 build.nvidia.com nemotron-3-super]
-          │  스킬 cualign-planner (nemoclaw/cualign-planner/SKILL.md)
+          │  스킬 cualign-planner (workspace/skills/cualign-planner/SKILL.md)
           │  MCP (Streamable HTTP · HTTPS · Bearer 토큰)
           │  OpenShell MCP 프록시: 토큰을 채우고, 막힌 도구를 거부합니다
           ▼
@@ -121,7 +121,7 @@ nemoclaw cualign-desk mcp add cualign \
   --trusted-private-host 192.168.5.2 \
   --deny-tool cualign_approve_plan --deny-tool cualign_export_stl
 nemoclaw cualign-desk mcp status cualign --json
-nemoclaw cualign-desk skill install nemoclaw/cualign-planner
+nemoclaw cualign-desk skill install workspace/skills/cualign-planner
 ```
 
 `mcp status`는 샌드박스 안에서 MCP `initialize`를 보내 토큰과 경로를 확인합니다. JSON 결과의 `trustedPrivateTarget.state`가 `match`여야 합니다. 샌드박스 셸의 `curl`은 정책상 막히므로, 연결 확인에는 쓰지 않습니다.

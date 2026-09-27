@@ -17,6 +17,7 @@
 | [TRD](docs/TRD.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
 | [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
 | [NVIDIA 활용](docs/NVIDIA_STACK.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |
+| [에이전트 워크스페이스](workspace/README.md) | 에이전트 정의(SOUL·AGENTS 등)의 한 곳 모음, 파일별 옛 위치, OpenClaw 샌드박스 설치법 |
 | [재현 검증](docs/VERIFICATION.md) | 현재 통과한 검사와 아직 확인하지 않은 항목 |
 | [개발 시작 안내](docs/DEVELOPMENT.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
 | [알려진 문제](docs/KNOWN_ISSUES.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |
@@ -87,7 +88,8 @@ NAT의 계획 에이전트가 조건을 해석해 계산 도구를 호출합니�
 | `src/cualign/agent/`, `configs/workflow.yml` | NAT 도구와 계획·검토 에이전트, Nemotron/NIM 연결 |
 | `src/cualign/server/` | API, 대화 검사 미들웨어, 정적 웹 UI |
 | `guardrails/` | NeMo Guardrails 검사 설정과 프롬프트, NVIDIA 카탈로그 스킬로 만든 안전 정책(`policy/`) |
-| `openshell/`, `skills/` | 샌드박스 정책 실험, 도메인 Skill, 과거 검사 보고서 |
+| `openshell/` | 샌드박스 정책 실험 |
+| `workspace/` | 에이전트 정의(OpenClaw 워크스페이스 규약: SOUL·AGENTS·IDENTITY·USER·TOOLS·HEARTBEAT·MEMORY)와 Skill, 과거 검사 보고서. [workspace/README.md](workspace/README.md) |
 | `tests/`, `bench/`, `scripts/`, `docs/demo/` | 자동 검사·규칙 벤치마크·실호출 스크립트·기존 실행 기록 |
 
 ## 현재 구현의 경계
