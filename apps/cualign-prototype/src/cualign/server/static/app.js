@@ -109,7 +109,7 @@ canvas.style.touchAction = "none";
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; lastMove = performance.now();
     if (drag.pan) controls.pan(dx, dy);
-    else { controls.rotate(dx * controls.speed, -dy * controls.speed); controls.vel.yaw = dx * controls.speed * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
+    else { controls.rotate(-dx * controls.speed, -dy * controls.speed); controls.vel.yaw = -dx * controls.speed * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
   });
   const end = () => { if (!drag) return; drag = null; controls.dragging = false; if (performance.now() - lastMove > 80) controls.vel.yaw = controls.vel.pitch = 0; };
   canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
