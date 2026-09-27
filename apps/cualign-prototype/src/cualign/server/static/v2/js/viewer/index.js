@@ -194,37 +194,46 @@ export function createViewer(container, options = {}) {
 
   function loadCase(meshJson) {
     currentMesh = meshJson;
-    currentPlan = null;
-    currentStage = 0;
-    currentPlanNumber = 1;
-
     teethManager.loadMesh(meshJson);
-    stageBar?.setMax(0);
-    stageBar?.setMonths(null);
-    stageBar?.setStage(0);
-    stageBar?.setViolations([]);
-
-    applyStage(0);
     viewsManager.setView('occlusal');
+
+    if (currentPlan) {
+      const totalStages = Array.isArray(currentPlan?.stages)
+        ? currentPlan.stages.length
+        : (Number(currentPlan?.stages) || currentPlan?.info?.n_stages || 0);
+      stageBar?.setMax(totalStages);
+      stageBar?.setViolations(currentPlan?.violations || []);
+      stageBar?.setStage(currentStage);
+      applyStage(currentStage);
+    } else {
+      stageBar?.setMax(0);
+      stageBar?.setStage(0);
+      stageBar?.setViolations([]);
+      applyStage(0);
+    }
     updateArchBadge();
   }
 
   function setPlan(planJson, planNumber = null) {
     currentPlan = planJson;
     currentPlanNumber = Number(planNumber ?? planJson?.planNumber ?? planJson?.plan_number ?? planJson?.ordinal) || 1;
-    const totalStages = planJson?.stages?.length || 0;
-    const months = planJson?.info?.months ?? null;
+    const totalStages = Array.isArray(planJson?.stages)
+      ? planJson.stages.length
+      : (Number(planJson?.stages) || planJson?.info?.n_stages || 0);
 
     stageBar?.setMax(totalStages);
-    stageBar?.setMonths(months);
     stageBar?.setViolations(planJson?.violations || []);
 
-    applyStage(Math.min(currentStage, totalStages));
+    currentStage = Math.max(0, Math.min(totalStages, currentStage));
+    applyStage(currentStage);
     updateArchBadge();
+    stageBar?.setStage(currentStage);
   }
 
   function setStage(n, updateBar = true) {
-    const totalStages = currentPlan?.stages?.length || 0;
+    const totalStages = Array.isArray(currentPlan?.stages)
+      ? currentPlan.stages.length
+      : (Number(currentPlan?.stages) || currentPlan?.info?.n_stages || 0);
     currentStage = Math.max(0, Math.min(totalStages, Number(n) || 0));
 
     applyStage(currentStage);

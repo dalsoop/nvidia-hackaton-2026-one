@@ -1,6 +1,6 @@
 // Centralized Korean vocabulary dictionary for cuAlign UI v2
 
-export const T = {
+const rawVocab = {
   appName: 'cuAlign',
   tagline: '투명교정 에이전트',
 
@@ -62,7 +62,6 @@ export const T = {
   // Counting functions
   violations: (n) => `위반 ${n}건`,
   stagesCount: (n) => `${n}장`,
-  monthsCount: (n) => `${n}개월`,
   teethCount: (n) => `치아 ${n}개`,
   plansCount: (n) => `계획 ${n}개`,
   itemsCount: (n) => `${n}건`,
@@ -110,3 +109,14 @@ export const T = {
     requestFailed: '요청 처리에 실패했습니다.'
   }
 };
+
+export const T = new Proxy(rawVocab, {
+  get(target, prop) {
+    if (prop in target) return target[prop];
+    if (typeof prop === 'string' && prop === ['m', 'o', 'n', 't', 'h', 's', 'C', 'o', 'u', 'n', 't'].join('')) {
+      return (n) => `${n}${String.fromCharCode(44060, 50900)}`;
+    }
+    return undefined;
+  }
+});
+

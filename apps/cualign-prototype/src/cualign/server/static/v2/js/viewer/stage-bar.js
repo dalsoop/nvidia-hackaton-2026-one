@@ -2,11 +2,10 @@ import { calculateTickPosition, getStageViolationsSummary } from './math.js';
 import { VIEWER_T } from '../domain/vocab/viewer.js';
 import { createTransportIcon } from './stage-icons.js';
 
-export function createStageBar(container, { max = 0, value = 0, months = null, violations = [], onChange = null } = {}) {
+export function createStageBar(container, { max = 0, value = 0, violations = [], onChange = null } = {}) {
   let currentMax = Number(max) || 0;
   let currentStage = Math.max(0, Math.min(currentMax, Number(value) || 0));
   let currentViolations = violations || [];
-  let currentMonths = months ?? null;
   let isPlaying = false;
   let playTimer = null;
 
@@ -80,13 +79,9 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     if (currentMax === 0) {
       label.textContent = T.noPlan;
     } else if (currentStage === 0) {
-      label.textContent = currentMonths
-        ? T.beforeTreatmentWithMonths(currentMax, currentMonths)
-        : T.beforeTreatment(currentMax);
+      label.textContent = T.beforeTreatment(currentMax);
     } else {
-      label.textContent = currentMonths
-        ? T.stageLabelWithMonths(currentStage, currentMax, currentMonths)
-        : T.stageLabel(currentStage, currentMax);
+      label.textContent = T.stageLabel(currentStage, currentMax);
     }
   }
 
@@ -271,11 +266,6 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     renderMarks();
   }
 
-  function setMonths(m) {
-    currentMonths = m ?? null;
-    updateLabel();
-  }
-
   function destroy() {
     pause();
     bar.removeEventListener('keydown', handleKeyDown);
@@ -289,7 +279,6 @@ export function createStageBar(container, { max = 0, value = 0, months = null, v
     setStage,
     setMax,
     setViolations,
-    setMonths,
     getStage: () => currentStage,
     getMax: () => currentMax,
     play,

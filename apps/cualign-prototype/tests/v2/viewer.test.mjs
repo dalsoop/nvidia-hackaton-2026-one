@@ -269,9 +269,7 @@ test('Viewer Vocabulary: verifies all core sections and label generators', () =>
 
   assert.equal(VIEWER_T.stageBar.noPlan, '계획 없음');
   assert.equal(VIEWER_T.stageBar.beforeTreatment(10), '치료 전 · 총 10단계');
-  assert.equal(VIEWER_T.stageBar.beforeTreatmentWithMonths(10, 5), '치료 전 · 총 10단계 · 예상 5개월');
   assert.equal(VIEWER_T.stageBar.stageLabel(2, 10), '단계 2 / 10');
-  assert.equal(VIEWER_T.stageBar.stageLabelWithMonths(2, 10, 5), '단계 2 / 10 · 예상 5개월');
 
   assert.equal(VIEWER_T.overlay.selectedTeeth, '선택한 치아:');
   assert.equal(VIEWER_T.overlay.clearSelection, '모두 해제');

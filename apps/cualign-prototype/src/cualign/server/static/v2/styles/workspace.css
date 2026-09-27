@@ -147,8 +147,10 @@
 .plan-review-toggle-btn[aria-expanded="true"] { border-color: var(--color-border-strong); background: var(--color-surface-raised); }
 .plan-review-memo-drawer { padding: var(--space-8); border: var(--line-1) solid var(--color-border-subtle); color: var(--color-text-secondary); font-size: var(--font-size-12); }
 .plan-review-retry-btn { align-self: flex-start; height: var(--btn-height-default); }
-.plan-primary-actions,
-.plan-approve-confirm-step { display: flex; align-items: center; gap: var(--space-8); }
+.plan-primary-actions:not([hidden]),
+.plan-approve-confirm-step:not([hidden]) { display: flex; align-items: center; gap: var(--space-8); }
+.plan-primary-actions[hidden],
+.plan-approve-confirm-step[hidden] { display: none !important; }
 .plan-approve-btn,
 .plan-confirm-execute-btn { flex: 1; height: var(--btn-height-default); }
 .plan-confirm-cancel-btn { border: 0; background: none; color: var(--color-text-secondary); text-decoration: underline; }

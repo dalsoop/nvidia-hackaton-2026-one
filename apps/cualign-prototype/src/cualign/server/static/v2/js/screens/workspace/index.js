@@ -24,6 +24,7 @@ export function mount(root, params, ctx) {
   let unsubscribe = null;
   let lastPlansRef = null;
   let lastViewingId = null;
+  let lastViewingPlanRef = null;
   let lastStageIndex = 0;
   let requestToken = 0;
 
@@ -60,7 +61,16 @@ export function mount(root, params, ctx) {
   async function loadMesh(targetViewer, reportError) {
     try {
       const mesh = await ctx.api.caseMesh(caseId);
-      if (mounted && targetViewer === viewer) targetViewer.loadCase(mesh);
+      if (mounted && targetViewer === viewer) {
+        targetViewer.loadCase(mesh);
+        const state = ctx.store.get();
+        if (state.viewingPlan) {
+          const plan = state.viewingPlan;
+          const num = plansView?.getPlanNumber(planId(plan)) || 1;
+          targetViewer.setPlan(plan, num);
+          targetViewer.setStage(state.stageIndex ?? 0);
+        }
+      }
     } catch (err) {
       reportError(err);
     }
@@ -78,6 +88,7 @@ export function mount(root, params, ctx) {
     const id = planId(plan);
     const stageIndex = resetStage ? 0 : lastStageIndex;
     lastViewingId = id;
+    lastViewingPlanRef = plan;
     lastStageIndex = stageIndex;
     plansView?.setViewingPlan(plan);
     const plans = plansView?.getPlans() || [];
@@ -142,6 +153,8 @@ export function mount(root, params, ctx) {
         const handed = planId(state.viewingPlan) === state.viewingPlanId && Array.isArray(state.viewingPlan?.stages);
         if (handed) applyDetailedPlan(state.viewingPlan);
         else selectPlan(state.viewingPlanId).catch((err) => plansView?.showError(err));
+      } else if (state.viewingPlan && state.viewingPlan !== lastViewingPlanRef && Array.isArray(state.viewingPlan?.stages)) {
+        applyDetailedPlan(state.viewingPlan, false);
       }
       if (Number.isInteger(state.stageIndex) && state.stageIndex !== lastStageIndex) {
         lastStageIndex = state.stageIndex;
