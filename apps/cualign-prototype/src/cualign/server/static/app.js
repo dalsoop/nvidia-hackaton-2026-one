@@ -7,7 +7,7 @@ import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer
 const $ = (id) => document.getElementById(id);
 // Colours follow clinical software conventions (docs/research/2026-09-23-원내-얼라이너-SW-화면-역설계.md):
 // teeth are ivory, movement is a heat tint, collisions red, limit breaches amber, locked teeth blue.
-const IVORY = new THREE.Color(0xe9e3d6), HEAT = new THREE.Color(0x76b900);
+const IVORY = new THREE.Color(0xe9e3d6);
 const RED = 0xe52020, AMBER = 0xef9100, BLUE = 0x4f8fd6;   // DESIGN.md colors.error, warning, locked
 const GHOST_GREY = 0xb3b3b3;   // colors.text-mute, the legend's dashed 「발치」 outline
 
@@ -83,6 +83,46 @@ const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽",
 
 const ghost = new THREE.Group(); scene.add(ghost);
 const GHOST_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false });
+// Each gum vertex follows the three nearest crowns, weighted by distance (σ 5 mm), so the scanned gum moves with
+// the teeth instead of swallowing them. Translation only; crown rotation is small at the gum line.
+const GUM_K = 3, GUM_SIGMA = 5;
+function gumSkin(geo) {
+  const pos = geo.attributes.position.array, n = pos.length / 3;
+  const ids = Object.keys(state.center), centers = ids.map((id) => state.center[id]);
+  const base = Float32Array.from(pos), skinIds = new Int16Array(n * GUM_K), w = new Float32Array(n * GUM_K);
+  const near = [];
+  for (let v = 0; v < n; v++) {
+    const x = pos[3 * v], y = pos[3 * v + 1], z = pos[3 * v + 2];
+    near.length = 0;
+    for (let i = 0; i < centers.length; i++) {
+      const c = centers[i], d = Math.hypot(x - c.x, y - c.y, z - c.z);
+      near.push([d, i]);
+    }
+    near.sort((a, b) => a[0] - b[0]);
+    let sum = 0;
+    for (let j = 0; j < GUM_K; j++) { const [d, i] = near[j] ?? [1e9, 0]; const g = Math.exp(-(d * d) / (2 * GUM_SIGMA * GUM_SIGMA)); skinIds[v * GUM_K + j] = i; w[v * GUM_K + j] = g; sum += g; }
+    // far from every crown the gum stays; near one crown it follows fully
+    const scale = sum > 1e-4 ? Math.min(1, sum) / sum : 0;
+    for (let j = 0; j < GUM_K; j++) w[v * GUM_K + j] *= scale;
+  }
+  return { base, ids: skinIds, w, toothIds: ids };
+}
+function deformGum(st) {
+  const skin = state.gumSkin, gum = state.gum;
+  if (!skin || !gum) return;
+  const pos = gum.geometry.attributes.position.array, n = pos.length / 3;
+  const moves = skin.toothIds.map((id) => st[id] ?? null);
+  for (let v = 0; v < n; v++) {
+    let dx = 0, dy = 0, dz = 0;
+    for (let j = 0; j < GUM_K; j++) {
+      const t = moves[skin.ids[v * GUM_K + j]], g = skin.w[v * GUM_K + j];
+      if (t) { dx += g * t[0]; dy += g * t[1]; dz += g * t[2]; }
+    }
+    pos[3 * v] = skin.base[3 * v] + dx; pos[3 * v + 1] = skin.base[3 * v + 1] + dy; pos[3 * v + 2] = skin.base[3 * v + 2] + dz;
+  }
+  gum.geometry.attributes.position.needsUpdate = true;
+  gum.geometry.computeVertexNormals();
+}
 function buildTeeth(mesh) {
   group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels();
   state.violLabels = []; state.selected.clear(); renderSelection();
@@ -108,6 +148,7 @@ function buildTeeth(mesh) {
     const gum = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd98b8f, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 1, side: THREE.DoubleSide }));
     gum.userData.gum = true;
     state.gum = gum;
+    state.gumSkin = gumSkin(geo);
     group.add(gum);
   }
   state.archOrder = (mesh.arch_order ?? mesh.ids ?? []).map(String);
@@ -189,14 +230,11 @@ function applyStage(k) {
   const plan = state.plan;
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
   const rot = k > 0 ? plan?.rotations?.[k - 1] ?? {} : {};
-  // the scanned gum does not move with the crowns: fade it once they do, so moved crowns are not hidden in it
-  if (state.gum) { state.gum.material.opacity = k > 0 ? 0.35 : 1; state.gum.material.depthWrite = k === 0; }
+  deformGum(st);   // the gum follows the crowns
   const hasPlan = !!plan;
   const bad = violationsAt(k);
   const locked = new Set((plan?.target?.locked ?? []).map(String));
   const removed = new Set((plan?.target?.removed ?? []).map(String));
-  const last = plan?.stages?.[plan.stages.length - 1] ?? {};
-  const maxMove = Math.max(1e-6, ...Object.values(last).map((d) => Math.hypot(...d)));
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
@@ -216,7 +254,7 @@ function applyStage(k) {
     else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
-    else m.material.color.copy(IVORY).lerp(HEAT, hasPlan ? Math.min(1, moved / maxMove) * 0.75 : 0);
+    else m.material.color.copy(IVORY);
     m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   }
   placeLabels();
@@ -814,6 +852,7 @@ function renderChips() {
        { label: "발치 없이 12개월", message: "발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고." },
        { label: "확장안·IPR안 비교", message: "이 처방 안에서 확장안과 IPR안을 비교해줘." }];
   const box = $("chips");
+  box.hidden = !!document.querySelector("#transcript .question:not(.done):not(.pending)");   // the card asks first
   if ([...box.children].map((c) => c.dataset.message).join("|") === chips.map((c) => c.message).join("|")) return;
   box.innerHTML = "";
   for (const c of chips) {
@@ -1067,11 +1106,12 @@ function reviewQuestions(memo) {
 function addReviewQuestions(bubble, memo) {
   const qs = reviewQuestions(memo);
   if (!qs.length) return null;
-  const div = document.createElement("div");
+  const div = document.createElement("details");
   div.className = "review-q";
-  div.innerHTML = "<b>검토 질문</b><ul></ul>";
+  div.innerHTML = "<summary></summary><ul></ul>";
+  div.querySelector("summary").textContent = `검토 질문 ${qs.length}개`;
   for (const q of qs) { const li = document.createElement("li"); li.textContent = q; div.querySelector("ul").append(li); }
-  bubble.after(div);
+  bubble.append(div);   // part of the answer, not another block
   return div;
 }
 function addMsg(role, text = "") {
@@ -1189,11 +1229,13 @@ function addQuestion(q) {
     picked.className = "picked"; picked.textContent = b.textContent;
     div.querySelector(".opts").replaceWith(picked);
     div.classList.add("done");
+    if (state.meshCase) renderChips();
     if (b.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
     send(b.dataset.message);
   });
   $("transcript").appendChild(div);
   $("transcript").scrollTop = $("transcript").scrollHeight;
+  if (state.meshCase) renderChips();
   return div;
 }
 // After each answer the server's fast model writes the next question; no card when it cannot. The request starts

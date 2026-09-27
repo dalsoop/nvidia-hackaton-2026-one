@@ -90,7 +90,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .transcript { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 240px; }
 .msg { max-width: 92%; padding: 8px 12px; border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; }
 .msg.user { align-self: flex-end; background: var(--hover); border: 1px solid var(--line); }
-.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); white-space: normal; }
+.msg.assistant { align-self: stretch; max-width: none; background: none; border: 0; padding: 4px 4px; white-space: normal; }
 .msg.assistant p { margin: 0; }
 .msg.assistant p + p, .msg.assistant p + ul, .msg.assistant ul + p { margin-top: 8px; }
 .msg.assistant ul { margin: 0; padding-left: 18px; }
@@ -105,6 +105,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .retry-bar { display: flex; gap: 6px; padding: 0 16px 8px; }
 .retry-bar[hidden] { display: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 8px; }
+.chips[hidden] { display: none; }
 .chip {
   font: inherit; font-size: 12px; color: var(--text); background: var(--panel);
   border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; text-align: left;
@@ -132,8 +133,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .msg.assistant .fold > summary:hover { color: var(--text); }
 .msg.assistant .fold p { margin-top: 4px; }
 /* the reviewer's questions under the answer; the full memo sits in the result panel's 자세히 */
-.review-q { align-self: flex-start; max-width: 92%; margin-top: -4px; padding: 6px 12px; border-left: 3px solid var(--line-strong); font-size: 12px; color: var(--muted); }
-.review-q b { color: var(--text); }
+.review-q { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.review-q summary { cursor: pointer; color: var(--muted); }
 .review-q ul { margin: 4px 0 0; padding-left: 18px; }
 /* approval done: one card per approval, with 다시 내려받기 */
 .export-done { align-self: stretch; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--pass-surface); color: var(--pass-text); border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; }
@@ -149,8 +150,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 .sel-chips button { font: inherit; font-size: 12px; color: #000000; background: var(--green); border: 0; border-radius: var(--radius); padding: 2px 6px; cursor: pointer; }
 .sel-chips button.clear { color: var(--muted); background: transparent; border: 1px solid var(--line-strong); }
 /* activity: only the step in progress (or the last one) shows unless the dentist opens the record */
-.decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; }
+.decision { align-self: stretch; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 0 4px; font-size: 12px; color: var(--muted); }
 .decision span { flex: 1; min-width: 180px; }
+.decision button { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--green); cursor: pointer; }
+.decision button:hover { text-decoration: underline; }
 .decision.done { color: var(--muted); }
 .composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
 
@@ -184,13 +187,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: var(--radius); margin-right: 4px; vertical-align: -1px; }
 .legend { flex-wrap: wrap; row-gap: 4px; }
 .legend small { color: var(--faint); }
-.legend .ivory { background: linear-gradient(90deg, #e9e3d6, #a9c65a); }  /* heat scale of tooth movement, not decoration */
 .legend .red { background: var(--red); }
 .legend .amber { background: var(--amber); }
 .legend .blue { background: var(--blue); }
 .legend .ghost { background: transparent; border: 1px dashed var(--muted); }
 .legend .ipr { background: var(--ipr); }
-.legend .gum { background: #d98b8f; }
 
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
