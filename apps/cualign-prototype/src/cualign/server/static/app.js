@@ -584,7 +584,8 @@ function applyStage(k) {
   $("stageLabel").textContent = !hasPlan ? "계획 없음" : `${n}단계 · ${months}개월`;
   $("stageSlider").value = k;
   const tip = $("stageTip");
-  tip.textContent = k === 0 ? "치료 전" : `단계 ${k}`;
+  const boundary = plan?.info?.phase_boundary ?? 0;   // sequencing (#144): which phase this aligner is in
+  tip.textContent = k === 0 ? "치료 전" : `단계 ${k}` + (!boundary ? "" : k === boundary ? " · 공간 폐쇄 시작" : k > boundary ? " · 공간 폐쇄" : " · 정렬");
   tip.style.left = n ? `calc(8px + ${(k / n) * 100}% - ${(k / n) * 16}px)` : "8px";   // the thumb's centre: 8px inset each side
   markStage(k);
 }
@@ -1643,6 +1644,8 @@ function renderStagePane(plan) {
   // the table: one row per stage, one column per tooth along the arch; a cell says what kind of move the stage adds.
   // A tooth that never moves keeps its column, blank (#13 polish)
   const teeth = (state.archOrder.length ? state.archOrder : Object.keys(state.teeth)).map(String);
+  // sequencing (#144): the aligner the delayed crowns start in splits the table; those crowns wait in place before it
+  const boundary = info.phase_boundary ?? 0, delays = info.delays ?? {};
   const at = (k, id) => (k > 0 ? plan.stages[k - 1]?.[id] : null) ?? [0, 0, 0];
   const yaw = (k, id) => (k > 0 ? plan.rotations?.[k - 1]?.[id] : null) ?? 0;
   const bad = {};
@@ -1664,10 +1667,18 @@ function renderStagePane(plan) {
   const hd = document.createElement("span"); hd.className = "hd"; grid.append(hd);
   for (const id of teeth) { const h = document.createElement("span"); h.className = "hd" + (moving.has(id) ? "" : " nil"); h.textContent = fdi(id); grid.append(h); }
   for (let k = 0; k <= n; k++) {
+    if (boundary > 0 && k === boundary) {   // a thin rule with the two phases named, between the last aligning and the first closing aligner
+      const ph = document.createElement("div"); ph.className = "phase"; ph.dataset.boundary = boundary;
+      ph.innerHTML = '<span class="a"></span><i></i><span class="b"></span>';
+      ph.querySelector(".a").textContent = `정렬 1–${boundary - 1}`; ph.querySelector(".b").textContent = `공간 폐쇄 ${boundary}–${n}`;
+      grid.append(ph);
+    }
     const row = document.createElement("div"); row.className = "row" + (k === state.stage ? " cur" : ""); row.dataset.stage = k;
     const kk = document.createElement("span"); kk.className = "k"; kk.textContent = k; row.append(kk);
     for (const id of teeth) {
       const c = document.createElement("span"); c.className = "c" + (moving.has(id) ? "" : " nil");
+      const start = delays[id];
+      if (start && k > 0 && k < start) { c.classList.add("wait"); c.title = `단계 ${k} · 치아 ${fdi(id)} · 제자리 (단계 ${start}부터 움직임)`; }
       const x = cells[k]?.[id];
       if (x) {
         if (x.kinds.length > 1) c.classList.add("mixed"); else if (x.kinds.length) c.classList.add(x.kinds[0]);

@@ -549,6 +549,10 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .stage-grid .k { display: grid; place-items: center; color: var(--faint); padding-right: 4px; justify-content: end; }
 .stage-grid .c { border-bottom: 1px solid #1f1f1f; }
 .stage-grid .c.nil { border-bottom: 0; }   /* a tooth that never moves: blank column */
+.stage-grid .c.wait { border-bottom: 0; }   /* a delayed crown before its first aligner: in place (#144) */
+/* the phase boundary (#144): one thin rule across the table with the phases named at its ends */
+.stage-grid .phase { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--faint); white-space: nowrap; }
+.stage-grid .phase i { flex: 1; border-top: 1px solid var(--line-strong); }
 .stage-grid .hd.nil { color: var(--faint); font-weight: 400; }
 .stage-grid .row.cur > * { background: rgba(118, 185, 0, 0.14); }
 .stage-grid .row.cur .k { color: var(--green); font-weight: 700; }
