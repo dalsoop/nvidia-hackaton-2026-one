@@ -1,172 +1,117 @@
 import { clear, h } from '../../ui/dom.js';
-import { T } from '../../domain/vocab.js';
-import { WORKSPACE_VOCAB } from '../../domain/vocab/workspace.js';
-import { stlUrl } from '../../api/endpoints.js';
-import {
-  renderPlanCard,
-  calculateRailStage
-} from './plan-card.js';
+import { WORKSPACE_VOCAB as W } from '../../domain/vocab/workspace.js';
+import { renderPlanCard } from './plan-card.js';
 
-/**
- * Sort plans by their creation order (oldest to newest).
- * Backend returns plans reversed, so reversing yields creation order.
- * If created_at is present on the items, sorts by timestamp ascending.
- *
- * @param {Array<Object>} plans
- * @returns {Array<Object>}
- */
+export function planId(plan) {
+  return plan?.plan_id || plan?.id || null;
+}
+
 export function sortPlansByCreation(plans) {
-  if (!Array.isArray(plans) || plans.length === 0) {
-    return [];
+  if (!Array.isArray(plans)) return [];
+  if (plans.some((plan) => Boolean(plan.created_at))) {
+    return [...plans].sort((a, b) => Date.parse(a.created_at || 0) - Date.parse(b.created_at || 0));
   }
-
-  // If plans have created_at property, sort by date ascending
-  const hasCreatedAt = plans.some((p) => Boolean(p.created_at));
-  if (hasCreatedAt) {
-    return [...plans].sort((a, b) => {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return timeA - timeB;
-    });
-  }
-
-  // Otherwise, since backend returns them in reversed order, reverse to get creation order
   return [...plans].reverse();
 }
 
-/**
- * Mount plans list inside the container.
- *
- * @param {HTMLElement} container
- * @param {Object} options
- * @param {Array<Object>} options.plans - Raw plans from API
- * @param {string} options.caseId - Active case ID
- * @param {string} [options.selectedPlanId] - ID of the currently viewed plan
- * @param {Function} options.onSelectPlan - (plan) => void
- * @param {Function} options.onPlanUpdated - (updatedPlan, allPlans) => void
- * @param {Object} options.ctx - App context { api, store, navigate }
- * @returns {{ update: (newPlans, newSelectedId) => void, destroy: () => void }}
- */
+export async function fetchPlanDetails(api, planOrId) {
+  const id = typeof planOrId === 'string' ? planOrId : planId(planOrId);
+  if (!id || typeof api?.getPlan !== 'function') throw new TypeError(W.plansLoadFailed);
+  return api.getPlan(id);
+}
+
+function replacePlan(plans, detailedPlan) {
+  const id = planId(detailedPlan);
+  return plans.map((plan) => planId(plan) === id ? { ...plan, ...detailedPlan } : plan);
+}
+
 export function mountPlans(container, {
-  plans = [],
-  caseId = '',
-  selectedPlanId = null,
-  onSelectPlan = null,
-  onPlanUpdated = null,
-  ctx = null
+  plans = [], selectedPlanId = null, viewingPlan = null, onSelectPlan, onPlanUpdated, ctx
 } = {}) {
   clear(container);
-
   let currentPlans = sortPlansByCreation(plans);
-  let activePlanId = selectedPlanId || (currentPlans[0]?.plan_id || currentPlans[0]?.id || null);
+  let activeId = selectedPlanId || planId(viewingPlan) || planId(currentPlans[0]);
+  if (viewingPlan) currentPlans = replacePlan(currentPlans, viewingPlan);
 
-  const wrapper = h('div', { class: 'plans-panel' });
-  const header = h('div', { class: 'plans-panel-header' });
-  const title = h('h2', { class: 'plans-panel-title' }, WORKSPACE_VOCAB.plansTitle);
-  const countBadge = h('span', { class: 'plans-panel-count' }, WORKSPACE_VOCAB.plansCount(currentPlans.length));
-  header.appendChild(title);
-  header.appendChild(countBadge);
-  wrapper.appendChild(header);
+  const count = h('span', { class: 'plans-panel-count' });
+  const list = h('div', { class: 'plans-list' });
+  const error = h('div', { class: 'plans-panel-error', hidden: true });
+  container.appendChild(h('div', { class: 'plans-panel' }, [
+    h('div', { class: 'plans-panel-header' }, [h('h2', { class: 'plans-panel-title' }, W.plansTitle), count]),
+    list,
+    error
+  ]));
 
-  const listEl = h('div', { class: 'plans-list' });
-  wrapper.appendChild(listEl);
-  container.appendChild(wrapper);
-
-  function getViewingPlan() {
-    return currentPlans.find((p) => (p.plan_id || p.id) === activePlanId) || currentPlans[0] || null;
+  function showError(value) {
+    error.textContent = value?.message || String(value || '');
+    error.hidden = !error.textContent;
   }
 
-  async function handleApprove(planId) {
-    if (!ctx || !ctx.api) return;
-    const res = await ctx.api.approvePlan(planId);
-    // res can be the full updated plan object or contains it
-    const updated = res.plan || res;
-    updatePlanInList(updated);
+  function selected() {
+    return currentPlans.find((plan) => planId(plan) === activeId) || null;
   }
 
-  async function handleRevoke(planId) {
-    if (!ctx || !ctx.api) return;
-    const res = await ctx.api.revokeApproval(planId);
-    const updated = res.plan || res;
-    updatePlanInList(updated);
+  function acceptDetailedPlan(plan) {
+    activeId = planId(plan);
+    currentPlans = replacePlan(currentPlans, plan);
+    showError('');
+    render();
   }
 
-  async function handleRequestReview(planId) {
-    if (!ctx || !ctx.api) return;
-    const res = await ctx.api.requestReview(planId);
-    const updated = res.plan || res;
-    updatePlanInList(updated);
+  async function mutate(action, id) {
+    showError('');
+    const updated = await action(id);
+    acceptDetailedPlan(updated?.plan || updated);
+    await onPlanUpdated?.(selected(), currentPlans);
   }
 
-  function updatePlanInList(updatedPlan) {
-    const updatedId = updatedPlan.plan_id || updatedPlan.id;
-    currentPlans = currentPlans.map((p) => {
-      const pid = p.plan_id || p.id;
-      return pid === updatedId ? { ...p, ...updatedPlan } : p;
-    });
-
-    renderList();
-
-    const currentViewing = getViewingPlan();
-    if (ctx?.store) {
-      ctx.store.set({ plans: currentPlans });
-    }
-    if (typeof onPlanUpdated === 'function') {
-      onPlanUpdated(currentViewing, currentPlans);
+  async function choose(plan) {
+    showError('');
+    try {
+      const detailed = await onSelectPlan?.(plan);
+      if (detailed) acceptDetailedPlan(detailed);
+    } catch (err) {
+      showError(err);
     }
   }
 
-  function renderList() {
-    clear(listEl);
-    countBadge.textContent = T.plansCount(currentPlans.length);
-
-    if (currentPlans.length === 0) {
-      listEl.appendChild(h('div', { class: 'plans-empty-note' }, WORKSPACE_VOCAB.emptyPlansNote));
+  function render() {
+    clear(list);
+    count.textContent = W.plansCount(currentPlans.length);
+    if (!currentPlans.length) {
+      list.appendChild(h('div', { class: 'plans-empty-note' }, W.emptyPlansNote));
       return;
     }
-
     currentPlans.forEach((plan, index) => {
-      const pid = plan.plan_id || plan.id;
-      const isViewing = pid === activePlanId;
-
-      const card = renderPlanCard(plan, {
+      const id = planId(plan);
+      list.appendChild(renderPlanCard(plan, {
         index,
-        isViewing,
-        onSelect: (selected) => {
-          activePlanId = selected.plan_id || selected.id;
-          renderList();
-          if (typeof onSelectPlan === 'function') {
-            onSelectPlan(selected);
-          }
-        },
-        onApprove: handleApprove,
-        onRevoke: handleRevoke,
-        onRequestReview: handleRequestReview,
-        getStlUrl: (id) => (ctx?.api?.stlUrl ? ctx.api.stlUrl(id) : stlUrl(id))
-      });
-
-      listEl.appendChild(card);
+        isViewing: id === activeId,
+        onSelect: choose,
+        onApprove: (target) => mutate(ctx.api.approvePlan, target),
+        onRevoke: (target) => mutate(ctx.api.revokeApproval, target),
+        onRequestReview: (target) => mutate(ctx.api.requestReview, target),
+        getStlUrl: ctx?.api?.stlUrl
+      }));
     });
   }
 
-  renderList();
-
+  render();
   return {
-    update(newPlans, newSelectedId) {
-      currentPlans = sortPlansByCreation(newPlans);
-      if (newSelectedId) {
-        activePlanId = newSelectedId;
-      } else if (!currentPlans.some((p) => (p.plan_id || p.id) === activePlanId)) {
-        activePlanId = currentPlans[0]?.plan_id || currentPlans[0]?.id || null;
-      }
-      renderList();
+    update(nextPlans, nextSelectedId = activeId) {
+      currentPlans = sortPlansByCreation(nextPlans);
+      activeId = nextSelectedId && currentPlans.some((plan) => planId(plan) === nextSelectedId)
+        ? nextSelectedId : planId(currentPlans[0]);
+      render();
     },
-    getViewingPlan,
-    getPlans() {
-      return currentPlans;
+    setViewingPlan: acceptDetailedPlan,
+    showError,
+    getViewingPlan: selected,
+    getPlans: () => currentPlans,
+    getPlanNumber(id) {
+      const index = currentPlans.findIndex((plan) => planId(plan) === id);
+      return index < 0 ? 1 : index + 1;
     },
-    destroy() {
-      clear(container);
-    }
+    destroy: () => clear(container)
   };
 }
