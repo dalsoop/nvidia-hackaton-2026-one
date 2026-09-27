@@ -205,25 +205,26 @@ async def main():
             assert await page.locator("#rPlan").inner_text() == child
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
 
-            # Reload keeps the case on screen via the #case= hash address (#90); the plan panel resets because the
-            # reload carries no ?plan= link.
-            assert (await page.evaluate("location.hash")) == "#case=moderate"
+            # Reload keeps the case and the plan on screen via the #case=…&plan=… address (#90).
+            assert (await page.evaluate("location.hash")) == f"#case=moderate&plan={child}"
             case_name_before = await page.locator("#caseName").inner_text()
             await page.reload()
             await page.wait_for_function("!document.body.classList.contains('start')")
+            await page.wait_for_function("(p) => document.querySelector('#rPlan').textContent === p", arg=child, timeout=120000)
             assert await page.locator("#caseName").inner_text() == case_name_before
-            assert await page.locator("#rPlan").inner_text() == "—"
-            assert await page.locator("#stlLink").get_attribute("href") is None
+            assert await page.locator("#stlLink").get_attribute("href") is None   # approval was revoked above
 
-            # Going home and opening a different (real) sample card resets the plan panel for the new case.
+            # Going home and opening a different (real) sample card: the case opens with its own rule-based preview
+            # plan (#92), never the previous case's plan.
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
             await page.locator('#sampleCards .case-card[data-id="poseidon-000097"]').click()
-            await page.wait_for_function("!document.body.classList.contains('start') && document.querySelector('#rPlan').textContent === '—'")
+            await page.wait_for_function("(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && document.querySelector('#rPlan').textContent !== p", arg=child)
+            assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
             assert await page.locator("#stlLink").get_attribute("href") is None
             assert not errors, errors
             print("PASS: browser rule-based plan, export/approval, revision, reviewer failure, manual re-review, "
-                  "stale response, reload keeps case, case switch resets plan")
+                  "stale response, reload keeps case and plan, case switch opens its own preview plan")
             await browser.close()
             browser = None
     finally:

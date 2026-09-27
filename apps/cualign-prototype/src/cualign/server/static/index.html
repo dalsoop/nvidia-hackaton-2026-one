@@ -108,6 +108,8 @@
           </div>
         </div>
         <div id="labels" class="labels"></div>
+        <!-- while a turn runs: the 3D dims and this pill repeats the running step -->
+        <div id="workNote" class="work-note" aria-live="polite"><i></i><span>계획을 준비하는 중…</span></div>
         <div class="view-head">
           <!-- 조건: 3D 왼쪽 위에 칩으로 접혀 있고, 펼치면 폼이 3D 위로 내려온다 (#90) -->
           <details id="condBox" class="cond">
@@ -135,12 +137,14 @@
               <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다">내보내기</button>
               <div id="exportPop" class="export-pop" hidden>
                 <p>이 초안을 의사 승인으로 확정하고 단계별 치아 STL(zip)을 내려받습니다. 조건·3D·검토 결과를 확인하셨나요?</p>
+                <p id="exportSkip" class="export-skip" hidden>검토 에이전트를 거치지 않은 계획입니다.</p>
                 <div>
                   <button id="exportGo" class="btn primary small" type="button">확정하고 내려받기</button>
                   <button id="exportCancel" class="btn ghost small" type="button">취소</button>
                 </div>
               </div>
               <a id="stlLink" hidden download></a>
+              <span id="exportWhy" class="export-why"></span>
             </span>
           </span>
         </div>
@@ -204,9 +208,9 @@
             <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
             <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
           </dl>
+          <p id="reviewMemo" class="review-memo"></p>
           <button id="revokeBtn" class="btn ghost small" type="button" hidden>승인 취소</button>
         </details>
-        <p id="reviewMemo" class="review-memo"></p>
         <table class="viol" id="violTable">
           <thead><tr><th>단계</th><th>치아</th><th>종류</th><th>값</th></tr></thead>
           <tbody></tbody>

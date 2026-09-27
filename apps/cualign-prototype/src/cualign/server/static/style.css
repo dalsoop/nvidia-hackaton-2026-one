@@ -120,6 +120,24 @@ body.resizing { cursor: col-resize; user-select: none; }
 .question .opts button:hover { border-color: var(--green); }
 .question.done { color: var(--muted); border-left-color: var(--line-strong); }
 .question .picked { color: var(--green); font-weight: 700; }
+/* the follow-up card's place while the fast model writes it: same size, muted */
+.question.pending { color: var(--faint); border-left-color: var(--line-strong); }
+.question.pending .opts { min-height: 32px; }
+/* the answer card (#90): 검토 / 의사 확인 필요 as labelled rows, 조건 folded */
+.msg.assistant .row { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; }
+.msg.assistant .row b { flex: none; min-width: 84px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.msg.assistant .row .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); margin-right: 6px; vertical-align: 1px; }
+.msg.assistant .fold { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.msg.assistant .fold > summary { cursor: pointer; }
+.msg.assistant .fold > summary:hover { color: var(--text); }
+.msg.assistant .fold p { margin-top: 4px; }
+/* the reviewer's questions under the answer; the full memo sits in the result panel's 자세히 */
+.review-q { align-self: flex-start; max-width: 92%; margin-top: -4px; padding: 6px 12px; border-left: 3px solid var(--line-strong); font-size: 12px; color: var(--muted); }
+.review-q b { color: var(--text); }
+.review-q ul { margin: 4px 0 0; padding-left: 18px; }
+/* approval done: one card per approval, with 다시 내려받기 */
+.export-done { align-self: stretch; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--pass-surface); color: var(--pass-text); border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; }
+.export-done span { flex: 1; }
 /* the plan the turn produced, in the transcript (#90) */
 .plan-card { align-self: stretch; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; }
 .plan-card .t { flex: 1; min-width: 0; }
@@ -189,6 +207,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 .export-pop p { margin: 0 0 8px; }
 .export-pop div { display: flex; gap: 6px; }
 .export-pop[hidden] { display: none; }
+.export-pop .export-skip { color: var(--amber-text); }
+.export-pop .export-skip[hidden] { display: none; }
+.export-why { align-self: center; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.export-why:empty { display: none; }
 .btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
 .coll-label { font: 700 11px/1 var(--font); color: #ffffff; background: var(--red); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 .legend .before { background: transparent; border: 1px solid #ffffff; }
@@ -196,6 +218,12 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* collapse the agent panel to see the 3D large */
 body.focus3d .layout { grid-template-columns: 1fr; }
 body.focus3d .chat, body.focus3d .splitter { display: none; }
+/* waiting state: the 3D dims and a pill over it repeats the running step */
+#viewCanvas { transition: opacity 0.3s; }
+body.streaming #viewCanvas { opacity: 0.45; }
+.work-note { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; white-space: nowrap; }
+.work-note i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1s steps(2) infinite; }
+body.streaming .work-note { display: flex; }
 .tip { position: absolute; z-index: 3; pointer-events: none; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; white-space: nowrap; }
 
 /* ---------- case gate (start point) ---------- */
@@ -260,6 +288,9 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .result, body:not(.has-plan)
 .case-pop .item img { width: 44px; height: 33px; object-fit: cover; border-radius: var(--radius); background: #000; }
 .case-pop .item b { display: block; font-size: 13px; }
 .case-pop .item small { color: var(--muted); }
+.pop-confirm { padding: 4px; font-size: 12px; }
+.pop-confirm p { margin: 0 0 8px; }
+.pop-confirm div { display: flex; gap: 6px; }
 .case-pop .link-btn { align-self: flex-start; padding: 2px 4px; }
 .case-head .thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius); background: #000; }
 .case-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
