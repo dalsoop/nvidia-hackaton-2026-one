@@ -98,7 +98,11 @@
       <div id="caseCard" class="case-head">
         <img id="caseThumb" class="thumb" alt="" hidden />
         <div class="case-text"><span class="case-line"><b id="caseName">—</b><span id="caseKind" class="tag" hidden>샘플</span></span><span id="caseSub"></span></div>
-        <button id="caseBtn" class="btn ghost small" type="button" title="환자·스캔 바꾸기">바꾸기</button>
+        <button id="caseBtn" class="btn ghost small" type="button" title="다른 케이스 열기">바꾸기</button>
+        <div id="casePop" class="case-pop" hidden>
+          <div id="popCases"></div>
+          <button id="popPatients" class="link-btn" type="button">내 스캔 올리기 →</button>
+        </div>
       </div>
       <details id="condBox" class="cond">
         <summary>조건 · <span id="condSummary">—</span></summary>
@@ -110,29 +114,18 @@
         <label>IPR 한도 (면당 mm) <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25"></label>
         <label>단계 상한 (빈칸: 없음) <input id="cCap" type="number" min="1" step="1"></label>
         <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
+        <button id="fallbackBtn" class="btn ghost small cond-run" type="button" title="모델 없이, 이 조건으로 규칙 기반 루프만 돌립니다">이 조건으로 규칙 기반 계산 (모델 없이)</button>
       </fieldset>
       </details>
       <div id="transcript" class="transcript" aria-live="polite"></div>
       <div id="retryBar" class="retry-bar" hidden>
-        <button id="resendBtn" class="btn ghost small" type="button">다시 보내기</button>
+        <button id="resendBtn" class="btn primary small" type="button">다시 보내기</button>
+        <button id="retryFallback" class="btn ghost small" type="button" title="모델 없이 규칙 기반 루프만 돌립니다">규칙 기반으로 계산</button>
       </div>
+      <div class="chips" id="chips"></div>
 
       <div id="selChips" class="sel-chips" hidden></div>
       <form id="chatForm" class="composer">
-        <details id="plusMenu" class="plus">
-          <summary title="예시 문장 · 규칙 기반 폴백">+</summary>
-          <div class="menu">
-            <button id="fallbackBtn" class="menu-item" type="button" title="LLM 없이 규칙 기반 루프만 돌립니다">규칙 기반으로만 계산 (모델 없이)</button>
-            <div class="menu-label">예시 문장</div>
-            <div class="chips" id="chips">
-              <button class="chip">발치 없이 12개월 안에 끝나는 계획 짜줘. 앞니 총생부터 풀고.</button>
-              <button class="chip">발치는 절대 안 돼. 8개월 안에 끝나는 계획으로 짜줘.</button>
-              <button class="chip">이 처방 안에서 확장안과 IPR안을 비교해줘.</button>
-              <button class="chip">13번은 움직이지 말고 다시 짜줘.</button>
-              <button class="chip">IPR은 앞니(7~10번) 빼고 해줘.</button>
-            </div>
-          </div>
-        </details>
         <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요"></textarea>
         <button id="sendBtn" type="submit" class="btn primary">전송</button>
       </form>
@@ -146,10 +139,7 @@
         <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
         <div id="screenStart" class="start-pane">
           <div class="start-body">
-          <div class="start-head">
-            <h2>샘플 케이스로 시작하기</h2>
-            <button id="startClose" class="btn ghost small" type="button" hidden>← 작업 화면으로 돌아가기</button>
-          </div>
+          <h2>샘플 케이스로 시작하기</h2>
           <div id="sampleCards" class="cards sample-cards"></div>
           <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
           <div class="gate-foot">

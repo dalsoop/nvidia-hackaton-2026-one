@@ -102,7 +102,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .msg .cursor { display: inline-block; width: 7px; height: 1em; background: var(--green); vertical-align: text-bottom; animation: blink 1s steps(2) infinite; margin-left: 2px; }
 @keyframes blink { to { opacity: 0; } }
 
-.retry-bar { padding: 0 16px 8px; }
+.retry-bar { display: flex; gap: 6px; padding: 0 16px 8px; }
 .retry-bar[hidden] { display: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 8px; }
 .chip {
@@ -112,17 +112,6 @@ body.resizing { cursor: col-resize; user-select: none; }
 .chip:hover { border-color: var(--green); }
 
 .composer { display: flex; gap: 8px; padding: 0 16px 16px; }
-/* + in the composer: example sentences and the rule-based fallback (#90) */
-.plus { position: relative; }
-.plus > summary { list-style: none; width: 36px; height: 100%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line-strong); border-radius: var(--radius); cursor: pointer; color: var(--muted); font-size: 18px; }
-.plus > summary::-webkit-details-marker { display: none; }
-.plus[open] > summary, .plus > summary:hover { color: var(--green); border-color: var(--green); }
-.plus .menu { position: absolute; bottom: calc(100% + 6px); left: 0; width: 380px; max-width: 80vw; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
-.menu-item { font: inherit; font-size: 12px; text-align: left; background: none; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; color: var(--text); cursor: pointer; }
-.menu-item:hover { border-color: var(--green); }
-.menu-item:disabled { color: var(--faint); cursor: not-allowed; }
-.menu-label { font-size: 11px; color: var(--faint); padding: 4px 2px 0; }
-.plus .chips { padding: 0; }
 /* the agent's question card: one question, two or three choices (#90) */
 .question { align-self: stretch; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 13px; }
 .question p { margin: 0 0 8px; }
@@ -259,7 +248,16 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .result, body:not(.has-plan)
 .badge.ask { background: var(--hover); color: var(--text); border-color: var(--line-strong); }
 
 /* the case on the panel top (the design agent's artifact card) and the conditions folded under it (#90) */
-.case-head { display: flex; align-items: center; gap: 12px; margin: 12px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.case-head { position: relative; display: flex; align-items: center; gap: 12px; margin: 12px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.case-pop { position: absolute; right: 8px; top: calc(100% + 6px); width: 320px; max-width: calc(100% - 16px); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px; z-index: 6; display: flex; flex-direction: column; gap: 6px; }
+.case-pop[hidden] { display: none; }
+.case-pop .item { font: inherit; text-align: left; display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: none; border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; }
+.case-pop .item:hover { border-color: var(--green); }
+.case-pop .item.current { border-color: var(--green); }
+.case-pop .item img { width: 44px; height: 33px; object-fit: cover; border-radius: var(--radius); background: #000; }
+.case-pop .item b { display: block; font-size: 13px; }
+.case-pop .item small { color: var(--muted); }
+.case-pop .link-btn { align-self: flex-start; padding: 2px 4px; }
 .case-head .thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius); background: #000; }
 .case-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .case-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -272,11 +270,14 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .result, body:not(.has-plan)
 .cond > summary::before { content: "\25B8"; margin-right: 6px; }
 .cond[open] > summary::before { content: "\25BE"; }
 .cond > summary:hover { color: var(--text); }
+@keyframes flash { from { background: rgba(118, 185, 0, 0.3); } to { background: transparent; } }
+.cond.changed > summary { animation: flash 1.2s ease-out; }
 .constraints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; border:0; border-top:1px solid var(--line); margin:0; padding: 8px 12px 12px; }
 .constraints legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
 .constraints label { display:flex; flex-direction:column; gap:4px; font-size:12px; color: var(--muted); }
 .constraints input, .constraints select { min-width:0; color:var(--text); background:var(--panel-2); border:1px solid var(--line-strong); padding:6px 8px; border-radius:var(--radius); font: inherit; }
 .constraints input[type=checkbox] { align-self:flex-start; accent-color: var(--green); }
+.constraints .cond-run { grid-column: 1 / -1; justify-self: end; }
 button:disabled { cursor:not-allowed; }
 .review-memo { white-space:pre-wrap; font-size:13px; }
 #planNotice { overflow-wrap:anywhere; font-size:12px; color: var(--muted); margin: 0; }
@@ -335,7 +336,6 @@ button:disabled { cursor:not-allowed; }
 .start-body { width: min(840px, 100%); margin: auto; }
 .start-pane h2 { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
 .start-pane .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
-.start-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
 /* picking a sample: the start pane fades out while the case loads, then the workspace fades in */
@@ -356,4 +356,5 @@ body.start .case-head, body.start .cond, body.start .transcript, body.start .ret
 body.start .view-head, body.start .legend, body.start .stage-bar, body.start .result,
 body.start .sel-chips { display: none; }
 body.start .intro { flex: 1; }
-body.start .composer { display: none; }   /* nothing to send before a case is open */
+body.start .composer textarea, body.start .composer button { opacity: 0.5; pointer-events: none; }   /* the panel is a chat; input waits for a case */
+body.start .chips { display: none; }
