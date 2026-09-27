@@ -388,30 +388,6 @@ $("overlayBtn").addEventListener("click", (e) => {
 $("firstBtn").addEventListener("click", () => { stopPlay(); applyStage(0); });
 $("lastBtn").addEventListener("click", () => { if (state.plan) { stopPlay(); applyStage(state.plan.stages.length); } });
 
-// ---- speak instead of typing (Chrome's Web Speech API, Korean); hidden where the browser has none
-{
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SR) {
-    const mic = $("micBtn"), rec = new SR();
-    rec.lang = "ko-KR"; rec.interimResults = false; rec.continuous = false;
-    let on = false;
-    const stop = () => { on = false; mic.classList.remove("listening"); mic.textContent = "음성"; };
-    rec.onresult = (e) => {
-      const said = [...e.results].map((r) => r[0].transcript).join(" ").trim();
-      const box = $("chatInput");
-      box.value = (box.value ? box.value.trimEnd() + " " : "") + said;
-      box.focus();
-    };
-    rec.onend = stop; rec.onerror = stop;
-    mic.hidden = false;
-    mic.addEventListener("click", () => {
-      if (on) { rec.stop(); return; }
-      on = true; mic.classList.add("listening"); mic.textContent = "듣는 중";
-      rec.start();
-    });
-  }
-}
-
 // ------------------------------------------------------------------ API helpers
 async function api(path, opts) {
   const r = await fetch(path, opts);
