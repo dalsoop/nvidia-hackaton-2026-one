@@ -26,7 +26,8 @@ def parse_constraints(text: str) -> dict:
     "teeth-needed" when extraction is mentioned without teeth — the app does not pick them — "not-fdi" when a named
     tooth is not an upper-arch FDI number (11..18, 21..28), or "ambiguous" when teeth come with a refusal or a change
     ("14번과 24번 발치 금지", "이전엔 14번 발치였고 이번엔 비발치"): a prescription is never guessed."""
-    c = {"extraction": None, "months": None, "stage_cap": None, "order": "simultaneous"}
+    c = {"extraction": None, "months": None, "stage_cap": None, "order": "simultaneous",
+         "ipr_surfaces": parse_ipr_surfaces(text)}
     # teeth first: "이전 안은 비발치였고 이번엔 14번과 24번 발치" is a prescription of 14 and 24, not non-extraction
     from cualign.core.fdi import from_fdi
     teeth_list = r"((?:\d{1,2}\s*번?\s*(?:[,·]|과|와|및)?\s*)+)"
@@ -56,6 +57,38 @@ def parse_constraints(text: str) -> dict:
     return c
 
 
+def parse_ipr_surfaces(text: str) -> list[list[float]] | None:
+    """The per-contact IPR prescription in a request (#57), as [[a, b, mm], ...] in Universal numbers; None when the
+    request names no contact. "11-21·11-12·21-22 각 0.4mm": those contacts, 0.4 each. "14-15·24-25부터 앞쪽으로 총
+    3.6mm": every contact from each named one forward to the midline, the total shared evenly. "총 X" without 앞쪽으로
+    shares X over the named contacts; a contact without an amount is not a prescription (None)."""
+    from cualign.core.fdi import from_fdi
+    if not re.search(r"IPR", text, re.I):
+        return None
+    pairs = [(int(a), int(b)) for a, b in re.findall(r"(\d{2})\s*[-–]\s*(\d{2})", text)]
+    if not pairs:
+        return None
+    try:
+        pairs = sorted({tuple(sorted((from_fdi(a), from_fdi(b)))) for a, b in pairs})
+    except ValueError:
+        return None
+    each = re.search(r"각\s*(\d+(?:\.\d+)?)\s*mm", text)
+    total = re.search(r"총\s*(\d+(?:\.\d+)?)\s*mm", text)
+    if re.search(r"(부터|에서)\s*앞쪽으로", text):
+        contacts = set()
+        for a, b in pairs:            # forward = towards the 8|9 contact
+            lo, hi = (a, 8) if b <= 8 else (9, b)
+            contacts |= {(k, k + 1) for k in range(lo, hi)} | {(8, 9)}
+        pairs = sorted(contacts)
+    if each:
+        mm = float(each.group(1))
+    elif total:
+        mm = round(float(total.group(1)) / len(pairs), 4)
+    else:
+        return None
+    return [[a, b, mm] for a, b in pairs]
+
+
 def cmd_cases(args):
     from cualign.core.case import Case
     from cualign.core.synth import PRESETS, save_case
@@ -78,7 +111,8 @@ def cmd_plan(args):
         raise SystemExit("[확인 필요] 발치할 치아 번호를 함께 적어 주세요(FDI, 예: \"14번과 24번 발치\"). 앱은 발치 치아를 고르지 않습니다.")
     if c["extraction"] == "not-fdi":
         raise SystemExit("[확인 필요] 발치 치아는 상악 FDI 번호(11~18, 21~28)로 적어 주세요(예: \"14번과 24번 발치\").")
-    res = rule_based_plan(args.case, extraction=c["extraction"], stage_cap=c["stage_cap"], order=c["order"])
+    res = rule_based_plan(args.case, extraction=c["extraction"], stage_cap=c["stage_cap"], order=c["order"],
+                          ipr_surfaces=c["ipr_surfaces"])
     for r in res["tried"]:
         flag = "통과" if r["passed"] else f"실패 {r['by_type']}"
         print(f"[시도] {r['strategy']:14s} {r['n_stages']:3d}장 {r['months']:4.1f}개월  {flag}")

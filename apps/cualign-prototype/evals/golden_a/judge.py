@@ -105,8 +105,8 @@ def lint(specs: dict[str, Spec]) -> list[str]:
             errs.append(f"{s.id}: no sources")
         if not s.turns:
             errs.append(f"{s.id}: no turns")
-        if set(s.expect) != {"refuses_extraction", "stage_cap", "lock"}:
-            errs.append(f"{s.id}: expect must declare refuses_extraction, stage_cap, lock")
+        if set(s.expect) - {"ipr_surfaces"} != {"refuses_extraction", "stage_cap", "lock"}:
+            errs.append(f"{s.id}: expect must declare refuses_extraction, stage_cap, lock (ipr_surfaces optional, #57)")
         for gid in s.overrides:
             if gid not in {g["id"] for g in GLOBAL_CHECKS}:
                 errs.append(f"{s.id}: override for unknown global check {gid}")

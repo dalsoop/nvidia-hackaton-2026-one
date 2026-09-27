@@ -586,7 +586,7 @@ def test_runner_mirrors_the_ui_request():
     assert "stage_cap: cap, clear_stage_cap: cap === null, order:" in app
     patch = ConstraintPatch.model_validate(form_patch(Constraints()))
     assert patch.clear_stage_cap and patch.changes() == \
-        Constraints().model_dump(exclude={"allow_extraction"}) | {"extraction": [], "lock": [], "ipr_exclude": []}
+        Constraints().model_dump(exclude={"allow_extraction"}) | {"extraction": [], "lock": [], "ipr_exclude": [], "ipr_surfaces": []}
     assert "extraction: teeth(\"cExtract\")" in app            # the form sends the prescribed teeth (#56)
     assert ConstraintPatch.model_validate(form_patch(Constraints(stage_cap=52))).changes()["stage_cap"] == 52
 

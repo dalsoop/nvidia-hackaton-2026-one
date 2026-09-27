@@ -89,6 +89,7 @@ FIELD_NOTES = {
     "ipr_mm_per_surface": f"IPR 면당: IPR per tooth surface; the limit is {L.IPR_PER_SURFACE} mm",
     "ipr_applied_teeth": "IPR 적용 치아: teeth whose surfaces the plan reduces",
     "ipr_exclude": "IPR 제외 치아: teeth the dentist excluded from IPR",
+    "ipr_surfaces": "IPR 처방 접촉면: the contacts the dentist prescribed IPR on, with mm per contact (half off each tooth)",
     "rotation_deg": "회전 보정: derotation per tooth in degrees",
     "vertical_mm": "수직 보정: vertical correction per tooth",
     "locked": "고정 치아: teeth the dentist locked; they do not move",

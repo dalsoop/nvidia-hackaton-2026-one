@@ -1,0 +1,25 @@
+id: A19
+title: 접촉면별 IPR 처방은 그 접촉면에 그 양만 반영된다
+status: prd
+case: mild
+sources:
+  - "#57 cualign-prototype: IPR을 접촉면별 위치와 양으로 처방받는다 — 처방된 접촉면에 처방된 양만, 처방에 없는 접촉면은 위반"
+  - "PRD §4 진단·처방을 수행하지 않는다"
+turns:
+  - "mild 케이스, 발치 없이, 기간 제한 없이. IPR 은 11-21·11-12·21-22 접촉면에 각 0.4mm."
+expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
+  refuses_extraction: true
+  stage_cap: null
+  lock: []
+  ipr_surfaces: [[7, 8, 0.4], [8, 9, 0.4], [9, 10, 0.4]]   # Universal, as the tools store it
+checks:
+  - {id: A19-no-ask, type: no_ask_about, turn: 0, severity: S1}
+  - {id: A19-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
+  - {id: A19-surfaces, type: constraint_equals, turn: 0, name: propose_target, field: ipr_surfaces, value: [[7, 8, 0.4], [8, 9, 0.4], [9, 10, 0.4]], severity: S0}
+  - {id: A19-as-prescribed, type: ipr_as_prescribed, turn: 0, severity: S0}
+  - {id: A19-no-uniform, type: never_strategy, turn: all, strategy: expansion, severity: S0}
+  - {id: A19-stated, type: answer_contains_any, turn: 0, patterns: ['IPR 처방 12-11 0\.4mm, 11-21 0\.4mm, 21-22 0\.4mm'], severity: S1}
+  - {id: A19-validated, type: tool_count, turn: 0, name: [plan_stages, validate], min: 1, severity: S1}
+  - {id: A19-plan, type: answer_mentions_plans, turn: 0, min: 1, severity: S1}
+  - {id: A19-disclaimer, type: disclaimer, turn: 0, severity: S1}
+notes: 처방에 없는 접촉면을 깎으면 의사가 정하지 않은 치아를 갈므로 S0. 확장 단독 전략은 IPR 처방을 무시하므로 시도하지 않는다.

@@ -28,6 +28,7 @@
       "lock": [3, 14],
       "ipr_exclude": [8, 9],
       "ipr_limit_mm": 0.2,
+      "ipr_surfaces": [],
       "stage_cap": null,
       "order": "anterior_first"
     }

@@ -181,6 +181,11 @@ def _parse(text: str, st: dict) -> None:
     for grp in re.findall(r"([\d,\s]+)번\s*빼고", text):
         if "IPR" in text.upper():
             st["ipr_exclude"] |= {int(x) for x in re.findall(r"\d+", grp)}
+    from cualign.cli import parse_ipr_surfaces
+    from cualign.core.fdi import to_fdi
+    surfaces = parse_ipr_surfaces(text)          # "IPR 11-21·11-12 각 0.4mm" (#57), Universal
+    if surfaces is not None:
+        st["ipr_surfaces"] = [[to_fdi(a), to_fdi(b), mm] for a, b, mm in surfaces]     # the tool takes FDI
 
 
 def constraint_labels(cons: dict, months: int | None = None) -> str:
@@ -189,8 +194,13 @@ def constraint_labels(cons: dict, months: int | None = None) -> str:
         return ", ".join(map(str, xs)) + "번" if xs else "없음"
     cap = cons.get("stage_cap")
     cap_months = months if months and L.stage_cap_from_months(months) == cap else L.months_from_stages(cap) if cap else None
+    if cons.get("ipr_surfaces"):
+        from cualign.core.constraints import surfaces_ko
+        ipr = f"IPR 처방 {surfaces_ko(cons['ipr_surfaces'])}"
+    else:
+        ipr = f"IPR 제외 치아 {teeth(cons.get('ipr_exclude'))} · IPR 한도 면당 {cons.get('ipr_limit_mm'):g}mm"
     return (f"- 조건: 발치 치아 {teeth(cons.get('extraction'))} · 고정 치아 {teeth(cons.get('lock'))}"
-            f" · IPR 제외 치아 {teeth(cons.get('ipr_exclude'))} · IPR 한도 면당 {cons.get('ipr_limit_mm'):g}mm"
+            f" · {ipr}"
             f" · 단계 상한 {f'{cap}단계(약 {cap_months:g}개월)' if cap else '없음'} · 이동 순서 {ORDER_KO[cons.get('order')]}")
 
 
@@ -220,7 +230,7 @@ class ReferenceAgent:
         self.tools = tools
         self.st = {"case": case, "extraction": [], "known_extraction": False, "needs_teeth": False, "months": None,
                    "known_months": False, "order": "simultaneous", "lock": set(), "ipr_exclude": set(),
-                   "last": None}
+                   "ipr_surfaces": None, "last": None}
 
     @property
     def cap(self):
@@ -254,6 +264,8 @@ class ReferenceAgent:
             patch["lock"] = sorted(self.st["lock"])
         if self.st["ipr_exclude"]:
             patch["ipr_exclude"] = sorted(self.st["ipr_exclude"])
+        if self.st["ipr_surfaces"] is not None:
+            patch["ipr_surfaces"] = self.st["ipr_surfaces"]
         return patch
 
     def turn(self, text: str) -> Turn:
@@ -306,7 +318,8 @@ class ReferenceAgent:
             return "\n".join(notices + lines + [self._review(best["plan_id"]), DISCLAIMER])
 
         prev = self.st["last"]
-        allowed = ["extraction"] if cons.get("extraction") else [s for s in L.STRATEGIES if s != "extraction"]
+        allowed = (["extraction"] if cons.get("extraction") else ["ipr", "expansion_ipr"] if cons.get("ipr_surfaces")
+                   else [s for s in L.STRATEGIES if s != "extraction"])
         ladder = ["ipr"] if _ipr_question(text) else allowed
         tried, chosen = [], None
         for s in ladder:
