@@ -730,6 +730,22 @@ def _build_stages(moves: dict, yaw: dict, start: dict, dur: dict) -> list:
     return stages
 
 
+def _path_collisions(case: Case, stages: list, teeth: set | None = None) -> dict[tuple[int, int], int]:
+    """{pair: last aligner in which its hulls gain more than NEW_OVERLAP_MM3 of overlap}, over the pairs the stages
+    bring together (`teeth`: only pairs with one of these crowns)."""
+    out: dict[tuple[int, int], int] = {}
+    for si, disp in enumerate(stages, 1):
+        for a, b in _touching_pairs(case, disp):
+            if teeth is not None and a not in teeth and b not in teeth:
+                continue
+            if out.get((a, b), 0) >= si:
+                continue
+            ov = case._overlap(a, b, disp[a], disp[b], yaw_of(disp, a), yaw_of(disp, b))
+            if ov - case.pair_baseline(a, b) > NEW_OVERLAP_MM3:
+                out[(a, b)] = si
+    return out
+
+
 def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
     """Split current -> target into aligners. Every crown of a movement group moves straight to its place over the
     group's aligners (the largest move over the per-aligner limits), so neighbours keep their spacing evolving
@@ -770,15 +786,17 @@ def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
     stages = _build_stages(moves, yaw, start, dur)
     delayed: dict[int, int] = {}
     tried: set[tuple[int, int]] = set()
+    changed: set[int] | None = None          # after the first round only pairs of the crowns just delayed can differ
+    hits: dict[tuple[int, int], int] = {}
     for _ in range(SEQUENCE_ROUNDS):
         if not stages:
             break
-        hits: dict[tuple[int, int], int] = {}
-        for v in validate(case, stages):
-            if v["type"] == "collision":
-                pr = tuple(v["teeth"])
-                hits[pr] = max(hits.get(pr, 0), v["stage"])
+        if changed is not None:
+            hits = {pr: st for pr, st in hits.items() if not set(pr) & changed}
+        for pr, st in _path_collisions(case, stages, changed).items():
+            hits[pr] = st
         moved = False
+        changed = set()
         for (a, b), last in sorted(hits.items(), key=lambda x: x[1]):
             if last >= len(stages):      # the pair collides in the target itself: no order of moves resolves that
                 continue
@@ -788,7 +806,10 @@ def plan_stages(case: Case, target: dict, order: str = "simultaneous"):
                 if (wait, go) in tried or n_i[wait] == 0:
                     continue
                 tried.add((wait, go))
-                start[wait], dur[wait] = max(start[wait] + 1, last), n_i[wait]
+                start[wait] = max(start[wait] + 1, last)
+                changed.add(wait)
+                # the delayed crown still arrives with its group when it can (no faster than needed), else at full step
+                dur[wait] = max(n_i[wait], len(stages) - start[wait])
                 delayed[wait] = start[wait]
                 moved = True
                 break
