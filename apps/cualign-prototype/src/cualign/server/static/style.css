@@ -95,6 +95,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .msg.assistant p + p, .msg.assistant p + ul, .msg.assistant ul + p { margin-top: 8px; }
 .msg.assistant ul { margin: 0; padding-left: 18px; }
 .msg.assistant li + li { margin-top: 2px; }
+/* the fixed closing sentence reads as a footnote, not as part of the answer */
+.note { display: block; margin-top: 8px; font-size: 11px; color: var(--faint); }
 .msg.error { align-self: flex-start; background: var(--red-surface); border: 1px solid var(--line); border-left: 3px solid var(--red); color: var(--red-text); }
 .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: none; }
 .msg .cursor { display: inline-block; width: 7px; height: 1em; background: var(--green); vertical-align: text-bottom; animation: blink 1s steps(2) infinite; margin-left: 2px; }
@@ -143,7 +145,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .decision { align-self: stretch; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--green); border-radius: var(--radius); font-size: 12px; }
 .decision span { flex: 1; min-width: 180px; }
 .decision.done { border-left-color: var(--line-strong); color: var(--muted); }
-.composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: auto; line-height: 1.5; }
+.composer textarea { flex: 1; resize: none; max-height: 40vh; overflow-y: hidden; line-height: 1.5; }
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
 .trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -191,8 +193,12 @@ body.resizing { cursor: col-resize; user-select: none; }
 .view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; }
 .view-tools, .view-actions { display: flex; gap: 4px; }
 .view-actions { padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.export { position: relative; }
+.export-pop { position: absolute; right: 0; top: calc(100% + 6px); width: 320px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 12px; z-index: 6; }
+.export-pop p { margin: 0 0 8px; }
+.export-pop div { display: flex; gap: 6px; }
+.export-pop[hidden] { display: none; }
 .btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
-.canvas-wrap canvas.view-cube { position: absolute; inset: auto 12px 12px auto; width: 96px; height: 96px; cursor: pointer; }
 .coll-label { font: 700 11px/1 var(--font); color: #ffffff; background: var(--red); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 .legend .before { background: transparent; border: 1px solid #ffffff; }
 .legend .picked { background: var(--green); }
@@ -240,7 +246,7 @@ body.focus3d .chat, body.focus3d .splitter { display: none; }
 
 /* ---------- result ---------- */
 /* the stage bar and the result panel appear with the first plan (#90) */
-body:not(.has-plan) .stage-bar, body:not(.has-plan) .result { display: none; }
+body:not(.has-plan) .stage-bar, body:not(.has-plan) .result, body:not(.has-plan) .legend { display: none; }
 .result { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; max-height: 40vh; overflow-y: auto; }
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .plan-pick { display: flex; align-items: center; gap: 8px; }
@@ -256,7 +262,9 @@ body:not(.has-plan) .stage-bar, body:not(.has-plan) .result { display: none; }
 .case-head { display: flex; align-items: center; gap: 12px; margin: 12px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .case-head .thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius); background: #000; }
 .case-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.case-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .case-text b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { flex: none; font-size: 11px; line-height: 1.4; color: var(--green); border: 1px solid var(--green); border-radius: var(--radius); padding: 0 4px; }
 .case-text span { font-size: 12px; color: var(--muted); }
 .cond { margin: 8px 16px 0; border: 1px solid var(--line); border-radius: var(--radius); }
 .cond > summary { list-style: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 8px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -346,6 +354,6 @@ body:not(.start) .stage-bar, body:not(.start) .legend { animation: rise 0.35s ea
 }
 body.start .case-head, body.start .cond, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar, body.start .result,
-body.start .sel-chips, body.start .view-cube { display: none; }
+body.start .sel-chips { display: none; }
 body.start .intro { flex: 1; }
 body.start .composer { display: none; }   /* nothing to send before a case is open */

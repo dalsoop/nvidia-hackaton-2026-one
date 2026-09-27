@@ -97,7 +97,7 @@
       </div>
       <div id="caseCard" class="case-head">
         <img id="caseThumb" class="thumb" alt="" hidden />
-        <div class="case-text"><b id="caseName">—</b><span id="caseSub"></span></div>
+        <div class="case-text"><span class="case-line"><b id="caseName">—</b><span id="caseKind" class="tag" hidden>샘플</span></span><span id="caseSub"></span></div>
         <button id="caseBtn" class="btn ghost small" type="button" title="환자·스캔 바꾸기">바꾸기</button>
       </div>
       <details id="condBox" class="cond">
@@ -133,7 +133,7 @@
             </div>
           </div>
         </details>
-        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 말로 적어 주세요. 예: 발치 없이, 12개월 안에, 앞니 먼저"></textarea>
+        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요"></textarea>
         <button id="sendBtn" type="submit" class="btn primary">전송</button>
       </form>
     </section>
@@ -168,14 +168,20 @@
               <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" title="치료 전 치열을 흰 윤곽으로 겹쳐 봅니다">전후 겹쳐 보기</button>
               <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" title="대화 패널을 접고 3D를 크게 봅니다">3D 크게</button>
             </span>
-            <span class="view-actions">
-              <button id="approveBtn" class="btn primary small" disabled>의사 승인</button>
-              <a id="stlLink" class="btn ghost small disabled" href="#" download>STL 다운로드 (zip)</a>
+            <span class="view-actions export">
+              <button id="exportBtn" class="btn primary small" type="button" disabled title="의사 승인으로 확정하고 단계별 STL을 내려받습니다">내보내기</button>
+              <div id="exportPop" class="export-pop" hidden>
+                <p>이 초안을 의사 승인으로 확정하고 단계별 치아 STL(zip)을 내려받습니다. 조건·3D·검토 결과를 확인하셨나요?</p>
+                <div>
+                  <button id="exportGo" class="btn primary small" type="button">확정하고 내려받기</button>
+                  <button id="exportCancel" class="btn ghost small" type="button">취소</button>
+                </div>
+              </div>
+              <a id="stlLink" hidden download></a>
             </span>
           </span>
         </div>
         <!-- view cube: click a face to look from that side (#90) -->
-        <canvas id="viewCube" class="view-cube" width="96" height="96" title="면을 눌러 그쪽에서 봅니다"></canvas>
         <div id="tip" class="tip" hidden></div>
         <div class="legend">
           <span><i class="sw ivory"></i>치아 <small>(진해질수록 이동량 큼)</small></span>
@@ -209,21 +215,20 @@
             <button id="reviewBtn" class="btn ghost small" hidden>검토 다시 요청</button>
           </div>
         </div>
-        <p id="planNotice" aria-live="polite">계획 없음</p>
-        <dl id="resultCard" class="card">
-          <div><dt>전략</dt><dd id="rStrategy">—</dd></div>
-          <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
-          <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
-          <div><dt>위반</dt><dd id="rViol">—</dd></div>
-          <div><dt>의사 승인</dt><dd id="rApproval">—</dd></div>
-        </dl>
         <details class="plan-meta">
           <summary>자세히</summary>
-          <dl class="card">
+          <p id="planNotice" aria-live="polite">계획 없음</p>
+          <dl id="resultCard" class="card">
+            <div><dt>전략</dt><dd id="rStrategy">—</dd></div>
+            <div><dt>총 장수</dt><dd id="rStages">—</dd></div>
+            <div><dt>예상 기간</dt><dd id="rMonths">—</dd></div>
+            <div><dt>위반</dt><dd id="rViol">—</dd></div>
+            <div><dt>의사 승인</dt><dd id="rApproval">—</dd></div>
             <div><dt>계획 ID</dt><dd id="rPlan">—</dd></div>
             <div><dt>부모 계획</dt><dd id="rParent">—</dd></div>
             <div><dt>검토 에이전트</dt><dd id="rReview">—</dd></div>
           </dl>
+          <button id="revokeBtn" class="btn ghost small" type="button" hidden>승인 취소</button>
         </details>
         <p id="reviewMemo" class="review-memo"></p>
         <table class="viol" id="violTable">

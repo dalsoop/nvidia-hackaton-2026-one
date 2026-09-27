@@ -69,39 +69,10 @@ function resize() {
 }
 new ResizeObserver(resize).observe($("canvasWrap"));
 
-// View cube (#90): same world axes as the arch, so a face names the side the camera looks from.
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽", back: "뒤쪽", base: "바닥" };
-const cubeRenderer = new THREE.WebGLRenderer({ canvas: $("viewCube"), antialias: true, alpha: true });
-cubeRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-cubeRenderer.setSize(96, 96, false);
-const cubeScene = new THREE.Scene(), cubeCam = new THREE.OrthographicCamera(-1.7, 1.7, 1.7, -1.7, 0.1, 10);
-const CUBE_FACES = ["left", "right", "frontal", "back", "occlusal", "base"];   // BoxGeometry order: +x -x +y -y +z -z
-const CUBE_TEXT = { left: "좌측", right: "우측", frontal: "정면", back: "뒤쪽", occlusal: "교합면", base: "바닥" };
-const cube = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), CUBE_FACES.map((f) => {
-  const c = document.createElement("canvas"); c.width = c.height = 128;
-  const g = c.getContext("2d");
-  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = "#5e5e5e"; g.lineWidth = 6; g.strokeRect(3, 3, 122, 122);
-  g.fillStyle = f === "occlusal" || f === "frontal" ? "#76b900" : "#ffffff";
-  g.font = "700 30px Pretendard, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillText(CUBE_TEXT[f], 64, 66);
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshBasicMaterial({ map: tex });
-}));
-cubeScene.add(cube);
-$("viewCube").addEventListener("click", (e) => {
-  const r = e.currentTarget.getBoundingClientRect();
-  raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), cubeCam);
-  const hit = raycaster.intersectObject(cube)[0];
-  if (hit) setView(CUBE_FACES[hit.face.materialIndex]);
-});
-
 (function loop() {
   controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
-  cubeCam.position.copy(camera.position).sub(controls.target).normalize().multiplyScalar(4);
-  cubeCam.up.copy(camera.up); cubeCam.lookAt(0, 0, 0);
-  cubeRenderer.render(cubeScene, cubeCam);
   requestAnimationFrame(loop);
 })();
 
@@ -277,6 +248,7 @@ function onPointerMove(e) {
   if (m.userData.viol?.length) parts.push(`위반: ${m.userData.viol.join(", ")}`);
   if ((state.plan?.target?.locked ?? []).map(String).includes(id)) parts.push("고정");
   if ((state.plan?.target?.removed ?? []).map(String).includes(id)) parts.push("발치");
+  if (parts.length === 1) { tip.hidden = true; return; }
   tip.textContent = parts.join(" · ");
   tip.style.left = `${e.clientX - r.left + 12}px`;
   tip.style.top = `${e.clientY - r.top + 12}px`;
@@ -439,23 +411,24 @@ function updateActions() {
   const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
   for (const id of ["sendBtn", "fallbackBtn", "caseBtn", "planSelect"]) $(id).disabled = !!busy;
   $("constraints").disabled = !!busy;
-  $("approveBtn").disabled = !allowed || !p.passed || p.input_stale || !["passed", "skipped"].includes(p.review.status);
-  $("approveBtn").textContent = p?.approval ? "승인 취소" : "의사 승인";
+  const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
+  $("exportBtn").disabled = !exportable;
+  $("exportBtn").textContent = p?.approval ? "STL 내려받기" : "내보내기";
+  $("revokeBtn").hidden = !p?.approval;
+  $("revokeBtn").disabled = !allowed;
+  if (!exportable) $("exportPop").hidden = true;
   // Recovery when the agent skipped the reviewer or the review failed: the dentist asks for it on this plan.
   $("reviewBtn").hidden = !p || !["not_requested", "failed"].includes(p.review.status);
   $("reviewBtn").disabled = !allowed;
-  const link = $("stlLink"), downloadable = allowed && p.approval;
-  link.classList.toggle("disabled", !downloadable);
-  link.setAttribute("aria-disabled", String(!downloadable));
-  if (downloadable) link.href = "/api/plans/" + encodeURIComponent(p.plan_id) + "/stl.zip";
+  const link = $("stlLink");
+  if (allowed && p.approval) link.href = "/api/plans/" + encodeURIComponent(p.plan_id) + "/stl.zip";
   else link.removeAttribute("href");
   if (p && dirty) $("planNotice").textContent = "조건 변경됨 — 새 계획을 생성한 뒤 승인하세요. 현재 3D는 이전 계획입니다.";
 }
 async function approveCurrent() {
   const p = state.plan;
   if (!p || state.streaming || state.loading || constraintsDirty()) return;
-  const revoke = !!p.approval;
-  if (!revoke && !confirm("계획 " + p.plan_id + "의 조건·3D·검토 결과를 확인하고 승인하시겠습니까? 출력물은 단계별 치아 STL 초안입니다.")) return;
+  const revoke = !!p.approval;   // the 내보내기 popover asked the question; 승인 취소 needs none
   state.loading = true; updateActions();
   try {
     const result = await api("/api/plans/" + encodeURIComponent(p.plan_id) + "/approval",
@@ -692,7 +665,7 @@ async function openCheck(caseId, check) {
 // The case card on the panel top: a sample shows its thumbnail, finding and prescription; a scan its alias.
 function renderCaseCard(caseId, info) {
   const s = sampleOf(caseId), thumb = $("caseThumb");
-  thumb.hidden = !s;
+  thumb.hidden = !s; $("caseKind").hidden = !s;
   if (s) thumb.src = `samples/${encodeURIComponent(caseId)}.png`;
   $("caseName").textContent = s ? s.title.split(" — ")[0] : caseTitle(caseId, info.crowding_mm);
   $("caseSub").textContent = (s ? "처방 · " + s.prescription.replace(/\s*\(FDI[^)]*\)/, "") + " · " : "") + `총생 ${info.crowding_mm} mm`;
@@ -890,7 +863,8 @@ function renderResult(plan) {
   $("rParent").textContent = plan.parent_plan_id ?? "최초 계획";
   const review = plan.review;
   $("rReview").textContent = ({not_requested:"미실행",running:"검토 중",passed:"메모 생성 완료",failed:"검토 실패",skipped:"미실행 (규칙 폴백)"})[review.status] || review.status;
-  $("reviewMemo").textContent = review.message + (review.error ? " (" + review.error + ")" : "");
+  const memo = splitNote(review.message + (review.error ? " (" + review.error + ")" : ""));
+  $("reviewMemo").innerHTML = esc(memo.body.trim()) + (memo.note ? `<small class="note">${esc(memo.note)}</small>` : "");
   $("rApproval").textContent = plan.approval ? "의사 승인됨 · " + plan.approval.approved_at : "미승인";
 
   if (plan.input_stale) setBadge("이전 입력의 계획 — 승인·출력 불가", "fail");
@@ -926,7 +900,14 @@ function toolKo(name) {
 }
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const NOTE_RE = /\s*((?:이 계획은|검토 메모도)\s*초안입니다\.?\s*)?최종 판단은 의사가 합니다\.?\s*$/;
+function splitNote(text) {
+  const m = NOTE_RE.exec(text ?? "");
+  return m ? { body: text.slice(0, m.index), note: m[0].trim() } : { body: text ?? "", note: "" };
+}
 function renderMd(text) {
+  const { body, note } = splitNote(text);
+  text = body;
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
   const out = [];
   for (const block of (text ?? "").split(/\n{2,}/)) {
@@ -935,7 +916,7 @@ function renderMd(text) {
     if (lines.every((l) => /^\s*[-*•]\s+/.test(l))) out.push("<ul>" + lines.map((l) => "<li>" + inline(l.replace(/^\s*[-*•]\s+/, "")) + "</li>").join("") + "</ul>");
     else out.push("<p>" + lines.map(inline).join("<br>") + "</p>");
   }
-  return out.join("");
+  return out.join("") + (note ? `<small class="note">${esc(note)}</small>` : "");
 }
 function addMsg(role, text = "") {
   const div = document.createElement("div");
@@ -1193,7 +1174,9 @@ $("chatForm").addEventListener("submit", (e) => { e.preventDefault(); send($("ch
 function autosize() {
   const ta = $("chatInput");
   ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, innerHeight * 0.4) + "px";
+  const max = innerHeight * 0.4;
+  ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+  ta.style.overflowY = ta.scrollHeight > max ? "auto" : "hidden";
 }
 $("chatInput").addEventListener("input", autosize);
 $("homeBtn").addEventListener("click", () => showStart().catch((err) => addMsg("error", err.message)));
@@ -1312,10 +1295,19 @@ $("planSelect").addEventListener("change", (e) => loadPlan(e.target.value).catch
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
 $("playBtn").addEventListener("click", togglePlay);
 $("fallbackBtn").addEventListener("click", () => { $("plusMenu").open = false; runFallback(); });
-$("approveBtn").addEventListener("click", approveCurrent);
+$("exportBtn").addEventListener("click", () => {
+  if (state.plan?.approval) { $("stlLink").click(); return; }
+  $("exportPop").hidden = !$("exportPop").hidden;
+});
+$("exportCancel").addEventListener("click", () => { $("exportPop").hidden = true; });
+$("exportGo").addEventListener("click", async () => {
+  $("exportPop").hidden = true;
+  if (!state.plan?.approval) await approveCurrent();
+  if (state.plan?.approval && $("stlLink").hasAttribute("href")) $("stlLink").click();
+});
+$("revokeBtn").addEventListener("click", approveCurrent);
 $("reviewBtn").addEventListener("click", reviewCurrent);
 $("constraints").addEventListener("input", () => { renderCondSummary(); updateActions(); });
-$("stlLink").addEventListener("click", e => { if (e.currentTarget.classList.contains("disabled")) e.preventDefault(); });
 canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-btns button")) b.addEventListener("click", () => setView(b.dataset.view));
