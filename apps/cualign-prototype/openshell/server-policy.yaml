@@ -6,6 +6,15 @@
 #   API 키는 `--provider nvidia` 로 붙인다. 샌드박스 안에는 placeholder 만 들어가고
 #   프록시가 요청을 내보낼 때 실제 키로 바꾼다. 모델 3개(super·lightning·content-safety)를 그대로 쓸 수 있다.
 # - three.js 는 브라우저가 CDN 에서 받으므로 샌드박스 네트워크 허용이 필요 없다.
+#
+# 이 파일이 정하는 경계와 정하지 않는 경계 (docs/openshell.md «네 경계» 와 같은 말):
+# - 네트워크: 목적지·메서드·경로 허가다. `protocol: rest` 로 요청을 검사하지만 규칙은 메서드와 경로만 본다.
+#   허용된 NIM 요청의 본문(계획 요약·대화)이 무엇을 담는지는 보지 않는다.
+# - 파일(Landlock): `compatibility: best_effort` 다. Landlock 을 적용하지 못하면 샌드박스는 위 파일 규칙 없이
+#   뜨고 심각도 높은 기록만 남긴다(적용하지 못하면 시작하지 않는 값은 hard_requirement).
+# - 시스콜(seccomp): 이 파일이 소유하지 않는다. 정책 스키마에 항목이 없고 OpenShell 런타임 쪽 설정이다.
+# - 프로세스: `sandbox` 사용자로 시작한다(Dockerfile.openshell 의 uid·gid 10001, 비루트).
+# filesystem_policy·landlock·process 는 샌드박스를 만들 때 고정되고, network_policies 만 실행 중에 바꿀 수 있다.
 version: 1
 
 filesystem_policy:

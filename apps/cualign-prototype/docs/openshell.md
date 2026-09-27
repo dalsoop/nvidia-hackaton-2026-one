@@ -1,8 +1,23 @@
 # OpenShell — 도구 실행 샌드박스
 
-`openshell/policy.yaml` (`version: 1`): 파일시스템 읽기 전용 목록 + `/tmp` 쓰기, `run_as_user: sandbox`, 아웃바운드 **기본 차단** — 명시된 호스트·메서드·경로만 허용.
+`openshell/policy.yaml` (`version: 1`): 파일시스템 읽기 전용 목록 + `/tmp` 쓰기, `run_as_user: sandbox`, 아웃바운드 **기본 차단** — 명시된 호스트만 허용(엔드포인트에 `protocol`이 없어 메서드·경로 규칙은 검사되지 않는다).
 현재 정책은 접근 경계를 확인한 실험 자산이며, cuAlign 서버에 통합되어 있지 않다.
 메시를 NIM에 보내는 설계가 아니다. 서버 통합 시 NIM 호출과 출력 디렉터리의 허용 범위를 별도로 설계해야 한다.
+
+## 네 경계
+
+OpenShell 샌드박스의 경계는 네 가지다(NVIDIA DLI NemoClaw [04a Safety](https://nvdli.github.io/NemoClawDLI/nemoclaw/04a-safety.html)).
+두 정책 파일의 헤더도 같은 말로 적는다. 필드의 뜻은 OpenShell [정책 스키마](https://docs.nvidia.com/openshell/latest/how-it-works/policies/schema)를 따른다.
+
+| 경계 | 이 저장소의 정책 파일이 정하는 것 | 정하지 않는 것 |
+|---|---|---|
+| 네트워크 | 목적지(호스트·포트·실행 파일)와, `protocol`이 있는 엔드포인트의 메서드·경로 | 허용된 요청 본문의 의미. `server-policy.yaml`은 NIM chat POST를 허가할 뿐, 그 요청에 담긴 계획 요약·대화를 검사하지 않는다 |
+| 파일(Landlock) | 읽기 전용·읽기 쓰기 경로. `compatibility: best_effort` | `best_effort`에서는 Landlock을 적용하지 못하면 샌드박스가 파일 규칙 없이 뜨고 심각도 높은 기록만 남긴다. 적용하지 못하면 시작하지 않는 값은 `hard_requirement`다 |
+| 시스콜(seccomp) | 없음 | 정책 스키마에 항목이 없다. OpenShell 런타임 쪽 설정이며 이 저장소는 규칙을 두지 않는다 |
+| 프로세스 | `run_as_user`·`run_as_group: sandbox`(서버 이미지는 `Dockerfile.openshell`의 uid·gid 10001, 비루트) | — |
+
+- **바꿀 수 있는 시점:** `filesystem_policy`·`landlock`·`process`는 샌드박스를 만들 때 고정되고, `network_policies`만 실행 중에 바꿀 수 있다.
+- **막힌 결과의 해석:** 명령이 막혔다는 결과만으로 어느 경계가 막았는지 단정하지 않는다. 예를 들어 아래 기록의 `/app` 쓰기 거부는 Landlock 이 아니라 비루트 사용자의 파일 권한으로도 날 수 있다. 어느 경계인지는 `openshell logs`의 판정 기록(네트워크는 `policy:`·`engine:`)이나 Landlock 적용 기록으로 확인한다.
 
 ## 실측 (WSL 2 Ubuntu-24.04 · Docker Desktop · OpenShell 0.0.116 · 2026-09-23)
 
@@ -83,8 +98,8 @@ colima처럼 `/var/run/docker.sock`이 실제 데몬을 가리키지 않으면 �
 - `src/cualign/sandbox_compat.py`: NIM 비동기 클라이언트(langchain-nvidia-ai-endpoints)가 aiohttp 세션을 `trust_env` 없이 만들어 `HTTPS_PROXY`를 무시하고 DNS 오류(`ClientConnectorDNSError`)로 실패했다. 프록시 변수가 있을 때만 aiohttp 세션 기본값을 `trust_env=True`로 둔다. 샌드박스 밖에서는 아무것도 바꾸지 않는다.
 - `Dockerfile.openshell`: 의존성 설치를 소스 복사보다 먼저 두어 코드 수정 후 재빌드 시간을 줄였다.
 
-L7 규칙은 엔드포인트에 `protocol: rest`가 있어야 검사된다(정책 스키마). 위 실험 기록의 "L7 규칙이 반대로 나옴"은
-기존 `policy.yaml`에 이 필드가 없어서일 가능성이 있다. 재확인은 하지 않았다.
+L7 규칙은 엔드포인트에 `protocol: rest`가 있어야 검사된다. 정책 스키마는 «`protocol`이 없으면 `access`와 `rules`는
+효과가 없다»고 적는다. 위 실험 기록의 "L7 규칙이 반대로 나옴"은 `policy.yaml`에 이 필드가 없어서로 보인다. 재실험은 하지 않았다.
 
 ### 이 환경에서 알려진 함정
 

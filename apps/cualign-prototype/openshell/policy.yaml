@@ -1,3 +1,8 @@
+# 실험용 정책 — 샌드박스 안 curl 로 아웃바운드 차단과 파일 쓰기를 관찰한 자산이다(docs/openshell.md «실측»).
+# cuAlign 서버의 경계가 아니다. 서버 정책은 server-policy.yaml 이고, 두 파일을 한 경계로 부르지 않는다.
+# 이 파일이 정하는 것은 네트워크 허가, 파일(Landlock best_effort: 적용하지 못하면 규칙 없이 뜸), 프로세스
+# 사용자(sandbox)다. 시스콜(seccomp)은 이 파일 밖이다. 엔드포인트에 `protocol` 이 없어 아래 메서드·경로
+# 규칙은 검사되지 않고, 호스트·포트·실행 파일만 허가한다.
 version: 1
 filesystem_policy:
   include_workdir: true
