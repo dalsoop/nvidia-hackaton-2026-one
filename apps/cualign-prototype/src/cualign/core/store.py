@@ -34,7 +34,8 @@ def _plan_from_file(data: dict) -> dict:
     rotations = data.get("rotations") or []
     data["stages"] = [_Stage(st, rotations[i] if i < len(rotations) else None) for i, st in enumerate(data.get("stages") or [])]
     if isinstance(data.get("constraints"), dict):
-        data["constraints"] = Constraints.model_validate(data["constraints"])
+        removed = (data.get("target") or {}).get("removed") or (data.get("info") or {}).get("removed") or ()
+        data["constraints"] = Constraints.from_saved(data["constraints"], removed)   # files from before #56 too
     data["_from_disk"] = True
     return data
 
@@ -103,7 +104,8 @@ class Store:
                 raise ValueError("parent plan must exist in the same case")
             constraints = record["constraints"]
             if isinstance(constraints, dict):
-                return Constraints.model_validate(constraints)
+                removed = (record.get("target") or {}).get("removed") or (record.get("info") or {}).get("removed") or ()
+                return Constraints.from_saved(constraints, removed)
             return constraints
         return self.case_constraints.get(case_id, Constraints())
 

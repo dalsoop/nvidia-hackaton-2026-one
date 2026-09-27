@@ -131,3 +131,14 @@ def test_cli_does_not_plan_extraction_without_teeth(monkeypatch):
     args = type("A", (), {"request": "발치 허용해서 짜줘", "case": "moderate", "export": None})()
     with pytest.raises(SystemExit, match="발치할 치아 번호"):
         cli.cmd_plan(args)
+
+
+def test_plan_files_from_before_56_read_back():
+    # plan files keep constraints; before #56 they said allow_extraction and never which teeth (store reads them, #93)
+    old = {"allow_extraction": True, "lock": [], "ipr_exclude": [], "ipr_limit_mm": 0.25, "stage_cap": None,
+           "order": "simultaneous"}
+    assert Constraints.from_saved(old, removed=[12, 5]).extraction == (5, 12)     # an extraction plan: what it removed
+    assert Constraints.from_saved(old, removed=[]).extraction == ()               # only allowed: non-extraction
+    assert Constraints.from_saved({**old, "allow_extraction": False}).extraction == ()
+    new = Constraints(extraction=(4, 13)).model_dump(mode="json")
+    assert Constraints.from_saved(new, removed=[]).extraction == (4, 13)          # new files carry the teeth

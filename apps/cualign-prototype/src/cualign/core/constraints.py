@@ -88,6 +88,16 @@ class Constraints(BaseModel):
     def allow_extraction(self) -> bool:
         return bool(self.extraction)
 
+    @classmethod
+    def from_saved(cls, data: dict, removed=()) -> "Constraints":
+        """A constraints snapshot read back from a plan file. Files written before #56 have allow_extraction and no
+        teeth: an extraction plan's prescription is the teeth it removed; a plan that removed none only had
+        extraction allowed, which is non-extraction now. Never picks teeth."""
+        if "extraction" not in data and "allow_extraction" in data:
+            data = {k: v for k, v in data.items() if k != "allow_extraction"}
+            data["extraction"] = sorted(set(removed or ()))
+        return cls.model_validate(data)
+
     def patched(self, changes: dict) -> "Constraints":
         changes = _legacy_extraction(changes, self.extraction)
         return Constraints.model_validate({**self.model_dump(exclude={"allow_extraction"}), **changes})
