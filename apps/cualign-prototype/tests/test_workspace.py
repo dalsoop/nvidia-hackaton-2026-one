@@ -4,6 +4,7 @@ The planner's instructions moved from configs/workflow.yml into workspace/AGENTS
 that wording, so the string NAT hands the model must stay byte-identical to the one inlined before the move.
 """
 import hashlib
+import re
 from pathlib import Path
 
 from nat.utils.io.yaml_tools import yaml_load
@@ -14,6 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 WS = ROOT / "workspace"
 # sha256 of workflow.additional_instructions as inlined in configs/workflow.yml at 4808146 (5585 chars).
 INSTRUCTIONS_SHA256 = "9d74b31b783e54dc3597e914da226a91dd6cdec81c5909be76bf0b7a8c53b65b"
+# sha256 of src/agents/templates/HEARTBEAT.md in the openclaw 2026.7.1 package of the NemoClaw desk image.
+OPENCLAW_HEARTBEAT_SHA256 = "ecce558615751a35aa173731e892ff3993f44bb4f5a1219c0a02994790c85528"
+HANGUL = re.compile("[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3]")
 
 
 def _instructions() -> str:
@@ -62,7 +66,22 @@ def test_convention_files_and_no_memory_folder():
     for name in ("SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md", "README.md"):
         assert (WS / name).is_file(), name
     assert not (WS / "memory").exists()   # memory is off (MEMORY.md says why)
-    assert "주기적으로 스스로 하는 작업은 없다" in (WS / "HEARTBEAT.md").read_text(encoding="utf-8")
+
+
+def test_tools_md_names_tools_and_points_to_their_source():
+    text = (WS / "TOOLS.md").read_text(encoding="utf-8")
+    for path in ("skills/cualign-planner/SKILL.md", "skills/cualign-clinical-rules/SKILL.md"):
+        assert path in text and (WS / path).is_file()
+    for path in ("src/cualign/server/mcp_server.py", "src/cualign/agent/register.py", "docs/nemoclaw.md"):
+        assert path in text and (ROOT / path).is_file()
+    assert "--deny-tool" in text and "null" not in text   # argument meanings stay in the docstrings and the skill
+
+
+
+def test_heartbeat_md_is_the_openclaw_default():
+    # openclaw 2026.7.1 src/agents/templates/HEARTBEAT.md: comments only, so OpenClaw skips the heartbeat model call.
+    assert hashlib.sha256((WS / "HEARTBEAT.md").read_bytes()).hexdigest() == OPENCLAW_HEARTBEAT_SHA256
+
 
 
 def test_skills_live_only_in_workspace():
