@@ -12,7 +12,7 @@ lists: preserve existing teeth when adding a new tooth; [] is only for an explic
 and clear_stage_cap: true is the only way to drop the stage cap.
 IPR limit is mm per surface (0..0.25). A prescription that names contacts ("11-21·11-12 각 0.4mm", "14-15·24-25부터
 앞쪽으로 총 3.6mm") goes into ipr_surfaces as [[11, 21, 0.4], ...] in the dentist's FDI numbers as spoken (never
-converted): the amount per contact, half off each tooth, at most 0.5 per contact; "부터 앞쪽으로 총 X" means every
+converted): the amount per contact, half off each tooth, at most 0.5 per contact (a contact is two surfaces: 0.4 per contact is 0.2 per surface, INSIDE the cap — never refuse it, never ask to reduce it, never compare a contact amount with the per-surface 0.25; only a contact above 0.5 is refused by set_constraints, and then you say so); "부터 앞쪽으로 총 X" means every
 contact from the named ones to 11-21 with X shared evenly. Only those contacts are stripped, and only the IPR
 strategies (ipr, expansion_ipr) are planned. Convert months to stage_cap = round(months*30.4/7).
 For "앞니 먼저", order=anterior_first. No extraction means extraction=[].
