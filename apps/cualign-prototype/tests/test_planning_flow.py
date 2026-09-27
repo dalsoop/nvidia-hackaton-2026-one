@@ -175,8 +175,8 @@ def test_nat_tools_keep_constraints_select_earlier_candidate_and_deny_export(iso
             assert CURRENT_RUN.get().selected_plan_id == selected != plans[-1]["plan_id"]
             # Re-stating the same conditions after targets exist is a no-op, not a hard error:
             # raising here made the ReAct agent retry until its iteration limit.
-            assert await tool("set_constraints").ainvoke(ConstraintPatch(lock=[13])) == c.model_dump(mode="json")
-            assert await tool("set_constraints").ainvoke(ConstraintPatch()) == c.model_dump(mode="json")
+            assert await tool("set_constraints").ainvoke(ConstraintPatch(lock=[13])) == register.constraints_json(c)
+            assert await tool("set_constraints").ainvoke(ConstraintPatch()) == register.constraints_json(c)
             # A real change after targets exist is refused as a normal result, never an exception:
             # a tool error makes the ReAct agent retry with new arguments until it runs out.
             refused = await tool("set_constraints").ainvoke(ConstraintPatch(lock=[]))
@@ -216,7 +216,7 @@ def test_set_constraints_tool_treats_null_as_keep(isolated):
             try:
                 all_null = dict.fromkeys(["allow_extraction", "lock", "ipr_exclude",
                                           "ipr_limit_mm", "stage_cap", "order"])
-                assert await fn.ainvoke(all_null) == Constraints(lock=(13,), stage_cap=30).model_dump(mode="json")
+                assert await fn.ainvoke(all_null) == register.constraints_json(Constraints(lock=(13,), stage_cap=30))
                 partial = await fn.ainvoke({**all_null, "order": "anterior_first"})
                 assert partial["order"] == "anterior_first" and partial["lock"] == [13] and partial["stage_cap"] == 30
                 cleared = await fn.ainvoke({**all_null, "clear_stage_cap": True})
