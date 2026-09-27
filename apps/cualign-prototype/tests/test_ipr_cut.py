@@ -118,9 +118,13 @@ def test_real_scan_cut_is_closed_and_exact():
     c = st.constraints_for(cid)
     target, info = planner.propose_target(case, "ipr", constraints=c)
     cut = planner.cut_case(case, info)
-    assert sorted(cut.ipr_cut) == [7, 8, 9, 10]                     # FDI 12..22, the prescription
+    assert sorted(cut.ipr_cut) == [7, 8, 9, 10]                     # FDI 12..22: the prescribed contacts (#57)
+    half = {}
+    for a, b, mm in c.ipr_surfaces:
+        half[a] = half.get(a, 0.0) + mm / 2
+        half[b] = half.get(b, 0.0) + mm / 2
     for i in cut.ipr_cut:
         assert cut.mesh[i].is_watertight
-        assert case.contact_width(i) - cut.contact_width(i) == pytest.approx(c.ipr_limit_mm, abs=WIDTH_TOL_MM)
+        assert case.contact_width(i) - cut.contact_width(i) == pytest.approx(half[i], abs=WIDTH_TOL_MM)
     for i in (2, 3, 4, 5, 6, 11, 12, 13, 14, 15):
         assert cut.mesh[i] is case.mesh[i]

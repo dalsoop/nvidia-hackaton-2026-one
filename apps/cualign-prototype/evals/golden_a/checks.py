@@ -102,7 +102,8 @@ ORDER_KO = {"simultaneous": "동시", "anterior_first": "앞니 먼저", "sequen
 VIOLATION_KO = {"space_deficit": "공간 부족", "collision": "충돌", "move_limit": "이동량 초과", "rotation_limit": "회전량 초과",
                 "stage_cap": "단계 상한 초과", "locked_tooth": "고정 치아 이동", "ipr_limit": "IPR 한도 초과",
                 "ipr_excluded": "IPR 제외 치아 사용", "extraction_forbidden": "허용되지 않은 발치",
-                "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간"}
+                "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간",
+                "ipr_unprescribed": "처방에 없는 IPR"}
 # A strategy named as a plan ("확장 전략", "확장 안", "- 확장:", "확장(위반)"), not a word inside a condition such as
 # "IPR 한도", "발치 허용" or "비발치". Longest first; a match is consumed so "확장 + IPR" is not also 확장 and IPR.
 _NAMED = r"(?=\s*(?:전략|안|[:：(（·→,]|$))"
@@ -476,6 +477,25 @@ def constraint_superset(trace: Trace, turn="last", field="", value=(), name=None
             have = {int(x) for x in (cons.get(field) or [])}
             if not set(value) <= have:
                 return False, f"turn {i}: {n} built with {field}={sorted(have)}, missing {sorted(set(value) - have)}"
+    return True, "ok"
+
+
+@check
+def ipr_as_prescribed(trace: Trace, turn="last", **_) -> Result:
+    """Every plan/target computed under a per-contact IPR prescription (#57) strips exactly the prescribed contacts:
+    its ipr_surfaces (tool result) name no other contact and no other amount."""
+    for i, t in turns_of(trace, turn):
+        for c in planner_calls(t):
+            for r in plan_rows(c):
+                cons = r.get("constraints") if isinstance(r.get("constraints"), dict) else None
+                info = r.get("target") if isinstance(r.get("target"), dict) else r
+                if not cons or not cons.get("ipr_surfaces") or not info.get("ipr_surfaces"):
+                    continue
+                want = {(int(a), int(b)): float(mm) for a, b, mm in cons["ipr_surfaces"]}
+                got = {(int(a), int(b)): float(mm) for a, b, mm in info["ipr_surfaces"]}
+                extra = sorted(pr for pr, mm in got.items() if pr not in want or abs(mm - want[pr]) > 1e-6)
+                if extra:
+                    return False, f"turn {i}: {c.name} stripped {extra} beyond the prescription {sorted(want)}"
     return True, "ok"
 
 

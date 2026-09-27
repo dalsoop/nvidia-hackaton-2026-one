@@ -1,7 +1,10 @@
 """Confirmed planning constraints. Values are snapshots, never implicit resets.
 
 Extraction is the dentist's prescription of which teeth to extract (#56): `extraction` lists them (Universal
-numbers), () is non-extraction. The app never picks the teeth. `allow_extraction` survives only as a derived value
+numbers), () is non-extraction. The app never picks the teeth. IPR is prescribed per contact (#57): `ipr_surfaces`
+lists (tooth, neighbour, mm) - the amount taken off that contact in total, half from each tooth - and the plan strips
+those contacts only. With the list empty the older uniform rule applies (every contact of the teeth not in
+`ipr_exclude`, `ipr_limit_mm` per contact). The cap is IPR_PER_SURFACE per tooth surface, so 2x that per contact. `allow_extraction` survives only as a derived value
 in the output (screens, logs, evaluations read it); as an input, false clears the list and true without teeth is
 refused with ExtractionTeethNeeded, so the caller asks the dentist which teeth.
 """
@@ -10,7 +13,19 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validat
 from .limits import IPR_PER_SURFACE, PREMOLARS
 
 Tooth = Annotated[int, Field(strict=True, ge=2, le=15)]
+Surface = tuple[Tooth, Tooth, float]         # (tooth, its neighbour, mm at that contact) - Universal numbers
 Order = Literal["simultaneous", "anterior_first", "sequential"]
+CONTACT_MAX_MM = 2 * IPR_PER_SURFACE         # a contact is two tooth surfaces
+
+
+def _fdi_pair(a: int, b: int) -> str:
+    from .fdi import to_fdi
+    return f"{to_fdi(a)}-{to_fdi(b)}"
+
+
+def surfaces_ko(surfaces) -> str:
+    """IPR prescription as the dentist reads it: '11-21 0.4mm, 12-11 0.4mm' (FDI), '' when there is none."""
+    return ", ".join(f"{_fdi_pair(a, b)} {mm:g}mm" for a, b, mm in surfaces)
 EXTRACTABLE = frozenset(PREMOLARS)   # the layout (anchored on the first molars) supports premolar extraction only
 
 
@@ -57,6 +72,7 @@ class Constraints(BaseModel):
     lock: tuple[Tooth, ...] = ()
     ipr_exclude: tuple[Tooth, ...] = ()
     ipr_limit_mm: float = Field(default=IPR_PER_SURFACE, ge=0, le=IPR_PER_SURFACE, allow_inf_nan=False)
+    ipr_surfaces: tuple[Surface, ...] = ()
     stage_cap: int | None = Field(default=None, gt=0)
     order: Order = "simultaneous"
 
@@ -64,6 +80,33 @@ class Constraints(BaseModel):
     @classmethod
     def _accept_legacy(cls, data):
         return _legacy_extraction(data) if isinstance(data, dict) else data
+
+    @field_validator("ipr_surfaces")
+    @classmethod
+    def contacts_within_the_cap(cls, value):
+        """Each surface names two neighbouring teeth once, with a positive amount within the cap."""
+        out: dict[tuple[int, int], float] = {}
+        for a, b, mm in value:
+            a, b = sorted((a, b))
+            if b != a + 1:
+                raise ValueError(f"IPR 접촉면은 이웃한 두 치아여야 합니다: {_fdi_pair(a, b)}")
+            if (a, b) in out:
+                raise ValueError(f"IPR 접촉면이 두 번 처방되었습니다: {_fdi_pair(a, b)}")
+            if not mm > 0:
+                raise ValueError(f"IPR 양은 0보다 커야 합니다: {_fdi_pair(a, b)} {mm:g}mm")
+            if mm > CONTACT_MAX_MM + 1e-9:
+                raise ValueError(f"IPR 처방 {_fdi_pair(a, b)} {mm:g}mm: 접촉면당 최대 {CONTACT_MAX_MM:g}mm"
+                                 f"(치아 면당 {IPR_PER_SURFACE:g}mm)를 넘습니다")
+            out[(a, b)] = float(mm)
+        return tuple((a, b, mm) for (a, b), mm in sorted(out.items()))
+
+    @model_validator(mode="after")
+    def _prescribed_contacts_not_excluded(self):
+        hit = sorted({t for a, b, _ in self.ipr_surfaces for t in (a, b) if t in self.ipr_exclude})
+        if hit:
+            from .fdi import label
+            raise ValueError(f"IPR 제외 치아에 IPR 이 처방되었습니다: {label(hit)}")
+        return self
 
     @field_validator("extraction", "lock", "ipr_exclude")
     @classmethod
@@ -78,8 +121,9 @@ class Constraints(BaseModel):
         teeth = lambda ts: ", ".join(str(to_fdi(t)) for t in ts) + "번" if ts else "없음"   # noqa: E731
         cap = f"{self.stage_cap}단계(약 {round(self.stage_cap * WEAR_DAYS / DAYS_PER_MONTH, 1)}개월)" if self.stage_cap else "없음"
         order = {"simultaneous": "동시", "anterior_first": "앞니 먼저", "sequential": "순차"}[self.order]
-        return (f"발치 치아 {teeth(self.extraction)} · 고정 치아 {teeth(self.lock)} · IPR 제외 치아 {teeth(self.ipr_exclude)} · "
-                f"IPR 한도 면당 {self.ipr_limit_mm:g}mm · 단계 상한 {cap} · 이동 순서 {order}")
+        ipr = (f"IPR 처방 {surfaces_ko(self.ipr_surfaces)} · " if self.ipr_surfaces else
+               f"IPR 제외 치아 {teeth(self.ipr_exclude)} · IPR 한도 면당 {self.ipr_limit_mm:g}mm · ")
+        return f"발치 치아 {teeth(self.extraction)} · 고정 치아 {teeth(self.lock)} · {ipr}단계 상한 {cap} · 이동 순서 {order}"
 
     @field_validator("extraction")
     @classmethod
@@ -117,7 +161,8 @@ class Constraints(BaseModel):
         return Constraints.model_validate({**self.model_dump(exclude={"allow_extraction"}), **changes})
 
     def check_case(self, ids):
-        if (set(self.lock) | set(self.ipr_exclude) | set(self.extraction)) - set(ids):
+        contacts = {t for a, b, _ in self.ipr_surfaces for t in (a, b)}
+        if (set(self.lock) | set(self.ipr_exclude) | set(self.extraction) | contacts) - set(ids):
             raise ValueError("constraint refers to a tooth absent from this case")
 
 
@@ -137,9 +182,31 @@ class ConstraintPatch(BaseModel):
     lock: list[Tooth] | None = None
     ipr_exclude: list[Tooth] | None = None
     ipr_limit_mm: float | None = Field(default=None, ge=0, le=IPR_PER_SURFACE, allow_inf_nan=False)
+    ipr_surfaces: list[list[float]] | None = Field(
+        default=None, description="IPR the dentist prescribed per contact, FDI numbers: [[11, 21, 0.4], [12, 11, 0.4]] = "
+                                  "0.4 mm at the 11-21 contact and at the 12-11 contact (half off each tooth). Only these "
+                                  "contacts are stripped. [] = no per-contact prescription (the uniform rule with "
+                                  "ipr_exclude and ipr_limit_mm applies). Never invent contacts or amounts.")
     stage_cap: int | None = Field(default=None, gt=0)
     clear_stage_cap: bool = False
     order: Order | None = None
+
+    @field_validator("ipr_surfaces")
+    @classmethod
+    def fdi_to_universal(cls, value):
+        """The dentist's FDI pairs, stored as the app's Universal numbers (#113)."""
+        if value is None:
+            return None
+        from .fdi import from_fdi
+        out = []
+        for row in value:
+            if len(row) != 3:
+                raise ValueError("IPR 처방은 [치아, 이웃 치아, mm] 세 값이어야 합니다")
+            a, b, mm = row
+            if a != int(a) or b != int(b):
+                raise ValueError("IPR 처방의 치아 번호는 정수(FDI)여야 합니다")
+            out.append([from_fdi(int(a)), from_fdi(int(b)), float(mm)])
+        return out
 
     def changes(self):
         result = {k: v for k, v in self.model_dump().items()
