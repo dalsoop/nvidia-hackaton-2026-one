@@ -43,3 +43,31 @@ def test_extraction_plan_without_ipr_cuts_nothing(tmp_path, monkeypatch):
         client.post("/api/plan", json={"case_id": "poseidon-000097"})
         data = client.get("/api/cases/poseidon-000097/mesh").json()
         assert data["plan_id"] is not None and data["teeth_cut"] == {} and data["ipr_cut"] == {}
+
+
+def test_plan_cut_gives_the_cut_crowns_alone(tmp_path, monkeypatch):
+    """Step flow (11): switching plans on screen needs only the cut crowns, not the gum and dentition again."""
+    with _client(tmp_path, monkeypatch) as client:
+        client.post("/api/cases/poseidon-000131/activate")
+        client.post("/api/plan", json={"case_id": "poseidon-000131"})
+        plans = client.get("/api/plans?case_id=poseidon-000131").json()["plans"]
+        ipr = next(p for p in plans if p["strategy"] == "ipr")
+        cut = client.get(f"/api/plans/{ipr['plan_id']}/cut").json()
+        full = client.get(f"/api/cases/poseidon-000131/mesh?plan_id={ipr['plan_id']}").json()
+        assert set(cut) == {"plan_id", "teeth_cut", "ipr_cut"} and cut["plan_id"] == ipr["plan_id"]
+        assert cut["teeth_cut"] == full["teeth_cut"] and cut["ipr_cut"] == full["ipr_cut"]   # the same computation
+        assert "gum" not in cut and "teeth" not in cut
+        assert client.get("/api/plans/p000000/cut").status_code == 404
+
+
+def test_target_cut_gives_the_target_crowns_alone(tmp_path, monkeypatch):
+    from cualign.core.service import PlanningService
+    with _client(tmp_path, monkeypatch) as client:
+        cid, case = store.STORE.load_case("poseidon-000131")
+        tid = PlanningService(store.STORE).target(cid, "ipr", store.STORE.constraints_for(cid))
+        cut = client.get(f"/api/cases/poseidon-000131/targets/{tid}/cut").json()
+        full = client.get(f"/api/cases/poseidon-000131/mesh?target_id={tid}").json()
+        assert set(cut) == {"plan_id", "target_id", "teeth_cut", "ipr_cut"} and cut["target_id"] == tid and cut["plan_id"] is None
+        assert cut["teeth_cut"] == full["teeth_cut"] and cut["ipr_cut"] == full["ipr_cut"] and set(cut["ipr_cut"]) == {"7", "8", "9", "10"}
+        assert client.get(f"/api/cases/poseidon-000097/targets/{tid}/cut").status_code == 404
+        assert client.get("/api/cases/poseidon-000131/targets/t0/cut").status_code == 404

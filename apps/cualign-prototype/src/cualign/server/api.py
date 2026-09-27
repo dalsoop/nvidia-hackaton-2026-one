@@ -298,6 +298,23 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             out["active_plan"] = {"plan_id": ids[-1], "constraints": _constraint_dump(STORE._record(ids[-1]))}
         return out
 
+    @app.get("/api/plans/{plan_id}/cut")
+    async def plan_cut(plan_id: str):
+        """The IPR-cut crowns of this plan alone: {plan_id, teeth_cut, ipr_cut} (what mesh?plan_id= adds, without the
+        gum and the whole dentition again — the screen switches plans often, step flow (11))."""
+        p = require_plan(plan_id)
+        cid, case = STORE.load_case(p["case_id"])
+        return ipr_cut_view(cid, case, plan_id)
+
+    @app.get("/api/cases/{case_id}/targets/{target_id}/cut")
+    async def target_cut(case_id: str, target_id: str):
+        """The IPR-cut crowns of a target arrangement alone: {plan_id: null, target_id, teeth_cut, ipr_cut}."""
+        t = STORE.targets.get(target_id)
+        if t is None or t["case_id"] != case_id:
+            raise HTTPException(404, "목표 배열이 없습니다")
+        cid, case = STORE.load_case(case_id)
+        return ipr_cut_view(cid, case, None, target_id)
+
     @app.get("/api/cases/{case_id}/targets/{target_id}")
     async def get_target(case_id: str, target_id: str):
         """The target arrangement a target turn made, in the shape of a plan response with one stage (the final

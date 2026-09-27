@@ -159,7 +159,8 @@ async def main(case_id):
                 # an extraction prescription (000097) allows only the extraction plan (#56): the right answer to a
                 # comparison of non-extraction strategies is a Korean question back, no tool, no plan
                 rec["note"] = "extraction prescribed: comparison refused with a question, by design"
-                rec["pass"] = rec["tools"] == [] and rec["korean"] and "?" in rec["answer"] and rec["plan_error"] is None \
+                # the model may call compare_strategies first (it returns the extraction plan only) and then ask: no plan selected
+                rec["pass"] = not rec["plan_selected"] and rec["korean"] and "?" in rec["answer"] and rec["plan_error"] is None \
                     and not rec["universal_numbers"] and not rec["internal_terms"]
             else:
                 rec["pass"] = "cualign__compare_strategies" in rec["tools"] and rec["korean"] and len(lines) >= 2 \
