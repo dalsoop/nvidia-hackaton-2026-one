@@ -11,6 +11,8 @@ import re
 
 from .checks import (CAP_RE, CARRIERS, EXTRACTION_NO_RE, EXTRACTION_YES_RE, MEMO_ANY_RE, PLAN_ID_RE, VALIDATING, plan_rows,
                      planner_calls, review_ok, selected_plan)
+from cualign.core.limits import stage_cap_from_months
+
 from .reference_agent import REVIEWER_EMPTY
 from .trace import ToolCall, Trace
 
@@ -38,12 +40,34 @@ def drop_disclaimer(tr: Trace):
     return tr
 
 
+def _numbers(x) -> set[float]:
+    """Every numeric leaf in a tool result."""
+    if isinstance(x, bool):
+        return set()
+    if isinstance(x, (int, float)):
+        return {float(x)}
+    if isinstance(x, dict):
+        return set().union(*(_numbers(v) for v in x.values())) if x else set()
+    if isinstance(x, (list, tuple)):
+        return set().union(*(_numbers(v) for v in x)) if x else set()
+    return set()
+
+
 def fabricate_stage_count(tr: Trace):
+    """A stage count no tool gave. 3n + 7 unless that happens to be a number the tools or the dentist did give (the
+    stage cap 52 for a 15-stage plan): then the next number that is not."""
     t = _last(tr)
     m = re.search(r"(\d+)(장|단계)", t.answer)
     if not m:
         return None
-    t.answer = t.answer[: m.start()] + f"{int(m.group(1)) * 3 + 7}{m.group(2)}" + t.answer[m.end():]
+    known = set().union(*(_numbers(c.result) for tt in tr.turns for c in tt.calls)) if any(tt.calls for tt in tr.turns) else set()
+    for tt in tr.turns:
+        known |= {float(x) for x in re.findall(r"\d+(?:\.\d+)?", tt.user)}
+        known |= {float(stage_cap_from_months(int(v))) for v in re.findall(r"(\d+)\s*개월", tt.user)}
+    n = int(m.group(1)) * 3 + 7
+    while float(n) in known:
+        n += 1
+    t.answer = t.answer[: m.start()] + f"{n}{m.group(2)}" + t.answer[m.end():]
     return tr
 
 
