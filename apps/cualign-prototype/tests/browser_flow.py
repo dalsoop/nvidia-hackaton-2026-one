@@ -9,6 +9,7 @@ from pathlib import Path
 import socket
 import sys
 import threading
+import time
 
 import httpx
 import uvicorn
@@ -103,9 +104,8 @@ async def main():
             errors = []
             page.on("pageerror", lambda error: (errors.append(str(error)), print("PAGEERROR:", error, file=sys.stderr)))   # visible when a step times out
             page.on("dialog", lambda dialog: dialog.accept())
-            # ?case=<id> is the documented dev/test hook; "moderate" is a synthetic preset with no start-screen
-            # card (#90 — the start screen only offers Poseidon3D samples), so it opens the workspace deterministically.
-            await page.goto(url + "/ui/?case=moderate")
+            # ?case=<id> is the documented dev/test hook; the base sample is 000097 「심한 덧니, 발치 필요」 (#15).
+            await page.goto(url + "/ui/?case=poseidon-000097")
             await page.wait_for_function("!document.body.classList.contains('start')")
 
             # Rule-based plan from the sidebar's 조건 tab (no model). The plan on screen is the canvas's data-plan-id;
@@ -120,6 +120,24 @@ async def main():
             await page.wait_for_function(f"{plan_on_screen}.startsWith('p') && !document.querySelector('#fallbackBtn').disabled"
                 f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}")
             parent = await on_screen()
+            # The design flow (#15): the rule-based plan lands on 단계; 초기 → 셋업 → 목표 → 단계 by the next button, the step
+            # in the address, a reload and the strip's buttons keep it.
+            assert await page.locator("body").evaluate("b => b.classList.contains('step-stages')")
+            await page.locator('#flow button[data-step="initial"]').click()
+            await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.stage === 0")
+            assert not await page.locator(".stage-bar").is_visible()
+            assert "&step=" not in await page.evaluate("location.hash")
+            await page.locator("#stepNext").click()      # 셋업 보기
+            await page.wait_for_function("document.body.classList.contains('step-setup')")
+            assert (await page.evaluate("location.hash")).endswith("&step=setup")
+            await page.locator("#stepNext").click()      # 목표 배열 보기
+            await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.stage === window.__cualign.state.plan.stages.length")
+            await page.locator("#stepNext").click()      # 단계 만들기
+            await page.wait_for_function("document.body.classList.contains('step-stages') && window.__cualign.state.stage === 0")
+            assert await page.locator(".stage-bar").is_visible()
+            await page.reload()
+            await page.wait_for_function("document.body.classList.contains('step-stages') && document.body.classList.contains('has-plan')", timeout=120000)
+            assert await on_screen() == parent
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == parent
             assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"] .viewing').is_visible()
             assert await page.locator("#stlLink").get_attribute("href") is None
@@ -137,8 +155,10 @@ async def main():
             assert await page.locator('#rail button[data-go="export"]').is_enabled()      # the rail item is the visible 내보내기
             await page.locator('#rail button[data-go="export"]').click()
             await page.wait_for_selector("#exportPop:not([hidden])")
-            async with page.expect_download() as download:
+            t0 = time.monotonic()
+            async with page.expect_download(timeout=180000) as download:      # a real scan's zip takes a while (#119; 000097 with the filled gum)
                 await page.locator("#exportGo").click()
+            print(f"STL download started after {time.monotonic() - t0:.1f}s")
             await page.wait_for_function("!!window.__cualign.state.plan?.approval")
             assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
@@ -159,6 +179,7 @@ async def main():
             await page.wait_for_function("!!window.__cualign.state.plan?.approval")
 
             # Editing the conditions makes the on-screen (approved) plan stale for export until replanned.
+            await page.locator("#tabCond").click()      # the flow moved the sidebar to 단계 표 (#15)
             await page.locator("#cLock").fill("13")
             assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator('#rail button[data-go="export"]').is_disabled()
@@ -206,8 +227,9 @@ async def main():
             assert await page.locator("#cExclude").input_value() == "11, 12, 21, 22"      # Universal 7,8,9,10 in FDI (#113)
             assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
-            # a comparison turn adds one card per plan it made; the selected one is 보는 중
-            assert await page.locator("#planList .plan-row").count() >= 3
+            # a comparison turn adds one card per plan it made (an extraction prescription makes one, #56); the selected one is
+            # 보는 중. Both lists count: the reload in the flow walk above folded the preview into 지난 계획
+            assert await page.locator("#plans .plan-row").count() >= 3
             assert await page.locator(f'#plans .plan-row.current[data-plan="{selected}"] .viewing').is_visible()
             assert await page.locator(".msg.error").last.is_visible()
             decision2 = page.locator(".decision").last
@@ -248,7 +270,7 @@ async def main():
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
 
             # Reload keeps the case and the plan on screen via the #case=…&plan=… address (#90).
-            assert (await page.evaluate("location.hash")) == f"#case=moderate&plan={child}"
+            assert (await page.evaluate("location.hash")) == f"#case=poseidon-000097&plan={child}&step=stages"
             case_name_before = await page.locator("#caseName").inner_text()
             await page.reload()
             await page.wait_for_function("!document.body.classList.contains('start')")
@@ -261,13 +283,13 @@ async def main():
             # plan (#92), never the previous case's plan.
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
-            await page.locator('#sampleCards .case-card[data-id="poseidon-000097"]').click()      # card → detail under it
-            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14
+            await page.locator('#sampleCards .case-card[data-id="poseidon-000001"]').click()      # card → detail under it
+            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle:not(.ipr-dot)").count() == 14   # crowns only: 000001 also draws IPR-exclusion dots
             assert await page.locator('#sampleCards > #clDetail.in-cards').count() == 1      # under the card row
             assert await page.locator("#intro").is_visible()   # the intro panel is back on the left (③)
             await page.locator("#dOpen").click()
             await page.wait_for_function(f"(p) => !document.body.classList.contains('start') && document.body.classList.contains('has-plan') && {plan_on_screen} !== p", arg=child)
-            assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000097")
+            assert (await page.evaluate("location.hash")).startswith("#case=poseidon-000001")
             assert await page.locator("#stlLink").get_attribute("href") is None
 
             # My scan, the two blocking states of 입력 확인 (#104): a gap in the arch is unsupported (no planning),
@@ -371,6 +393,31 @@ async def main():
             await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
             assert "가짜 안내문" in await page.locator(".msg.error").last.inner_text()
             assert await page.locator("#resendBtn").is_visible()
+            # a sample case offers 건너뛰기 instead of 에이전트 없이 계산 on a failed turn (#15): the plan on screen is adopted
+            assert await page.locator("#skipBtn").is_visible() and await page.locator("#retryFallback").is_hidden()
+            await page.locator("#skipBtn").click()
+            await page.wait_for_function("document.body.classList.contains('step-stages') && document.querySelector('#retryBar').hidden")
+            assert "건너뜀" in await page.locator("#plans .plan-row.current .pill").inner_text()
+            assert await page.locator(".msg.system", has_text="건너뛰었습니다").count() == 1
+            # with a recorded answer (contract 12-replay.md, shaped here until the server ships it): the answer plays in
+            # the agent's place, grey with its date, and its plan_selected lands like an agent turn
+            recorded_plan = await on_screen()
+            async def replay_route(route):
+                assert route.request.post_data_json["step"] == "plan", route.request.post_data_json
+                await route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                    "recorded": True, "answer_md": "녹화된 답입니다 (가짜). 처방대로 발치 계획을 짰습니다.",
+                    "plan_selected": {"plan_id": recorded_plan, "parent_plan_id": None, "review": {"status": "skipped"}},
+                    "plans": [], "recorded_at": "2026-09-28T10:00:00"}))
+            await page.route("**/api/cases/poseidon-000131/replay", replay_route)
+            await page.locator("#chatInput").fill("처방대로 계획 짜줘")      # a new failed turn (건너뛰기 hid the retry bar)
+            await page.locator("#sendBtn").click()
+            await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            await page.locator("#skipBtn").click()
+            await page.wait_for_selector(".msg.assistant.recorded")
+            assert "녹화된 답 · 2026-09-28" in await page.locator(".msg.assistant.recorded .recorded-tag").inner_text()
+            assert "녹화된 답입니다" in await page.locator(".msg.assistant.recorded").inner_text()
+            assert await on_screen() == recorded_plan and await page.locator("body").evaluate("b => b.classList.contains('step-stages')")
+            await page.unroute("**/api/cases/poseidon-000131/replay")
             await page.unroute("**/chat/stream")
 
             assert not errors, errors

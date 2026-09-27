@@ -332,18 +332,22 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 > 이 절과 아래 절은 화면 설계다. 표시: **[현재]**는 main에 있는 동작, **[목표]**는 아직 없는 동작과 관련 이슈.
 
 ```
-진입 모달: 케이스 카드 ─열기→ 작업 화면 (왼쪽 대화 / 오른쪽 3D: Initial)
-  → 처방을 말하거나 칩을 누른다 → Treatment 레이어에 반영(IPR 깎기, 발치 치아 제거)
-  → 목표 배열 만들기
-      ├ 실패 → 무엇이·얼마나·어디서 표시 → 처방 조정(CAD 중 추가 조정) → 다시 만들기
-      └ 성공 → Initial ↔ Treatment 전환으로 전후 확인
-  → 단계 나누기 → 슬라이더·재생으로 단계 확인
+시작 화면: 샘플 카드 / 환자 목록 ─디자인 시작하기→ 작업 화면 (왼쪽 대화 / 오른쪽 3D)
+  진행 표시 4칸 [현재, #15]: 초기 → 셋업 → 목표 → 단계 (누르면 그 상태로, 주소 &step= 에 남음)
+    초기  스캔 그대로(치아 전부·잇몸, 표시 없음, 슬라이더 없음) · 왼쪽: 처방 한 줄 + 「셋업 보기」
+    셋업  처방이 하는 일을 3D 에: 발치 치아 빨간 강조(아직 있음) · IPR 접촉면 노란 점 · 확장이면 좌우 화살표 · 왼쪽: 총생→확보 한 줄 + 「목표 배열 보기」
+    목표  목표 배열(마지막 단계, 발치 치아 사라짐) · 「단계 만들기」
+    단계  슬라이더·단계 표·계획 카드 (첫 진입은 치료 전 0)
+  서버 계산은 케이스를 열 때 한 번(규칙 미리보기); 화면만 단계적으로 드러낸다
+  에이전트 대화·칩은 어느 상태에서든 → 계획이 오면 「단계」로 · 샘플 케이스는 8초 지난 턴·실패한 턴에 「건너뛰기」(지금 계획 채택)
   → 승인하고 내보내기 (단계별 프린트용 모형 STL)
 ```
 
 - **시작 상태** [목표, #46·#90]: 모달 없이 작업 화면에서 시작한다. 왼쪽 대화 패널 자리에 서비스가 무엇인지 한 문단으로 설명하고, 오른쪽 3D 자리에 샘플 케이스 카드를 둔다. 처방 폼·칩·범례·결과는 케이스를 연 뒤에 보인다. 케이스 카드마다 교합면 썸네일, 케이스 번호, 한 줄 설명, 진단 처방 요약. 작은 링크 "내 스캔 올리기". [현재] 그렇게 한다(#95). 소개는 악궁 라인아트 + 한 줄 + 「샘플 케이스 고르기」이고, 케이스를 열면 패널 맨 위에 케이스 머리(제목·바꾸기 — 소견·처방은 「조건」 탭), 그 아래 이 케이스의 계획 카드 목록이 온다(#111, #13 polish). 조건은 오른쪽 사이드바의 「조건」 탭이다.
 - **입력 확인 화면은 없앤다** [목표, #53]: 3D 위 치아 번호와 `status-check` 라벨이 대신한다.
-- **목표 배열과 단계를 나눈다** [목표]: [현재] 에이전트 도구는 나뉘어 있지만(`propose_target`, `plan_stages`) 한 요청에서 이어서 부르고 화면은 계획만 보여준다.
+- **목표 배열과 단계를 나눈다**: [현재] 화면이 초기·셋업·목표·단계로 나눠 드러낸다(#15). 에이전트 도구는 나뉘어 있지만(`propose_target`, `plan_stages`) 한 요청에서 이어서 부른다.
+- **화면 전환** [현재, #15]: 시작 → 디자인은 격자 열 폭이 한 번에 바뀌고 렌더러를 같은 작업에서 리사이즈한다(가로 흔들림 없음); 시작 패널은 케이스가 뜰 때까지 흐려진 채 남고 새 패널은 불투명도만으로 나타난다. 새로고침은 `<head>` 인라인 스크립트가 주소를 읽어 `html.booting.h-case|h-check` 를 붙이고 라우터가 그 화면을 열 때까지 `.layout` 을 숨긴다.
+- **3D 회전** [현재, #15]: OrbitControls, 위 축은 치근 쪽(−z) 고정 — 끌어도 기울지 않는다. 시점 버튼은 카메라 위치·목표만 맞춘다. 더블클릭 = 교합면 시점.
 - **승인과 내보내기는 한 버튼** [목표, #53]: [현재] 「내보내기」 하나이고 왼쪽 레일에만 있다(승인 전 흐리게, 잠긴 이유는 툴팁). 팝오버에서 확정하면 승인 뒤 단계별 STL(zip)을 내려받고, 승인 취소는 계획 목록 아래 「계획 N · 아직 검토 전 …」 접이식 줄 안에 있다(#90, #111, #13 polish).
 
 ## 3D 레이어
@@ -397,12 +401,13 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 |---|---|
 | 상단 바 | `#homeBtn`(로고 = `<a href="#start">`, 어느 화면에서든 시작 화면으로 — 상세 접힘 · 목록 스크롤 맨 위; 주소가 이미 `#start` 여도 click 이 리셋한다) |
 | 레일 | `#rail button[data-go=start|case|export]` = 환자 · 디자인 · 내보내기(3개, #13 polish). 켜진 것 `.on`(시작·`#patients`·`#check=` 는 환자, 그 밖은 디자인) · 갈 수 없으면 `disabled`(라벨만, 부제 없음) · 내보내기는 `#exportBtn` 상태를 따르고 `title` 에 잠긴 이유 · `.done`. `data-go=patients|check` 라우팅은 코드에 남아 있으나 레일 버튼은 없다 |
-| 화면 뼈대 | `.layout` 그리드 = 레일 64px · 대화 `var(--chat-w, 380px)` · 경계 6px(`#splitter`) · 3D `1fr`(최소 420) · 경계 6px(`#sideSplitter`) · 사이드바 `var(--side-w, 400px)`(320~640, localStorage, 두 번 눌러 초기화). 두 경계 모두 가운데 점 3개 손잡이, hover 초록 (980px 미만은 한 열) |
+| 화면 뼈대 | `.layout` 그리드 = 레일 64px · 대화 `var(--chat-w, 380px)` · 경계 6px(`#splitter`) · 3D `1fr`(최소 420) · 경계 6px(`#sideSplitter`) · 사이드바 `var(--side-w, 400px)`(320~640, localStorage, 두 번 눌러 초기화). 두 경계 모두 가운데 점 3개 손잡이, hover 초록; 대화 경계는 시작 화면에서도 끌리고 같은 `--chat-w`·저장값을 쓴다 (980px 미만은 한 열) |
 | 시작 상태 | `body.start` · 왼쪽 `#intro`(치아 그림 + 문장 하나, 링크 없음) · 오른쪽 `#screenStart .start-body`(가운데 정렬, 최대 1100px): 「환자」 제목 + `#toPatients`(새 환자) · 샘플 `#sampleCards .case-card[data-id]`(`.thumb` 카드 폭 썸네일 · `.cid` · `.rx` 소견 · `.meta` 「총생 7.9 mm · 발치」 한 줄, 상태·계획 수 없음, 선택 `.on` = 아래 초록 선) · 「환자 목록」 표 `#clRows .case-row[data-id]` 4열 = `.c-case`(별칭 `b` + 스캔 `small`) · `.c-st`(상태 점) · `.c-rx`(처방, 없으면 「조건 기본값」) · `.c-plan`(대표 계획 = 서버 `plan`: 승인본 중 최근, 없으면 최근 「확장 + IPR · 8장」, 없으면 —), 테두리 상자 없이 줄로만 구분, 비면 `.empty` · 상세 `#clDetail`(누른 카드/행 바로 아래로 옮겨짐, 카드면 `.in-cards`; 머리 없이 `#dClose` 만 오른쪽 · `#dArch` 치아 배열(발치 빨간 테두리 · IPR 제외 `.ipr-dot` 회색 점) · `#dFacts` 한 줄 — 샘플은 「치아 14개」(총생은 카드 `.meta` 에만), 환자는 「치아 14개 · 총생 1.6 mm · 번호 확인됨 · 계획 3개 · 위반 없음/N건」 · `#dRxLabel` `#dRx` 처방 문장은 샘플만(환자 행은 표의 처방 열이 위에 있어 `hidden`) · `#dReason` 이유 한 줄(악궁·공간 관점, `core/samples.py` `reason` → `/api/case-list` `reason`; 환자 행은 없어서 `:empty` 로 숨김) · 카드 왼쪽 초록 선 없음, `#dOpen` 은 오른쪽 열 맨 아래 · `#dChips` 처방과 다른 조건만 「·」로 이은 흐린 한 줄 · `#dOpen` 디자인 시작하기/입력 확인 열기) · 한 번 누름 = 펼침/접힘, 두 번 = 바로 열기 · 입력창(`#chatForm`)과 칩(`#chips`)은 `body.no-case` 로 숨김 |
+| 디자인 흐름 | `#flow button[data-step=initial|setup|target|stages]`(`.on` 현재, `.done` 지난 것) · `#stepPane` `#stepLine`(초기: 처방 / 셋업: 총생→확보·전략·발치·확장 / 목표: 단계 수·개월) `#stepNext`(셋업 보기 / 목표 배열 보기 / 단계 만들기; 단계에선 숨김) · `body.step-*` · 주소 `#case=<id>[&plan=…][&step=setup|target|stages]` · 셋업 3D 표시 `.ipr-mark`(노란 점) `.exp-arrow` · 초기·셋업엔 슬라이더·범례·mm 라벨 없음, 사이드바 단계 표·규칙 탭 흐림 |
 | 케이스 머리 | `#caseCard` `#caseName`(제목 한 줄, `title` 에 처방) `#caseBtn`(다른 케이스) `#casePop` `#popCases .item[data-id]` `#popPatients` |
 | 계획 목록 | `#plans`(케이스에 계획이 있거나 계획 생성이 실패했으면 보임) (머리 옆 숫자 없음 — 지난 계획은 접힘 안에서만) · `#planFail`(계획 0개 + 실패: `#planFailMsg` 서버 문구 그대로 · `#planFailCond .tag` 조건 · `#planFailRetry` 이 조건으로 다시 계산 — 에이전트 없이) · `#planList .plan-row[data-plan]`(`.n` 계획 N · `.what` 전략·장수·개월 · `.pill.fail/pass/ok/warn` = 글자만: 「위반 n건 · 검토 전」/「규칙 통과 · 검토 완료」/승인됨/이전 스캔 기준 — 규칙과 검토 상태를 한 줄에 · 보는 계획은 `.current` + `.viewing`, 나머지는 `button[data-act=view]` 보기) · `#oldPlans`(접힌 지난 계획, `#oldPlansN` `#oldPlanList`) · `#planReview`(details, 검토 결과가 온 뒤(완료·실패)나 승인된 뒤에만 보임 — 미검토 계획엔 없음) `#reviewLine`(검토 메모/검토) `#reviewMemo` `#reviewBtn`(검토 다시 요청) `#revokeBtn`(승인 취소) · 계획 id 는 카드 `title` 과 주소에만 |
-| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(후속 질문 카드, `.opts button[data-message|data-fill|data-action]`, 선택지에 `small` 힌트가 있으면 `.opts.stack`; 케이스를 연 첫 안내는 카드가 아니라 말풍선 + 칩 3개) · 「검토 질문」 블록 · `.decision [data-act=revert]`(새 안이 3D를 대체했다는 한 줄 + 되돌리기) · `.done`(내려받기 완료) · `#planNotice`(재계획 중·실패 한 줄, 입력창 위) · `#retryBar` `#resendBtn` `#retryFallback`(에이전트 없이 계산, #75) |
-| 입력 | `#chips .chip[data-message|data-fill]` · `#selChips` · `#chatForm` `#chatInput`(placeholder 에 Enter 안내) `#sendBtn`(보내기 아이콘) |
+| 대화 | `#transcript` · `.msg.user/.assistant/.error/.system`(답변 안 `.row`·`details.fold`·`.note`) · `.trace`(접힌 도구 진행) · `.question`(후속 질문 카드, `.opts button[data-message|data-fill|data-action]`, 선택지에 `small` 힌트가 있으면 `.opts.stack`; 케이스를 연 첫 안내는 카드가 아니라 말풍선 + 칩 3개) · 「검토 질문」 블록 · `.decision [data-act=revert]`(새 안이 3D를 대체했다는 한 줄 + 되돌리기) · `.done`(내려받기 완료) · `#planNotice`(재계획 중·실패 한 줄, 입력창 위) · `#retryBar` `#resendBtn` `#retryFallback`(에이전트 없이 계산, #75 — 환자 케이스) `#skipBtn`(건너뛰기 — 샘플 케이스; 스트리밍 8초 뒤엔 답 아래 `.skip-row` 에도) → 스트림 중단 후 `POST /api/cases/{id}/replay` {step: plan|cap|compare(칩·문장에서 「개월·기간」→cap, 「비교·둘 다」→compare), base_plan_id}: 200 이면 `.msg.assistant.recorded` + `.recorded-tag` 「녹화된 답 · 날짜」(툴팁에 recorded_at) 와 `plan_selected` 를 에이전트 턴처럼(null 이면 말풍선만), 404 면 지금 규칙 계획 채택(카드 「건너뜀」) |
+| 입력 | `#chips .chip[data-message|data-fill]` · `#selChips` · `#chatForm` = 둥근 상자 하나: `#chatInput`(placeholder 에 Enter 안내) 안 오른쪽 끝 `#sendBtn.send`(아이콘만, 배경·테두리 없음, 흐림 → hover 밝게, 비활성 더 흐림) |
 | 3D | `#canvasWrap` `#viewCanvas` `#labels` `#tip` `#workNote`(계산 중 알약, `body.streaming`) · `.view-head`(왼쪽 `#checkBar`) · 세로 아이콘 막대 `.view-rail button[data-view=occlusal|frontal|left|right]` `#overlayBtn` `#focusBtn`(테두리 없이 아이콘만: `span.vic` 가 `icons/view-*.png` 를 mask 로 써서 글자색을 따름, 보는 시점은 `aria-pressed=true` 초록; 크게는 Lucide maximize; 라벨은 `aria-label` → hover/focus 시 왼쪽 툴팁) · `#pickHint`(치아에 처음 올렸을 때 한 번, localStorage) · 치아 위 커서 pointer · `.legend [data-key=collision|move_limit|locked|removed|ipr]`(지금 계획에 있는 것만) `#overlayLegend` `#pickedLegend`(치아를 처음 누른 뒤) |
 | 사이드바 | `#side` · 탭 `.side-tab[data-tab=stages|rules|cond]`(`#tabStages` `#tabRules` `#tabCond`, `aria-selected`) · 패널 `#paneStages` `#paneRules` `#paneCond` · 시작·입력 확인 상태와 `body.focus3d` 에서는 숨김 |
 | 단계 표 | `#stageFacts`(두 줄 `.l1` 「확장 · 9단계 · 약 2.1개월」 · `.l2` 「총생 1.6 mm → 확보 2.1 mm」) · `#stageGrid .row[data-stage]`(현재 단계 `.cur`, 칸 `.c.move/vert/rot/mixed`, 위반 칸 `.coll/.warn`, 이동 없는 치아 열은 `.nil` 빈 칸) · `.grid-legend [data-kind]`(이 계획에 있는 색만) |
@@ -412,7 +417,7 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
 | 내보내기 | 레일 `#rail button[data-go=export]` 가 보이는 버튼 · `#exportBtn`(숨긴 상태 기준, 레일이 click 한다) `#exportWhy`(숨김 — 레일 `title` 로 감) `#exportPop`(레일 옆에 고정 위치) `#exportGo` `#exportCancel` `#stlLink`(숨김 앵커) |
 | 단계 | `body.has-plan` · `.stage-bar` = `#playBtn` · `#firstBtn`(아이콘) `#stageTip`(썸 위 「단계 k」/「치료 전」) `#stageMarks .stage-mark[data-tip]`(hover 「단계 k · 충돌 N건」) `#stageSlider` `#lastBtn`(아이콘) · `#stageLabel` 「20단계 · 4.6개월」 |
 | 환자 등록 | `#caseGate` `#gateClose` `#screenPatients`(제목 「환자 등록」 + 설명 한 줄; 케이스 열기 전에는 `body.start` 를 유지한 채 시작 화면 위에 겹친다 — `start` 는 케이스 열기(`leaveStart`)와 입력 확인에서만 지워진다) `#patientForm` `#pAlias` `#pMemo` `#pDrop`(끌어다 놓으면 `#pScans.files` 에 담김, 끌고 있을 때 `.over`) `#pScans` `#pScansName`(고른 파일 수, 없으면 빈 채 숨김) · 「기존 환자」 `#patientCards .patient`(줄로 구분, 펼치면 `.open`) `#patientBody` `#scanList .scan-row` `#dropZone`(같은 문구, 놓으면 바로 업로드) `#scanInput` `#uploadStatus`(진행 한 줄 · 거절되면 `.upload-fail` 안 `.files` 「올린 파일 · N개」 `.why` 서버 문구 그대로 `[data-act=repick]` 다시 고르기) `#deletePatient` |
-| 기타 상태 | `body.no-case`(케이스 열기 전 — 입력창·칩 숨김; `lockComposer` 가 켜고 끈다) `body.focus3d`(3D 크게) `body.leaving`(카드 선택 전환) `body.resizing`(경계 끌기) · 주소 `#start` `#case=<id>` `#patients` `#patient=<id>` `#check=<case>` |
+| 기타 상태 | `body.no-case`(케이스 열기 전 — 입력창·칩 숨김; `lockComposer` 가 켜고 끈다) `body.focus3d`(3D 크게) `body.leaving`(카드 선택 전환, 시작 패널 흐림) `body.resizing`(경계 끌기) `body.step-initial|setup|target|stages` · `html.booting.h-case|h-check`(첫 페인트~라우터) · 주소 `#start` `#case=<id>[&plan=…][&step=…]` `#patients` `#patient=<id>` `#check=<case>` |
 
 브라우저 검증은 `tests/browser_flow.py`(가짜 모델, 자체 서버)에 단계를 더해 쓴다. 묶음마다 새 스크립트를 만들지 않는다.
 
