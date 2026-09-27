@@ -341,9 +341,16 @@ async def assert_workspace_contracts(
         "계획 3의 단계 막대 max는 getPlan 단계 수(카드의 n_stages)와 같아야 한다",
         {"slider_max": slider_max, "card": stages_badge},
     )
-    stage_rows = await page.locator(".staging-table tbody .staging-row").count()
+    stage_rows = await page.locator(".sidebar-staging-panel .staging-interactive-row").count()
+    stage_bars = await page.locator(".sidebar-staging-panel .staging-bar").count()
     checks.check(
-        expected_stages is not None and stage_rows >= expected_stages,
+        stage_bars > 0,
+        "J9-2",
+        "계획 3의 오른쪽 단계 표는 치아별 이동 막대를 그려야 한다",
+        {"bars": stage_bars},
+    )
+    checks.check(
+        expected_stages is not None and stage_rows >= int(expected_stages),
         "J9-2",
         "계획 3의 오른쪽 단계 표는 계획의 단계 수만큼 행을 보여야 한다",
         {"rows": stage_rows, "expected": expected_stages},
