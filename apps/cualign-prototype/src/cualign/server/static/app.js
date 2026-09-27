@@ -705,7 +705,7 @@ async function loadCases() {
       img.src = `samples/${encodeURIComponent(c.case_id)}.png`;
       b.prepend(img);
       // the card shows the finding and the prescription only; the case number and tooth numbering come after it opens (#90)
-      b.querySelector(".cid").textContent = c.title;
+      b.querySelector(".cid").textContent = c.title.split(" — ")[0];
       b.querySelector(".rx").textContent = "처방 · " + c.prescription.replace(/\s*\(FDI[^)]*\)/, "");
       b.querySelector(".meta").textContent = c.available ? "" : "샘플 파일이 설치되지 않았습니다";
       b.disabled = !c.available;
@@ -744,6 +744,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.requestId = null;
   state.messages = [];
   stopPlay();
+  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   await loadMesh(caseId);
@@ -1166,6 +1167,7 @@ $("caseBtn").addEventListener("click", () => {
   if (state.patient) openPatient(state.patient.patient_id).catch((err) => addMsg("error", err.message));
   else showStart().catch((err) => addMsg("error", err.message));
 });
+$("introPick").addEventListener("click", () => $("sampleCards").querySelector(".case-card:not(:disabled)")?.focus());
 $("startClose").addEventListener("click", async () => {
   leaveStart();
   if (state.activeCase && state.meshCase !== state.activeCase) {

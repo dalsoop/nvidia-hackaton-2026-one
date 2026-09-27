@@ -97,14 +97,9 @@
   <main class="layout">
     <section class="chat">
       <div id="intro" class="intro">
-        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
-          <rect width="32" height="32" rx="2" fill="#000"/>
-          <path fill="#fff" d="M8.91 23.71C12.17 23.71 14.16 21.84 14.22 18.93H10.61C10.51 20.12 9.87 20.75 8.97 20.75C7.86 20.75 7.12 19.81 7.12 17.92C7.12 16.06 7.86 15.13 8.97 15.13C9.87 15.13 10.51 15.77 10.61 16.94H14.22C14.18 14.07 12.13 12.22 8.91 12.22C5.32 12.22 3.16 14.54 3.16 17.96C3.16 21.39 5.32 23.71 8.91 23.71Z"/>
-          <path fill="#76b900" d="M18.03 23.5 18.91 20.59H23.89L24.78 23.5H28.98L24.06 8.65H18.75L13.8 23.5ZM19.81 17.63 21.33 12.65H21.45L22.99 17.63Z"/>
-        </svg>
+        <img class="mark" src="intro-arch.png" alt="" />
         <h1>처방을 말하면<br>단계 계획을 짜고 3D로 보여 줍니다</h1>
-        <p class="lead">"발치 없이, 12개월 안에, 앞니 먼저"처럼 조건을 말하면, 치아를 몇 단계에 걸쳐 어떤 순서로 옮길지 초안을 짜고 규칙으로 검사합니다.</p>
-        <p class="muted">오른쪽에서 케이스를 열면 대화가 시작됩니다.</p>
+        <button id="introPick" class="btn ghost small" type="button">샘플 케이스 고르기 →</button>
       </div>
       <fieldset id="constraints" class="constraints">
         <legend>의사 처방 · 대화로도 수정 가능</legend>
@@ -145,9 +140,11 @@
         <canvas id="viewCanvas"></canvas>
         <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
         <div id="screenStart" class="start-pane">
-          <button id="startClose" class="btn ghost small start-x" type="button" hidden>닫기</button>
           <div class="start-body">
-          <h2>샘플 케이스로 시작하기</h2>
+          <div class="start-head">
+            <h2>샘플 케이스로 시작하기</h2>
+            <button id="startClose" class="btn ghost small" type="button" hidden>← 작업 화면으로 돌아가기</button>
+          </div>
           <div id="sampleCards" class="cards sample-cards"></div>
           <p class="hint">샘플은 공개 데이터셋 Poseidon3D(Kubik &amp; Spanel 2024, CC-BY-4.0)</p>
           <div class="gate-foot">
