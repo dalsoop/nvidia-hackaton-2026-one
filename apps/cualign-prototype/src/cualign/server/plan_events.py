@@ -250,6 +250,8 @@ class PlanEventsASGI:
             if message["type"] == "http.response.start":
                 is_stream = message["status"] == 200 and any(
                     k.lower() == b"content-type" and b"text/event-stream" in v for k, v in message.get("headers", []))
+                if is_stream:   # the step the server runs, before any event: 건너뛰기 can come before plan_context (step-intent)
+                    message = {**message, "headers": [*message.get("headers", []), (b"x-cualign-step", run.step.encode())]}
             last = message["type"] == "http.response.body" and not message.get("more_body", False)
             if run.cancelled:   # a cut turn's late events (and its step_done) are not the screen's any more
                 return
