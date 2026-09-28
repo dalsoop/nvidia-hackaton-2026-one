@@ -1,6 +1,6 @@
 """직접 이동 routes (core/manual.py behind them): the scan-position target a 셋업 edit starts from, the check while
 dragging, 적용 as a new target, staging that target without the agent, and the 셋업 right-click (발치 · IPR per tooth
-face) that changes the case's prescription. Added by api.add_api_routes, which passes the target helpers it shares
+face) that changes the case's prescription. The scan start is not stored until an edit on it is applied (SCAN). Added by api.add_api_routes, which passes the target helpers it shares
 with GET …/targets/{id} and the store as a getter (tests swap api.STORE)."""
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ from cualign.core.fdi import from_fdi, label
 from cualign.core.limits import IPR_PER_SURFACE
 from cualign.core.service import PlanningService
 from cualign.server.plan_events import setup_view
+
+
+SCAN = "scan"   # the 셋업 start's target id: made afresh on each request, stored only as the parent of an applied edit
 
 
 class ToothPose(BaseModel):
@@ -93,12 +96,30 @@ def setup_edit(c: Constraints, ids, t: int, req: SetupEditRequest) -> Constraint
 
 
 def add_manual_routes(app: FastAPI, *, store: Callable, require_target: Callable, target_view: Callable, summary: Callable):
+    def _scan(case_id: str):
+        """The 셋업 start (manual.scan_start under the case's confirmed conditions) as a stored target reads, unstored."""
+        S = store()
+        try:
+            cid, case = S.load_case(case_id)
+            S.require_current_input(cid)
+            constraints = S.constraints_for(cid)
+            target, info = manual.scan_start(case, constraints)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, reason_ko(e))
+        return cid, case, {"case_id": cid, "target": target, "info": info, "constraints": constraints, "input_revision": None}
+
     def _edited(case_id: str, target_id: str, req: ManualEditRequest):
         S = store()
-        t = require_target(case_id, target_id)
-        _, case = S.load_case(case_id)
+        if target_id == SCAN:
+            _, case, t = _scan(case_id)
+        else:
+            t = require_target(case_id, target_id)
+            _, case = S.load_case(case_id)
         try:
-            S.require_current_input(case_id, t.get("input_revision"))   # the scan may have changed since
+            if target_id != SCAN:
+                S.require_current_input(case_id, t.get("input_revision"))   # the scan may have changed since
             new, changed = manual.apply_edits(t["target"], {i: p.model_dump() for i, p in req.teeth.items()}, t["constraints"])
         except ValueError as e:
             raise HTTPException(400, reason_ko(e))
@@ -132,18 +153,15 @@ def add_manual_routes(app: FastAPI, *, store: Callable, require_target: Callable
     async def scan_target(case_id: str):
         """The target a 셋업 edit starts from: a target with every crown where the scan has it (the case's confirmed conditions: the
         prescribed extraction teeth removed, only prescribed IPR cut; strategy "manual", info.source "scan"), to move by
-        hand with …/check and …/manual. Stored, not put in the flow (only an applied edit is). Answers as GET …/targets/{id}."""
+        hand with …/scan/check and …/scan/manual. Not stored: opening the edit alone leaves no target behind (…/scan/manual
+        stores it as the applied edit's parent). Answers as GET …/targets/{id} with target_id "scan"."""
         S = store()
+        cid, _, t = _scan(case_id)
+        S.targets[SCAN] = t   # target_view reads the store: the start is there only for this answer
         try:
-            cid, case = S.load_case(case_id)
-            S.require_current_input(cid)
-            constraints = S.constraints_for(cid)
-            target, info = manual.scan_start(case, constraints)
-        except (KeyError, FileNotFoundError) as e:
-            raise HTTPException(404, str(e))
-        except ValueError as e:
-            raise HTTPException(400, reason_ko(e))
-        return target_view(cid, S.put_target(cid, target, info, constraints))
+            return target_view(cid, SCAN)
+        finally:
+            S.targets.pop(SCAN, None)
 
     @app.post("/api/cases/{case_id}/targets/{target_id}/check")
     async def check_manual(case_id: str, target_id: str, req: ManualEditRequest):
@@ -161,6 +179,8 @@ def add_manual_routes(app: FastAPI, *, store: Callable, require_target: Callable
         t, case, new, changed = _edited(case_id, target_id, req)
         if not changed:
             raise HTTPException(400, "옮긴 치아가 없습니다.")
+        if target_id == SCAN:   # the scan start is stored now, as the edit's parent
+            target_id = S.put_target(case_id, t["target"], t["info"], t["constraints"])
         info = manual.manual_info(t["info"], target_id, changed, t["info"].get("manual_teeth", ()))
         tid = S.put_target(case_id, new, info, t["constraints"])
         S.set_flow(case_id, "target", constraints=t["constraints"], target_id=tid, plan_id=None)
