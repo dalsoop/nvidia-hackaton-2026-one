@@ -113,13 +113,6 @@
           <button id="popPatients" class="link-btn" type="button">환자 등록 →</button>
         </div>
       </div>
-      <!-- 진행 표시 (#20): 초기 → 셋업 → 목표 → 단계. 에이전트의 step_done 이 앞으로 밀고, 끝난 칸만 눌러 되돌아본다(주소 &step=) -->
-      <nav id="flow" class="flow" aria-label="디자인 진행">
-        <button type="button" data-step="initial">초기</button>
-        <button type="button" data-step="setup" disabled>셋업</button>
-        <button type="button" data-step="target" disabled>목표</button>
-        <button type="button" data-step="stages" disabled>단계</button>
-      </nav>
       <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 단계 상태에서만 보인다 (#111, #15) -->
       <section id="plans" class="plans" hidden>
         <div class="plans-head"><h2>계획</h2></div>
@@ -207,6 +200,14 @@
         <div id="pickHint" class="pick-hint" hidden>치아를 누르면 번호가 대화에 들어갑니다</div>
         <!-- while a turn runs: the 3D dims and this pill repeats the running step -->
         <div id="workNote" class="work-note" aria-live="polite"><i></i><span>계획을 준비하는 중…</span></div>
+        <!-- 진행 표시 (#20): 초기 → 셋업 → 목표 → 단계. 에이전트의 step_done 이 앞으로 밀고, 끝난 칸만 눌러 되돌아본다(주소 &step=).
+             3D 위 가운데에 떠 있는 pill — 탭 밖의 3D 조작은 가리지 않는다 -->
+        <nav id="flow" class="flow" aria-label="디자인 진행">
+          <button type="button" data-step="initial">초기</button>
+          <button type="button" data-step="setup" disabled>셋업</button>
+          <button type="button" data-step="target" disabled>목표</button>
+          <button type="button" data-step="stages" disabled>단계</button>
+        </nav>
         <div class="view-head">
           <!-- 입력 확인 (#53): 올리거나 연 스캔을 3D에 띄우고 확인할 사실만 한 줄로 -->
           <div id="checkBar" class="check-bar" hidden>
@@ -259,7 +260,6 @@
           <span data-key="collision" hidden><i class="sw red"></i>충돌</span>
           <span data-key="move_limit" hidden><i class="sw amber"></i>장당 이동 한계 초과</span>
           <span data-key="locked" hidden><i class="sw blue"></i>고정</span>
-          <span data-key="removed" hidden><i class="sw ghost"></i>발치</span>
           <span data-key="ipr" hidden><i class="sw ipr"></i>IPR mm</span>
           <span data-key="ipr_face" hidden><i class="sw ipr-face"></i>IPR 면</span>
           <span id="overlayLegend" hidden><i class="sw before"></i>치료 전 (겹쳐 보기)</span>

@@ -239,6 +239,8 @@ async def main():
             await page.wait_for_function(f"{plan_on_screen}.startsWith('p') && document.body.classList.contains('step-stages') && !document.querySelector('#sendBtn').disabled"
                 f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}", timeout=120000)
             parent = await on_screen()
+            # the selected plan opens at its last stage, the target reached
+            assert await page.evaluate("window.__cualign.state.stage === window.__cualign.state.plan.stages.length && window.__cualign.state.stage > 0")
             assert await next_chip("승인하고 내보내기").count() == 1
             reasons = await page.locator(".trace").last.locator(".reason").all_inner_texts()
             assert "단계(약 " in reasons[0] and reasons[1].startswith("규칙 검증 — 위반 "), reasons
@@ -254,12 +256,12 @@ async def main():
             await page.locator('#flow button[data-step="stages"]').click()
             await page.wait_for_function("document.body.classList.contains('step-stages') && window.__cualign.state.stage === 0")
             assert await page.locator(".stage-bar").is_visible()
-            # 치료 전 (stage 0) is the scan with every crown (#18 decision); the extracted crowns turn into silhouettes from stage 1
-            crown = "() => { const s = window.__cualign.state, id = String(s.plan.target.removed[0]), m = s.teeth[id]; return [m.material.opacity, m.userData.shell.visible]; }"
-            assert await page.evaluate(crown) == [1, False]
+            # 치료 전 (stage 0) is the scan with every crown; the extracted crowns are gone from stage 1 on, no translucent silhouette
+            crown = "() => { const s = window.__cualign.state, id = String(s.plan.target.removed[0]), m = s.teeth[id]; return [m.visible, m.material.opacity]; }"
+            assert await page.evaluate(crown) == [True, 1]
             await page.locator("#stageSlider").fill("1")
             await page.wait_for_function("window.__cualign.state.stage === 1")
-            assert await page.evaluate(crown) == [0.45, True]
+            assert await page.evaluate(crown) == [False, 1]
             await page.locator("#firstBtn").click(); await page.wait_for_function("window.__cualign.state.stage === 0")
             # the 3D turns without a pole clamp (#18): a 720° vertical drag comes back to the start, the distance never changes,
             # and a horizontal drag afterwards keeps the arch plane level (no roll drift)
@@ -275,6 +277,17 @@ async def main():
             assert math.dist(start["p"], end["p"]) < 8 and abs(start["d"] - end["d"]) < 1e-3, (start, end)
             await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1260, 500, steps=10); await page.wait_for_timeout(120); await page.mouse.up()
             assert abs((await page.evaluate(cam))["rz"]) < 1e-3
+            # a drag to the right moves the crown nearest the camera to the right on screen, in every preset
+            near = """() => { const { camera, state } = window.__cualign; let best = null;
+                for (const [id, m] of Object.entries(state.teeth)) { if (!m.visible) continue; const p = state.center[id].clone().add(m.position), d = p.distanceTo(camera.position); if (!best || d < best.d) best = { id, d, p }; }
+                return best.id; }"""
+            screen_x = "(id) => { const { camera, state } = window.__cualign; return state.center[id].clone().add(state.teeth[id].position).project(camera).x; }"
+            for view in ["occlusal", "frontal", "left", "right"]:
+                await page.locator(f'.view-rail [data-view="{view}"]').click(); await page.wait_for_timeout(120)   # project() reads the last frame's camera
+                tooth = await page.evaluate(near); x0 = await page.evaluate(screen_x, tooth)
+                await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1000, 500, steps=5); await page.wait_for_timeout(120); await page.mouse.up()
+                await page.wait_for_timeout(60)
+                assert await page.evaluate(screen_x, tooth) > x0, view
             await page.mouse.dblclick(960, 500)
             await page.wait_for_function("document.querySelector('.view-rail [data-view=\"occlusal\"]').getAttribute('aria-pressed') === 'true'")
             await page.reload()
