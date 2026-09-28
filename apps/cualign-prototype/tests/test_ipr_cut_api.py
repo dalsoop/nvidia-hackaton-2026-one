@@ -73,6 +73,24 @@ def test_target_cut_gives_the_target_crowns_alone(tmp_path, monkeypatch):
         assert client.get("/api/cases/poseidon-000131/targets/t0/cut").status_code == 404
 
 
+def test_setup_cut_follows_the_prescribed_contacts(tmp_path, monkeypatch):
+    """셋업 comes before any target or plan: its cut is the setup's prescribed ipr_surfaces (000001: 9 contacts on
+    10 crowns, 000131: 3 contacts, 000097 extraction: nothing), and nothing before the setup lands."""
+    with _client(tmp_path, monkeypatch) as client:
+        for cid, n_contacts in (("poseidon-000001", 9), ("poseidon-000131", 3), ("poseidon-000097", 0)):
+            assert client.get(f"/api/cases/{cid}/setup/cut").json()["teeth_cut"] == {}     # no setup yet
+            c = store.STORE.constraints_for(cid)
+            assert len(c.ipr_surfaces) == n_contacts
+            store.STORE.set_flow(cid, "setup", constraints=c, target_id=None, plan_id=None)
+            cut = client.get(f"/api/cases/{cid}/setup/cut").json()
+            teeth = {str(t) for a, b, _ in c.ipr_surfaces for t in (a, b)}
+            assert set(cut) == {"plan_id", "target_id", "teeth_cut", "ipr_cut"} and cut["plan_id"] is None
+            assert set(cut["teeth_cut"]) == set(cut["ipr_cut"]) == teeth
+            for i, e in cut["ipr_cut"].items():
+                assert e["mm"] > 0 and 0 < len(e["faces"]) < len(cut["teeth_cut"][i]["f"])
+        assert client.get("/api/cases/nope/setup/cut").status_code == 404
+
+
 def test_mesh_crowns_are_closed_for_the_view_only(tmp_path, monkeypatch):
     """Scanned crowns are open at the margin; the mesh response fans that shut (a bared side shows no hole) while the
     scan's own vertices and faces come first, unchanged, and the case the core measures stays open."""

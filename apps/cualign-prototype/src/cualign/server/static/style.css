@@ -248,12 +248,12 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 /* collapse the agent panel to see the 3D large */
 body.focus3d .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0 0; }
 body.focus3d .chat, body.focus3d .splitter, body.focus3d .side { display: none; }
-/* waiting state: the 3D dims and a pill over it repeats the running step */
-#viewCanvas { transition: opacity 0.3s; }
-body.streaming #viewCanvas { opacity: 0.45; }
-.work-note { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; white-space: nowrap; }
+/* while a turn runs: a small chip at the bottom centre of the 3D (above the stage bar when it shows); the 3D keeps its
+   brightness and its controls, the running step is the transcript's to tell. It fades out when the turn is over. */
+.work-note { display: flex; position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 4px); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 0.3s, transform 0.3s, visibility 0s 0.3s; }
+.work-note.on { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity 0.3s, transform 0.3s; }
 .work-note i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1s steps(2) infinite; }
-body.streaming .work-note { display: flex; }
+body.step-stages.has-plan .work-note { bottom: 76px; }
 .pick-hint { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 4; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; color: var(--muted); white-space: nowrap; pointer-events: none; }
 .pick-hint[hidden] { display: none; }
 .tip { position: absolute; z-index: 3; pointer-events: none; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; white-space: nowrap; }

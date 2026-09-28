@@ -154,11 +154,10 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
 const group = new THREE.Group(); scene.add(group);
-// the scan reveal on the setup turn and the IPR tool cursor (scan-reveal.js); the prescription it plays is the form's
-// (Universal; the form's IPR contacts are FDI)
-const prescribed = (c) => ({ extraction: c?.extraction ?? [], ipr_surfaces: (c?.ipr_surfaces ?? []).map(([a, b, mm]) => [universal(a), universal(b), mm]) });
+// the scan reveal on the setup turn and the IPR tool cursor (scan-reveal.js); the prescription it plays is the one the
+// setup landed with (step_done / the recording, Universal)
 const scanFx = createScanFx({ THREE, CSS2DObject, group, state, fdi, notice: $("planNotice"),
-  refresh: () => { applyStage(state.stage); renderSetupMarks(); },
+  refresh: () => { applyStage(state.stage); renderSetupMarks(); }, recut: () => applyStage(state.stage),
   stageContacts: (p) => contactsOnScreen(surfacesOf(p.target, p.info), new Set((p.target?.removed ?? []).map(String))) });
 const raycaster = new THREE.Raycaster();
 
@@ -390,12 +389,26 @@ function setCut(view, key) {
     set[id] = { geo, faces, mm: c?.mm ?? 0 };
   }
 }
-// Which cut the view shows: 초기 none; 목표 (and 셋업) the target's when the target turn gave one, else the plan's;
-// 단계 the plan's. A key with no set fetched yet shows the scan's crowns.
+// Which cut the view shows: 초기 none; 셋업 the setup's prescribed contacts (before any target or plan exists);
+// 목표 the target's when the target turn gave one, else the plan's; 단계 the plan's. A key with no set fetched yet
+// shows the scan's crowns.
 function cutKeyNow() {
   if (state.step === "initial") return null;
+  if (state.step === "setup" && state.setup) return "setup";
   const t = state.targetId ? "target:" + state.targetId : null, p = state.plan ? "plan:" + state.plan.plan_id : null;
   return state.step === "stages" ? p ?? t : t ?? p;
+}
+// the setup's cut dentition: GET /setup/cut → {teeth_cut, ipr_cut} of the prescribed contacts the setup landed with.
+// The previous setup's set goes at once, so a new setup never shows the old one's cut while this is in flight.
+async function loadSetupCut() {
+  const caseId = state.meshCase;
+  setCut(null, "setup");
+  try {
+    const view = await api(`/api/cases/${encodeURIComponent(caseId)}/setup/cut`);
+    if (caseId !== state.meshCase) return;
+    setCut(view, "setup");
+    if (cutKeyNow() === "setup") applyStage(state.stage);
+  } catch { /* the setup shows the scan's crowns */ }
 }
 // the target turn's cut dentition (#22, #146): GET /targets/{id}/cut → {teeth_cut, ipr_cut, plan_id: null, target_id} — the cut
 // crowns alone, not the whole mesh again. A response for another target (or none) leaves the scan's crowns
@@ -567,7 +580,7 @@ function applyStage(k) {
   const cutSet = state.cutSets[cutKeyNow()] ?? null;
   for (const [id, m] of Object.entries(state.teeth)) {
     const d = st[id];
-    const cut = cutSet?.[id] ?? null;
+    const cut = cutSet?.[id] && scanFx.cutShown(id) ? cutSet[id] : null;   // the setup reveal cuts a crown as its cursor passes
     m.geometry = cut ? cut.geo : m.userData.full;
     if (cut) m.userData.cutMesh.geometry = cut.faces;
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
@@ -1590,7 +1603,7 @@ async function restoreProgress(st) {
   if (!st) return;
   state.restoredStep = STEPS.includes(st.step) ? st.step : null;   // where the case stands: the router lands there when the address names no step
   const setup = st.constraints ?? st.setup;
-  if (setup) { state.setup = setup; fillConstraints(setup); setProgress("setup", true); }
+  if (setup) { state.setup = setup; fillConstraints(setup); setProgress("setup", true); loadSetupCut(); }
   if (st.target_id) {
     try {
       state.target = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(st.target_id)}`);
@@ -2130,7 +2143,6 @@ function reasonsForPlan(plan) {
       : "규칙 검증 — 위반 0건.",
     ...(review ? [`검토 → ${review}.`] : [])];
 }
-const stepReasons = (done) => done.step === "setup" ? reasonsForSetup(done) : done.step === "target" ? reasonsForTarget(done.summary) : [];
 function addReasons(lines, trace = state.trace) {
   if (!trace || !lines?.length) return;
   keepBottom(() => { for (const text of lines) {
@@ -2152,15 +2164,13 @@ function traceSummary(trace) {
   trace.box.querySelector(".text").textContent = running
     ? (RUN_KO[running.querySelector(".name").textContent] ?? running.querySelector(".name").textContent + " 중") + "…"
     : (names.length ? `도구 ${rows.length}회 · ` + names.join(" → ") : `모델 응답 ${rows.length}회`);
-  if (trace === state.trace) setWorkNote(running ? trace.box.querySelector(".text").textContent : null);
 }
-// While a turn runs the 3D dims and a pill over it repeats the running trace line (body.streaming).
-const WORK_DEFAULT = "계획을 준비하는 중…";
-function setWorkNote(text) { $("workNote").querySelector("span").textContent = text || WORK_DEFAULT; }
+// While a turn runs a chip at the bottom of the 3D says the agent is at work; the 3D keeps its brightness and controls.
+function setWorkNote(on) { $("workNote").classList.toggle("on", on); }
 function setStreaming(on) {
   state.streaming = on;
   document.body.classList.toggle("streaming", on);
-  setWorkNote(null);
+  setWorkNote(on);
 }
 
 // NAT's step adaptor sends markdown: **Input:**\n```json\n…\n```\n\n**Output:**\n…
@@ -2329,7 +2339,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   $("retryBar").hidden = true;
   $("planNotice").textContent = turnStep === "setup" ? "처방을 조건으로 옮기는 중" : turnStep === "target" ? "목표 배열 만드는 중"
     : state.plan ? "재계획 중 · 현재 3D는 이전 계획입니다." : "단계 계획 만드는 중";
-  if (turnStep === "setup") scanFx.start(caseId, prescribed(constraints));   // the scan is read and the prescription applied on the 3D
+  if (turnStep === "setup") scanFx.startNumbers(caseId);   // the scan is read at once; the prescription goes on with the reasoning (landSetup)
   $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
@@ -2400,7 +2410,11 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     }
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
-    if (stepDone && !streamError) { await landStep(stepDone); addReasons(stepReasons(stepDone)); }
+    if (stepDone && !streamError) {
+      if (stepDone.step === "setup") landSetup(stepDone);   // the reasoning and the prescription on the 3D, together
+      await landStep(stepDone);
+      if (stepDone.step === "target") addReasons(reasonsForTarget(stepDone.summary));
+    }
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
       setStep("stages"); showPlanEnd();
@@ -2442,6 +2456,7 @@ async function landStep(done) {
     state.setup = done.constraints; state.target = null; state.targetId = null;
     fillConstraints(done.constraints);
     setProgress("setup", true);
+    loadSetupCut();   // the cut follows; the setup shows at once
     scanFx.landed(done.constraints);
     state.setupRed = !scanFx.busy();   // the scan reveal already lifted the extracted crowns away
     setStep("setup");
@@ -2455,6 +2470,17 @@ async function landStep(done) {
   } else if (done.step === "stages") {
     setProgress("stages");
   }
+}
+// The setup's reasoning lands in the transcript and its prescription on the 3D at the same moment (scan-reveal ②).
+// A live setup turn often calls no tool — the form already carries the prescription and the server applied it to the
+// case before the agent ran (plan_events.open_run) — so the trace had no row, no summary and no dot. The screen then
+// writes the one step that did happen, 조건 설정 with the conditions step_done carries, as a tool row like any other.
+function landSetup(done, trace = state.trace) {
+  const told = trace && [...trace.el.querySelectorAll(":scope > .step .name")].some((n) => n.textContent === toolKo("set_constraints"));
+  if (trace && !told)
+    addStep("cualign__set_constraints", "**Input:**\n```json\n" + JSON.stringify(done.constraints ?? {}) + "\n```\n\n**Output:**\n서버가 처방을 조건으로 옮김", "", trace);
+  addReasons(reasonsForSetup(done), trace);
+  scanFx.applyPrescription(done.constraints);
 }
 // 건너뛰기 (#15): the rule plan on screen is the plan; a running turn is cut, its answer dropped
 function addSkipRow(bubble, requestId) {
@@ -2481,7 +2507,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
   $("retryBar").hidden = true;
   // a recorded answer makes its own targets; a hand-edited target is staged as it is instead
   if (isManualTarget() && state.progress === "target" && !["setup", "target"].includes(state.turnStep)) { bubble.remove(); return stageManualTarget(); }
-  if (state.turnStep === "setup") { try { scanFx.start(caseId, prescribed(readConstraints())); } catch { /* the form does not parse: no reveal */ } }
+  if (state.turnStep === "setup") scanFx.startNumbers(caseId);   // a no-op when the cut turn already started it
   let trace = null;
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -2503,8 +2529,12 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     addMsg("system", "에이전트 답을 건너뛰고 녹화된 답을 보였습니다.");
     // a recorded setup or target lands like the agent's step_done (#20); a plan like its plan_selected
     if (rec.constraints) {
-      await landStep({ step: "setup", constraints: rec.constraints });
+      // the recording lands at once: its reasoning and the prescription wait for the scan numbers, then go on together
+      await scanFx.numbersDone();
+      if (state.meshCase !== caseId) return;
       addReasons([reasonForTool("set_constraints"), ...reasonsForSetup(rec)], trace);
+      scanFx.applyPrescription(rec.constraints);
+      await landStep({ step: "setup", constraints: rec.constraints });
     } else if (rec.target_id) {
       await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
       addReasons([reasonForTool("propose_target", JSON.stringify({ strategy: rec.summary?.strategy })), ...reasonsForTarget(rec.summary)], trace);

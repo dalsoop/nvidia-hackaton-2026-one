@@ -358,6 +358,20 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         cid, case = STORE.load_case(case_id)
         return ipr_cut_view(cid, case, None, target_id)
 
+    @app.get("/api/cases/{case_id}/setup/cut")
+    async def setup_cut(case_id: str):
+        """The crowns cut as the setup's prescription strips them: {plan_id: null, target_id: null, teeth_cut, ipr_cut}.
+        셋업 comes before any target or plan (the case opens with the scan only), so its cut is the prescribed
+        `ipr_surfaces` of the step flow's conditions, each contact cut on both its teeth. No setup: both maps empty."""
+        try:
+            cid, case = STORE.load_case(case_id)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        c = (STORE.flow.get(cid) or {}).get("constraints")
+        surfaces = [[int(a), int(b), float(mm)] for a, b, mm in (c.ipr_surfaces if c is not None else ())]
+        info = {"ipr_surfaces": surfaces, "ipr_applied_teeth": sorted({t for a, b, _ in surfaces for t in (a, b)})}
+        return {"plan_id": None, "target_id": None, **planner.cut_case(case, info if surfaces else None).cut_json()}
+
     def require_target(case_id: str, target_id: str) -> dict:
         t = STORE.targets.get(target_id)
         if t is None or t["case_id"] != case_id:
