@@ -1,22 +1,25 @@
 // 「단계가 자라난다」 (시연 연출): while the stage tool (plan_stages) runs, the target arrangement lies as a white ghost,
-// the agent's cursor (the IPR tool cursor of scan-reveal.js) touches the crowns in their order of movement and each one
-// slides one step toward its ghost; once the plan is on screen the stage table fills row by row in the same rhythm, and
+// the agent's cursor (the reticle of scan-reveal.js — the saw disc is the IPR cut's only) touches the crowns in their order of movement and each one
+// slides one step toward its ghost (a replay's stage table fills row by row in the same rhythm, the chip counting), and
 // the whole lands at the plan's last stage, the treatment done (the crowns glide there in 0.6 s, the ghost lifts, the
 // slider at its end, ▶ blinks with 「▶ 처음부터 재생」 by the slider).
 //   - order: the plan's (the crowns that move first, then the delayed ones by their start stage); before a plan exists,
 //     molars to front along the arch.
-//   - one round only (14 crowns × 0.5 s); a tool that runs longer keeps the cursor circling the last crown. A replay
-//     plays the same round and lands (Esc or a click on the 3D chip lands at once).
+//   - one round only (14 crowns × PER 1 s, each sliding its step in SLIDE 0.6 s: ~14 s, the length of a live agent
+//     turn); a tool that runs longer keeps the cursor circling the last crown. A live round lands as soon as its plan is
+//     on screen, cut short or not (cut short, the crowns go in LAND_CUT 0.4 s together). A replay plays the round pressed
+//     into REPLAY_ROUND 8 s, the table filling with it, and lands (Esc or a click on the 3D chip lands at once).
 //   - it writes the crowns' transforms and the ghost every frame from tick(), over what applyStage (loadPlan, the turn's
 //     end) wrote, and ends at the landing. A live round runs while the agent works: the stage tool ends in about a second
-//     and select_plan follows at once, so neither lands it — it lands once the turn's plan is on screen and its table has
-//     filled. Only a rule check (validate) of the same turn lands it early, so its sweep never overlaps the round; a
+//     and select_plan follows at once, so neither lands it — it lands once the turn's plan is on screen. Only a rule check (validate) of the same turn lands it early, so its sweep never overlaps the round; a
 //     replay lands before its tool rows play. A turn with no plan puts it all back.
 //   - prefers-reduced-motion or ?nofx=1: nothing runs; the replay keeps its old landing (the last stage).
-import { CURSOR_SVG } from "./scan-reveal.js";
+import { makeCursor } from "./scan-reveal.js";
 
 const OFF = new URLSearchParams(location.search).has("nofx");
-const PER = 0.5, GATHER = 0.4, LAND = 0.6, MIN_FILL = 1.2, STEP_MM = 0.25;   // s, mm
+// the pace (s): a live round's crown after crown, a crown's step, the replay's whole round, the landings
+const PER = 1.0, SLIDE = 0.6, REPLAY_ROUND = 8, GATHER = 0.4, LAND = 0.6, LAND_CUT = 0.4, MIN_FILL = 1.2;
+const STEP_MM = 0.25;   // a crown's step while the plan's stage count is unknown
 const now = () => performance.now() / 1000;
 // a table row is display: contents (its cells are the grid items), so a row is shown or hidden through its cells
 const cellsOf = (el) => (el.classList.contains("row") ? [...el.children] : [el]);
@@ -51,7 +54,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     if (still() || !Object.keys(state.teeth).length) return false;
     stop(false);
     const ids = Object.entries(state.teeth).filter(([, m]) => m.visible).map(([id]) => id);
-    const r = { t0: now(), replay, ids, order: orderOf(ids, plan), toolDone: replay, planId0: replay ? null : state.plan?.plan_id ?? null,
+    const r = { t0: now(), replay, ids, per: PER, order: orderOf(ids, plan), toolDone: replay, planId0: replay ? null : state.plan?.plan_id ?? null,
                 plan: replay ? plan : null, screen: {}, to: {}, ghostWas: { visible: ghost.visible, kids: [] }, fill: null, land: null,
                 caseId: state.meshCase, idleSince: null, resolve: null };
     for (const [id, m] of Object.entries(state.teeth)) { r.screen[id] = { p: m.position.clone(), r: m.rotation.z }; r.to[id] = targetOf(id, m); }
@@ -61,9 +64,9 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
       r.ghostWas.kids.push([g, g.position.clone(), g.rotation.z, g.visible]);
       g.position.copy(r.to[id].p); g.rotation.set(0, 0, r.to[id].r); g.visible = ids.includes(id);
     });
-    const o = new CSS2DObject(document.createElement("div"));
-    o.element.className = "ipr-tool"; o.element.innerHTML = `<i>${CURSOR_SVG}</i>`; o.element.style.opacity = "0";
-    group.add(o); r.cursor = o;
+    r.cursor = makeCursor({ THREE, CSS2DObject, kind: "reticle" }); r.cursor.opacity = 0; r.touched = -1;
+    group.add(r.cursor.obj);
+    if (replay) r.per = (REPLAY_ROUND - GATHER) / Math.max(1, r.order.length);
     run = r;
     note();
     return true;
@@ -74,7 +77,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     const n = run.plan?.stages?.length ?? 0, k = run.fill ? Math.max(1, Math.round(fillAt(now()) * n)) : 0;
     setWorkNote(true, n && k ? `단계 나누는 중 · ${k}/${n}` : "단계 나누는 중");
   }
-  const roundEnd = () => run.t0 + GATHER + run.order.length * PER;
+  const roundEnd = () => run.t0 + GATHER + run.order.length * run.per;
   const fillAt = (t) => (run.fill ? Math.min(1, (t - run.fill.t0) / run.fill.dur) : 0);
   const stepOf = (id) => {   // one step toward the target: 1/N of the move, or 0.25 mm while N is unknown
     const n = run.plan?.stages?.length, dist = run.to[id].p.length();
@@ -99,7 +102,9 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     const t = now(), r = run;
     if (state.meshCase !== r.caseId) return stop(false);
     // the plan of this turn is on screen: fill, then land
-    if (!r.fill && (r.replay || (state.plan && state.plan.plan_id !== r.planId0 && state.step === "stages"))) beginFill(t);
+    if (!r.fill && r.replay) beginFill(t);
+    // a live turn's plan is on screen: it lands now, the round done or not
+    if (!r.replay && !r.land && state.plan && state.plan.plan_id !== r.planId0 && state.step === "stages") landNow(t);
     // the turn ended with no plan (a failure, a cut turn): everything goes back
     if (!r.fill && !r.replay && !state.streaming) { r.idleSince ??= t; if (t - r.idleSince > 1.5) return stop(false); }
     if (r.fill && !r.land && fillAt(t) >= 1 && t >= roundEnd()) landNow(t);
@@ -108,11 +113,11 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     note();   // the chip stays this round's while it runs (the turn's end turns the chip off: setStreaming)
     // the crowns: gathered to stage 0, then each one a step toward the ghost when the cursor touches it
     const g = ease((t - r.t0) / GATHER);
-    const touched = Math.floor((t - r.t0 - GATHER) / PER);
+    const touched = Math.floor((t - r.t0 - GATHER) / r.per);
     for (const [id, m] of Object.entries(state.teeth)) {
       const s = r.screen[id], k = r.order.indexOf(id);
       let u = 0;
-      if (k >= 0 && k <= touched) u = stepOf(id) * ease((t - r.t0 - GATHER - k * PER) / (PER * 0.6));
+      if (k >= 0 && k <= touched) u = stepOf(id) * ease((t - r.t0 - GATHER - k * r.per) / Math.min(SLIDE, r.per));
       const p = new THREE.Vector3().lerpVectors(new THREE.Vector3(), r.to[id].p, u), a = r.to[id].r * u;
       m.position.lerpVectors(s.p, p, g); m.rotation.set(0, 0, s.r + (a - s.r) * g);
     }
@@ -120,11 +125,13 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     const i = Math.min(r.order.length - 1, Math.max(0, touched)), id = r.order[i], m = state.teeth[id];
     if (m) {
       const at = state.center[id].clone().add(m.position).setZ(state.center[id].z + m.position.z + 4);
-      const u = (t - r.t0 - GATHER - i * PER) / (PER * 0.3);
+      const u = (t - r.t0 - GATHER - i * r.per) / (r.per * 0.3);
       if (t >= roundEnd()) at.add(new THREE.Vector3(Math.cos(t * 1.6) * 1.2, Math.sin(t * 1.6) * 1.2, 0));
-      if (i > 0 && u < 1) { const pid = r.order[i - 1]; r.cursor.position.lerpVectors(state.center[pid].clone().add(state.teeth[pid].position).setZ(at.z), at, ease(u)); }
-      else r.cursor.position.copy(at);
-      r.cursor.element.style.opacity = String(Math.min(1, Math.max(0, (t - r.t0 - GATHER * 0.5) / 0.3)));
+      const o = r.cursor.obj;
+      if (i > 0 && u < 1) { const pid = r.order[i - 1]; o.position.lerpVectors(state.center[pid].clone().add(state.teeth[pid].position).setZ(at.z), at, ease(u)); }
+      else o.position.copy(at);
+      if (u >= 1 && touched >= 0 && r.touched !== i) { r.touched = i; r.cursor.touch(); }   // on the crown: the ring swells once
+      r.cursor.opacity = Math.min(1, Math.max(0, (t - r.t0 - GATHER * 0.5) / 0.3));
     }
     // the table: rows appear top to bottom (the phase rule with them), the chip counts the stages
     if (r.fill) {
@@ -137,9 +144,9 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     if (!run || run.land) return;
     if (!run.fill) beginFill(t);
     for (const el of run.fill.rows) showRow(el, true);
-    run.cursor.parent?.remove(run.cursor);
+    run.cursor.remove();
     restoreGhost();
-    run.land = { t0: t, from: Object.fromEntries(Object.entries(state.teeth).map(([id, m]) => [id, { p: m.position.clone(), r: m.rotation.z }])),
+    run.land = { t0: t, dur: t < roundEnd() ? LAND_CUT : LAND, from: Object.fromEntries(Object.entries(state.teeth).map(([id, m]) => [id, { p: m.position.clone(), r: m.rotation.z }])),
                  to: lastFrame(run.plan ?? state.plan) };
   }
   // the plan's last stage as applyStage places it (no plan: stage 0, the scan)
@@ -148,7 +155,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     return Object.fromEntries(Object.keys(state.teeth).map((id) => [id, place(st[id] ?? [0, 0, 0], rot[id] ?? 0, plan?.pivots?.[id] ?? [0, 0, 0])]));
   }
   function landing(t) {
-    const r = run, u = ease((t - r.land.t0) / LAND);
+    const r = run, u = ease((t - r.land.t0) / r.land.dur);
     for (const [id, m] of Object.entries(state.teeth)) {
       const f = r.land.from[id], e = r.land.to[id];
       m.position.lerpVectors(f.p, e.p, u); m.rotation.set(0, 0, f.r + (e.r - f.r) * u);
@@ -174,7 +181,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
   function stop(landed) {
     if (!run) return;
     const r = run;
-    r.cursor?.parent?.remove(r.cursor);
+    r.cursor?.remove();
     restoreGhost();
     for (const el of r.fill?.rows ?? []) showRow(el, true);
     run = null;
@@ -203,11 +210,12 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     if (!start({ plan: state.plan, replay: true })) return Promise.resolve(false);
     return new Promise((res) => { run.resolve = res; });
   }
-  const skip = () => { if (run?.replay && !run.land) { run.t0 = now() - GATHER - run.order.length * PER; if (run.fill) run.fill.dur = 0; landNow(); } };
+  const skip = () => { if (run?.replay && !run.land) { run.t0 = now() - GATHER - run.order.length * run.per; if (run.fill) run.fill.dur = 0; landNow(); } };
   addEventListener("keydown", (e) => { if (e.key === "Escape") skip(); });
   document.getElementById("workNote")?.addEventListener("click", skip);
 
-  const api = { tool, play, tick, skip, cancel: () => stop(false), get running() { return !!run; }, get ghostShown() { return !!run && !run.land; } };
+  const api = { tool, play, tick, skip, cancel: () => stop(false), get running() { return !!run; }, get ghostShown() { return !!run && !run.land; },
+                get cursorKind() { return run && !run.land && run.cursor.obj.parent ? run.cursor.kind : null; } };
   window.__stageGrow = api;   // browser checks
   return api;
 }

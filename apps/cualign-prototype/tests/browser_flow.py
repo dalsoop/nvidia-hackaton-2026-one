@@ -784,6 +784,11 @@ async def main():
             cut_ids = await page.evaluate(f"Object.keys({cut_set} ?? {{}})")
             assert cut_ids and await page.evaluate("window.__cualign.cutKeyNow()") == f"plan:{ipr_plan}", cut_ids
             assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => {{ const m = window.__cualign.state.teeth[id]; return m.geometry === c.geo && m.userData.cutMesh.visible && m.userData.cutMesh.material === m.material && c.faces.index.count > 0; }})")
+            # the IPR tool cursor is the setup's and a ▶ playback's only (scan-reveal.js): the slider reaching stage 1 of this
+            # IPR plan, its first stage ≥ 1 on screen, brings none (it did, once per plan, on any stage change)
+            await page.locator("#stageSlider").evaluate("el => { el.value = 1; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+            await page.wait_for_timeout(3 * FRAME)
+            assert await page.evaluate("window.__cualign.state.stage") == 1 and await page.locator(".ipr-tool").count() == 0
             await page.locator('#flow button[data-step="initial"]').click()
             assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full && !m.userData.cutMesh.visible)")
             await page.locator('#flow button[data-step="stages"]').click()
@@ -930,7 +935,8 @@ async def main():
             await page.locator("#chatInput").fill("단계 도구가 오래 도는 단계 만들기"); await page.locator("#sendBtn").click()
             await page.wait_for_function("window.__stageGrow.running", timeout=10000)
             await page.wait_for_timeout(2500)
-            assert await page.evaluate("window.__stageGrow.ghostShown") and await page.locator(".ipr-tool").count() == 1
+            # its cursor is the agent's reticle, not the IPR saw disc (that one is the cut's only)
+            assert await page.evaluate("[window.__stageGrow.ghostShown, window.__stageGrow.cursorKind]") == [True, "reticle"] and await page.locator(".ipr-tool").count() == 0
             await page.wait_for_function("!window.__stageGrow.running && window.__cualign.state.plan && !document.querySelector('#sendBtn').disabled", timeout=60000)
             last = await page.evaluate("String(window.__cualign.state.plan.stages.length)")
             assert await page.locator("#stageSlider").input_value() == last and "처음부터 재생" in await page.locator("#stageTip").inner_text()
