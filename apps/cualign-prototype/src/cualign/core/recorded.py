@@ -16,9 +16,9 @@ RECORDED_DIR = Path(__file__).resolve().parent / "samples" / "recorded"
 # the step flow (agent/steps.py): setup and target turns, then the stages turn and its two re-plans
 STEPS = ("setup", "target", "stages", "cap", "compare")
 ALIASES = {"plan": "stages"}   # the name before the step flow (.report/12-replay.md)
-# setup = the sample card sentence (the prescription); the rest as the screen's chips send them
-REQUESTS = {"target": "이대로 목표 배열을 만들어줘.", "stages": "단계로 나눠줘.",
-            "cap": "8개월 안에 끝나게 다시 짜줘.", "compare": "확장안이랑 IPR안 둘 다 만들어서 비교해줘."}
+# setup = the sample card sentence (the prescription); the rest as the screen's chips send them (app.js nextChips)
+REQUESTS = {"target": "이 조건으로 목표 배열을 만들어줘.", "stages": "이 목표로 단계를 만들어줘.",
+            "cap": "8개월 안에 끝나게 단계를 만들어줘.", "compare": "확장안이랑 IPR안 둘 다 만들어서 비교해줘."}
 TURN_STEP = {"setup": "setup", "target": "target", "stages": "stages", "cap": "stages", "compare": "stages"}   # the turn's step field
 FIELDS = ("step", "request", "constraints", "answer_md", "review", "recorded_at", "model")
 NO_RECORDING = "녹화된 답이 없습니다"
@@ -72,10 +72,12 @@ def strategy_in(text: str) -> str | None:
 
 
 def selected_strategy(answer_md: str) -> str | None:
-    """The strategy of the plan the answer settled on: its bold summary line ("**IPR 전략으로 9단계…**"), else its first
-    line. A comparison opens with one line per plan, so its first line names a compared plan, not the chosen one."""
+    """The strategy of the plan the answer settled on: its summary sentence ("IPR 전략으로 9단계(…) 계획을 만들었습니다",
+    bold or after 「선택된 안:」), else its bold line, else its first line. A comparison opens with one line per plan, so
+    its first line names a compared plan, not the chosen one."""
     lines = answer_md.strip().splitlines()
-    head = next((ln for ln in lines if ln.lstrip().startswith("**")), lines[0] if lines else "")
+    head = next((ln for ln in lines if "계획을 만들었습니다" in ln), None) \
+        or next((ln for ln in lines if ln.lstrip().startswith("**")), lines[0] if lines else "")
     return strategy_in(head)
 
 
