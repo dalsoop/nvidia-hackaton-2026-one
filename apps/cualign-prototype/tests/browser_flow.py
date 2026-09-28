@@ -836,6 +836,7 @@ async def main():
             # here: every sample has one since #134) the plan on screen is adopted
             assert await page.locator("#skipBtn").is_visible() and await page.locator("#retryFallback").is_hidden()
             await page.route("**/api/cases/poseidon-000131/replay", lambda route: route.fulfill(status=404, content_type="application/json", body='{"detail":"녹화된 답이 없습니다"}'))
+            await page.route("**/api/cases/poseidon-000131/replay/*", lambda route: route.fulfill(status=404, content_type="application/json", body='{"detail":"녹화된 답이 없습니다"}'))   # its head (#212)
             before_skip = await on_screen()
             await page.locator("#skipBtn").click()
             await page.wait_for_selector(".msg.system:has-text('건너뛰었습니다')")      # the retry bar hides before the 404 comes back
@@ -843,6 +844,7 @@ async def main():
             assert "건너뜀" in await page.locator("#planCur .plan-row.current .pill").inner_text()
             assert await page.locator(".msg.system", has_text="건너뛰었습니다").count() == 1
             await page.unroute("**/api/cases/poseidon-000131/replay")
+            await page.unroute("**/api/cases/poseidon-000131/replay/*")
             # the five recorded steps (#20 contract; the route is shaped here until the server knows these names): each
             # failed turn offers 건너뛰기, the recording lands like the agent's step_done / plan_selected
             seen = []
@@ -855,6 +857,9 @@ async def main():
                 elif req["step"] in ("stages", "cap"): rec["plan_selected"] = {"plan_id": before_skip, "parent_plan_id": None, "review": {"status": "skipped"}}
                 await route.fulfill(status=200, content_type="application/json", body=json.dumps(rec))
             await page.route("**/api/cases/poseidon-000131/replay", replay_route)
+            # the recording's head (#212: drawn before the POST's recomputation comes back), for the same fake recording
+            await page.route("**/api/cases/poseidon-000131/replay/*", lambda route: route.fulfill(status=200, content_type="application/json",
+                body=json.dumps({"recorded": True, "step": route.request.url.rsplit("/", 1)[1], "recorded_at": "2026-09-28T10:00:00"})))
             async def skip_turn(n):
                 await page.wait_for_function("!document.querySelector('#retryBar').hidden && !document.querySelector('#sendBtn').disabled", timeout=60000)
                 await page.locator("#skipBtn").click()
@@ -900,6 +905,7 @@ async def main():
             assert seen == ["setup", "target", "stages", "cap", "compare"], seen
             assert "녹화된 답 · 2026-09-28" in await page.locator(".msg.assistant.recorded .recorded-tag").last.inner_text()
             await page.unroute("**/api/cases/poseidon-000131/replay")
+            await page.unroute("**/api/cases/poseidon-000131/replay/*")
             await page.unroute("**/chat/stream")
 
             # The server keeps how far the step flow went and sends it with /activate as `flow` (#146): constraints → the strip
