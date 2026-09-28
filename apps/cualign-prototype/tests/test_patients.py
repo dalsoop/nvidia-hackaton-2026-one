@@ -175,7 +175,8 @@ def test_renumbering_makes_earlier_plans_stale(client):
     plan_id = _confirmed_plan(client)
     target = store.STORE.targets[store.STORE.plans[plan_id]["target_id"]]
     service = PlanningService(store.STORE)
-    tid = service.target("P0001-S1", "expansion", store.STORE.constraints_for("P0001-S1"))
+    # the plan's own strategy: the prescription refuses any other (PlanningService.target)
+    tid = service.target("P0001-S1", target["info"]["strategy"], store.STORE.constraints_for("P0001-S1"))
     assert client.post(f"/api/plans/{plan_id}/approval", json={"confirmed": True}).status_code == 200
     assert client.get(f"/api/plans/{plan_id}/stl.zip").status_code == 200
 

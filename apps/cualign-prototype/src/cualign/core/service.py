@@ -11,6 +11,9 @@ class PlanningService:
 
     def target(self, case_id, strategy, constraints: Constraints):
         self.store.require_current_input(case_id)   # every planning path (tools, comparison, fallback) starts here
+        # the prescription's strategies only, as the comparison plans them: an expansion target under an IPR
+        # prescription dropped the prescribed IPR (#57), a non-extraction one under extraction the teeth (#56)
+        strategies_for([strategy], constraints)
         _, case = self.store.load_case(case_id)
         target, info = planner.propose_target(case, strategy, constraints=constraints)
         return self.store.put_target(case_id, target, info, constraints)

@@ -116,3 +116,27 @@ def test_a_prescription_plans_the_ipr_strategies_only():
     rows = planner.compare_strategies(Case.synthetic("mild"), constraints=cons)
     assert [r["strategy"] for r in rows] == ["ipr", "expansion_ipr"]
     assert all(r["_info"]["ipr_surfaces"] == [[8, 9, 0.4]] for r in rows)
+
+
+def test_the_target_tool_keeps_the_prescription():
+    """The agent's propose_target goes through PlanningService.target. Asked for 확장안 under an IPR prescription it made
+    an expansion-only target with no IPR (poseidon-000001, 2026-09-28 recording): refused like the comparison's."""
+    from cualign.core.service import PlanningService
+
+    class OneCase:
+        def require_current_input(self, *a):
+            pass
+
+        def load_case(self, cid):
+            return cid, Case.synthetic("mild")
+
+        def put_target(self, cid, target, info, constraints):
+            return info["strategy"]
+
+    svc, cons = PlanningService(OneCase()), Constraints(ipr_surfaces=((8, 9, 0.4),))
+    with pytest.raises(ValueError, match="IPR"):
+        svc.target("mild", "expansion", cons)
+    with pytest.raises(ValueError, match="발치"):
+        svc.target("mild", "ipr", Constraints(extraction=(5, 12)))
+    assert svc.target("mild", "expansion_ipr", cons) == "expansion_ipr"
+    assert svc.target("mild", "expansion", Constraints()) == "expansion"
