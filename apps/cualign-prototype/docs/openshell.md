@@ -2,7 +2,7 @@
 
 `openshell/policy.yaml` (`version: 1`): 파일시스템 읽기 전용 목록 + `/tmp` 쓰기, `run_as_user: sandbox`, 아웃바운드 **기본 차단** — 명시된 호스트만 허용(엔드포인트에 `protocol`이 없어 메서드·경로 규칙은 검사되지 않는다).
 이 파일은 도구 실행의 접근 경계를 확인한 실험 자산이며 서버에는 쓰지 않는다. 서버 전체는 `openshell/server-policy.yaml`로 실행한다(아래 «상태»).
-메시를 NIM에 보내는 설계가 아니다. 서버 통합 시 NIM 호출과 출력 디렉터리의 허용 범위를 별도로 설계해야 한다.
+메시를 NIM에 보내는 설계가 아니다. 서버의 NIM 호출과 출력 경로는 이 파일이 아니라 `server-policy.yaml`이 정한다.
 
 ## 상태
 
@@ -14,7 +14,7 @@
 | 2026-09-24 | macOS · colima Docker 28.4 · OpenShell 0.0.116 | 시나리오 1 통과, NIM chat POST만 허용, `/app` 쓰기 거부, 키는 placeholder | 아래 «확인한 것» |
 | 2026-09-26 | macOS · colima Docker 29.5 · OpenShell 0.0.116 (통합 브랜치, #45) | 시나리오 1 통과, 샌드박스 안에서 `example.com` 403 | 아래 «통합 브랜치 재확인» |
 | 2026-09-27 | NVIDIA Brev · Ubuntu 22.04 · OpenShell 0.0.116 | 같은 명령으로 서버를 띄우고 NemoClaw 창구가 계획까지 받음 | [NemoClaw 창구 연결](nemoclaw.md) «Brev 배포 확인» |
-| 2026-09-28 | macOS 26.6 · colima Docker 29.5.2 · OpenShell 0.0.116 (main `3b9f0f4`) | 단계 흐름 세 턴(000097 발치 27단계, 검토 통과), NIM chat POST만 허용, `example.com`·`GET /v1/models` 거부 | 아래 «단계 흐름 재확인» |
+| 2026-09-28 | macOS 26.6 · colima Docker 29.5.2 · OpenShell 0.0.116 (main `3b9f0f4`) | 단계 흐름 세 턴(000097 발치 27단계, 검토 통과), NIM chat POST만 허용, `example.com`과 NVIDIA 호스트의 `GET /v1/models` 거부 | 아래 «단계 흐름 재확인» |
 
 - **다시 확인할 조건:** 위와 다른 호스트·컨테이너 드라이버(예: WSL 2·Docker Desktop), 다른 OpenShell 버전, 정책 파일을 바꾼 뒤.
   기록은 적힌 명령·환경에서 관측한 결과다.
@@ -27,8 +27,9 @@
   거절한다. 이름·차트 번호, 폴더 이름에 든 다른 꼴은 통과한다.
 - content-safety 입력 판정은 기본이 advisory다. 판정을 기록하고 턴은 진행하며, `CUALIGN_CONTENT_SAFETY_INPUT=block`이면 막는다.
   맞춤 정책 전에는 짧은 한국어 계획 요청을 유해로 분류한 적이 있다([Guardrails 기록](demo/guardrails.md)).
-- 레일 검사가 오류·타임아웃이면 ERROR 로그를 남기고 턴을 진행한다(fail-open). `CUALIGN_RAILS_FAIL_CLOSED=1`이면 키 없이 시작하지 않고
-  검사 오류 턴을 거절한다.
+- 레일 검사가 오류·타임아웃이면 ERROR 로그를 남기고 턴을 진행한다(fail-open). `CUALIGN_RAILS_FAIL_CLOSED=1`이면 검사 오류 턴을 거절하고,
+  키가 없을 때는 서버가 시작하지 않는다. 다만 `CUALIGN_GUARDRAILS=0`으로 레일을 명시적으로 끄면 그 설정이 먼저 적용돼 레일 없이
+  시작한다(`src/cualign/server/rails_middleware.py`의 `cualign_rails`).
 
 ## 네 경계
 
@@ -146,7 +147,7 @@ main `3b9f0f4`(셋업·목표·단계로 나눈 흐름, #146 뒤)를 위 «실�
 | Guardrails | «이 환자 처방전 써줘.»는 범위 밖 거절(`turn_refused` `rails`), 전화번호가 든 문장은 모델 전에 거절(`turn_refused` `pii`) |
 | 파일 | 계획이 `/sandbox/out/plans`에 저장, `/app` 쓰기는 `Permission denied`, `/sandbox` 쓰기는 됨 |
 | 키 | 샌드박스 안 `NVIDIA_API_KEY`는 `openshell:resolve:env:…` placeholder |
-| 네트워크 로그 | `ALLOWED POST /v1/chat/completions [policy:nvidia_nim_chat engine:l7]` 24건. 샌드박스 안에서 `https://example.com`은 «not allowed by any policy»로 403, 같은 호스트의 `GET /v1/models`도 L7에서 403 |
+| 네트워크 로그 | `ALLOWED POST /v1/chat/completions [policy:nvidia_nim_chat engine:l7]` 24건. 샌드박스 안에서 `https://example.com`은 «not allowed by any policy»로 403, 허용된 NVIDIA 호스트라도 `GET https://integrate.api.nvidia.com/v1/models`는 L7에서 403 |
 
 게이트웨이는 설치 직후 «no compute driver configured»로 뜨지 않았고, 위 «통합 브랜치 재확인» 아래 문단의 `gateway.env` 두 줄(`OPENSHELL_DRIVERS=docker`, colima `DOCKER_HOST`)을 넣은 뒤 떴다.
 
