@@ -21,6 +21,7 @@
   --pass-text: #c6f27a;
   --blue: #4f8fd6;            /* colors.locked — 3D only */
   --ipr: #bff230;             /* colors.ipr-cut */
+  --ipr-face: #2f8ae8;        /* colors.ipr-face — the cut planes on a crown, 3D only (#22) */
   --radius: 2px;              /* rounded.sm */
   --font: Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
 }
@@ -117,13 +118,12 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .retry-bar .btn[hidden] { display: none; }
 /* 건너뛰기 under a running answer (#15) */
 .skip-row { align-self: stretch; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; font-size: 12px; color: var(--muted); }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 8px; }
-.chips[hidden] { display: none; }
-.chip {
-  font: inherit; font-size: 12px; color: var(--text); background: var(--panel);
-  border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; text-align: left;
-}
-.chip:hover { border-color: var(--green); }
+/* the next moves under the agent's bubble (#20): one row, folded once something is sent */
+.next { align-self: stretch; padding: 0 0 0 12px; }
+.next .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.next .opts button { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; }
+.next .opts button:hover { border-color: var(--green); }
+.next.done { display: none; }
 
 .composer { position: relative; display: flex; padding: 0 16px 16px; }
 /* the agent's question card: one question, two or three choices (#90) */
@@ -153,8 +153,6 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .review-q summary { cursor: pointer; color: var(--muted); }
 .review-q ul { margin: 4px 0 0; padding-left: 18px; }
 /* approval done: one card per approval, with 다시 내려받기 */
-.export-done { align-self: stretch; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--pass-surface); color: var(--pass-text); border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; }
-.export-done span { flex: 1; }
 /* the plan the turn produced, in the transcript (#90) */
 .plan-meta > summary { font-size: 12px; color: var(--muted); cursor: pointer; }
 .sel-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 8px; font-size: 12px; color: var(--muted); }
@@ -209,6 +207,7 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .legend .blue { background: var(--blue); }
 .legend .ghost { background: transparent; border: 1px dashed var(--muted); }
 .legend .ipr { background: var(--ipr); }
+.legend .ipr-face { background: var(--ipr-face); }
 
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
@@ -233,6 +232,11 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .export-pop p { margin: 0 0 8px; }
 .export-pop div { display: flex; gap: 6px; }
 .export-pop[hidden] { display: none; }
+.export-pop, .toast { opacity: 0; transform: translateY(4px); transition: opacity 0.15s ease, transform 0.15s ease; }   /* #20: in and out */
+.export-pop.in, .toast.in { opacity: 1; transform: none; }
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 6px); z-index: 7; padding: 10px 16px; background: var(--pass-surface); color: var(--pass-text); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; }
+.toast.in { transform: translate(-50%, 0); }
+.toast[hidden] { display: none; }
 .export-pop .export-skip { color: var(--amber-text); }
 .export-pop .export-skip[hidden] { display: none; }
 .export-why { align-self: center; font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -437,9 +441,11 @@ body.start .start-pane { display: flex; }
 body.leaving .start-pane, body.leaving .intro { opacity: 0.5; pointer-events: none; }
 @keyframes rise { from { opacity: 0; } to { opacity: 1; } }
 body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar { animation: rise 0.35s ease both; }
+body.start .start-pane, body.start .intro { animation: rise 0.35s ease; }   /* #20: both ways, 환자 ↔ 디자인; no fill, so body.leaving still dims it */
 @media (prefers-reduced-motion: reduce) {
   .start-pane, .intro { transition: none; }
-  body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar { animation: none; }
+  body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar, body.start .start-pane, body.start .intro { animation: none; }
+  .export-pop, .toast { transition: none; }
 }
 body.start .case-head, body.start .plans, body.start .plan-notice, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar,
@@ -448,8 +454,7 @@ body.start .sel-chips, body.start .view-rail { display: none; }
 body.start .side, body.checking .side, body.start .side-splitter, body.checking .side-splitter { display: none; }
 body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0 0; }
 body.start .intro { flex: 1; }
-body.no-case .composer { display: none; }   /* the panel is a chat; the input appears with a case (lockComposer) */
-body.no-case .chips { display: none; }   /* the example chips wait for a case too */
+body.no-case .composer { opacity: 0.55; }   /* the input stays in place, locked, until a case is on (#20) */
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 
@@ -459,15 +464,17 @@ body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax
 .flow button:hover { color: var(--text); }
 .flow button.done { color: var(--muted); border-top-color: var(--line-strong); }
 .flow button.on { color: var(--green); border-top-color: var(--green); font-weight: 700; }
-.step-pane { padding: 10px 16px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
-.step-pane p { margin: 0; font-size: 13px; line-height: 1.5; }
-.step-pane p:empty { display: none; }
-body.start .flow, body.start .step-pane, body.step-stages .step-pane { display: none; }
+.flow button[disabled] { color: var(--faint); border-top-color: var(--line); cursor: default; opacity: 0.5; }   /* not reached yet (#20) */
+.flow { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+body.start .flow { display: none; }
 /* the slider, the legend and the mm labels belong to the stages (the target keeps the labels) */
 body:not(.step-stages) .stage-bar { display: none; }
 body.step-initial .legend, body.step-setup .legend, body.step-initial .ipr-label, body.step-setup .ipr-label, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }
-body.step-initial .side-tab[data-tab="stages"], body.step-initial .side-tab[data-tab="rules"],
-body.step-setup .side-tab[data-tab="stages"], body.step-setup .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
+/* the tabs open with the progress (#20): 조건 from the setup, 단계 표·규칙 from the stages */
+body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-tab[data-tab="stages"], body:not(.prog-stages) .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
+.scan-facts { margin: 0; padding: 0 20px; display: grid; grid-template-columns: 56px 1fr; row-gap: 10px; font-size: 13px; }
+.scan-facts dt { color: var(--muted); }
+.scan-facts dd { margin: 0; }
 .ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
 .exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
 
@@ -542,6 +549,10 @@ body.step-setup .side-tab[data-tab="stages"], body.step-setup .side-tab[data-tab
 .stage-grid .k { display: grid; place-items: center; color: var(--faint); padding-right: 4px; justify-content: end; }
 .stage-grid .c { border-bottom: 1px solid #1f1f1f; }
 .stage-grid .c.nil { border-bottom: 0; }   /* a tooth that never moves: blank column */
+.stage-grid .c.wait { border-bottom: 0; }   /* a delayed crown before its first aligner: in place (#144) */
+/* the phase boundary (#144): one thin rule across the table with the phases named at its ends */
+.stage-grid .phase { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--faint); white-space: nowrap; }
+.stage-grid .phase i { flex: 1; border-top: 1px solid var(--line-strong); }
 .stage-grid .hd.nil { color: var(--faint); font-weight: 400; }
 .stage-grid .row.cur > * { background: rgba(118, 185, 0, 0.14); }
 .stage-grid .row.cur .k { color: var(--green); font-weight: 700; }

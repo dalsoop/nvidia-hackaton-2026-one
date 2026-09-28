@@ -90,6 +90,8 @@
     </div>
   </div>
 
+  <!-- a short-lived notice (#20): the STL download done line -->
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <main class="layout">
     <!-- 작업 흐름 레일 (v2 설계 보드 11, #13 polish → 3개): 환자(시작 화면 = 샘플 카드 + 환자 목록; 「새 환자」로 #patients, 「입력 확인 열기」로 #check=)
          · 디자인(작업대) · 내보내기(승인 전 흐리게). 지금 화면은 .on, 아직 갈 수 없는 단계는 disabled(라벨만, 부제 없음). #patients·#check= 에서는 「환자」가 켜진다 -->
@@ -111,17 +113,13 @@
           <button id="popPatients" class="link-btn" type="button">환자 등록 →</button>
         </div>
       </div>
-      <!-- 디자인 흐름 (#15): 초기 → 셋업 → 목표 → 단계. 누르면 그 상태로 가고 주소 &step= 에 남는다. 서버 계산은 열 때 한 번 -->
-      <nav id="flow" class="flow" aria-label="디자인 흐름">
+      <!-- 진행 표시 (#20): 초기 → 셋업 → 목표 → 단계. 에이전트의 step_done 이 앞으로 밀고, 끝난 칸만 눌러 되돌아본다(주소 &step=) -->
+      <nav id="flow" class="flow" aria-label="디자인 진행">
         <button type="button" data-step="initial">초기</button>
-        <button type="button" data-step="setup">셋업</button>
-        <button type="button" data-step="target">목표</button>
-        <button type="button" data-step="stages">단계</button>
+        <button type="button" data-step="setup" disabled>셋업</button>
+        <button type="button" data-step="target" disabled>목표</button>
+        <button type="button" data-step="stages" disabled>단계</button>
       </nav>
-      <div id="stepPane" class="step-pane">
-        <p id="stepLine"></p>
-        <button id="stepNext" class="btn primary" type="button">셋업 보기</button>
-      </div>
       <!-- 이 케이스의 계획: 턴마다 카드가 쌓이고, 「보기」로 3D의 계획을 바꾼다. 단계 상태에서만 보인다 (#111, #15) -->
       <section id="plans" class="plans" hidden>
         <div class="plans-head"><h2>계획</h2></div>
@@ -152,12 +150,10 @@
         <button id="skipBtn" class="btn ghost small" type="button" title="지금 화면의 계획을 그대로 씁니다" hidden>건너뛰기</button>
       </div>
       <p id="planNotice" class="plan-notice" aria-live="polite"></p>
-      <div class="chips" id="chips"></div>
-
       <div id="selChips" class="sel-chips" hidden></div>
       <!-- one rounded box (#15): the text and, at its right end, the send icon only -->
       <form id="chatForm" class="composer">
-        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요 · Enter 로 보내기"></textarea>
+        <textarea id="chatInput" rows="1" placeholder="처방과 우선순위를 적어 주세요"></textarea>
         <button id="sendBtn" type="submit" class="send" aria-label="보내기" title="보내기 · Enter"><svg class="ic" aria-hidden="true"><use href="#i-send-horizontal"></use></svg></button>
       </form>
     </section>
@@ -264,6 +260,7 @@
           <span data-key="locked" hidden><i class="sw blue"></i>고정</span>
           <span data-key="removed" hidden><i class="sw ghost"></i>발치</span>
           <span data-key="ipr" hidden><i class="sw ipr"></i>IPR mm</span>
+          <span data-key="ipr_face" hidden><i class="sw ipr-face"></i>IPR 면</span>
           <span id="overlayLegend" hidden><i class="sw before"></i>치료 전 (겹쳐 보기)</span>
           <span id="pickedLegend" hidden><i class="sw picked"></i>선택한 치아 <small>(눌러서 대화에 넘기기)</small></span>
         </div>
@@ -288,11 +285,17 @@
     <!-- 작업대 오른쪽 사이드바 (#111): 단계 표 · 규칙 · 조건. 값은 보고 있는 계획(state.plan)에서 온다. 폭은 --side-w (#14) -->
     <aside id="side" class="side">
       <div class="side-tabs" role="tablist">
-        <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-table-2"></use></svg><span>단계 표</span></button>
+        <button id="tabScan" class="side-tab" type="button" role="tab" data-tab="scan" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-layers"></use></svg><span>스캔</span></button>
+        <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-table-2"></use></svg><span>단계 표</span></button>
         <button id="tabRules" class="side-tab" type="button" role="tab" data-tab="rules" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-shield-check"></use></svg><span>규칙</span></button>
         <button id="tabCond" class="side-tab" type="button" role="tab" data-tab="cond" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders-horizontal"></use></svg><span>조건</span></button>
       </div>
-      <section id="paneStages" class="pane" role="tabpanel">
+      <!-- 스캔 사실 (#20): 케이스를 연 직후의 오른쪽 패널 -->
+      <section id="paneScan" class="pane" role="tabpanel">
+        <div class="pane-head"><h2>스캔</h2><p id="scanFor" class="sub"></p></div>
+        <dl id="scanFacts" class="scan-facts"></dl>
+      </section>
+      <section id="paneStages" class="pane" role="tabpanel" hidden>
         <div class="pane-head">
           <div id="stageFacts" class="facts-line"></div>
         </div>
@@ -313,6 +316,8 @@
         <fieldset id="constraints" class="constraints">
           <label>발치 치아 <input id="cExtract" placeholder="빈칸이면 비발치 · 예: 14, 24"></label>
           <label>고정 치아 <input id="cLock" placeholder="예: 25, 26"></label>
+          <!-- IPR per contact (#57): FDI pairs and mm per contact; empty = no prescription, the even rule below applies -->
+          <label>IPR 처방 · 접촉면 mm <input id="cSurf" placeholder="빈칸이면 처방 없음 · 예: 12-11 0.4, 11-21 0.4"></label>
           <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 11, 12, 21, 22"></label>
           <label>IPR 한도 · 면당 mm <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25" placeholder="0.25 이하"></label>
           <label>단계 상한 <input id="cCap" type="number" min="1" step="1" placeholder="빈칸이면 없음"></label>
@@ -321,8 +326,9 @@
           <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
         </fieldset>
         <p id="condState" class="cond-state" aria-live="polite"></p>
+        <!-- a hand-edited condition re-runs the setup turn (#20); 에이전트 없이 계산 lives on the retry bar only -->
         <div class="pane-foot">
-          <button id="fallbackBtn" class="btn ghost cond-run" type="button" title="에이전트 없이 이 조건으로 계산합니다 · 주 동작은 대화">에이전트 없이 계산</button>
+          <button id="condApply" class="btn ghost cond-run" type="button" title="이 조건으로 셋업 턴을 다시 보냅니다" hidden>이 조건으로 셋업 다시</button>
         </div>
       </section>
     </aside>

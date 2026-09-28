@@ -176,8 +176,7 @@ def ui_greeting(case_id: str) -> str:
     from cualign.core.store import STORE
     cid, case = STORE.load_case(case_id)
     return (f"케이스 {cid} (상악 {len(case.ids)}개 치아, 총생 {_js_number(planner.crowding_mm(case))} mm) 를 불러왔습니다. "
-            "계획을 시작하려면 제약을 알려 주세요. 발치할 치아가 있으면 번호로 알려 주세요(없으면 비발치). "
-            "기간 상한이 있으면 함께 알려 주세요.")
+            "계획을 시작하려면 제약을 알려 주세요. 처방을 적어 주세요.")   # the agent's first word since #20
 
 
 def form_patch(c) -> dict:
