@@ -176,7 +176,8 @@ def _summary(pid):
             "constraints": p["constraints"], "review": p["review"], "approval": p["approval"],
             "input_stale": p["input_stale"],   # same rule as GET /api/plans/{id}: the scan was renumbered since
             "manual": (p.get("target") or {}).get("source") == "manual",   # staged from a hand-edited target (직접 이동)
-            "previous_calculation": p["previous_calculation"]}   # computed by another core version: listed as «이전 계산» only (10)
+            "previous_calculation": p["previous_calculation"],   # computed by another core version: listed as «이전 계산» only (10)
+            "rule_run": p.get("rule_run")}   # None unless a rule plan made it: its group, the chosen plan, all_failed, tried
 
 
 def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=None, *,
@@ -201,8 +202,15 @@ def rule_based_plan(case_id=None, allow_extraction=None, stage_cap=None, order=N
     service = PlanningService(STORE)
     ids = service.compare(cid, c, parent_plan_id=parent_plan_id)
     STORE.case_constraints[cid] = c
+    # the plans of this one request are alternatives to each other: each carries the run (group, the plan chosen, whether
+    # every allowed strategy broke a rule, what was tried), so the screen shows one card and knows it after a reload
+    first = _rule_plan_result(cid, ids)
+    picked = first.get("chosen") or first.get("best_failed")
+    run = {"group_id": "g" + uuid.uuid4().hex[:8], "chosen_plan_id": picked["plan_id"] if picked else None,
+           "all_failed": first["chosen"] is None, "tried": [p["strategy"] for p in first["tried"]]}
     for pid in ids:
-        STORE.set_review(pid, {"status": "skipped", "attempts": 0,
+        STORE.plans[pid]["rule_run"] = dict(run)
+        STORE.set_review(pid, {"status": "skipped", "attempts": 0,   # persists the plan, rule_run with it
                               "message": "규칙 폴백 — 검토 에이전트 미실행", "error": None})
     out = _rule_plan_result(cid, ids)
     chosen = out.get("chosen") or out.get("best_failed")

@@ -56,6 +56,8 @@ const state = {
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
   lastRequest: null,     // {text, constraints} of the last /chat/stream request, replayed by 다시 보내기 (#51)
   selected: new Set(),   // teeth the dentist clicked in the 3D; named in the next chat message (#90)
+  ruleMarked: new Set(), // of those, the ones a 규칙 tab violation lit: highlighted in the 3D, never sent with a message
+  openTries: new Set(),  // plan cards whose 「시도한 전략」 fold the dentist opened (kept over a re-render)
   overlay: false,        // 전후 겹쳐 보기: the untreated arch drawn as a white ghost (#90)
   violLabels: [],        // CSS2DObject collision labels of the stage on screen
   numLabels: [],         // CSS2DObject tooth numbers shown during the input check
@@ -325,7 +327,7 @@ function fixGumBaseNormals(geo) {
 }
 function buildTeeth(mesh) {
   group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels(); scanFx.cancel();
-  state.violLabels = []; state.selected.clear(); renderSelection();
+  state.violLabels = []; state.selected.clear(); state.ruleMarked.clear(); renderSelection();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(t.v.flat(), 3));
@@ -658,10 +660,11 @@ function renderSelection() {
   markChartSelection();
   const box = $("selChips");
   box.innerHTML = "";
-  box.hidden = !state.selected.size;
-  if (!state.selected.size) return;
+  const attached = attachedTeeth();
+  box.hidden = !attached.length;
+  if (!attached.length) return;
   box.append("선택한 치아 · 다음 메시지에 함께 보냅니다");
-  for (const id of [...state.selected].sort((a, b) => fdi(a) - fdi(b))) {
+  for (const id of attached.sort((a, b) => fdi(a) - fdi(b))) {
     const b = document.createElement("button");
     b.type = "button"; b.dataset.id = id; b.textContent = `${fdi(id)}번 ✕`; b.title = "선택 해제";
     box.append(b);
@@ -670,6 +673,8 @@ function renderSelection() {
   clear.type = "button"; clear.className = "clear"; clear.textContent = "모두 해제";
   box.append(clear);
 }
+// the teeth the next message names: the dentist's clicks, not the ones a violation lit
+const attachedTeeth = () => [...state.selected].filter((id) => !state.ruleMarked.has(id));
 let downAt = null;
 canvas.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
 canvas.addEventListener("pointerup", (e) => {
@@ -677,14 +682,16 @@ canvas.addEventListener("pointerup", (e) => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
   const id = toothAt(e);
   if (!id) return;
-  if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+  // a tooth a violation lit becomes the dentist's own on a click (attached from now on); otherwise the click toggles
+  if (state.ruleMarked.has(id)) state.ruleMarked.delete(id);
+  else if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
   state.pickedOnce = true; $("pickedLegend").hidden = false; $("pickHint").hidden = true;
   renderSelection();
 });
 $("selChips").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.classList.contains("clear")) state.selected.clear(); else state.selected.delete(b.dataset.id);
+  if (b.classList.contains("clear")) { for (const id of attachedTeeth()) state.selected.delete(id); } else state.selected.delete(b.dataset.id);
   renderSelection();
 });
 
@@ -1698,13 +1705,36 @@ function renderPlanList() {
     div.querySelector(".n").textContent = `계획 ${n}`;
     div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual && row.strategy !== "manual" ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
+    // the other strategies one 다시 계산 tried sit folded in its chosen plan's card: alternatives of one request,
+    // not a time line like 지난 계획 (the server keeps every plan, so their ids and numbers stay)
+    const alts = tries.get(row.plan_id) ?? [];
+    if (alts.length) {
+      const d = document.createElement("details"); d.className = "plan-tries";
+      d.open = alts.some((r) => r.plan_id === cur) || state.openTries.has(row.plan_id);
+      d.addEventListener("toggle", () => { if (d.open) state.openTries.add(row.plan_id); else state.openTries.delete(row.plan_id); });
+      d.innerHTML = `<summary></summary><div class="plan-list"></div>`;
+      d.querySelector("summary").textContent = `시도한 전략 ${row.rule_run.tried?.length ?? alts.length + 1}개 보기`;
+      d.querySelector(".plan-list").replaceChildren(...alts.map(make));
+      // card and fold in one frame, side by side in the DOM: a selector on the card (.plan-row.current .pill) never
+      // reaches the rows in the fold
+      const group = document.createElement("div"); group.className = "plan-group" + (row.plan_id === cur ? " current" : "");
+      group.append(div, d);
+      return group;
+    }
     return div;
   };
-  $("oldPlans").hidden = !old.length;
-  $("oldPlansN").textContent = old.length;
+  // a rule plan's run (rule_run): the plan it chose leads, the others it tried go under that card
+  const tries = new Map(), folded = new Set();
+  for (const r of rows) {
+    const lead = r.rule_run?.chosen_plan_id;
+    if (lead && lead !== r.plan_id && state.planRows[lead]) { (tries.get(lead) ?? tries.set(lead, []).get(lead)).push(r); folded.add(r.plan_id); }
+  }
+  const shown = (list) => list.filter((r) => !folded.has(r.plan_id));
+  $("oldPlans").hidden = !shown(old).length;
+  $("oldPlansN").textContent = shown(old).length;
   if (old.some((r) => r.plan_id === cur)) $("oldPlans").open = true;
-  $("oldPlanList").replaceChildren(...old.map(make));
-  $("planList").replaceChildren(...now.map(make));
+  $("oldPlanList").replaceChildren(...shown(old).map(make));
+  $("planList").replaceChildren(...shown(now).map(make));
 }
 
 async function loadPlan(planId) {
@@ -1857,15 +1887,15 @@ function renderRulesPane(plan) {
   verdict.querySelector("b").textContent = ""; verdict.querySelector("span").textContent = "";
   if (!plan) return;
   const viol = plan.violations ?? [], by = (t) => viol.filter((v) => v.type === t);
-  // at a glance: 규칙 통과 · 검토 통과 big, or the violation count; after a rule plan where every allowed strategy
-  // failed, which plan this is (the least wrong one) and what was tried
-  const allFailed = state.allFailed?.plan_id === plan.plan_id ? state.allFailed : null;
+  // at a glance: 규칙 통과 · 검토 통과 big, or the violation count; a rule plan whose every allowed strategy failed says
+  // so from the run the server stored with it (rule_run, kept over a reload), with what was tried and which plan this is
+  const allFailed = plan.rule_run?.all_failed ? plan.rule_run : null;
   verdict.classList.toggle("fail", viol.length > 0 || (pre && +(plan.target?.space_deficit_mm ?? 0) > 0));
   if (pre) { verdict.querySelector("b").textContent = "목표 배열 점검"; verdict.querySelector("span").textContent = "공간만 봅니다 · 단계 규칙은 단계를 만든 뒤 검증"; }
   else verdict.querySelector("b").textContent = allFailed ? "허용 전략 전부 규칙 위반"
     : viol.length ? `규칙 위반 ${viol.length}건` : `규칙 통과 · ${REVIEW_KO[plan.review?.status] ?? "검토 전"}`;
   if (!pre) verdict.querySelector("span").textContent = allFailed
-    ?`시도한 전략 ${allFailed.tried.map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — 가장 덜 틀린 ${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
+    ? `시도한 전략 ${(allFailed.tried ?? []).map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — ${allFailed.chosen_plan_id === plan.plan_id ? "가장 덜 틀린 " : "그중 "}${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
     : viol.length ? "아래 위반 항목을 누르면 그 단계로 가서 치아를 강조합니다." : "검사한 규칙";
   const coll = by("collision"), mv = by("move_limit"), cap = by("stage_cap"), sp = by("space_deficit");
   const maxOf = (arr, key) => arr.length ? Math.max(...arr.map((v) => +v[key] || 0)) : 0;
@@ -2286,9 +2316,9 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   if (constraints === null) {
     try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   }
-  if (state.selected.size && !resend) {
-    text = `[선택한 치아: ${[...state.selected].map(fdi).sort((a, b) => a - b).join(", ")}번] ` + text;
-    state.selected.clear(); renderSelection();
+  if (attachedTeeth().length && !resend) {
+    text = `[선택한 치아: ${attachedTeeth().map(fdi).sort((a, b) => a - b).join(", ")}번] ` + text;
+    state.selected.clear(); state.ruleMarked.clear(); renderSelection();
   }
   const requestId = crypto.randomUUID(), caseId = state.meshCase, prevPlanId = state.plan?.plan_id ?? null;
   // the step this turn asks for (#20): the next one after the progress, or the one the chip/button names
@@ -2529,8 +2559,6 @@ async function runFallback({ fromCond = false } = {}) {
       body: JSON.stringify({ case_id: caseId, parent_plan_id: state.plan?.plan_id ?? null, ...constraints }) });
     for (const t of res.tried ?? []) addStep("fallback: " + t.strategy, t, "fallback");
     const selected = res.chosen || res.best_failed, prevPlanId = state.plan?.plan_id ?? null;
-    // every allowed strategy broke a rule: the 규칙 tab says so over the least-wrong plan's violations
-    state.allFailed = !res.chosen && selected ? { plan_id: selected.plan_id, tried: (res.tried ?? []).map((t) => t.strategy) } : null;
     if (selected) {
       await refreshPlans(selected.plan_id); setStep("stages");
       if (fromCond) addMsg("system", `조건을 바꿔 규칙으로 다시 계산했습니다 — 계획 ${planNo(selected.plan_id)}`);
@@ -2938,7 +2966,8 @@ function markChartSelection() {
 $("toothChart").addEventListener("click", (e) => {
   const id = e.target.closest("g.tooth:not(.missing)")?.dataset.id;
   if (!id || !state.teeth[id]) return;
-  if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+  if (state.ruleMarked.has(id)) state.ruleMarked.delete(id);   // a violation's tooth becomes the dentist's, as in the 3D
+  else if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
   state.pickedOnce = true; $("pickedLegend").hidden = false; $("pickHint").hidden = true;
   renderSelection();
 });
@@ -2976,8 +3005,10 @@ $("violGroups").addEventListener("click", (e) => {
   state.stageTouched = true; stopPlay();
   if (state.step !== "stages") setStep("stages");
   const ids = b.dataset.teeth.split(",").filter(Boolean);
-  if (ids.length) {
-    state.selected.clear(); for (const id of ids) state.selected.add(id);
+  if (ids.length) {   // the last violation's teeth replace the previous violation's; the dentist's own picks stay
+    for (const id of state.ruleMarked) state.selected.delete(id);
+    state.ruleMarked.clear();
+    for (const id of ids) if (!state.selected.has(id)) { state.selected.add(id); state.ruleMarked.add(id); }
     state.pickedOnce = true; $("pickedLegend").hidden = false;
     renderSelection();
   }
