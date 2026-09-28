@@ -142,6 +142,13 @@ def cmd_serve(args):
     if os.name != "nt":
         os.execv(sys.executable, cmd)
     # os.execv on Windows starts a new process and ends this one, so serve returned at once and left the server behind (#83)
+    # nat serve dies with this process, and this process with the uv.exe or shell that started it (winjob.py)
+    from cualign import winjob
+    if not winjob.kill_children_with_this_process():
+        print("[warn] could not tie nat serve to this process — stop the server by its port if it outlives serve")
+    launcher = winjob.launcher_pid()
+    if launcher is not None:
+        winjob.exit_when_gone(launcher)
     raise SystemExit(subprocess.call(cmd))
 
 
