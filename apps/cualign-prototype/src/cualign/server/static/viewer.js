@@ -124,6 +124,9 @@ function resize() {
   camera.updateProjectionMatrix();
   // the opening fit runs while the start screen still holds the layout; until the view is moved, a new size fits again
   if (controls.fitted && w && h) setView(controls.fitted);
+  // setSize empties the canvas, and this runs after the frame's draw (loop below) but before its paint: draw again, or
+  // every frame of a resize (크게 보기) paints a blank 3D under the labels
+  renderer.render(scene, camera);
 }
 new ResizeObserver(resize).observe($("canvasWrap"));
 
