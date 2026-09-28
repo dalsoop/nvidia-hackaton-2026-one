@@ -1,12 +1,19 @@
 """Check packaged runtime assets; does not assert standalone CLI deployment support."""
+from pathlib import Path
 import sys
 from zipfile import ZipFile
+
+# every page file the screen serves, read from the source tree: a new script (drawers.js, scan-reveal.js, …) is required
+# in the wheel the moment it exists, with no list here to forget
+STATIC = Path(__file__).resolve().parents[1] / "src" / "cualign" / "server" / "static"
 
 
 def check_wheel(path):
     required = {f"cualign/core/templates/{tooth}.stl" for tooth in range(2, 16)}
     required.add("cualign/core/templates/ATTRIBUTION.md")
-    required.update(f"cualign/server/static/{name}" for name in ("index.html", "app.js", "manual.js", "manual-math.js", "manual-gizmo.js", "manual-panel.js", "style.css", "plan-stream.js", "intro-arch.png", "logo.png"))
+    pages = sorted(p.name for pattern in ("*.js", "*.css", "*.html") for p in STATIC.glob(pattern))
+    assert {"index.html", "app.js", "style.css"} <= set(pages), f"no page files under {STATIC}"
+    required.update(f"cualign/server/static/{name}" for name in (*pages, "intro-arch.png", "logo.png"))
     # the 3D view icon bar (#13 polish)
     required.update(f"cualign/server/static/icons/view-{view}.png" for view in ("occlusal", "front", "left", "right", "overlay"))
     # start-screen samples (#46): real scans, their credit and thumbnails

@@ -188,8 +188,16 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
+// a headless test browser (webdriver) draws at 10 fps, ?fps=N sets any page's rate: the software WebGL of headless Chrome
+// took whole cores at 60. The effects run on elapsed time, so they end the same; a person's browser draws every frame.
+const FRAME_GAP = 1000 / (Number(new URLSearchParams(location.search).get("fps")) || (navigator.webdriver ? 10 : Infinity));
+let lastFrame = -Infinity;
 (function loop() {
-  controls.update(); scanFx.tick(); sweepFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  const t = performance.now();
+  if (t - lastFrame >= FRAME_GAP - 1) {
+    lastFrame = t;
+    controls.update(); scanFx.tick(); sweepFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  }
   requestAnimationFrame(loop);
 })();
 
