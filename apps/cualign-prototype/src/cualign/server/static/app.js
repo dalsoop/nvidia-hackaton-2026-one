@@ -32,7 +32,8 @@ const state = {
   caseInfo: null,        // /activate payload: the scan facts on the 스캔 tab
   skippedPlans: new Set(),   // plans adopted with 건너뛰기: the card says 건너뜀 instead of a review state (#15)
   abort: null, skippedTurn: null,
-  stlBusy: false,        // the server is building the STL zip for a download (#119)
+  stlBusy: null,         // the plan id whose STL zip a download is waiting for (#119)
+  exportStatus: {},      // plan id -> GET /api/plans/{id}/export-status: {building, done, total, ready, stl?, error?}
   meshCase: null,        // case_id currently loaded in the viewer
   activeCase: null,      // case_id being planned (the input-check screen can show another scan in the viewer)
   cases: [],             // /api/cases rows
@@ -952,17 +953,21 @@ function updateActions() {
   renderCondState();
   $("constraints").disabled = !!busy;
   const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
-  $("exportBtn").disabled = !exportable || state.stlBusy;
+  $("exportBtn").disabled = !exportable || !!state.stlBusy;
   renderRail();
-  const building = "STL 만드는 중" + (state.stlProgress ? " · " + state.stlProgress : "…");
-  $("exportBtn").textContent = state.stlBusy ? building : p?.approval ? "STL 내려받기" : "내보내기";
+  // the zip of the plan on screen only: a build or a download of another plan does not show here
+  const st = p?.approval ? state.exportStatus[p.plan_id] : null;
+  const zipBusy = !!p && (state.stlBusy === p.plan_id || !!st?.building);
+  const progress = zipBusy && st?.total ? `${st.done ?? 0}/${st.total}` : null;
+  const building = "STL 만드는 중" + (progress ? " · " + progress : "…");
+  $("exportBtn").textContent = zipBusy ? building : p?.approval ? "STL 내려받기" : "내보내기";
   // why the button is off, in the same order as the gate above; nothing while a turn or a load is running
   $("exportWhy").textContent = exportable || busy ? "" : !p ? "계획이 없습니다" : p.input_stale ? "이전 입력의 계획"
     : dirty ? "조건이 바뀜 · 새 계획 뒤 승인" : !p.passed ? `규칙 위반 ${(p.violations ?? []).length}건 · 조건을 바꿔 다시 계획`
     : "검토 실패 · 검토 다시 요청";
   // the rail item is the only visible 내보내기 (#13 polish): dim until the plan can be approved, the reason in its tooltip
   const railExport = document.querySelector('#rail button[data-go="export"]');
-  railExport.querySelector("span").textContent = state.stlBusy ? (state.stlProgress ? state.stlProgress : "만드는 중…") : p?.approval ? "STL 받기" : "내보내기";
+  railExport.querySelector("span").textContent = zipBusy ? (progress ?? "만드는 중…") : p?.approval ? "STL 받기" : "내보내기";
   railExport.title = $("exportWhy").textContent ? "내보내기 · " + $("exportWhy").textContent : p?.approval ? "단계별 STL(zip)을 내려받습니다" : "승인하고 STL 내보내기";
   $("exportSkip").hidden = !["skipped", "not_requested"].includes(p?.review?.status);
   $("revokeBtn").hidden = !p?.approval;
@@ -974,6 +979,19 @@ function updateActions() {
   const link = $("stlLink");
   if (allowed && p.approval) link.href = "/api/plans/" + encodeURIComponent(p.plan_id) + "/stl.zip";
   else link.removeAttribute("href");
+  // 펄스 점 at the download link's place: building N/총 → a check and the link with what it holds; failed → X, the reason, 다시 만들기
+  const failed = !zipBusy && !!st?.error, ready = !zipBusy && !!st?.ready;
+  $("exportState").hidden = !p?.approval;
+  const dot = link.querySelector(".pulse-dot");
+  dot.hidden = !zipBusy && !ready && !failed;   // approved but no build known (a restarted server): the link builds it
+  dot.classList.toggle("ok", ready); dot.classList.toggle("fail", failed);
+  link.classList.toggle("ready", ready); link.classList.toggle("fail", failed);
+  const n = p?.stages?.length ?? p?.info?.n_stages;
+  link.querySelector("span").textContent = zipBusy ? building : failed ? "STL 만들지 못함 · " + st.error
+    : ready ? `STL 내려받기 (${n}단계 · ${st.stl}개)` : "STL 내려받기";
+  link.title = failed ? st.error : "";
+  $("exportRetry").hidden = !failed;
+  if (p?.approval && (!st || st.building)) pollExportStatus(p.plan_id);   // a reload or a revisit picks the build up
   if (p && dirty) $("planNotice").textContent = "조건 변경됨 — 새 계획을 생성한 뒤 승인하세요. 현재 3D는 이전 계획입니다.";
 }
 async function approveCurrent() {
@@ -985,6 +1003,7 @@ async function approveCurrent() {
     const result = await api("/api/plans/" + encodeURIComponent(p.plan_id) + "/approval",
       { method: revoke ? "DELETE" : "POST", headers: { "Content-Type": "application/json" },
         ...(revoke ? {} : { body: JSON.stringify({ confirmed: true }) }) });
+    delete state.exportStatus[p.plan_id];   // approval starts (or finds) the build: ask the server again
     if (state.plan?.plan_id === p.plan_id) { state.plan = result; renderResult(result); }
   } catch (e) { addMsg("error", e.message); }
   finally { state.loading = false; updateActions(); }
@@ -3109,24 +3128,30 @@ function toast(text, ms = 3200) {
   const el = $("toast"); el.textContent = text; showPop(el, true);
   clearTimeout(toast.timer); toast.timer = setTimeout(() => showPop(el, false), ms);
 }
-// While the zip builds, the server may report its progress (contract: GET /api/plans/{id}/export-status →
-// {building, done, total}); the rail label shows N/총 when it does, plain 만드는 중 when it does not
+// While the zip builds (from approval on, or for a download), the server reports its progress (contract: GET
+// /api/plans/{id}/export-status → {building, done, total, ready, stl?, error?}), kept per plan id; the rail label and the
+// link show N/총. One poll per plan, only while that plan is on screen and approved; it stops when the build is over.
+const exportPolls = new Set();
 async function pollExportStatus(planId) {
-  while (state.stlBusy && state.plan?.plan_id === planId) {
-    try {
+  if (exportPolls.has(planId)) return;
+  exportPolls.add(planId);
+  try {
+    while (state.plan?.plan_id === planId && state.plan.approval) {
       const r = await fetch(`/api/plans/${encodeURIComponent(planId)}/export-status`);
       if (r.status === 404) return;   // the server has no progress to give
       const st = await r.json();
-      state.stlProgress = st.total ? `${st.done ?? 0}/${st.total}` : null;
-      if (state.stlBusy) updateActions();
-    } catch { return; }
-    await new Promise((res) => setTimeout(res, 500));
-  }
+      state.exportStatus[planId] = st;
+      if (state.plan?.plan_id === planId) updateActions();
+      if (!st.building && state.stlBusy !== planId) return;
+      await new Promise((res) => setTimeout(res, 500));
+    }
+  } catch { /* no progress to show */ }
+  finally { exportPolls.delete(planId); }
 }
 async function downloadStl() {
   const p = state.plan, link = $("stlLink");
   if (state.stlBusy || !p?.approval || !link.hasAttribute("href")) return;
-  state.stlBusy = true; state.stlProgress = null; updateActions();
+  state.stlBusy = p.plan_id; updateActions();
   pollExportStatus(p.plan_id);
   try {
     const r = await fetch(link.href);
@@ -3140,13 +3165,14 @@ async function downloadStl() {
     addMsg("error", `STL 내려받기 실패: ${err.message}`);
     return;
   } finally {
-    state.stlBusy = false; state.stlProgress = null; updateActions();
+    state.stlBusy = null; updateActions();
   }
   const key = p.plan_id + "@" + p.approval.approved_at;
   toast(`${doneCards.has(key) ? "" : "승인 완료 · "}단계별 STL ${p.stages?.length ?? p.info?.n_stages ?? "?"}장을 내려받았습니다`);
   doneCards.add(key);
 }
 $("stlLink").addEventListener("click", (e) => { e.preventDefault(); downloadStl(); });
+$("exportRetry").addEventListener("click", () => { delete state.exportStatus[state.plan?.plan_id]; downloadStl(); });   // stl.zip starts a new build
 $("revokeBtn").addEventListener("click", approveCurrent);
 $("reviewBtn").addEventListener("click", reviewCurrent);
 $("cMonths").addEventListener("input", () => { const m = Number($("cMonths").value); $("cCap").value = m > 0 ? capOfMonths(m) : ""; });

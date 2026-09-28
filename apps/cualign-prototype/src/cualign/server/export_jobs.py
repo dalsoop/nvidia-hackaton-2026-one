@@ -29,6 +29,7 @@ class ExportJob:
         self.ready = False
         self.error: str | None = None
         self.report: dict = {}
+        self.stl = 0            # the .stl files in the finished zip (the screen says «27단계 · 351개»)
         self.finished = threading.Event()
         self.thread: threading.Thread | None = None
 
@@ -41,7 +42,7 @@ class ExportJob:
 
     def status(self) -> dict:
         return {"building": self.building, "done": self.done, "total": self.total, "ready": self.ready,
-                **({"error": self.error} if self.error else {})}
+                **({"stl": self.stl} if self.ready else {}), **({"error": self.error} if self.error else {})}
 
     def wait(self) -> "ExportJob":
         self.finished.wait()
@@ -79,6 +80,8 @@ def forget(plan_id: str) -> None:
 def _run(job: ExportJob, case, stages: list[dict], case_id: str) -> None:
     try:
         job.report = build_zip(case, stages, case_id, job.path, progress=job.tick)
+        with zipfile.ZipFile(job.path) as z:
+            job.stl = sum(n.endswith(".stl") for n in z.namelist())
         job.ready = True
     except Exception as e:   # noqa: BLE001 - the download reports it; the screen's status shows it
         job.error = f"{type(e).__name__}: {e}"
