@@ -2,6 +2,7 @@
 
 제품 범위는 [PRD](PRD.md), 기술 구조·데이터 계약·한계는 [TRD](TRD.md),
 설치·실행은 [README](../README.ko.md), NVIDIA별 연결과 검증 수준은 [NVIDIA 활용](NVIDIA_STACK.md)을 참조한다.
+여러 세션이 워크트리로 나눠 동시에 고칠 때는 [병렬 세션 운영 방식](PARALLEL_WORK.md)을 먼저 읽는다.
 
 ## 실행 흐름
 
