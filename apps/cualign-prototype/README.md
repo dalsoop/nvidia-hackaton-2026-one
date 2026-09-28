@@ -99,7 +99,7 @@ A plan with rule violations or a failed review cannot be approved. The keyless r
 | Component | Role in cuAlign |
 |---|---|
 | NeMo Agent Toolkit | Planning agent, read-only reviewer, calculation tools, chat server and plan events (`configs/workflow.yml`, `src/cualign/agent/`) |
-| Nemotron on NIM | Chat and tool selection. The config uses `nvidia/nemotron-3-super-120b-a12b` and `nvidia/nemotron-3.5-lightning-30b-a3b` |
+| Nemotron on NIM | Chat and tool selection. The config uses `nvidia/nemotron-3-super-120b-a12b` (planner and reviewer), `nvidia/nemotron-3.5-lightning-30b-a3b` (follow-up cards) and `nvidia/nemotron-3.5-content-safety` (Guardrails safety checks) |
 | NeMo Guardrails | Input and output checks on every agent call (`guardrails/`) |
 | OpenShell | Runs the cuAlign server in a sandbox with restricted writes and network (`openshell/server-policy.yaml`). Status: [docs/openshell.md](docs/openshell.md#상태) (Korean) |
 | NemoClaw | Calls cuAlign as an MCP server (`/mcp`) from an OpenClaw sandbox (`nemoclaw/`). Status: [docs/nemoclaw.md](docs/nemoclaw.md#검증-상태) (Korean) |
