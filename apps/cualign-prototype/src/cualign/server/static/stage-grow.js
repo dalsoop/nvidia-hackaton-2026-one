@@ -102,6 +102,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     if (r.fill && !r.land && fillAt(t) >= 1 && t >= roundEnd()) landNow(t);
     if (r.land) return landing(t);
     ghost.visible = true;
+    note();   // the chip stays this round's while it runs (the turn's end turns the chip off: setStreaming)
     // the crowns: gathered to stage 0, then each one a step toward the ghost when the cursor touches it
     const g = ease((t - r.t0) / GATHER);
     const touched = Math.floor((t - r.t0 - GATHER) / PER);
@@ -126,7 +127,6 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     if (r.fill) {
       const shown = Math.ceil(fillAt(t) * r.fill.rows.length);
       r.fill.rows.forEach((el, k) => { if (k < shown) showRow(el, true); });
-      note();
     }
   }
 
@@ -188,7 +188,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
   addEventListener("keydown", (e) => { if (e.key === "Escape") skip(); });
   document.getElementById("workNote")?.addEventListener("click", skip);
 
-  const api = { tool, play, tick, skip, cancel: () => stop(false), get running() { return !!run; }, get ghostShown() { return !!run && ghost.visible; } };
+  const api = { tool, play, tick, skip, cancel: () => stop(false), get running() { return !!run; }, get ghostShown() { return !!run && !run.land; } };
   window.__stageGrow = api;   // browser checks
   return api;
 }
