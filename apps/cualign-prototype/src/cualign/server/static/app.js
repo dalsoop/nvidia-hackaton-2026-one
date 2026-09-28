@@ -958,7 +958,6 @@ function updateActions() {
   const p = state.plan, busy = state.streaming || state.loading;
   const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
   for (const id of ["sendBtn", "caseBtn"]) $(id).disabled = !!busy;
-  for (const b of document.querySelectorAll("#plans .plan-row .btn")) b.disabled = !!busy;
   renderCondState();
   $("constraints").disabled = !!busy;
   const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
@@ -1783,7 +1782,7 @@ function reviewBadge(row, pl) {
   if (!land || row.approval || row.approved || row.input_stale) return null;
   pl.prepend(Object.assign(document.createElement("i"), { className: "pulse-dot " + (land.ok ? "ok" : "fail") }));
   if (!land.ok) { pl.classList.remove("pass", "ok"); pl.classList.add("fail"); }
-  if (!$("plans").hidden) land.t ??= performance.now();
+  if (!$("planPick").hidden) land.t ??= performance.now();
   const age = land.t == null ? 0 : performance.now() - land.t;
   return age < FLASH_MS ? { ok: land.ok, age } : null;
 }
@@ -1791,36 +1790,41 @@ function flashCard(el, flash) {
   if (flash) { el.classList.add(flash.ok ? "flash-ok" : "flash-fail"); el.style.animationDelay = `-${Math.round(flash.age)}ms`; }
   return el;
 }
-// The plan cards on the panel top (#111): one row per plan, the plan on screen marked 보는 중, the rest with 보기.
-// Plans that existed before the case was opened sit folded under 지난 계획 (#105).
+// The plan picker over the right panel's tabs: the plan on screen in one line (계획 N · strategy · stages · months ·
+// the rules/review/approval badge), with two plans or more a ▾ opening the list (the one on screen marked .current);
+// a row picked there goes on screen. Plans that existed before the case was opened sit folded under 지난 계획 (#105)
+// at the list's foot. Only on the stages step; the line fades in as the first plan lands.
 function renderPlanList() {
   const rows = Object.values(state.planRows), cur = state.plan?.plan_id;
   if (rows.length) state.planError = null;
   renderPlanFail();
-  $("plans").hidden = !(rows.length && state.step === "stages") && !state.planError;
+  const pick = $("planPick"), show = !!rows.length && state.step === "stages";
+  if (show && pick.hidden) { pick.classList.remove("fade-in"); void pick.offsetWidth; pick.classList.add("fade-in"); }
+  pick.hidden = !show;
+  if (!show) openPlanMenu(false);
+  $("planMore").hidden = rows.length < 2;
   const old = rows.filter((r) => state.oldPlans.has(r.plan_id)), now = rows.filter((r) => !state.oldPlans.has(r.plan_id));
-  const make = (row) => {
+  const make = (row, line = false) => {
     const div = document.createElement("div");
     const n = planNo(row.plan_id), months = row.months ?? row.info?.months, [pill, cls] = planPill(row);
     div.className = "plan-row" + (row.plan_id === cur ? " current" : "");
     div.dataset.plan = row.plan_id;
     div.title = row.plan_id + (row.parent_plan_id ? " ← " + row.parent_plan_id : " · 최초 계획");
-    div.innerHTML = `<span class="n"></span><span class="what"></span><span class="pill"></span><span class="sp"></span>` +
-      (row.plan_id === cur ? `<span class="viewing">보는 중</span>` : `<button class="btn ghost" type="button" data-act="view">보기</button>`);
+    div.innerHTML = `<span class="n"></span><span class="what"></span><span class="pill"></span>`;
     div.querySelector(".n").textContent = `계획 ${n}`;
     div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual && row.strategy !== "manual" ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
     const flash = reviewBadge(row, pl);
     // the other strategies one 다시 계산 tried sit folded in its chosen plan's card: alternatives of one request,
     // not a time line like 지난 계획 (the server keeps every plan, so their ids and numbers stay)
-    const alts = tries.get(row.plan_id) ?? [];
+    const alts = line ? [] : tries.get(row.plan_id) ?? [];
     if (alts.length) {
       const d = document.createElement("details"); d.className = "plan-tries";
       d.open = alts.some((r) => r.plan_id === cur) || state.openTries.has(row.plan_id);
       d.addEventListener("toggle", () => { if (d.open) state.openTries.add(row.plan_id); else state.openTries.delete(row.plan_id); });
       d.innerHTML = `<summary></summary><div class="plan-list"></div>`;
       d.querySelector("summary").textContent = `시도한 전략 ${row.rule_run.tried?.length ?? alts.length + 1}개 보기`;
-      d.querySelector(".plan-list").replaceChildren(...alts.map(make));
+      d.querySelector(".plan-list").replaceChildren(...alts.map((r) => make(r)));
       // card and fold in one frame, side by side in the DOM: a selector on the card (.plan-row.current .pill) never
       // reaches the rows in the fold
       const group = document.createElement("div"); group.className = "plan-group" + (row.plan_id === cur ? " current" : "");
@@ -1839,8 +1843,13 @@ function renderPlanList() {
   $("oldPlans").hidden = !shown(old).length;
   $("oldPlansN").textContent = shown(old).length;
   if (old.some((r) => r.plan_id === cur)) $("oldPlans").open = true;
-  $("oldPlanList").replaceChildren(...shown(old).map(make));
-  $("planList").replaceChildren(...shown(now).map(make));
+  $("planCur").replaceChildren(state.planRows[cur] ? make(state.planRows[cur], true) : Object.assign(document.createElement("span"), { className: "none", textContent: "계획을 고르세요" }));
+  $("oldPlanList").replaceChildren(...shown(old).map((r) => make(r)));
+  $("planList").replaceChildren(...shown(now).map((r) => make(r)));
+}
+function openPlanMenu(open) {
+  $("planMenu").hidden = !open;
+  $("planMore").setAttribute("aria-expanded", String(open));
 }
 
 async function loadPlan(planId) {
@@ -1889,9 +1898,13 @@ function renderResult(plan) {
   const memo = splitNote((review.message ?? "") + (review.error ? " (" + review.error + ")" : ""));
   $("reviewMemo").innerHTML = esc(memo.body.trim()) + (memo.note ? `<small class="note">${esc(memo.note)}</small>` : "");
   if (plan.approval) $("reviewMemo").prepend(Object.assign(document.createElement("div"), { textContent: "승인됨 · " + fmtDate(plan.approval.approved_at) }));
-  // the fold shows once a review result is in (passed · failed) or the plan is approved; an unreviewed plan has no fold
+  // the 규칙 tab's fold under the verdict: a memo, an approval (승인 취소) or a failed review (검토 다시 요청); open
+  // on a failed review or when every allowed strategy broke a rule, else folded; nothing of those, no line
   $("reviewLine").textContent = memo.body.trim() ? "검토 메모" : "검토";
-  $("planReview").hidden = !plan.approval && !["passed", "failed"].includes(review.status);
+  const fold = $("planReview"), failed = review.status === "failed" || !!plan.rule_run?.all_failed;
+  fold.hidden = !memo.body.trim() && !plan.approval && review.status !== "failed";
+  if (failed) fold.open = true; else if (fold.dataset.plan !== plan.plan_id) fold.open = false;   // another plan starts folded
+  fold.dataset.plan = plan.plan_id;
   renderSide(plan);
   renderLegend(plan);
 }
@@ -3120,11 +3133,14 @@ $("gateClose").addEventListener("click", async () => {
     try { await loadMesh(state.activeCase); await refreshPlans(); } catch (err) { addMsg("error", err.message); }
   }
 });
-// plan cards: 보기 puts that plan in the 3D and the sidebar (#111)
-$("plans").addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-act=view]"), id = btn?.closest(".plan-row")?.dataset.plan;
+// the plan picker: ▾ (or the line itself, with two plans or more) opens the list; a row picked there puts that plan in
+// the 3D and the sidebar (#111) and the list closes
+$("planPick").querySelector(".plan-line").addEventListener("click", () => { if (!$("planMore").hidden) openPlanMenu($("planMenu").hidden); });
+$("planMenu").addEventListener("click", (e) => {
+  const id = e.target.closest(".plan-row")?.dataset.plan;
   if (!id || state.streaming || state.loading) return;
-  loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
+  openPlanMenu(false);
+  if (id !== state.plan?.plan_id) loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
 });
 // sidebar tabs: a tab picked by hand holds while the step stays (the turn in progress); the next step takes the panel again
 for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => {
