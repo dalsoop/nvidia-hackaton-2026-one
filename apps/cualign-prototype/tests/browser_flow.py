@@ -349,7 +349,7 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.progress === 'initial' && !window.__cualign.state.setup", timeout=30000)
             assert await page.evaluate("location.hash") == "#case=poseidon-000097" and await page.evaluate("window.__cualign.state.plan") is None
             assert await page.locator("#tabScan").get_attribute("aria-selected") == "true" and await page.locator("#flow button[data-step=\"setup\"]").is_disabled()
-            assert await page.locator(".trace").count() == 0 and await page.locator(".ipr-label, .extract-mark").count() == 0
+            assert await page.locator(".trace").count() == 0 and await page.locator(".ipr-mark, .extract-mark").count() == 0
             assert await next_chip("이 케이스의 처방 넣기").count() == 1 and await page.locator(".restart-link").count() == 0
             assert await page.locator(".msg.system", has_text="조건이 처방과 다릅니다").count() == 0      # empty conditions on purpose, no warning
             assert await page.evaluate(scan_rx) == [[], False]      # the 스캔 tab clean again: the marks came with the setup, they go with it
@@ -738,7 +738,7 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('has-plan') && document.body.classList.contains('step-stages') && !document.querySelector('#sendBtn').disabled", timeout=120000)
             # IPR faces (#22): an IPR plan of this case cuts crowns (000131 prescribes IPR on the anterior; the fallback's
             # chosen plan is 확장, so pick one of the case's plans the server cuts). In the stages the cut teeth carry the cut
-            # geometry with their planes blue and the legend says IPR 면; 초기 shows the scan's crowns again
+            # geometry, their planes in the crown's own colour (blue only in 셋업); 초기 shows the scan's crowns again
             ipr_plan = await page.evaluate(FIND_CUT_PLAN)
             assert ipr_plan, "no plan of 000131 with teeth_cut"
             await page.evaluate(f"window.__cualign.loadPlan('{ipr_plan}')")
@@ -746,8 +746,7 @@ async def main():
             cut_set = f"window.__cualign.state.cutSets['plan:{ipr_plan}']"
             cut_ids = await page.evaluate(f"Object.keys({cut_set} ?? {{}})")
             assert cut_ids and await page.evaluate("window.__cualign.cutKeyNow()") == f"plan:{ipr_plan}", cut_ids
-            assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => window.__cualign.state.teeth[id].geometry === c.geo && window.__cualign.state.teeth[id].userData.cutMesh.visible && c.faces.index.count > 0)")
-            assert await page.locator('.legend [data-key="ipr_face"]').is_visible()
+            assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => {{ const m = window.__cualign.state.teeth[id]; return m.geometry === c.geo && m.userData.cutMesh.visible && m.userData.cutMesh.material === m.material && c.faces.index.count > 0; }})")
             await page.locator('#flow button[data-step="initial"]').click()
             assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full && !m.userData.cutMesh.visible)")
             await page.locator('#flow button[data-step="stages"]').click()
@@ -828,6 +827,11 @@ async def main():
             # and the patch carries it back in FDI
             assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"
             await page.wait_for_function("document.querySelectorAll('.ipr-mark').length === 3", timeout=5000)   # a CSS2D mark enters the page on the next drawn frame
+            # IPR marks by step (ipr-view-check): 셋업 has the dot and its mm per prescribed contact and the cut planes blue;
+            # 목표 has neither (the crowns stay cut, the planes in the crown's colour)
+            blue = "Object.values(window.__cualign.state.teeth).filter((m) => m.userData.cutMesh.visible && m.userData.cutMesh.material !== m.material).length"
+            await page.wait_for_function(f"{blue} > 0", timeout=30000)
+            assert await page.locator(".ipr-mark .ipr-mm").all_inner_texts() == ["0.40"] * 3
             assert await page.evaluate("window.__cualign.readConstraints().ipr_surfaces") == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]]
             # the recorded setup tells the same lines a live setup does, in the same order, from the recording's values
             # (the lines follow the landing, which may still be fetching after the recorded bubble shows)
@@ -842,6 +846,7 @@ async def main():
                 "확장 + IPR 전략으로 목표 배열을 만듭니다.", "확보 4.4 mm 로 총생 4.2 mm 를 해결했습니다."]
             assert await page.locator("body").evaluate("b => b.classList.contains('step-target')") and await page.evaluate("window.__cualign.state.targetId") == "t-fake"
             assert await next_chip("비발치안과 비교").count() == 1      # 000131 is a non-extraction case
+            assert await page.locator(".ipr-mark, .ipr-mm").count() == 0 and await page.evaluate(blue) == 0
             await next_chip("단계 만들기").click()
             await skip_turn(3)
             await page.wait_for_function(f"document.body.classList.contains('step-stages') && {plan_on_screen} === '{before_skip}' && !window.__cualign.state.loading", timeout=60000)   # the plan (and its cut, #22) load after the recorded bubble

@@ -152,9 +152,34 @@ def mesh_base_json(cid: str, case) -> str:
     if case not in _MESH_JSON:
         data = case.viewer_json()
         data["teeth"], data["teeth_cap"] = closed_teeth_view(cid, data["teeth"])   # a bared side shows no hole (the IPR-cut crowns are closed already)
+        _CLOSED_CROWNS[case] = data["teeth"]
         data.update(gum_filled_view(cid, case, data["gum"]))
         _MESH_JSON[case] = json.dumps(data, separators=(",", ":"))
     return _MESH_JSON[case]
+
+
+_CLOSED_CROWNS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # Case -> the crowns /mesh sends ({tooth: {v, f}})
+
+
+def closed_cut_json(cid: str, case, cut) -> dict:
+    """`teeth_cut` / `ipr_cut` like Case.cut_json, but each cut crown is the crown /mesh shows (decimated, its margin
+    closed by the root stub) sliced on the cut's own planes, not the core's cut of the raw scan decimated afterwards: that
+    one closes the open margin with a flat fan and, decimated with it, showed a jagged grey band along the gum line next
+    to the scan's crowns. The planes and amounts are the core's (`cut.ipr_cut`); the view only."""
+    from cualign.core.ipr_cut import CAP_TOL_DECIMATED, _fill_loops, _slice, cut_faces
+    import trimesh
+    info = getattr(cut, "ipr_cut", None) or {}
+    if info and case not in _CLOSED_CROWNS:
+        mesh_base_json(cid, case)
+    teeth, faces = {}, {}
+    for i, e in info.items():
+        t = _CLOSED_CROWNS[case][str(i)]
+        m = trimesh.Trimesh(np.asarray(t["v"], float), np.asarray(t["f"]), process=False)
+        for pl in e["planes"]:
+            m = _fill_loops(_slice(m, np.asarray(pl["n"], float), float(pl["c"])))
+        teeth[str(i)] = {"v": np.round(m.vertices, 3).tolist(), "f": m.faces.tolist()}
+        faces[str(i)] = {"mm": e["mm"], "faces": cut_faces(m, e["planes"], tol=CAP_TOL_DECIMATED).tolist()}
+    return {"teeth_cut": teeth, "ipr_cut": faces}
 
 
 def ipr_cut_view(cid: str, case, plan_id: str | None = None, target_id: str | None = None) -> dict:
@@ -166,11 +191,11 @@ def ipr_cut_view(cid: str, case, plan_id: str | None = None, target_id: str | No
         t = STORE.targets.get(target_id)
         if t is None or t["case_id"] != cid:
             return {"plan_id": None, "target_id": None, "teeth_cut": {}, "ipr_cut": {}}
-        return {"plan_id": None, "target_id": target_id, **planner.cut_case(case, t["info"]).cut_json()}
+        return {"plan_id": None, "target_id": target_id, **closed_cut_json(cid, case, planner.cut_case(case, t["info"]))}
     rec = STORE.plans.get(plan_id) if plan_id else _representative_plan(STORE.current_plan_ids_for(cid))
     if rec is None or rec["case_id"] != cid:
         return {"plan_id": None, "teeth_cut": {}, "ipr_cut": {}}
-    return {"plan_id": rec["plan_id"], **planner.cut_case(case, rec["info"]).cut_json()}
+    return {"plan_id": rec["plan_id"], **closed_cut_json(cid, case, planner.cut_case(case, rec["info"]))}
 
 
 PREVIOUS_CALCULATION = "이전 계산의 계획입니다(계산 코어가 바뀌었습니다). 이 계획을 기준으로 이어갈 수 없으니 다시 계산해 주세요."
@@ -393,7 +418,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             from cualign.core.ipr_cut import cut_ipr
             return {"plan_id": None, "target_id": None, **cut_ipr(case, surfaces, faces=c.face_amounts()).cut_json()}
         info = {"ipr_surfaces": surfaces, "ipr_applied_teeth": sorted({t for a, b, _ in surfaces for t in (a, b)})}
-        return {"plan_id": None, "target_id": None, **planner.cut_case(case, info if surfaces else None).cut_json()}
+        return {"plan_id": None, "target_id": None, **closed_cut_json(cid, case, planner.cut_case(case, info if surfaces else None))}
 
     def require_target(case_id: str, target_id: str) -> dict:
         t = STORE.targets.get(target_id)
