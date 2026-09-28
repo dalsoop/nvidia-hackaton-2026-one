@@ -108,11 +108,6 @@ KNOWN_FAIL = {
     # step 2 limit: a tooth under DISPLACED_MM out of the arch still counts in the fit and bends it; past it, it is left
     # out. On the parabola the measure steps by 1.4 mm across 3 → 3.5 mm (catenary 0.6 mm).
     "B-out-step-parabola": lambda got: _num(got) <= 1.5,
-    # collision validator (#61): the target is clear, but on the way 7 slides past 6's corner (+1.0–1.8 mm³ in the
-    # middle stages, straight-line staging) and IPR is not cut from the meshes, so the plan fails on small collisions
-    # although the space is there. Only that: a space deficit or another pair is a new failure.
-    "D-plan-000001": lambda got: re.fullmatch(r"fail: 최선 \w+: collision \d+건, 가장 큰 충돌 \[6, 7\] 단계 \d+ \(\+1\.\d+mm³\)",
-                                                got) is not None,
 }
 
 
