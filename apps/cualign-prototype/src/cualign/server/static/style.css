@@ -787,7 +787,7 @@ body.no-3d .labels, body.no-3d .view-rail, body.no-3d .legend, body.no-3d .tip, 
   .splitter { display: none; }
   .rail { position: sticky; top: 0; z-index: 6; flex-direction: row; justify-content: center; padding: 4px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
   .chat { overflow: visible; }
-  .viewer { flex: none; height: 60vh; min-height: 360px; }
+  .viewer { flex: none; height: 60vh; min-height: 440px; }   /* the view rail (272px, centred) clears the stage bar (75px) from 422px */
   .side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
   /* the start screen: the case list is the page, not a box inside the 3D */
   body.start .viewer { height: auto; }
