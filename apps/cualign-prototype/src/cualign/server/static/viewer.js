@@ -146,6 +146,7 @@ const ghost = new THREE.Group(); scene.add(ghost);
 const GHOST_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false });
 // the stage tool's 「단계가 자라난다」 (stage-grow.js): ghost at the target, the cursor stepping the crowns, the table filling
 const stageGrow = createStageGrow({ THREE, CSS2DObject, group, ghost, state, applyStage: (k) => applyStage(k), setWorkNote: (on, text) => setWorkNote(on, text) });
+import("./target-reveal.js").then((m) => m.createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, state, applyStage, setWorkNote }));   // the target tool's 「치열궁을 따라 자리 잡는다」: it watches the tool rows and the landing itself
 // Each gum vertex follows the four nearest crowns, weighted by distance (σ 7 mm), so the scanned gum moves with
 // the teeth instead of swallowing them. Translation only; crown rotation is small at the gum line.
 const GUM_K = 4, GUM_SIGMA = 7, GUM_SMOOTH = 3;   // #18: 3 / 5 mm tore the gum between crowns that part (the extraction sites)
