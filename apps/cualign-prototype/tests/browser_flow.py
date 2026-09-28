@@ -229,6 +229,18 @@ async def main():
             assert (await page.evaluate("location.hash")).endswith("&step=setup")
             assert await page.locator('#flow button[data-step="setup"]').is_enabled() and await page.locator('#flow button[data-step="target"]').is_disabled()
             assert await next_chip("목표 배열 만들기").count() == 1 and await next_chip("조건 바꾸기").count() == 1
+            # 「처음부터」 on the case header: back to 초기 in one click (flow and conditions forgotten on the server), the address
+            # only #case=…, the scan tab, no cut or label, and the prescription chip again; the chip runs the setup turn again
+            await page.locator("#restartBtn").click()
+            await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.progress === 'initial' && !window.__cualign.state.setup", timeout=30000)
+            assert await page.evaluate("location.hash") == "#case=poseidon-000097" and await page.evaluate("window.__cualign.state.plan") is None
+            assert await page.locator("#tabScan").get_attribute("aria-selected") == "true" and await page.locator("#flow button[data-step=\"setup\"]").is_disabled()
+            assert await page.locator(".trace").count() == 0 and await page.locator(".ipr-label, .extract-mark").count() == 0
+            assert await next_chip("이 케이스의 처방 넣기").count() == 1 and await page.locator(".restart-link").count() == 0
+            assert await page.locator(".msg.system", has_text="조건이 처방과 다릅니다").count() == 0      # empty conditions on purpose, no warning
+            await next_chip("이 케이스의 처방 넣기").click()
+            await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            assert await page.locator("#cExtract").input_value() == "14, 24" and await next_chip("목표 배열 만들기").count() == 1
             # turn 2 (target): step_done{target_id} → GET /targets → the 3D shows the target state (one stage); 초기 ↔ 목표 look back
             await next_chip("목표 배열 만들기").click()
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.targetId === 't-fake' && !document.querySelector('#sendBtn').disabled", timeout=60000)

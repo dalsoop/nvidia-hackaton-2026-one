@@ -210,6 +210,13 @@ class Store:
         c = flow["constraints"]
         return {**flow, "constraints": c.model_dump(mode="json") if c is not None else None}
 
+    def restart_case(self, case_id: str) -> None:
+        """「처음부터」: forget how far the step flow went and the case-level conditions (back to Constraints(), not the
+        sample's prescription — the prescription chip puts it back). Targets and plans stay: plan ids, approvals and
+        exports keep their records, and the screen folds the plans as 지난 계획."""
+        self.flow.pop(case_id, None)
+        self.case_constraints[case_id] = Constraints()
+
     def forget_case(self, case_id: str) -> list[str]:
         """Drop everything derived from a deleted patient scan: case, conditions, targets, plans and their files."""
         self.cases.pop(case_id, None)

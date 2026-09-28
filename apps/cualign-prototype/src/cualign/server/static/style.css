@@ -380,6 +380,7 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .intro h1 { margin: 0 0 16px; font-size: 18px; font-weight: 700; line-height: 1.4; }
 .link-btn { font: inherit; font-size: 13px; background: none; border: 0; padding: 4px 0; color: var(--muted); cursor: pointer; }
 .link-btn:hover, .link-btn:focus-visible { color: var(--green); outline: none; }
+.msg .restart-link { display: block; margin-top: 6px; font-size: 12px; padding: 0; text-decoration: underline; }   /* 「처음부터 다시」 under the restored case's line */
 /* opening a case (#163 follow-up): over the 3D and the dimmed start pane at once, a faint arch and one line; fades out */
 .mesh-loading { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
                 background: var(--bg); color: var(--muted); font-size: 13px; pointer-events: none; transition: opacity 0.2s ease; }
