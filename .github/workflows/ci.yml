@@ -48,4 +48,5 @@ jobs:
       - run: uv run pytest -q -p no:warnings
       - run: uv run nat validate --config_file configs/workflow.yml
       - run: uv run cualign plan "발치 없이 12개월 안에 끝나는 계획 짜줘" --case moderate
-      - run: uv run cualign bench
+      - run: uv run cualign bench   # 성능 측정은 main 푸시에서만 (PR CI 3분 단축, 2026-09-28)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
