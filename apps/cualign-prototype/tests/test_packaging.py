@@ -26,7 +26,7 @@ def test_packaged_assets_are_required_and_nonempty(tmp_path):
             for path in directory.rglob("*"):
                 if path.is_file() and "__pycache__" not in path.parts:
                     archive.write(path, str(path.relative_to(root)))
-    assert module.check_wheel(wheel) == 20 + 2 + 5 + 3 * (14 + 3) + 5     # + start art, logo, sample credit, 5 view icons, 3 samples x (crowns, gum, source, png), the demo case's 5 recordings
+    assert module.check_wheel(wheel) == 21 + 2 + 5 + 3 * (14 + 3) + 5     # (+ manual.js) + start art, logo, sample credit, 5 view icons, 3 samples x (crowns, gum, source, png), the demo case's 5 recordings
     with ZipFile(wheel, "a") as archive:
         archive.writestr("cualign/server/static/style.css", "")
     with pytest.raises(ValueError, match="empty assets"):

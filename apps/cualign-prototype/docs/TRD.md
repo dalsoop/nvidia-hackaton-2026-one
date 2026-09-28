@@ -164,6 +164,13 @@ NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 설정된
 
 ## 6. 선택적 확장과 별도 검토
 
+직접 이동(PoC): 「목표」 단계에서 의사가 목표 배열의 치아를 3D 화살표·회전 고리나 숫자로 옮긴다(`static/manual.js`).
+축은 치아마다 스캔 치열궁의 접선(근원심)·바깥 법선(협설)·+z(정출)이다(`core/manual.py` `frames`).
+드래그 중에는 `POST /api/cases/{id}/targets/{tid}/check`가 저장 없이 겹침(검증기와 같은 1mm³ 기준)과 최소 단계 수를 돌려준다.
+적용은 `POST …/manual`로 새 목표를 만들고(`info.source = "manual"`, `parent_target_id`, `manual_teeth`) 흐름의 목표를 바꾼다.
+이후 에이전트 단계 턴은 문맥의 `target_manual_ko`를 보고 그 목표를 그대로 `plan_stages`에 넣고, 에이전트 없는 경로는 `POST …/stages`다.
+발치·고정 치아와 한 번에 10mm·45°를 넘는 이동은 거부한다(PoC 한도). 저장소가 메모리라 서버 재시작 뒤에는 이 목표도 남지 않는다.
+
 세그먼테이션은 예선 필수가 아니다. 필요할 때 공개 모델의 샘플 추론부터 검증하는 경로를 제안한다.
 ToothGroupNetwork는 추론용 `challenge_branch`를 안내하며 현재 어댑터의 `inference_mid.py`도 그 브랜치에 있다.
 명시 라이선스는 확보하지 못했다. MeshSegNet은 README에 상·하악 학습 모델과 코드 MIT 배포를 명시하지만,

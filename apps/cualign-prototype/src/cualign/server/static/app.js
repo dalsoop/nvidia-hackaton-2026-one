@@ -2,8 +2,12 @@
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { createManual } from "./manual.js";
 
 const $ = (id) => document.getElementById(id);
+// 직접 이동 (manual.js): created once the screen's functions exist (end of file); until then nothing is being edited
+let manualEdit = { active: false, open() {}, cancel() {}, leave() {} };
+const isManualTarget = () => state.target?.info?.source === "manual";
 // FDI ↔ Universal (upper arch only, #113): the dentist reads and writes FDI on screen; the core, planner and API
 // keep Universal. Convert at the screen boundary only — never show Universal alongside FDI (decision 2026-09-27).
 const fdi = (u) => { u = Number(u); return u <= 8 ? 19 - u : 12 + u; };
@@ -420,6 +424,7 @@ function setProgress(step, reset = false) {   // reset: a new setup or target ma
 }
 function setStep(step) {
   if (!STEPS.includes(step) || stepIndex(step) > stepIndex(state.progress)) step = state.progress;
+  manualEdit.leave(step);   // an unapplied hand edit does not follow the view off the 목표 step
   state.step = step;
   for (const s of STEPS) document.body.classList.toggle("step-" + s, s === step);
   stopPlay();
@@ -644,6 +649,7 @@ function renderSelection() {
 let downAt = null;
 canvas.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
 canvas.addEventListener("pointerup", (e) => {
+  if (manualEdit.active) return;   // 직접 이동: a click picks the crown to move (manual.js), not a tooth for the chat
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
   const id = toothAt(e);
   if (!id) return;
@@ -1557,7 +1563,7 @@ function renderPlanList() {
     div.innerHTML = `<span class="n"></span><span class="what"></span><span class="pill"></span><span class="sp"></span>` +
       (row.plan_id === cur ? `<span class="viewing">보는 중</span>` : `<button class="btn ghost" type="button" data-act="view">보기</button>`);
     div.querySelector(".n").textContent = `계획 ${n}`;
-    div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy} · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
+    div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
     return div;
   };
@@ -1977,9 +1983,15 @@ function nextChips() {
   switch (state.progress) {
     case "initial": return sample ? [{ label: "이 케이스의 처방 넣기", message: sample.request, step: "setup", hint: sample.prescription }] : [];
     case "setup": return [{ label: "목표 배열 만들기", message: "이 조건으로 목표 배열을 만들어줘.", step: "target" }, { label: "조건 바꾸기", action: "cond" }];
-    case "target": return [{ label: "단계 만들기", message: "이 목표로 단계를 만들어줘.", step: "stages" },
-                           { label: "8개월 안에", message: "8개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
-                           ...(extraction ? [] : [{ label: "비발치안과 비교", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘.", step: "stages" }])];
+    // a hand-edited target (직접 이동) is staged as it is: a condition change or a comparison would make new targets
+    case "target": return isManualTarget()
+      ? [{ label: "단계 만들기", message: "직접 옮긴 이 목표 배열 그대로 단계를 만들어줘.", step: "stages" },
+         { label: "에이전트 없이 단계 계산", action: "manualStages", hint: "모델 없이 이 목표 배열을 단계로 나누고 규칙을 검사합니다" },
+         { label: "다시 조정", action: "manual" }]
+      : [{ label: "단계 만들기", message: "이 목표로 단계를 만들어줘.", step: "stages" },
+         { label: "8개월 안에", message: "8개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
+         ...(extraction ? [] : [{ label: "비발치안과 비교", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘.", step: "stages" }]),
+         { label: "수동으로 조정", action: "manual", hint: "목표 배열의 치아를 3D에서 직접 옮깁니다" }];
     default: return [{ label: "승인하고 내보내기", action: "export" }, { label: "조건 바꾸기", action: "cond" }];
   }
 }
@@ -1999,6 +2011,9 @@ function addNextChips(after) {
   div.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b || state.streaming || state.loading) return;
+    if (b.dataset.action === "manual") { if (state.step !== "target") setStep("target"); manualEdit.open(); return; }
+    if (manualEdit.active) { toast("직접 이동을 적용하거나 취소한 뒤 진행해 주세요."); return; }
+    if (b.dataset.action === "manualStages") { stageManualTarget(); return; }
     if (b.dataset.action === "cond") { showTab("cond"); $("cExtract").focus(); return; }
     if (b.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
     send(b.dataset.message, null, { step: b.dataset.step || undefined });
@@ -2018,6 +2033,7 @@ function foldNextChips() {
 async function send(text, constraints = null, { resend = false, step = null } = {}) {
   text = (text ?? "").trim();
   if (!text || state.streaming || state.loading) return;
+  if (manualEdit.active) { toast("직접 이동을 적용하거나 취소한 뒤 보내 주세요."); return; }
   if (!state.meshCase) { showStart(); return; }
   if (constraints === null) {
     try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
@@ -2156,6 +2172,8 @@ const stepOf = (text, step) => step === "stages" && /개월|기간/.test(text) ?
 // screen is adopted. The recorded answer sits where the agent's would, marked grey with its date.
 async function replayOrAdopt(bubble, caseId, prevPlanId) {
   $("retryBar").hidden = true;
+  // a recorded answer makes its own targets; a hand-edited target is staged as it is instead
+  if (isManualTarget() && state.progress === "target" && !["setup", "target"].includes(state.turnStep)) { bubble.remove(); return stageManualTarget(); }
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
@@ -2207,6 +2225,7 @@ $("skipBtn").addEventListener("click", () => {
 async function runFallback() {
   const caseId = state.meshCase;
   if (!caseId || state.streaming || state.loading) return;
+  if (isManualTarget() && state.progress === "target") return stageManualTarget();   // /api/plan would make new targets
   let constraints;
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   setStreaming(true); updateActions();
@@ -2224,6 +2243,29 @@ async function runFallback() {
     addMsg("error", "계산 실패: " + e.message);
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 이전 결과를 유지합니다." : "";
     if (!Object.keys(state.planRows).length) { state.planError = e.message; renderPlanFail(); }
+  } finally { setStreaming(false); updateActions(); }
+}
+
+// 직접 이동 then 「에이전트 없이 단계 계산」: the hand-edited target staged and validated as it is (POST …/targets/{id}/stages),
+// review not run, like the fallback
+async function stageManualTarget() {
+  const caseId = state.meshCase, targetId = state.targetId;
+  if (!caseId || !targetId || state.streaming || state.loading) return;
+  setStreaming(true); updateActions();
+  addMsg("system", "에이전트 없이 계산 — 직접 옮긴 목표 배열을 그대로 단계로 나눕니다. 검토는 하지 않습니다.");
+  $("planNotice").textContent = "직접 옮긴 목표 배열을 단계로 나누는 중";
+  const prevPlanId = state.plan?.plan_id ?? null;
+  try {
+    const row = await api(`/api/cases/${encodeURIComponent(caseId)}/targets/${encodeURIComponent(targetId)}/stages`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parent_plan_id: prevPlanId }) });
+    $("planNotice").textContent = "";
+    await refreshPlans(row.plan_id);
+    setStep("stages"); addDecision(prevPlanId, row.plan_id);
+    addMsg("system", `직접 옮긴 목표 배열 · ${row.n_stages}단계(약 ${row.months}개월) · ` + (row.passed ? "규칙 통과" : `규칙 위반 ${row.violations}건 — 의사 승인이 제한됩니다`) + ".");
+    addNextChips($("transcript").lastElementChild);
+  } catch (e) {
+    $("planNotice").textContent = "";
+    addMsg("error", "단계를 만들지 못했습니다: " + e.message);
   } finally { setStreaming(false); updateActions(); }
 }
 
@@ -2442,11 +2484,12 @@ $("plans").addEventListener("click", (e) => {
   loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
 });
 // sidebar tabs
-for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
+for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => (b.dataset.tab === "move" ? manualEdit.open() : showTab(b.dataset.tab)));
 function showTab(name) {
   state.tab = name;
   for (const b of document.querySelectorAll(".side-tab")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
   $("paneScan").hidden = name !== "scan"; $("paneStages").hidden = name !== "stages"; $("paneRules").hidden = name !== "rules"; $("paneCond").hidden = name !== "cond";
+  $("paneMove").hidden = name !== "move";
 }
 // the scan as it came (#20): tooth count, crowding, what is missing between 17 and 27
 function renderScanPane(info) {
@@ -2551,6 +2594,9 @@ canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("dblclick", () => setView("occlusal"));   // back to the first view (#15)
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
+
+manualEdit = createManual({ THREE, scene, camera, canvas, state, $, fdi, api, applyStage, showTab, addMsg, toast, loadTargetCut,
+  afterApply: () => addNextChips($("transcript").lastElementChild) });
 
 (async function init() {
   try {
