@@ -279,7 +279,18 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .legend .picked { background: var(--green); }
 /* collapse the agent panel to see the 3D large */
 body.focus3d .layout { grid-template-columns: 64px 0 0 minmax(0, 1fr) 0 0; }
-body.focus3d .chat, body.focus3d .splitter, body.focus3d .side { display: none; }
+body.focus3d:not(.focus-moving) :is(.chat, .splitter, .side) { display: none; }
+/* 크게 보기 and back (setFocus3d): the grid's columns move over 220 ms on the one rule's easing, the panels keep their
+   width and ride their column's outer edge — the chat out to the left under the rail, the sidebar out to the right —
+   fading to 0.6; the 3D column widens by as much and its ResizeObserver resizes the renderer every frame. Once through,
+   body.focus-moving goes and the panels are display: none as before. The drawer layouts (≤1280) switch at once. */
+@media (min-width: 1281px) {
+  body.focus-moving .layout { transition: grid-template-columns 220ms var(--fx-ease); overflow: clip; }
+  body.focus-moving .layout > .rail { position: relative; z-index: 7; }
+  body.focus-moving .layout > .chat { width: var(--chat-w, 380px); justify-self: end; transition: opacity 220ms var(--fx-ease); }
+  body.focus-moving .layout > .side { width: var(--side-w, 400px); justify-self: start; transition: opacity 220ms var(--fx-ease); }
+  body.focus-moving.focus3d .layout > :is(.chat, .side) { opacity: 0.6; }
+}
 /* while a turn runs: a small chip at the bottom centre of the 3D (above the stage bar when it shows); the 3D keeps its
    brightness and its controls, the running step is the transcript's to tell. It fades out when the turn is over. */
 .work-note { display: flex; position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 4px); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 0.3s, transform 0.3s, visibility 0s 0.3s; }

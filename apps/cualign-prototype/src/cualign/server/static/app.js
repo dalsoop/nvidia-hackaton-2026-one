@@ -783,13 +783,21 @@ function planWords(p) {
   return p ? `${STRATEGY_KO[p.strategy] ?? p.strategy} ${p.n_stages}단계` : "—";
 }
 
-function toggle(btn, cls, on) {
-  document.body.classList.toggle(cls, on);
-  btn.setAttribute("aria-pressed", String(on));
+// 크게 보기: the panels slide out (back in) over FOCUS_MS while the 3D column widens (narrows) with them (style.css
+// body.focus-moving); the 3D's ResizeObserver resizes the renderer every frame. Reduced motion or a drawer layout: at once.
+const FOCUS_MS = 220, WIDE = matchMedia("(min-width: 1281px)");
+function setFocus3d(on) {
+  const b = document.body;
+  clearTimeout(setFocus3d.timer);
+  if (REDUCE_MOTION.matches || !WIDE.matches) { b.classList.remove("focus-moving"); b.classList.toggle("focus3d", on); return; }
+  b.classList.add("focus-moving");
+  void getComputedStyle($("side")).opacity;   // coming back, the panels are laid out (off display: none) before the columns move
+  b.classList.toggle("focus3d", on);
+  setFocus3d.timer = setTimeout(() => b.classList.remove("focus-moving"), FOCUS_MS);
 }
 $("focusBtn").addEventListener("click", (e) => {
   const on = !document.body.classList.contains("focus3d");
-  toggle(e.currentTarget, "focus3d", on);
+  setFocus3d(on); e.currentTarget.setAttribute("aria-pressed", String(on));
   e.currentTarget.setAttribute("aria-label", on ? "대화 · 대화 패널을 다시 엽니다" : "크게 · 대화 패널을 접고 3D를 크게 봅니다");
 });
 $("overlayBtn").addEventListener("click", (e) => {
