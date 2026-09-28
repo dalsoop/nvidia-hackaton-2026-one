@@ -336,8 +336,8 @@ cuAlign은 진단을 마친 치과의사가 CAD 작업(디지털 셋업)에서 �
   진행 표시 4칸 [현재, #20]: 초기 → 셋업 → 목표 → 단계 — 에이전트의 턴이 앞으로 민다(step_done). 끝난 칸만 눌러 되돌아본다(초기↔목표 비교), 주소 &step= 는 되돌아보기용
     열기  3D 는 스캔 그대로, 계산 없음(GET /api/plans 는 지난 계획 카드로만) · 에이전트 첫 말 「처방을 적어 주세요.」 + 샘플이면 칩 하나 「이 케이스의 처방 넣기」(누르면 전송) · 오른쪽 「스캔」 탭(치아 수·총생·결손)
     턴 1 셋업 (step: "setup")  step_done{setup, constraints} → 조건 탭이 그 값으로 채워짐 · 3D 발치 치아 빨강 1.2초 → 사라짐 · IPR 접촉면 노란 점 · 칩 [목표 배열 만들기] [조건 바꾸기]
-    턴 2 목표 (step: "target") step_done{target, target_id, summary} → GET /api/cases/{id}/targets/{target_id}(계획 모양, 단계 1개) 를 3D 에 · 초기↔목표 토글 · 칩 [단계 만들기] [8개월 안에] (+비발치 케이스만 [비발치안과 비교])
-    턴 3 단계 (step: "stages") 기존 계획 턴(plan_selected) → 슬라이더·단계 표·검토 메모 · 칩 [승인하고 내보내기] [조건 바꾸기]. 「8개월 안에」「비교해줘」도 stages
+    턴 2 목표 (step: "target") step_done{target, target_id, summary} → GET /api/cases/{id}/targets/{target_id}(계획 모양, 단계 1개) 를 3D 에 · 초기↔목표 토글 · 칩 [단계 만들기] [12개월 안에] (+비발치 케이스만 [비발치안과 비교])
+    턴 3 단계 (step: "stages") 기존 계획 턴(plan_selected) → 슬라이더·단계 표·검토 메모 · 칩 [승인하고 내보내기] [조건 바꾸기]. 「12개월 안에」「비교해줘」도 stages
   조건을 손으로 고치면 「이 조건으로 셋업 다시」 = setup 턴 재실행(그 뒤 목표·단계는 다시 만든다) · 새 셋업·목표가 오면 뒤 칸은 다시 닫힘
   다음 행동은 말풍선 바로 아래 칩뿐(입력칸 위 고정 칩 없음) · 「에이전트 없이 계산」은 턴 실패 막대에서만
   샘플 케이스는 8초 지난 턴·실패한 턴에 「건너뛰기」 → POST /replay {step: setup|target|stages|cap|compare} 의 녹화 답이 step_done/plan_selected 처럼 내려앉음

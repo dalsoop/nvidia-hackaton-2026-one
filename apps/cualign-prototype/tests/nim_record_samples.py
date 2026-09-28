@@ -6,7 +6,7 @@ src/cualign/core/samples/recorded/<case_id>/<step>.json. The sentences are recor
   setup    the card's «이 케이스의 처방 넣기» sentence (the prescription), step setup: conditions only, a question back
   target   «이 조건으로 목표 배열을 만들어줘.», step target: the target arrangement only, a question back (+ the strategy)
   stages   «이 목표로 단계를 만들어줘.», step stages: the plan, selected and reviewed
-  cap      «8개월 안에 끝나게 단계를 만들어줘.», step stages: the plan under a time cap
+  cap      «12개월 안에 끝나게 단계를 만들어줘.», step stages: the plan under a time cap
   compare  «확장안이랑 IPR안 둘 다 만들어서 비교해줘.», step stages: the strategies compared, one selected
 stages, cap and compare are the three chips the target step offers (app.js nextChips), so each is recorded the way the
 screen reaches it: the case opened again (activate drops a cap an earlier turn left) and setup -> target -> the chip, in

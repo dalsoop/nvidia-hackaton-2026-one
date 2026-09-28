@@ -296,7 +296,7 @@ async def main():
             assert "&step=" not in await page.evaluate("location.hash")
             await page.locator('#flow button[data-step="target"]').click()
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.stage === 1")
-            assert await next_chip("단계 만들기").count() == 1 and await next_chip("8개월 안에").count() == 1
+            assert await next_chip("단계 만들기").count() == 1 and await next_chip("12개월 안에").count() == 1
             assert await next_chip("비발치안과 비교").count() == 0      # an extraction prescription: no comparison chip
             # turn 3 (stages): the real tools make the plan; plan_selected lands it on 단계 with the slider
             await next_chip("단계 만들기").click()
@@ -771,7 +771,7 @@ async def main():
             await next_chip("단계 만들기").click()
             await skip_turn(3)
             await page.wait_for_function(f"document.body.classList.contains('step-stages') && {plan_on_screen} === '{before_skip}' && !window.__cualign.state.loading", timeout=60000)   # the plan (and its cut, #22) load after the recorded bubble
-            await page.locator("#chatInput").fill("8개월 안에 끝나게 다시 짜줘."); await page.locator("#sendBtn").click()
+            await page.locator("#chatInput").fill("12개월 안에 끝나게 다시 짜줘."); await page.locator("#sendBtn").click()
             await skip_turn(4)
             await page.locator("#chatInput").fill("확장안이랑 IPR안 둘 다 만들어서 비교해줘."); await page.locator("#sendBtn").click()
             await skip_turn(5)
