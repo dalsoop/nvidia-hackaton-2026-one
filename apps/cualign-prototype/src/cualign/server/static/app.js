@@ -2805,7 +2805,7 @@ function renderToothChart(info) {
     if (kind === "ext") el("path", { class: "x", d: `M${-p.w / 4} ${-p.d / 4}L${p.w / 4} ${p.d / 4}M${p.w / 4} ${-p.d / 4}L${-p.w / 4} ${p.d / 4}` }, body);
     el("text", { x: p.x.toFixed(2), y: (p.y + 1.1).toFixed(2) }, g).textContent = n;
     el("title", {}, g).textContent = `${n}번` + (kind === "missing" ? " · 결손" : kind === "ext" ? " · 발치 처방" : "");
-    if (has) g.classList.toggle("sel", state.selected.has(u));
+    if (has) { g.classList.toggle("sel", state.selected.has(u)); g.classList.toggle("pending", revealPending(u)); }
   }
   // IPR: a dot at the contact, the mm just inside the arch
   for (const [a, b, mm] of marks.surfaces ?? []) {
@@ -2842,17 +2842,22 @@ $("toothChart").addEventListener("click", (e) => {
   state.pickedOnce = true; $("pickedLegend").hidden = false; $("pickHint").hidden = true;
   renderSelection();
 });
-// Scan reveal hook: the 3D's scan-recognition sequence (molars → incisors, 0.1 s apart) can fill the chart in the same
-// order — window.dispatchEvent(new CustomEvent("cualign:scan-reveal", {detail: {ids: [Universal…], ms: 100}})).
+// Scan reveal: the 3D's scan recognition on the setup turn (scan-reveal.js start(), 17 → 27 at 0.1 s) fills the chart in
+// the same order — window.dispatchEvent(new CustomEvent("cualign:scan-reveal", {detail: {ids: [Universal…], ms: 100}})).
 // With no ids the chart fills from the molars to the incisors.
 window.addEventListener("cualign:scan-reveal", (e) => {
   const chart = $("toothChart"), teeth = [...chart.querySelectorAll("g.tooth:not(.missing)")], ms = e.detail?.ms ?? 100;
   const order = e.detail?.ids?.map(String) ?? [...new Set(teeth.map((g) => g.dataset.fdi % 10))].sort((a, b) => b - a)
     .flatMap((unit) => teeth.filter((g) => g.dataset.fdi % 10 === unit).map((g) => g.dataset.id));
+  // when each crown shows, kept so a chart drawn again meanwhile (the setup landing) stays in the sequence
+  const t0 = performance.now();
+  chartReveal = { due: new Map(order.map((id, i) => [id, t0 + i * ms])), end: t0 + order.length * ms + 50 };
   for (const g of teeth) g.classList.add("pending");
   order.forEach((id, i) => setTimeout(() => chart.querySelector(`g.tooth[data-id="${id}"]`)?.classList.remove("pending"), i * ms));
-  setTimeout(() => { for (const g of chart.querySelectorAll("g.tooth.pending")) g.classList.remove("pending"); }, order.length * ms + 50);
+  setTimeout(() => { chartReveal = null; for (const g of chart.querySelectorAll("g.tooth.pending")) g.classList.remove("pending"); }, order.length * ms + 50);
 });
+let chartReveal = null;
+const revealPending = (id) => !!chartReveal && performance.now() < (chartReveal.due.get(id) ?? chartReveal.end);
 $("condApply").addEventListener("click", () => {
   let constraints;
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
