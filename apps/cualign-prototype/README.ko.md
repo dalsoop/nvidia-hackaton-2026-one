@@ -93,7 +93,7 @@ NAT의 계획 에이전트가 조건을 해석해 계산 도구를 호출합니�
 | `src/cualign/agent/`, `configs/workflow.yml` | NAT 도구와 계획·검토 에이전트, Nemotron/NIM 연결 |
 | `src/cualign/server/` | API, 대화 검사 미들웨어, 정적 웹 UI |
 | `guardrails/` | NeMo Guardrails 검사 설정과 프롬프트, NVIDIA 카탈로그 스킬로 만든 안전 정책(`policy/`) |
-| `openshell/` | 샌드박스 정책 실험 |
+| `openshell/` | OpenShell 정책: 서버 샌드박스(`server-policy.yaml`)와 도구 실행 실험(`policy.yaml`) |
 | `workspace/` | 에이전트 정의(OpenClaw 워크스페이스 규약: SOUL·AGENTS·IDENTITY·USER·TOOLS·HEARTBEAT·MEMORY)와 Skill, 과거 검사 보고서. [workspace/README.md](workspace/README.md) |
 | `tests/`, `bench/`, `scripts/`, `docs/demo/` | 자동 검사·규칙 벤치마크·실호출 스크립트·기존 실행 기록 |
 
@@ -106,7 +106,7 @@ NAT의 계획 에이전트가 조건을 해석해 계산 도구를 호출합니�
 - 직접 이동은 목표 배열(최종 위치)만 고칩니다. 근원심·협설·수직 이동과 장축 회전만 다루며, 단계 사이 경유지·토크·기울기는 고치지 않습니다. 고친 목표는 새 목표로 저장되고 같은 단계 계산·규칙 검사·승인을 거칩니다.
 - 규칙 통과는 임상적 적합성이나 의사 승인이 아닙니다. 화면에서 명시적으로 승인한 계획만 내보낼 수 있으며 수정안은 다시 승인해야 합니다.
 - Guardrails는 에이전트를 부르는 모든 경로에서 대화 입력 검사와 출력 검사를 제공합니다. 답은 출력 판정까지 내보내지 않고, 막히면 거절문으로 바꿉니다. `/full`·`/atif` 경로의 원 단계는 거르지 않으며 검사 오류 시 ERROR 로그를 남기고 진행할 수 있습니다. `CUALIGN_RAILS_FAIL_CLOSED=1`이면 오류 턴을 거절합니다. 레일이 켜져 있으면 주민등록번호·휴대전화·이메일 꼴이 든 요청은 모델 전에 거절하고, 처방·확정 문구 목록에 걸린 답은 출력 레일 모델 없이 거절문으로 바꿉니다. 이름·차트 번호와 목록 밖 문장은 잡지 않습니다.
-- 스캔 분리 모델 추론, 서버 전체의 OpenShell 격리, 장치 셸 생성은 검증 완료 기능이 아닙니다.
+- 스캔 분리 모델 추론, 장치 셸 생성은 검증 완료 기능이 아닙니다. OpenShell 서버 샌드박스의 상태는 [OpenShell](docs/openshell.md#상태)에 있습니다.
 
 ## 데이터·실행 근거
 

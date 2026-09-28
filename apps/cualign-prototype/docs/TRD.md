@@ -33,7 +33,7 @@
 | 데이터 저장 | 메모리 STORE, 계획 JSON 쓰기 | PoC 실행 중 결과 공유. 다중 세션·재시작 복원 요구가 생기면 보강 필요 |
 | 인증 | 사용자 인증 계약 없음 | 공개·다중 사용자 운영을 선택하면 별도 설계 |
 | 대화 범위 검사 | NeMo Guardrails | 진단·처방 요청 등 범위 검사, 답을 판정까지 쥐었다가 막히면 거절문으로 바꿈. 진행 표시·`/full`·`/atif` 원 단계는 쥐지 않음 |
-| 실행 격리·규칙 자산 | OpenShell 정책, Skill·스캔 리포트 | 정책 실험·규칙 전달 자료. 서버 전체 샌드박스 통합은 미검증 |
+| 실행 격리·규칙 자산 | OpenShell 정책, Skill·스캔 리포트 | 서버 샌드박스 정책과 규칙 전달 자료. 서버 샌드박스 상태는 [OpenShell](openshell.md#상태) |
 | 배포·운영 | uv, Dockerfile, CI, 로그 | 소스 체크아웃 실행 기준. Docker Linux arm64 빌드·서버 검사 결과는 VERIFICATION 참조 |
 
 NVIDIA 구성별 코드와 실행 근거는 [NVIDIA 활용](NVIDIA_STACK.md)을 참조한다.

@@ -101,8 +101,8 @@ A plan with rule violations or a failed review cannot be approved. The keyless r
 | NeMo Agent Toolkit | Planning agent, read-only reviewer, calculation tools, chat server and plan events (`configs/workflow.yml`, `src/cualign/agent/`) |
 | Nemotron on NIM | Chat and tool selection. The config uses `nvidia/nemotron-3-super-120b-a12b` and `nvidia/nemotron-3.5-lightning-30b-a3b` |
 | NeMo Guardrails | Input and output checks on every agent call (`guardrails/`) |
-| OpenShell | Runs the cuAlign server in a sandbox with restricted writes and network (`openshell/`) |
-| NemoClaw | Calls cuAlign as an MCP server (`/mcp`) from an OpenClaw sandbox (`nemoclaw/`). Only offline tests pass so far |
+| OpenShell | Runs the cuAlign server in a sandbox with restricted writes and network (`openshell/server-policy.yaml`). Status: [docs/openshell.md](docs/openshell.md#상태) (Korean) |
+| NemoClaw | Calls cuAlign as an MCP server (`/mcp`) from an OpenClaw sandbox (`nemoclaw/`). Status: [docs/nemoclaw.md](docs/nemoclaw.md#검증-상태) (Korean) |
 | Agent Skill | Clinical-rules skill the planning agent reads before planning (`workspace/skills/cualign-clinical-rules/`) |
 | NVIDIA skill catalog | `nemotron-policy-generator` generated the safety policy in `guardrails/policy/` offline |
 
@@ -116,7 +116,7 @@ Offline tests check configuration and registration. They do not prove that remot
 | `src/cualign/agent/`, `configs/workflow.yml` | NAT tools, planning and review agents, Nemotron/NIM wiring |
 | `src/cualign/server/` | API, chat-check middleware, static web UI |
 | `guardrails/` | NeMo Guardrails config and prompts, plus the safety policy (`policy/`) built with an NVIDIA catalog skill |
-| `openshell/` | Sandbox policy experiments |
+| `openshell/` | OpenShell policies: the server sandbox (`server-policy.yaml`) and a tool-run experiment (`policy.yaml`) |
 | `nemoclaw/` | NemoClaw integration |
 | `workspace/` | Agent definitions following the OpenClaw workspace convention (SOUL, AGENTS, IDENTITY, USER, TOOLS, HEARTBEAT, MEMORY), the Skill, and past scan reports. See [workspace/README.md](workspace/README.md) |
 | `tests/`, `bench/`, `scripts/`, `docs/demo/` | Automated tests, rule benchmark, live-call scripts, earlier run logs |
@@ -129,7 +129,7 @@ Offline tests check configuration and registration. They do not prove that remot
 - Moving teeth by hand edits the target arrangement (final positions) only: mesiodistal, buccolingual and vertical translation and the turn about the long axis. Waypoints between stages, torque and tip are not edited. The edited arrangement is stored as a new target and goes through the same staging, rule checks and approval.
 - Passing the rules is not clinical suitability and not dentist approval. Only a plan explicitly approved in the UI can be exported, and an edited plan needs approval again.
 - Guardrails check chat input and output on every path that calls the agent. An answer is held until the output check finishes and is replaced by a refusal if blocked. Raw steps on the `/full` and `/atif` paths are not filtered, and a check error is logged at ERROR and the turn continues. With `CUALIGN_RAILS_FAIL_CLOSED=1`, a turn with a check error is refused instead. When the rails are on, requests containing a Korean resident registration number, mobile number or email pattern are refused before reaching the model, and answers matching the list of prescription or confirmation phrases are replaced with a refusal without calling the output rail model. Names, chart numbers and sentences outside that list are not caught.
-- Scan segmentation inference, OpenShell isolation of the whole server, and aligner shell generation are not verified features.
+- Scan segmentation inference and aligner shell generation are not verified features. The OpenShell server sandbox status is in [docs/openshell.md](docs/openshell.md#상태) (Korean).
 - The reviewer can hit upstream 503 errors from NIM. It stops within its limits and blocks approval. See [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) (Korean).
 
 ## Data, licenses and evidence
