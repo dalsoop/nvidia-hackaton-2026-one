@@ -3,16 +3,17 @@
 //   ① the arch line (0.6 s): a thin green line from between the central incisors out to both ends, the agent's cursor
 //      (the reticle of scan-reveal.js — the saw disc is the IPR cut's only) at its tip, 1 mm above the gum. It goes 2 s after the landing.
 //   ② the settling: the cursor touches the crowns, the most moved first (in an extraction case the extraction's
-//      neighbours first), and each glides from where it stood to its target in 0.35 s (two or three overlap; the round
-//      is 6 s). The setup positions stay as the pale ghost until the last crown is there.
+//      neighbours first), one every PER 1 s, and each glides from where it stood to its target in SLIDE 0.6 s (the round
+//      ~14 s, the length of a live agent turn). The setup positions stay as the pale ghost until the last crown is there.
 //   ③ the 3D chip: 목표 배열 계산 중, and once the result is known 「· 확보 공간 x / 총생 mm」, x rising as crowns arrive.
 //   ④ the landing: every crown exactly on the target (the ones still under way in 0.4 s together), the cursor gone.
 // The destination is the result as soon as there is one; before it (a live turn) the arch the crowns stand on now,
 // smoothed, with the extraction sites narrowed — the line is redrawn through the result at the landing.
 //   - a live turn lands when its result lands (step_done target); a round done before that leaves the cursor circling
 //     in front of the incisors. A turn that ends with no result puts everything back.
-//   - a replay (the recorded target lands first, its tool row plays after) runs the same 6 s round to the landed
-//     target, then lands; Esc or a click on the 3D chip lands at once.
+//   - a replay (the recorded target lands first, its tool row plays after) runs the round pressed into REPLAY_ROUND 8 s
+//     to the landed target, then lands; Esc or a click on the 3D chip lands at once. A live round cut by 건너뛰기
+//     presses what is left of it into the same 8 s.
 //   - app.js calls nothing: this module watches the transcript's propose_target rows (start: the row appears running;
 //     a recorded trace's row is the replay's) and the app's state (the result: a new state.targetId with state.step
 //     "target"), and writes the crowns, the ghost and the chip over what applyStage wrote from scene.onBeforeRender —
@@ -21,7 +22,9 @@
 import { makeCursor } from "./scan-reveal.js";
 
 const OFF = new URLSearchParams(location.search).has("nofx");
-const LINE = 0.6, SLIDE = 0.35, ROUND = 6, LAND = 0.4, LINE_HOLD = 2, LINE_FADE = 0.3, IDLE_OFF = 1.5;   // s
+// the pace (s): a live round's crown after crown, a crown's glide, the replay's whole round, the landing of the rest
+const PER = 1.0, SLIDE = 0.6, REPLAY_ROUND = 8, LAND = 0.4;
+const LINE = 0.6, LINE_HOLD = 2, LINE_FADE = 0.3, IDLE_OFF = 1.5;   // s
 const GAP_CLOSE = 0.35;   // how far an extraction's neighbours step into its place in the guess before the result
 const GREEN = 0x76b900, TOOL = "propose_target";
 const now = () => performance.now() / 1000;
@@ -143,9 +146,10 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     const res = replay ? result() : null;
     if (replay && !res) { run = null; return; }
     const to = res ? resultPoses(res) : guessPoses();
-    const order = orderOf(to), gap = (ROUND - LINE - SLIDE) / Math.max(1, order.length - 1);
+    const order = orderOf(to), gap = replay ? (REPLAY_ROUND - LINE - SLIDE) / Math.max(1, order.length - 1) : PER;
     order.forEach((id, k) => { run.st[id] = { from: run.from[id], to: to[id], t: t0 + LINE + k * gap, dur: SLIDE }; });
     run.order = order; run.gap = gap; run.lineGuess = !res;
+    run.round = LINE + gap * (order.length - 1) + SLIDE;
     buildLine(to);
     run.ghostWas = showGhost();
     run.cursor = makeCursor({ THREE, CSS2DObject, kind: "reticle" }); run.touched = -1;
@@ -157,12 +161,17 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     if (!res) return;
     run.replay = true;
     const to = resultPoses(res);
-    for (const id of run.ids) {
-      const s = run.st[id];
-      run.st[id] = t < s.t ? { ...s, to: to[id] } : { from: poseAt(s, t), to: to[id], t, dur: SLIDE };
-    }
-    buildLine(to); drawLine(1); run.lineGuess = false;
     run.t0 = Math.min(run.t0, t - LINE);   // the line is already drawn
+    // the crowns not yet touched go in what is left of REPLAY_ROUND (at the live pace if that is quicker)
+    const left = run.order.filter((id) => t < run.st[id].t);
+    const gap = Math.min(run.gap, Math.max(0.05, (run.t0 + REPLAY_ROUND - SLIDE - t) / Math.max(1, left.length)));
+    for (const id of run.ids) {
+      const s = run.st[id], k = left.indexOf(id);
+      run.st[id] = k >= 0 ? { ...s, to: to[id], t: t + k * gap } : { from: poseAt(s, t), to: to[id], t, dur: SLIDE };
+    }
+    run.gap = gap;
+    run.round = Math.max(...run.ids.map((id) => run.st[id].t + run.st[id].dur)) - run.t0;
+    buildLine(to); drawLine(1); run.lineGuess = false;
   }
 
   function landNow(t) {
@@ -207,11 +216,13 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     const u = (t - r.t0) / LINE;
     if (u < 1) { o.position.copy(lineTip(u)); c.opacity = Math.min(1, u * 4); return; }
     c.opacity = 1;
-    if (t >= r.t0 + ROUND) {   // the round is done, the result not yet: circling in front of the incisors
+    if (t >= r.t0 + r.round) {   // the round is done, the result not yet: circling in front of the incisors
       o.position.copy(line.mid).add(new THREE.Vector3(Math.cos(t * 1.2) * 2, 6 + Math.sin(t * 1.2) * 2, 4));
       return;
     }
-    const k = Math.floor((t - r.t0 - LINE) / r.gap), next = r.order[k + 1], fly = Math.min(0.25, r.gap * 0.6);
+    let k = -1;   // the crown the cursor is on: the last one whose glide has begun (a pressed replay moves the times)
+    while (k + 1 < r.order.length && r.st[r.order[k + 1]].t <= t) k++;
+    const next = r.order[k + 1], fly = Math.min(0.25, r.gap * 0.6);
     const here = k >= 0 ? on(r.order[k]) : lineTip(1);
     const v = next ? (t - r.st[next].t + fly) / fly : 0;
     if (next && v > 0) o.position.lerpVectors(here, on(next), ease(v));
@@ -229,7 +240,7 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     const r = run, res = result();
     if (state.meshCase !== r.caseId || state.step !== (res ? "target" : r.step0) || stageGrowing()) return abort();
     if (!r.land) {
-      if (res && (!r.replay || t >= r.t0 + ROUND)) landNow(t);   // live: the result is here; a replay: its round is through
+      if (res && (!r.replay || t >= r.t0 + r.round)) landNow(t);   // live: the result is here; a replay: its round is through
       else if (!res && !state.streaming) { r.idleSince ??= t; if (t - r.idleSince > IDLE_OFF) return putBack(); }
       else r.idleSince = null;
     }
