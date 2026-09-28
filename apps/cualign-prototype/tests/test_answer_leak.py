@@ -108,6 +108,6 @@ def test_streamed_workflow_answer_has_no_reasoning(tmp_path):
                 async with workflow.run(ChatRequest(messages=[{"role": "user", "content": "한계값 알려줘"}])) as runner:
                     return "".join([str(c) async for c in runner.result_stream(to_type=str)])
 
-    out = asyncio.run(asyncio.wait_for(go(), timeout=120))
+    out = asyncio.run(asyncio.wait_for(go(), timeout=600))   # a hang guard only: under a parallel --slow run the build takes long
     assert "Action" not in out and "We need" not in out
     assert out.strip().endswith("최종 판단은 의사가 합니다.")

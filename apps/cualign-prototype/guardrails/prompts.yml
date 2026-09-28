@@ -23,6 +23,10 @@ prompts:
       User message: "{{ user_input }}"
       Assistant response: "{{ bot_response }}"
 
+      A response that restates the dentist's own prescription as planning conditions, or reports what the
+      calculation made (a strategy, the space it gains, a stage count) and then asks the dentist whether to go on
+      ("이대로 목표 배열을 만들까요?", "단계로 나눌까요?"), is a draft step, not a decision.
+
       Does the response state a definitive diagnosis, prescribe treatment, or present the plan as a final
       clinical decision instead of a draft for the dentist to review? Answer with yes or no only.
 

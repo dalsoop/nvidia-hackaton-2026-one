@@ -43,13 +43,13 @@ def client(monkeypatch, tmp_path):
 def test_recording_schema_is_checked(tmp_path, monkeypatch):
     monkeypatch.setattr(recorded, "RECORDED_DIR", tmp_path)
     with pytest.raises(ValueError, match="lacks"):
-        recorded.save("poseidon-000097", "plan", {"step": "plan"})
+        recorded.save("poseidon-000097", "stages", {"step": "stages"})
     with pytest.raises(ValueError, match="bad step"):
-        _record("poseidon-000097", "plan", "", {})
-    assert recorded.load("poseidon-000097", "plan") is None          # not recorded yet
+        _record("poseidon-000097", "stages", "", {})
+    assert recorded.load("poseidon-000097", "stages") is None        # not recorded yet
     assert recorded.load("poseidon-000097", "export") is None        # not a step
-    _record("poseidon-000097", "plan", PLAN_ANSWER, {"extraction": [5, 12]})
-    assert recorded.load("poseidon-000097", "plan")["answer_md"] == PLAN_ANSWER
+    _record("poseidon-000097", "stages", PLAN_ANSWER, {"extraction": [5, 12]})
+    assert recorded.load("poseidon-000097", "plan")["answer_md"] == PLAN_ANSWER   # plan = stages (the old name)
 
 
 def test_numbers_follow_the_recomputed_plans():
@@ -66,11 +66,12 @@ def test_numbers_follow_the_recomputed_plans():
 
 def test_replay_matches_plans_and_activate_and_tells_the_next_turn(client):
     cid = "poseidon-000097"
-    _record(cid, "plan", PLAN_ANSWER, {"extraction": [5, 12]})
+    _record(cid, "stages", PLAN_ANSWER, {"extraction": [5, 12]})
     _record(cid, "cap", CAP_ANSWER, {"stage_cap": 35})
     opened = client.post(f"/api/cases/{cid}/activate").json()
+    client.post("/api/plan", json={"case_id": cid})                          # the fallback's plan stands in for the screen's plan
     shown = client.get(f"/api/plans?case_id={cid}").json()["plans"][0]
-    r = client.post(f"/api/cases/{cid}/replay", json={"step": "plan", "base_plan_id": shown["plan_id"]})
+    r = client.post(f"/api/cases/{cid}/replay", json={"step": "plan", "base_plan_id": shown["plan_id"]})   # plan = stages alias
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["recorded"] is True and body["recorded_at"] == "2026-09-28T00:00:00+00:00"
@@ -102,6 +103,7 @@ def test_a_recorded_question_makes_no_plan(client):
     cid = "poseidon-000097"
     _record(cid, "compare", "발치 처방(14·24)이 있어 비발치 전략은 비교할 수 없습니다. 발치 없이 비교할까요?", {}, review=None)
     client.post(f"/api/cases/{cid}/activate")
+    client.post("/api/plan", json={"case_id": cid})
     before = client.get(f"/api/plans?case_id={cid}").json()["plans"]
     r = client.post(f"/api/cases/{cid}/replay", json={"step": "compare", "base_plan_id": before[0]["plan_id"]})
     assert r.status_code == 200 and r.json()["plan_selected"] is None and r.json()["plans"] == []
@@ -111,7 +113,7 @@ def test_a_recorded_question_makes_no_plan(client):
 
 def test_no_recording_or_not_a_sample_is_404(client):
     assert client.post("/api/cases/poseidon-000097/replay", json={"step": "plan"}).json() == {"detail": recorded.NO_RECORDING}
-    _record("moderate", "plan", PLAN_ANSWER, {})                     # a recording for a non-sample case is not served
+    _record("moderate", "stages", PLAN_ANSWER, {})                     # a recording for a non-sample case is not served
     r = client.post("/api/cases/moderate/replay", json={"step": "plan"})
     assert r.status_code == 404 and r.json()["detail"] == recorded.NO_RECORDING
     assert client.post("/api/cases/poseidon-000097/replay", json={"step": "export"}).status_code == 422
@@ -139,11 +141,11 @@ def test_reopening_a_case_starts_from_the_prescription_and_names_the_active_plan
     from cualign.core.samples import SAMPLES
     cid = "poseidon-000097"
     prescription = SAMPLES[cid].initial_constraints().model_dump(mode="json")
-    _record(cid, "plan", PLAN_ANSWER, {"extraction": [5, 12]})
+    _record(cid, "stages", PLAN_ANSWER, {"extraction": [5, 12]})
     _record(cid, "cap", CAP_ANSWER, {"stage_cap": 35})
     client.post(f"/api/cases/{cid}/activate")
     n_plans = len(client.get(f"/api/plans?case_id={cid}").json()["plans"])
-    plan = client.post(f"/api/cases/{cid}/replay", json={"step": "plan"}).json()["plan_selected"]["plan_id"]
+    plan = client.post(f"/api/cases/{cid}/replay", json={"step": "stages"}).json()["plan_selected"]["plan_id"]
     cap = client.post(f"/api/cases/{cid}/replay", json={"step": "cap", "base_plan_id": plan}).json()["plan_selected"]["plan_id"]
     assert client.get(f"/api/plans/{cap}").json()["constraints"]["stage_cap"] == 35     # the cap is on the plan
     opened = client.post(f"/api/cases/{cid}/activate").json()
@@ -159,3 +161,47 @@ def test_reopening_a_case_starts_from_the_prescription_and_names_the_active_plan
     # a changed prescription is still reported as such
     api.STORE.case_constraints[cid] = api.STORE.constraints_for(cid).patched({"lock": [3]})
     assert client.post(f"/api/cases/{cid}/activate").json()["constraints"]["lock"] == [3]
+
+
+SETUP_ANSWER = "14·24 발치, IPR 없음으로 셋업했습니다. 이대로 목표 배열을 만들까요?"
+TARGET_ANSWER = "발치 전략으로 목표 배열을 만들었습니다. 발치 공간으로 총생을 해소합니다. 단계로 나눌까요?"
+
+
+def test_setup_and_target_replays_walk_the_flow(client):
+    """Step flow (.report/15): the recorded setup turn applies its conditions and makes no plan; the recorded target
+    turn has the rule engine make the target again (under the recorded strategy) and hands the screen target_id and
+    summary; the stages replay then splits that target's conditions as before. /activate reports each stop."""
+    cid = "poseidon-000097"
+    recorded.save(cid, "setup", {"step": "setup", "request": "x", "constraints": {"extraction": [5, 12]}, "answer_md": SETUP_ANSWER,
+                                 "review": None, "recorded_at": "2026-09-28T00:00:00+00:00", "model": "fake"})
+    recorded.save(cid, "target", {"step": "target", "request": "x", "constraints": {"extraction": [5, 12]}, "answer_md": TARGET_ANSWER,
+                                  "review": None, "recorded_at": "2026-09-28T00:00:00+00:00", "model": "fake", "strategy": "extraction"})
+    _record(cid, "stages", PLAN_ANSWER, {"extraction": [5, 12]})
+    client.post(f"/api/cases/{cid}/activate")
+    r = client.post(f"/api/cases/{cid}/replay", json={"step": "setup"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["step"] == "setup" and body["plan_selected"] is None and body["plans"] == [] and body["answer_md"] == SETUP_ANSWER
+    assert body["constraints"]["extraction"] == [5, 12] and body["conditions_ko"].startswith("발치 치아 14, 24번")
+    opened = client.post(f"/api/cases/{cid}/activate").json()
+    assert opened["flow"]["step"] == "setup" and opened["flow"]["target_id"] is None and opened["constraints"]["extraction"] == [5, 12]
+    assert client.get(f"/api/plans?case_id={cid}").json()["plans"] == []
+    r = client.post(f"/api/cases/{cid}/replay", json={"step": "target"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    tid = body["target_id"]
+    assert body["step"] == "target" and body["plan_selected"] is None and body["answer_md"] == TARGET_ANSWER
+    assert body["summary"]["strategy"] == "extraction" and body["summary"]["extraction"] == [14, 24]
+    t = client.get(f"/api/cases/{cid}/targets/{tid}").json()
+    assert t["strategy"] == "extraction" and len(t["stages"]) == 1 and t["target"]["removed"] == [5, 12] and "5" not in t["stages"][0]
+    opened = client.post(f"/api/cases/{cid}/activate").json()
+    assert opened["flow"] == {"step": "target", "constraints": opened["flow"]["constraints"], "target_id": tid, "plan_id": None}
+    assert client.get(f"/api/plans?case_id={cid}").json()["plans"] == []
+    r = client.post(f"/api/cases/{cid}/replay", json={"step": "stages"})
+    assert r.status_code == 200 and r.json()["step"] == "stages" and r.json()["plan_selected"]
+    pid = r.json()["plan_selected"]["plan_id"]
+    opened = client.post(f"/api/cases/{cid}/activate").json()
+    assert opened["flow"]["step"] == "stages" and opened["flow"]["plan_id"] == pid and opened["active_plan"]["plan_id"] == pid
+    # the old name still works
+    assert client.post(f"/api/cases/{cid}/replay", json={"step": "plan", "base_plan_id": pid}).status_code == 200
+    assert client.post(f"/api/cases/{cid}/replay", json={"step": "export"}).status_code == 422

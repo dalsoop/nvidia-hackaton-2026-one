@@ -220,6 +220,29 @@ def _expansion_for(arch, need_mm: float) -> tuple[float, float]:
     return best
 
 
+def uniform_ipr(case: Case, ids, ipr_exclude, ipr_limit_mm: float, anchored: bool) -> tuple[dict[int, float], list]:
+    """The uniform IPR rule when no contact is prescribed: (width taken off each tooth, the contact surfaces
+    [[a, b, mm], ...] it is cut from). Anchored: IPR on the span teeth only, both surfaces of each (the 3|4 and 13|14
+    contacts included) — stripping a molar does not make room inside the span."""
+    red = {i: ipr_limit_mm for i in ids if i in SPAN and i not in ipr_exclude} if anchored \
+        else _ipr_reductions(ids, ipr_exclude, ipr_limit_mm)
+    surfaces = [[a, b, round(ipr_limit_mm / 2 * ((a in red) + (b in red)), 4)]
+                for a, b in case.neighbors() if (a in red or b in red)] if red and ipr_limit_mm > 0 else []
+    return red, surfaces
+
+
+def ipr_surfaces_for(case: Case, constraints: Constraints) -> list:
+    """The contact surfaces an IPR strategy would cut under these conditions, Universal [[a, b, mm], ...]: the
+    prescription as given (#57), else what the uniform rule makes (the screen's setup view draws these, step flow (12))."""
+    if constraints.ipr_surfaces:
+        return [[a, b, mm] for a, b, mm in constraints.ipr_surfaces]
+    if constraints.extraction:   # an extraction prescription plans extraction only (#56): no IPR contact
+        return []
+    ids = case.ids   # as _place takes them
+    anchored = {3, 14} <= set(ids) and sum(1 for i in ids if i in SPAN) >= 3
+    return uniform_ipr(case, ids, set(constraints.ipr_exclude), constraints.ipr_limit_mm, anchored)[1]
+
+
 def _ipr_reductions(ids, ipr_exclude, ipr_limit_mm) -> dict[int, float]:
     """Width taken off each tooth by IPR on all its contacts (half the per-surface amount per shared contact)."""
     return {i: ipr_limit_mm * (2 if 0 < k < len(ids) - 1 else 1) * 0.5 for k, i in enumerate(ids) if i not in ipr_exclude}
@@ -517,12 +540,7 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
             end_room = (red.pop(3, 0.0), red.pop(14, 0.0))
             gain += sum(end_room)
     elif strategy in ("ipr", "expansion_ipr"):
-        # anchored: IPR on the span teeth only, both surfaces of each (the 3|4 and 13|14 contacts included) — stripping
-        # a molar does not make room inside the span
-        red = {i: ipr_limit_mm for i in ids if i in SPAN and i not in ipr_exclude} if anchored \
-            else _ipr_reductions(ids, ipr_exclude, ipr_limit_mm)
-        surfaces = [[a, b, round(ipr_limit_mm / 2 * ((a in red) + (b in red)), 4)]
-                    for a, b in case.neighbors() if (a in red or b in red)] if red and ipr_limit_mm > 0 else []
+        red, surfaces = uniform_ipr(case, ids, ipr_exclude, ipr_limit_mm, anchored)
     if strategy in ("expansion", "expansion_ipr"):
         # Expand only as much as needed (up to the 2 mm/side limit).
         # room the crowns' shapes need beyond their contact widths; contacts pulled closer than the widths (negative

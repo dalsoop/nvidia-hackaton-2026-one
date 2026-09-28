@@ -51,11 +51,12 @@ async def wait_ready(url, proc, timeout=180):
     raise SystemExit("server did not become ready in time")
 
 
-async def converse(client, url, text, ctx, log, messages=None):
+async def converse(client, url, text, ctx, log, messages=None, step=None):
     """POST /chat/stream exactly like app.js and collect the parsed SSE events. `messages` is the whole conversation
-    the screen would send (ending with the user's `text`); without it the turn is a single user message."""
+    the screen would send (ending with the user's `text`); without it the turn is a single user message. `step` is
+    the turn's step (setup|target|stages), a top-level body field like the screen sends it."""
     events, answer = [], ""
-    body = {"messages": messages or [{"role": "user", "content": text}], "cualign": ctx}
+    body = {"messages": messages or [{"role": "user", "content": text}], "cualign": ctx, **({"step": step} if step else {})}
     started = time.monotonic()
     async with client.stream("POST", url + "/chat/stream", json=body,
                              headers={"Accept": "text/event-stream"}, timeout=300) as r:

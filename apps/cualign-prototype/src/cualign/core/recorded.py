@@ -13,22 +13,28 @@ import re
 from pathlib import Path
 
 RECORDED_DIR = Path(__file__).resolve().parent / "samples" / "recorded"
-STEPS = ("plan", "cap", "compare")
-REQUESTS = {"cap": "8개월 안에 끝나게 다시 짜줘.", "compare": "확장안이랑 IPR안 둘 다 만들어서 비교해줘."}   # plan = the sample card sentence
+# the step flow (agent/steps.py): setup and target turns, then the stages turn and its two re-plans
+STEPS = ("setup", "target", "stages", "cap", "compare")
+ALIASES = {"plan": "stages"}   # the name before the step flow (.report/12-replay.md)
+# setup = the sample card sentence (the prescription); the rest as the screen's chips send them
+REQUESTS = {"target": "이대로 목표 배열을 만들어줘.", "stages": "단계로 나눠줘.",
+            "cap": "8개월 안에 끝나게 다시 짜줘.", "compare": "확장안이랑 IPR안 둘 다 만들어서 비교해줘."}
+TURN_STEP = {"setup": "setup", "target": "target", "stages": "stages", "cap": "stages", "compare": "stages"}   # the turn's step field
 FIELDS = ("step", "request", "constraints", "answer_md", "review", "recorded_at", "model")
 NO_RECORDING = "녹화된 답이 없습니다"
 STRATEGY_KO = {"expansion_ipr": "확장 + IPR", "expansion": "확장", "ipr": "IPR", "extraction": "발치"}   # longest first
-STEP_KO = {"plan": "계획", "cap": "기간 상한", "compare": "비교"}
+STEP_KO = {"setup": "셋업", "target": "목표 배열", "stages": "단계", "cap": "기간 상한", "compare": "비교"}
 # "20단계(약 4.6개월)" in an answer line; the 조건 line's "단계 상한 35단계(약 8.1개월)" is the dentist's cap, left alone
 STAGES_RE = re.compile(r"(?<!상한 )(?<!\d)(\d+)단계\(약 ([\d.]+)개월\)")
 
 
 def path(case_id: str, step: str) -> Path:
-    return RECORDED_DIR / case_id / f"{step}.json"
+    return RECORDED_DIR / case_id / f"{ALIASES.get(step, step)}.json"
 
 
 def load(case_id: str, step: str) -> dict | None:
     """The recording, or None when the case is not a sample or the step was never recorded."""
+    step = ALIASES.get(step, step)
     if step not in STEPS:
         return None
     p = path(case_id, step)

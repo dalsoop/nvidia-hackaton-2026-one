@@ -1,0 +1,16 @@
+{
+ "step": "setup",
+ "request": "처방은 비발치, 14-15·24-25 접촉면부터 앞쪽으로 IPR 총 3.6mm와 악궁 확장입니다. 이 처방으로 단계 계획을 짜 주세요.",
+ "recorded_at": "2026-09-27T23:25:42+00:00",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "constraints": {
+  "extraction": [],
+  "lock": [],
+  "ipr_exclude": [],
+  "ipr_limit_mm": 0.25,
+  "stage_cap": null,
+  "order": "simultaneous"
+ },
+ "answer_md": "발치 치아 없음 · 고정 치아 없음 · IPR 처방 15-14 0.4mm, 14-13 0.4mm, 13-12 0.4mm, 12-11 0.4mm, 11-21 0.4mm, 21-22 0.4mm, 22-23 0.4mm, 23-24 0.4mm, 24-25 0.4mm · 단계 상한 없음 · 이동 순서 동시\n\n이대로 목표 배열을 만들까요?",
+ "review": null
+}
