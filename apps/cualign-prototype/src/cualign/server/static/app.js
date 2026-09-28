@@ -194,15 +194,11 @@ const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽",
 const FRAME_GAP = 1000 / (Number(new URLSearchParams(location.search).get("fps")) || Infinity);
 let lastFrame = -Infinity;
 (function loop() {
-<<<<<<< HEAD
   const t = performance.now();
   if (t - lastFrame >= FRAME_GAP - 1) {
     lastFrame = t;
-    controls.update(); scanFx.tick(); sweepFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+    controls.update(); scanFx.tick(); sweepFx.tick(); window.__stageGrow?.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
   }
-=======
-  controls.update(); scanFx.tick(); sweepFx.tick(); window.__stageGrow?.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
->>>>>>> origin/stage-grow
   requestAnimationFrame(loop);
 })();
 
