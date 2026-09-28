@@ -70,6 +70,8 @@
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결, 과부하 실패 뒤 «다시 보내기»(같은 글·조건을 새 요청으로), 대화 흐름의 도구 줄·추론 문장(원문·인자·소요 시간은 「자세히」) |
 | `src/cualign/server/static/scan-reveal.js` | 셋업 턴 시작 시 연출: 치아 번호 순회(17→27, 0.1초)·발치 치아 들림/페이드·「발치」 표식·IPR 도구 커서, 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
+| `src/cualign/server/static/three-load.js` | three.js CDN 로드. 실패(오프라인)면 모든 호출을 받아 넘기는 대역을 내주고 `app.js` 가 3D 자리에 「3D 를 그릴 수 없습니다」 카드를 띄운다(WebGL 없음도 같은 카드) |
+| `src/cualign/server/static/drawers.js` | ≤1280 사이드바·≤1024 대화 패널 서랍 열고 닫기(경계 손잡이 클릭·Enter, 3D 누름·Esc 로 닫기). 폭 규칙은 `style.css` 끝 「반응형」 절 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
 | `src/cualign/server/static/icons/`, `samples/`, `*.png` | 3D 시점 아이콘, 시작 화면 샘플 미리보기, 로고·파비콘 |
 | `guardrails/config.yml` | 검사 모델(과부하 재요청 횟수 포함)과 적용할 레일의 설정, content-safety 모델에 보내는 맞춤 정책 본문 |

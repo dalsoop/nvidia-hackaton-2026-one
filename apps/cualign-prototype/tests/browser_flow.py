@@ -716,11 +716,44 @@ async def main():
             await page.wait_for_function("'target:t-fake' in window.__cualign.state.cutSets", timeout=60000)
             await page.unroute("**/api/cases/poseidon-000097/activate")
 
+            # No WebGL (Chromium --disable-3d-apis): the 3D area shows the card and the rest works — the case opens,
+            # the steps reach a plan, ▶ plays the stages, and the export popover approves it
+            no3d = await pw.chromium.launch(executable_path=executable, headless=True, args=["--disable-3d-apis"])
+            try:
+                page = await no3d.new_page(viewport={"width":1500,"height":1000})
+                page.on("pageerror", lambda error: (errors.append("no-3d: " + str(error)), print("PAGEERROR (no-3d):", error, file=sys.stderr)))
+                await page.goto(url + "/ui/?case=poseidon-000097")
+                await page.wait_for_function("!document.body.classList.contains('start') && window.__cualign.state.activeCase === 'poseidon-000097' && !window.__cualign.state.loading", timeout=120000)
+                assert await page.locator("#no3d").is_visible() and "3D 를 그릴 수 없습니다" in await page.locator("#no3d").inner_text()
+                assert await page.locator("body").evaluate("b => b.classList.contains('no-3d')")
+                # the plan approved above (passed, reviewed); the case's saved flow may point at a later, unexportable one
+                await page.goto(url + f"/ui/#case=poseidon-000097&plan={parent}&step=stages")
+                await page.wait_for_function(f"document.body.classList.contains('step-stages') && document.body.classList.contains('has-plan') && {plan_on_screen} === '{parent}' && !window.__cualign.state.loading", timeout=120000)
+                assert await page.locator("#no3d").is_visible()
+                await page.locator("#playBtn").click()
+                await page.wait_for_function("window.__cualign.state.stage >= 2", timeout=10000)
+                await page.locator("#playBtn").click()
+                assert await page.locator("#playBtn").get_attribute("aria-pressed") == "false"
+                if await page.evaluate("!!window.__cualign.state.plan?.approval"):      # approved above: revoke, so this run approves it itself
+                    await page.locator("#planReview").evaluate("(el) => { el.open = true; }")
+                    await page.locator("#revokeBtn").click()
+                    await page.wait_for_function("!window.__cualign.state.plan?.approval")
+                await page.wait_for_function("!document.querySelector('#rail button[data-go=\"export\"]').disabled", timeout=60000)
+                await page.locator('#rail button[data-go="export"]').click()
+                await page.wait_for_selector("#exportPop:not([hidden])")
+                async with page.expect_download(timeout=180000):
+                    await page.locator("#exportGo").click()
+                await page.wait_for_function("!!window.__cualign.state.plan?.approval")
+                await page.screenshot(path=str(OUT / "no-3d.png"))
+            finally:
+                await no3d.close()
+
             assert not errors, errors
             print("PASS: agent-driven steps (setup → target → stages, look back, five replay steps), export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "
                   "my scan: unsupported gap → 스캔 삭제, rejected upload card, unoriented scan, reversed numbering → mirror, "
-                  "no-plan failure card → 이 조건으로 다시 계산, no_answer notice → 다시 보내기")
+                  "no-plan failure card → 이 조건으로 다시 계산, no_answer notice → 다시 보내기, "
+                  "no WebGL (--disable-3d-apis): the card over the 3D, steps → ▶ → approval")
             await browser.close()
             browser = None
     finally:
