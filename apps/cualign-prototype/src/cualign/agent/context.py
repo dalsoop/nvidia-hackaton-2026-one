@@ -23,6 +23,9 @@ class PlanRun:
     closed: bool = False
     rails: str | None = None  # passed | flagged | blocked | error | off, set by the rails middleware
     refused: bool = False  # the rails middleware replaced the answer with its refusal
+    # why: "pii" (the last message holds a personal identifier), "pii_context" (an earlier message or the case), "rails"
+    refused_kind: str | None = None
+    redacted: str | None = None  # "pii": the last message with its personal identifiers taken out, for the screen
     error: dict | None = None  # {"kind": "nim_overload" | "workflow_error", "message": ...} when the workflow raised
 
 
