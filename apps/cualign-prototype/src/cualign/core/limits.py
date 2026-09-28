@@ -10,6 +10,12 @@ MAX_ANGULAR_PER_ALIGNER = 1.0   # deg (not enforced in MVP: translation-only sta
 MAX_ROTATION_PER_ALIGNER = 2.0  # deg about the crown's vertical axis (staged and validated)
 IPR_PER_SURFACE = 0.25          # mm
 MAX_EXPANSION_PER_SIDE = 2.0    # mm
+# Target-arrangement bounds (assumed, not from a source: set 2026-09-28 on Poseidon 000001, whose 11 turned −25° and
+# whose premolars went 3.2 mm buccal against 0.6 mm of molar expansion).
+ROTATION_MAX_DEG = 20.0         # one crown's total derotation in the target (000131's 12 turns 16.8°, golden set B 20°)
+PREMOLAR_BUCCAL_EXTRA_MM = 1.0  # a premolar moves buccally at most the molars' expansion plus this
+ARCH_STEP_MAX_MM = 2.0          # canine → first → second premolar: growth in distance from the midline per tooth
+                                # (or the step the scan already had, when larger)
 EXTRACTION_THRESHOLD_MM = 8.0   # mm of space deficit
 WEAR_DAYS = 14                  # days per aligner
 DAYS_PER_MONTH = 30.4
