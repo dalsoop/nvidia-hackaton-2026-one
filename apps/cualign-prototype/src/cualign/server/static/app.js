@@ -1323,6 +1323,7 @@ function renderCaseList() {
   const samples = rows.filter((c) => c.kind === "sample"), patients = rows.filter((c) => c.kind !== "sample");
   // the detail is one element that lives under the pressed card or row: take it out before the containers are rebuilt
   const detail = $("clDetail");
+  const was = !detail.hidden && detail.classList.contains("open") ? { id: detail.dataset.at, kind: detail.dataset.kind } : null;
   document.querySelector(".start-body").append(detail);
   const statusOf = (c) => CASE_STATUS[c.status] ?? [c.status_ko ?? c.status, "faint"];
   // sample cards (#46 → ③, #13 polish): full-width occlusal thumbnail, title, plain-words finding, the short facts as
@@ -1359,18 +1360,39 @@ function renderCaseList() {
     r.querySelector(".c-plan").textContent = c.plan ? `${STRATEGY_KO[c.plan.strategy] ?? c.plan.strategy} · ${c.plan.n_stages}장` : "—";
     box.appendChild(r);
   }
-  if (!patients.length) box.innerHTML = '<p class="empty">등록된 환자가 없습니다. 「새 환자」로 스캔 파일을 업로드하세요.</p>';
+  if (!patients.length) box.innerHTML = '<p class="empty">아직 등록한 환자가 없습니다. 위 샘플 케이스로 시작하거나 「새 환자」를 누르세요.</p>';
   // the detail opens right under what was pressed: one element, moved
   const sel = rows.find((c) => c.case_id === state.clSelected) ?? null;
-  detail.hidden = !sel;
+  // a sample: after the card row (the three cards stay on one line, the detail spans under them); a patient: after its row
+  const anchorOf = (kind, id) => kind === "sample" ? $("sampleCards").lastElementChild : document.querySelector(`#clRows .case-row[data-id="${CSS.escape(id)}"]`);
   if (sel) {
-    // a sample: after the card row (the three cards stay on one line, the detail spans under them); a patient: after its row
-    const anchor = sel.kind === "sample" ? $("sampleCards").lastElementChild : document.querySelector(`#clRows .case-row[data-id="${CSS.escape(sel.case_id)}"]`);
-    anchor?.after(detail);
+    anchorOf(sel.kind, sel.case_id)?.after(detail);
     detail.classList.toggle("in-cards", sel.kind === "sample");
     renderCaseDetail(sel);
+    // another sample card: same place, the content changes in place; anything else opens from folded
+    foldDetail(detail, true, !!was && (was.id === sel.case_id || (was.kind === "sample" && sel.kind === "sample")));
+    detail.dataset.at = sel.case_id; detail.dataset.kind = sel.kind;
+  } else {
+    // folding: back under what it was open under, then run the closing
+    const anchor = was && anchorOf(was.kind, was.id);
+    if (anchor) anchor.after(detail);
+    foldDetail(detail, false, !!anchor);
   }
 }
+// The detail's open/closed state as a transition: set the old state, make the browser take it (one forced layout, same
+// frame), then the new one. Reattaching the element drops its old style, so the old state is set again on purpose.
+const REDUCE_MOTION = matchMedia("(prefers-reduced-motion: reduce)");
+function foldDetail(detail, open, wasOpen) {
+  detail.hidden = false;
+  detail.classList.toggle("open", wasOpen);
+  if (open !== wasOpen && !REDUCE_MOTION.matches) void detail.offsetHeight;
+  detail.classList.toggle("open", open);
+  if (!open && (!wasOpen || REDUCE_MOTION.matches)) detail.hidden = true;
+}
+$("clDetail").addEventListener("transitionend", (e) => {
+  const d = e.currentTarget;
+  if (e.target === d && e.propertyName === "grid-template-rows" && !d.classList.contains("open")) d.hidden = true;
+});
 
 function renderCaseDetail(c) {
   const cons = state.cases.find((x) => x.case_id === c.case_id)?.constraints ?? null;

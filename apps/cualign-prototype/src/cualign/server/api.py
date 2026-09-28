@@ -118,6 +118,19 @@ def gum_filled_view(case_id: str, case, gum: dict) -> dict:
     return _GUM_FILLED[key]
 
 
+_TEETH_CLOSED: dict[tuple, dict] = {}   # (case_id, per-tooth vertex and face counts) -> {tooth: closed {v, f}}
+
+
+def closed_teeth_view(case_id: str, teeth: dict) -> dict:
+    """`teeth` with each crown's open margin fanned shut (core/ipr_cut.closed_json) — the view only. Kept in memory per
+    case and scan, like gum_filled_view."""
+    key = (case_id, tuple((k, len(t["v"]), len(t["f"])) for k, t in sorted(teeth.items())))
+    if key not in _TEETH_CLOSED:
+        from cualign.core.ipr_cut import closed_json
+        _TEETH_CLOSED[key] = {k: closed_json(t) for k, t in teeth.items()}
+    return _TEETH_CLOSED[key]
+
+
 def ipr_cut_view(cid: str, case, plan_id: str | None = None, target_id: str | None = None) -> dict:
     """`teeth_cut` / `ipr_cut` (see Case.cut_json) of the crowns with this case's IPR cut (#62), and `plan_id`: the plan
     whose IPR it is - `plan_id` if given, else the case's representative plan (approved, else latest). No plan, or a
@@ -344,6 +357,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
         data = case.viewer_json()
+        data["teeth"] = closed_teeth_view(cid, data["teeth"])   # a bared side shows no hole (the IPR-cut crowns are closed already)
         data.update(gum_filled_view(cid, case, data["gum"]))
         data.update(ipr_cut_view(cid, case, plan_id, target_id))   # ?target_id= : the target turn's cut, before any plan
         return data

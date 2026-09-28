@@ -1,6 +1,12 @@
 import os
+import tempfile
 
 import pytest
+
+# Tests never write to the default ./out: that is where the demo server keeps patients and plans, and anything left
+# there shows up on its start screen. Set before any test module imports cualign.core.store (it reads this once).
+if not os.environ.get("CUALIGN_OUT"):
+    os.environ["CUALIGN_OUT"] = tempfile.mkdtemp(prefix="cualign-test-out-")
 
 
 def pytest_addoption(parser):
