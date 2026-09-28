@@ -1,0 +1,17 @@
+{
+ "step": "target",
+ "request": "이대로 목표 배열을 만들어줘.",
+ "recorded_at": "2026-09-27T23:55:02+00:00",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "constraints": {
+  "extraction": [],
+  "lock": [],
+  "ipr_exclude": [],
+  "ipr_limit_mm": 0.25,
+  "stage_cap": null,
+  "order": "simultaneous"
+ },
+ "answer_md": "확장 + IPR 전략으로 5.02mm의 공간을 확보하여 4.2mm의 치열 혼잡을 해결했습니다. 단계로 나눌까요?",
+ "review": null,
+ "strategy": "expansion_ipr"
+}

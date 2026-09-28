@@ -2,8 +2,9 @@
 
 Script (what the presenter does on screen), one server, one case:
   1. 시작            GET /api/cases            the sample cards are there
-  2. 샘플 케이스     POST /api/cases/{id}/activate   the case opens with its rule-based plans (no plan_error)
-  3. 에이전트 계획   /chat/stream  the card's «에이전트에게 계획 맡기기» sentence, the sample's constraints
+  2. 샘플 케이스     POST /api/cases/{id}/activate   the case opens as the scan only: no plan, conditions = the prescription
+  3. 에이전트 계획    three turns, one step each (the step flow): setup -> target -> stages; each stops where its step says
+     (was: one turn)   /chat/stream  the card's «에이전트에게 계획 맡기기» sentence, the sample's constraints
   4. 기간 상한       /chat/stream  «8개월 안에 끝나게 다시 짜줘.» on the selected plan
   5. 비교            /chat/stream  «확장안이랑 IPR안 둘 다 만들어서 비교해줘.» on the selected plan
   6. 검토            the reviewer ran inside each turn (plan_selected.review); POST /api/plans/{id}/review if it did not
@@ -59,10 +60,10 @@ def answer_checks(answer):
             "universal_numbers": UNIVERSAL_TOOTH.findall(answer), "internal_terms": INTERNAL.findall(answer)}
 
 
-async def turn(client, url, messages, text, ctx, log):
-    """One screen turn: the conversation so far plus `text`, as app.js sends it."""
+async def turn(client, url, messages, text, ctx, log, step=None):
+    """One screen turn: the conversation so far plus `text`, as app.js sends it (`step` = the turn's step)."""
     messages = messages + [{"role": "user", "content": text}]
-    events, answer, elapsed = await converse(client, url, text, ctx, log, messages=messages)
+    events, answer, elapsed = await converse(client, url, text, ctx, log, messages=messages, step=step)
     messages = messages + [{"role": "assistant", "content": answer}]
     selected = pick(events, "plan_selected")
     rec = {"request": text, "elapsed_s": round(elapsed, 1), "tools": tool_names(events),
@@ -95,21 +96,46 @@ async def main(case_id):
             cases = (await client.get(url + "/api/cases", timeout=30)).json()
             ids = [c.get("case_id") for c in (cases.get("cases") if isinstance(cases, dict) else cases)]
             steps["1_start"] = {"cases": ids, "pass": case_id in ids}
-            # 2. 샘플 케이스
+            # 2. 샘플 케이스 — the step flow: opening is the scan only (no plan, conditions = the prescription)
             r = await client.post(url + f"/api/cases/{case_id}/activate", timeout=120)
             opened = r.json()
             plans = (await client.get(url + f"/api/plans?case_id={case_id}", timeout=30)).json()["plans"]
-            steps["2_open_case"] = {"status": r.status_code, "plan_error": opened.get("plan_error"), "constraints": opened.get("constraints"),
+            steps["2_open_case"] = {"status": r.status_code, "constraints": opened.get("constraints"), "flow": opened.get("flow"),
                                     "rule_plans": [(p["strategy"], p["n_stages"], p["passed"]) for p in plans],
-                                    "pass": r.status_code == 200 and "plan_error" not in opened and bool(plans)}
-            shown = plans[0]["plan_id"] if plans else None
-            # 3. 에이전트 계획
+                                    "pass": r.status_code == 200 and "plan_error" not in opened and plans == [] and opened.get("flow") is None}
+            shown = None
+            # 3. 에이전트 계획 — three turns, one step each: setup (conditions, asks back) -> target (the arrangement, asks
+            # back) -> stages (the plan, selected and reviewed). Each turn must stop where its step says.
             messages = []
-            ctx = {"request_id": "e2e-3", "case_id": case_id, "base_plan_id": shown, "constraints": dict(sample.constraints)}
-            messages, ev, rec = await turn(client, url, messages, sample.request, ctx, log)
+            ctx = {"request_id": "e2e-3a", "case_id": case_id, "base_plan_id": None, "constraints": {}}   # the case opened with the prescription; the model reads the sentence
+            messages, ev, rec = await turn(client, url, messages, sample.request, ctx, log, step="setup")
+            done = pick(ev, "step_done")
+            rec["step_done"] = done
+            rec["pass"] = bool(done) and done.get("step") == "setup" and not rec["plan_selected"] and rec["korean"] and "?" in rec["answer"] \
+                and not rec["universal_numbers"] and not rec["internal_terms"] and rec["plan_error"] is None \
+                and not any(t in rec["tools"] for t in ("cualign__propose_target", "cualign__plan_stages", "reviewer"))
+            steps["3a_setup"] = rec
+            ctx = {"request_id": "e2e-3b", "case_id": case_id, "base_plan_id": None, "constraints": {}}
+            messages, ev, rec = await turn(client, url, messages, "이대로 목표 배열을 만들어줘.", ctx, log, step="target")
+            done = pick(ev, "step_done")
+            rec["step_done"] = done
+            target_ok = bool(done) and done.get("step") == "target" and bool(done.get("target_id"))
+            if target_ok:
+                t = await client.get(url + f"/api/cases/{case_id}/targets/{done['target_id']}", timeout=30)
+                target_ok = t.status_code == 200 and len(t.json()["stages"]) == 1
+                rec["target_summary"] = done.get("summary")
+            rec["pass"] = target_ok and not rec["plan_selected"] and rec["korean"] and "?" in rec["answer"] \
+                and not rec["universal_numbers"] and not rec["internal_terms"] and rec["plan_error"] is None \
+                and "cualign__plan_stages" not in rec["tools"] and "reviewer" not in rec["tools"]
+            steps["3b_target"] = rec
+            ctx = {"request_id": "e2e-3c", "case_id": case_id, "base_plan_id": None, "constraints": {}}
+            messages, ev, rec = await turn(client, url, messages, "단계로 나눠줘.", ctx, log, step="stages")
+            done = pick(ev, "step_done")
+            rec["step_done"] = done
             rec["pass"] = bool(rec["plan_selected"]) and rec["korean"] and rec["disclaimer"] and not rec["universal_numbers"] \
-                and not rec["internal_terms"] and "reviewer" in rec["tools"] and rec["plan_error"] is None
-            steps["3_agent_plan"] = rec
+                and not rec["internal_terms"] and "reviewer" in rec["tools"] and rec["plan_error"] is None \
+                and bool(done) and done.get("step") == "stages" and done.get("plan_id") == rec["plan_selected"]
+            steps["3c_stages"] = rec
             selected = rec["plan_selected"] or shown
             # 4. 기간 상한
             ctx = {"request_id": "e2e-4", "case_id": case_id, "base_plan_id": selected, "constraints": {}}
@@ -133,7 +159,8 @@ async def main(case_id):
                 # an extraction prescription (000097) allows only the extraction plan (#56): the right answer to a
                 # comparison of non-extraction strategies is a Korean question back, no tool, no plan
                 rec["note"] = "extraction prescribed: comparison refused with a question, by design"
-                rec["pass"] = rec["tools"] == [] and rec["korean"] and "?" in rec["answer"] and rec["plan_error"] is None \
+                # the model may call compare_strategies first (it returns the extraction plan only) and then ask: no plan selected
+                rec["pass"] = not rec["plan_selected"] and rec["korean"] and "?" in rec["answer"] and rec["plan_error"] is None \
                     and not rec["universal_numbers"] and not rec["internal_terms"]
             else:
                 rec["pass"] = "cualign__compare_strategies" in rec["tools"] and rec["korean"] and len(lines) >= 2 \

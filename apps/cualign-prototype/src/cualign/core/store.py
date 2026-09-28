@@ -55,11 +55,28 @@ def _plan_from_file(data: dict) -> dict:
     return data
 
 
+def planner_version() -> str:
+    """A fingerprint of the calculation core (planner, arch, ipr_cut, limits, print_model source): a plan stored under
+    another fingerprint was computed by other code and is never reused as the case's current plan (answer-polish (10):
+    after #138 a stored 20-stage plan was shown as the case's, so the new target arrangement seemed unchanged)."""
+    from cualign.core import arch, ipr_cut, limits, planner, print_model
+    h = hashlib.sha256()
+    for mod in (planner, arch, ipr_cut, limits, print_model):
+        h.update(Path(mod.__file__).read_bytes())
+    return h.hexdigest()[:16]
+
+
+PLANNER_VERSION = planner_version()
+
+
 class Store:
     def __init__(self):
         self.cases: dict[str, Case] = {}
         self.replays: dict[str, dict] = {}   # case_id -> the last replayed recording {step, plan_id, recorded_at} (core/recorded.py)
         self.case_constraints: dict[str, Constraints] = {}
+        # case_id -> how far the step flow went: {"step": setup|target|stages, "constraints": Constraints (the setup
+        # conditions), "target_id", "plan_id"} (agent/steps.py); what activate returns as `flow` so a refresh restores it
+        self.flow: dict[str, dict] = {}
         self.active_case: str | None = None
         self.targets: dict[str, dict] = {}
         self.plans: dict[str, dict] = {}
@@ -139,6 +156,12 @@ class Store:
             pid = data.get("plan_id")
             if not pid or not data.get("case_id") or pid in self.plans:
                 continue
+            if (data.get("info") or {}).get("planner_version") != PLANNER_VERSION and samples.get(data["case_id"]) is not None:
+                # a sample case's plan from another version of the core: dropped, the samples are recomputed on demand
+                # (a patient's plan is kept, flagged previous_calculation, see plan_json)
+                path.unlink(missing_ok=True)
+                (OUT_DIR / "stl" / f"{pid}.zip").unlink(missing_ok=True)
+                continue
             self.plans[pid] = _plan_from_file(data)
 
     def _record(self, pid: str) -> dict:
@@ -146,6 +169,14 @@ class Store:
 
     def plan_ids_for(self, case_id: str) -> list[str]:
         return [pid for pid in self.plans if self._record(pid)["case_id"] == case_id]
+
+    def previous_calculation(self, pid: str) -> bool:
+        """The plan was computed by another version of the core (planner_version): shown as «이전 계산», never the
+        case's current plan, never a base plan (answer-polish (10))."""
+        return (self._record(pid).get("info") or {}).get("planner_version") != PLANNER_VERSION
+
+    def current_plan_ids_for(self, case_id: str) -> list[str]:
+        return [pid for pid in self.plan_ids_for(case_id) if not self.previous_calculation(pid)]
 
     # ------------------------------------------------------------------ input revision (patient scans)
     def require_current_input(self, case_id: str, revision: int | None = None) -> None:
@@ -165,10 +196,25 @@ class Store:
         st = patients.input_state(case_id)
         return st is not None and (st.get("deleted", False) or not st["confirmed"] or revision != st["revision"])
 
+    def set_flow(self, case_id: str, step: str, **what) -> dict:
+        """Record that `step` is done for the case (setup: constraints; target: target_id; stages: plan_id)."""
+        flow = self.flow.setdefault(case_id, {"step": None, "constraints": None, "target_id": None, "plan_id": None})
+        flow["step"] = step
+        flow.update(what)
+        return flow
+
+    def flow_json(self, case_id: str) -> dict | None:
+        flow = self.flow.get(case_id)
+        if flow is None:
+            return None
+        c = flow["constraints"]
+        return {**flow, "constraints": c.model_dump(mode="json") if c is not None else None}
+
     def forget_case(self, case_id: str) -> list[str]:
         """Drop everything derived from a deleted patient scan: case, conditions, targets, plans and their files."""
         self.cases.pop(case_id, None)
         self.case_constraints.pop(case_id, None)
+        self.flow.pop(case_id, None)
         if self.active_case == case_id:
             self.active_case = None
         for tid in [t for t, v in self.targets.items() if v["case_id"] == case_id]:
@@ -195,7 +241,7 @@ class Store:
         c = constraints or inherited.patched({"stage_cap": stage_cap, "order": info.get("order", inherited.order)})
         pid = _new_id("p", self.plans)
         self.plans[pid] = {"plan_id": pid, "case_id": case_id, "target_id": target_id, "stages": stages,
-            "info": info, "violations": violations, "stage_cap": c.stage_cap, "strategy": strategy,
+            "info": {**info, "planner_version": PLANNER_VERSION}, "violations": violations, "stage_cap": c.stage_cap, "strategy": strategy,
             "constraints": c, "parent_plan_id": parent_plan_id,
             "review": {"status": "not_requested", "attempts": 0, "message": "", "error": None},
             "approval": None,
@@ -215,6 +261,7 @@ class Store:
             data["rotations"] = [{str(i): float(y) for i, y in getattr(st, "yaw", {}).items()} for st in p["stages"]]
             data["passed"] = not p["violations"]
             data["input_stale"] = self.input_stale(p["case_id"], p.get("input_revision"))
+            data["previous_calculation"] = self.previous_calculation(pid)
             return data
         tinfo = self.targets.get(p["target_id"] or "", {}).get("info", {})
         return {"plan_id": pid, "case_id": p["case_id"], "strategy": p["strategy"], "stage_cap": p["stage_cap"],
@@ -223,6 +270,7 @@ class Store:
                 "info": p["info"], "target": tinfo, "violations": p["violations"], "passed": not p["violations"],
                 "input_revision": p.get("input_revision"),
                 "input_stale": self.input_stale(p["case_id"], p.get("input_revision")),
+                "previous_calculation": self.previous_calculation(pid),
                 "stages": [{str(i): np.round(v, 4).tolist() for i, v in st.items()} for st in p["stages"]],
                 # degrees about each crown's vertical axis through its centroid (pivot), per stage
                 "rotations": [{str(i): round(float(y), 3) for i, y in getattr(st, "yaw", {}).items()} for st in p["stages"]],

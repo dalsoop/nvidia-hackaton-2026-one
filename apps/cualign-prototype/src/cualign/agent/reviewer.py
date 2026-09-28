@@ -16,6 +16,7 @@ from cualign.core import limits as L
 from cualign.core.fdi import teeth_to_fdi
 from cualign.core.store import STORE
 from .context import CURRENT_RUN
+from . import steps
 
 
 class ReviewInput(BaseModel):
@@ -113,8 +114,10 @@ async def review_plan(plan_id, llm, *, store=None, max_attempts=2, timeout_secon
     """`manual` is the dentist's explicit request from the UI (no request context): it reviews a `failed` plan again
     with a fresh budget. The agent path keeps returning the stored failure so it cannot loop on the model."""
     store = store or STORE
-    p = store.plans[plan_id]
     run = None if manual else CURRENT_RUN.get()
+    if run and not steps.allowed(run.step, "reviewer"):   # a setup or target turn ends before any review (agent/steps.py)
+        return steps.refusal(run.step, "reviewer")
+    p = store.plans[plan_id]
     if run and (run.closed or run.case_id != p["case_id"] or run.selected_plan_id != plan_id):
         raise ValueError("review only the selected plan in this request")
     if p["review"]["status"] in (("passed", "skipped") if manual else ("passed", "failed", "skipped")):

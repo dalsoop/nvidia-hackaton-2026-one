@@ -3,14 +3,27 @@ import json
 import logging
 from uuid import uuid4
 
+from typing import Literal
+
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from cualign.agent import steps
 from cualign.agent.context import CURRENT_RUN, PlanRun
 from cualign.core.constraints import ConstraintPatch, ExtractionTeethNeeded, reason_ko
 from cualign.core.store import STORE
 
 logger = logging.getLogger(__name__)
+# One line per step for the server context: what this turn does and where it stops (the tools past it are refused).
+STEP_RULE_KO = {
+    "setup": "이번 턴은 셋업 단계: 처방 문장을 조건으로 해석해 set_constraints 까지만 하고, 계획·목표 배열은 만들지 않는다. "
+             "끝나면 조건을 한 문장으로 요약하고 「이대로 목표 배열을 만들까요?」로 되묻는다.",
+    "target": "이번 턴은 목표 배열 단계: propose_target 까지만 하고 단계로 나누지 않는다. 끝나면 목표 배열의 요지(전략, 공간, "
+              "총생)를 한 문장으로 말하고 「단계로 나눌까요?」로 되묻는다.",
+    "stages": "이번 턴은 단계 단계: plan_stages -> select_plan -> reviewer 까지 끝까지 한다(조건 변경·비교 요청도 이 턴). "
+              "문맥에 target_id 가 있으면 그 목표 배열을 그대로 plan_stages 에 넣는다(조건이 바뀐 요청이면 set_constraints 뒤 "
+              "propose_target 부터 새로).",
+}
 
 
 class ChatContext(BaseModel):
@@ -19,6 +32,8 @@ class ChatContext(BaseModel):
     case_id: str
     base_plan_id: str | None = None
     constraints: ConstraintPatch = Field(default_factory=ConstraintPatch)
+    # how far this turn goes (agent/steps.py). The screen sends it as a top-level body field `step`, beside `cualign`.
+    step: Literal["setup", "target", "stages"] = steps.DEFAULT_STEP
 
 
 def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]:
@@ -28,12 +43,18 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     case summary, the clinical limits and the skill text (#48). Raises ValueError/KeyError/TypeError on bad input."""
     store = store or STORE
     cid, case = store.load_case(ctx.case_id)
+    if ctx.base_plan_id and ctx.base_plan_id in store.plans and store.previous_calculation(ctx.base_plan_id):
+        raise ValueError("이전 계산의 계획은 기준 계획이 될 수 없습니다")   # another core version's plan (answer-polish (10))
     constraints = store.constraints_for(cid, ctx.base_plan_id).patched(ctx.constraints.changes())
     constraints.check_case(case.ids)
     store.case_constraints[cid] = constraints
-    run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints)
+    run = PlanRun(ctx.request_id, cid, ctx.base_plan_id, constraints, step=ctx.step)
     context = {"case_id": cid, "base_plan_id": ctx.base_plan_id, "constraints": constraints.model_dump(mode="json"),
-               "conditions_ko": constraints.describe_ko()}   # the answer's 조건 line, FDI, written by the server (#113)
+               "conditions_ko": constraints.describe_ko(),   # the answer's 조건 line, FDI, written by the server (#113)
+               "step": ctx.step, "step_ko": STEP_RULE_KO[ctx.step]}   # how far this turn goes (workspace/AGENTS.md «Steps»)
+    flow = store.flow.get(cid) if hasattr(store, "flow") else None
+    if flow and flow.get("target_id") and ctx.step == "stages" and flow["target_id"] in store.targets:
+        context["target_id"] = run.inherited_target_id = flow["target_id"]   # the target turn's target: plan_stages may take it
     if ctx.base_plan_id is not None:
         context["base_plan_ko"] = base_plan_ko(store, cid, ctx.base_plan_id)   # the plan on screen, and a revert (#90)
         rep = getattr(store, "replays", {}).get(cid)
@@ -65,6 +86,42 @@ def base_plan_ko(store, case_id: str, base_plan_id: str) -> str:
 
 def event(name, payload):
     return ("\n\nevent: " + name + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
+
+
+def setup_view(store, case_id: str, constraints) -> dict:
+    """What a finished setup step hands the screen (step_done setup and the setup replay): the conditions as
+    plan_context has them (Universal), with `ipr_surfaces` filled in — the prescription as given, else the contacts the
+    planner's uniform rule would cut (step flow (12): the setup view draws its IPR marks from this alone) — and the
+    FDI line for display."""
+    from cualign.core import planner
+    _, case = store.load_case(case_id)
+    data = constraints.model_dump(mode="json")
+    data["ipr_surfaces"] = planner.ipr_surfaces_for(case, constraints)
+    return {"constraints": data, "conditions_ko": constraints.describe_ko()}
+
+
+def step_done(run: PlanRun, store=None) -> dict | None:
+    """The `step_done` event of a finished turn (None when the step did not get done), recording it in Store.flow:
+    setup -> the conditions the turn set (Constraints JSON as in plan_context, plus conditions_ko for display);
+    target -> the target the turn made and its summary; stages -> the plan selected (plan_selected carries the rest).
+    A failed or refused turn reports nothing: the screen stays where it was."""
+    store = store or STORE
+    if run.error or run.refused:
+        return None
+    if run.step == "setup":
+        store.set_flow(run.case_id, "setup", constraints=run.constraints, target_id=None, plan_id=None)
+        return {"step": "setup", **setup_view(store, run.case_id, run.constraints)}
+    if run.step == "target":
+        tid = run.last_target_id
+        if tid is None or tid not in store.targets:
+            return None
+        store.set_flow(run.case_id, "target", constraints=run.constraints, target_id=tid, plan_id=None)
+        return {"step": "target", "target_id": tid, "summary": steps.target_summary(store.targets[tid]["info"])}
+    if run.selected_plan_id is None:
+        return None
+    tid = store.plans[run.selected_plan_id].get("target_id")
+    store.set_flow(run.case_id, "stages", constraints=run.constraints, target_id=tid, plan_id=run.selected_plan_id)
+    return {"step": "stages", "plan_id": run.selected_plan_id, "target_id": tid}
 
 
 async def review_skipped(scope, plan_id) -> bool:
@@ -99,8 +156,9 @@ class PlanEventsASGI:
             if not isinstance(data, dict):
                 raise ValueError("expected JSON object")
             raw = data.pop("cualign", None)
+            step = data.pop("step", None)   # the turn's step is a top-level body field (the screen sends it beside `cualign`)
             # Non-UI clients may still use the ordinary NAT endpoint.
-            ctx = ChatContext.model_validate(raw) if raw is not None else ChatContext(case_id=STORE.active_case or "moderate")
+            ctx = ChatContext.model_validate({**raw, "step": step} if step else raw) if raw is not None                 else ChatContext(case_id=STORE.active_case or "moderate", **({"step": step} if step else {}))
             preload = getattr(getattr(scope.get("app"), "state", None), "cualign_preload", None)  # set by worker.add_routes
             run, system = open_run(ctx, preload=preload)
             data.setdefault("messages", []).insert(0, system)
@@ -141,10 +199,13 @@ class PlanEventsASGI:
                     extra = event("plan_selected", {**common, "schema_version": 1,
                         "plan_id": plan["plan_id"], "parent_plan_id": plan["parent_plan_id"],
                         "review": plan["review"], "reviewed_by_server": by_server})
-                elif run.plan_ids:
+                elif run.plan_ids and run.step != "target":
                     extra = event("plan_error", {**common, "message": "계획은 생성됐으나 최종 선택을 받지 못했습니다."})
                 extra += event("plan_context", {**common, "constraints": run.constraints.model_dump(mode="json"),
                                                  "rails": run.rails})
+                done = step_done(run)
+                if done is not None:
+                    extra += event("step_done", {**common, **done})
                 message = {**message, "body": message.get("body", b"") + extra}
             await send(message)
 

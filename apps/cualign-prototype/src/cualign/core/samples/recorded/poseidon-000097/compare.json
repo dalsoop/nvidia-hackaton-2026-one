@@ -1,9 +1,9 @@
 {
  "step": "compare",
  "request": "확장안이랑 IPR안 둘 다 만들어서 비교해줘.",
+ "recorded_at": "2026-09-27T23:22:12+00:00",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
  "constraints": {},
- "answer_md": "발치 처방을 유지하면서 확장과 IPR을 비교하시겠습니까, 아니면 발치 없이 비교하시겠습니까?",
- "review": null,
- "recorded_at": "2026-09-27T17:04:06+00:00",
- "model": "nvidia/nemotron-3-super-120b-a12b"
+ "answer_md": "발치 처방(14, 24번)이 있는데 확장과 IPR만 비교하려면 발치 처방을 제거해야 하나요?",
+ "review": null
 }
