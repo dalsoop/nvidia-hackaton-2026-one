@@ -1563,7 +1563,7 @@ function renderPlanList() {
     div.innerHTML = `<span class="n"></span><span class="what"></span><span class="pill"></span><span class="sp"></span>` +
       (row.plan_id === cur ? `<span class="viewing">보는 중</span>` : `<button class="btn ghost" type="button" data-act="view">보기</button>`);
     div.querySelector(".n").textContent = `계획 ${n}`;
-    div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
+    div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual && row.strategy !== "manual" ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
     return div;
   };
@@ -1781,7 +1781,7 @@ const TOOL_KO = { load_case: "케이스 읽기", list_cases: "케이스 목록",
   set_constraints: "조건 설정", propose_target: "목표 배열 제안", plan_stages: "단계 계획", validate: "규칙 검증",
   compare_strategies: "전략 비교", select_plan: "계획 선택", export_stl: "STL 내보내기", get_plan: "계획 읽기",
   load_skill: "임상 규칙 읽기", reviewer: "검토" };
-const STRATEGY_KO = { expansion: "확장", ipr: "IPR", expansion_ipr: "확장 + IPR", extraction: "발치" };
+const STRATEGY_KO = { expansion: "확장", ipr: "IPR", expansion_ipr: "확장 + IPR", extraction: "발치", manual: "수동 배치" };
 function toolKo(name) {
   const n = (name ?? "").replace(/^Function (Start|End): /, "").replace(/^cualign__/, "");
   if (n.startsWith("fallback: ")) return "규칙 기반 " + (STRATEGY_KO[n.slice(10)] ?? n.slice(10));
@@ -1982,7 +1982,8 @@ function nextChips() {
   const extraction = state.setup ? (state.setup.extraction ?? []).length > 0 : ($("cExtract").value.trim() !== "");
   switch (state.progress) {
     case "initial": return sample ? [{ label: "이 케이스의 처방 넣기", message: sample.request, step: "setup", hint: sample.prescription }] : [];
-    case "setup": return [{ label: "목표 배열 만들기", message: "이 조건으로 목표 배열을 만들어줘.", step: "target" }, { label: "조건 바꾸기", action: "cond" }];
+    case "setup": return [{ label: "목표 배열 만들기", message: "이 조건으로 목표 배열을 만들어줘.", step: "target" }, { label: "조건 바꾸기", action: "cond" },
+                          { label: "처음부터 수동 배치", action: "manualScan", hint: "에이전트 목표 없이, 치료 전 위치에서 치아를 직접 옮깁니다" }];
     // a hand-edited target (직접 이동) is staged as it is: a condition change or a comparison would make new targets
     case "target": return isManualTarget()
       ? [{ label: "단계 만들기", message: "직접 옮긴 이 목표 배열 그대로 단계를 만들어줘.", step: "stages" },
@@ -2012,6 +2013,7 @@ function addNextChips(after) {
     const b = e.target.closest("button");
     if (!b || state.streaming || state.loading) return;
     if (b.dataset.action === "manual") { if (state.step !== "target") setStep("target"); manualEdit.open(); return; }
+    if (b.dataset.action === "manualScan") { if (state.step !== "setup") setStep("setup"); manualEdit.open(); return; }
     if (manualEdit.active) { toast("직접 이동을 적용하거나 취소한 뒤 진행해 주세요."); return; }
     if (b.dataset.action === "manualStages") { stageManualTarget(); return; }
     if (b.dataset.action === "cond") { showTab("cond"); $("cExtract").focus(); return; }
@@ -2596,7 +2598,10 @@ canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
 
 manualEdit = createManual({ THREE, scene, camera, canvas, state, $, fdi, api, applyStage, showTab, addMsg, toast, loadTargetCut,
-  afterApply: () => addNextChips($("transcript").lastElementChild) });
+  afterApply: () => addNextChips($("transcript").lastElementChild),
+  // 처음부터 수동 배치: the scan-position target is shown as the 목표 while it is edited; 취소 puts the flow back
+  enterTarget: (t) => { state.target = t; state.targetId = t.target_id; state.targetSummary = null; setProgress("target", true); setStep("target"); loadTargetCut(t.target_id); },
+  restoreFlow: (prev) => { state.target = prev.target; state.targetId = prev.targetId; setProgress(prev.progress, true); setStep("setup"); } });
 
 (async function init() {
   try {

@@ -71,7 +71,7 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     return run, {"role": "system", "content": "cuAlign server context: " + json.dumps(context, ensure_ascii=False)}
 
 
-STRATEGY_KO = {"expansion": "확장", "ipr": "IPR", "expansion_ipr": "확장 + IPR", "extraction": "발치"}
+STRATEGY_KO = {"expansion": "확장", "ipr": "IPR", "expansion_ipr": "확장 + IPR", "extraction": "발치", "manual": "수동 배치"}
 
 
 def base_plan_ko(store, case_id: str, base_plan_id: str) -> str:

@@ -27,7 +27,7 @@
 | `src/cualign/core/skills.py` | `workspace/skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증. 발치는 처방된 치아 목록(`extraction`, #56); `allow_extraction`은 계산값 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
-| `src/cualign/core/manual.py` | 직접 이동: 치아별 축(`frames`), 손으로 옮긴 목표 만들기(`apply_edits`), 드래그 중 겹침·최소 단계 검사(`check`) |
+| `src/cualign/core/manual.py` | 직접 이동: 치아별 축(`frames`), 치료 전 위치의 출발 목표(`scan_start`), 손으로 옮긴 목표 만들기(`apply_edits`), 드래그 중 겹침·최소 단계 검사(`check`) |
 | `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
 | `src/cualign/core/intake.py` | 업로드한 치아별 스캔을 코어 좌표계로 정렬(잇몸·치관 경계 기준, 원본은 `original/`), 좌우 번호 점검·뒤집기 |
 | `src/cualign/core/gum.py` | 3D 표시용 잇몸 생성. 검증·출력 대상은 아님 |

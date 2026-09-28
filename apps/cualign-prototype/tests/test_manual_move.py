@@ -148,3 +148,38 @@ def test_stages_turn_is_told_the_target_was_moved_by_hand():
     s.set_flow(cid, "target", constraints=t["constraints"], target_id=tid, plan_id=None)   # the agent's own target
     _, msg = open_run(ChatContext(case_id=cid, step="stages"), store=s)
     assert "target_manual_ko" not in json.loads(msg["content"].removeprefix("cuAlign server context: "))
+
+
+def test_scan_start_places_every_crown_where_it_stands_under_the_prescription():
+    s = Store()
+    cid, case = s.load_case("poseidon-000097")
+    c = s.constraints_for(cid).patched({"extraction": [5, 12], "lock": [2]})
+    target, info = manual.scan_start(case, c)
+    assert set(target) == set(case.ids) and target[5] is None and target[12] is None
+    assert all(np.allclose(v, 0) for i, v in target.items() if v is not None) and not target.yaw
+    assert info["strategy"] == "manual" and info["source"] == "scan" and info["removed"] == [5, 12] and info["locked"] == [2]
+    assert info["space_deficit_mm"] == 0.0 and info["ipr_surfaces"] == [] and info["ipr_mm_per_surface"] == 0.0
+    cid, case = s.load_case("poseidon-000131")
+    c = s.constraints_for(cid).patched({"ipr_surfaces": [[7, 8, 0.4], [8, 9, 0.4]]})
+    _, info = manual.scan_start(case, c)
+    assert info["ipr_surfaces"] == [[7, 8, 0.4], [8, 9, 0.4]] and info["ipr_applied_teeth"] == [7, 8, 9]
+    assert planner.cut_case(case, info) is not case                   # the prescribed contacts are cut, as a target's
+
+
+def test_api_scan_start_then_edit_and_stage(client):
+    s = store.STORE
+    cid, case = s.load_case("poseidon-000097")
+    s.case_constraints[cid] = s.constraints_for(cid).patched({"extraction": [5, 12]})   # what the setup turn confirmed
+    start = client.post(f"/api/cases/{cid}/targets/scan").json()
+    tid = start["target_id"]
+    assert start["strategy"] == "manual" and start["info"]["source"] == "scan" and set(start["frames"]) == {str(i) for i in case.ids}
+    assert "5" not in start["stages"][0] and all(v == [0, 0, 0] for v in start["stages"][0].values())
+    assert s.flow.get(cid) is None or s.flow[cid].get("target_id") != tid       # a start alone is not the case's target
+    d = (0.4 * np.asarray(start["frames"]["6"]["mesial"])).tolist()
+    saved = client.post(f"/api/cases/{cid}/targets/{tid}/manual", json={"teeth": {"6": {"d": d}}}).json()
+    assert saved["info"]["source"] == "manual" and saved["strategy"] == "manual" and saved["info"]["parent_target_id"] == tid
+    assert s.flow[cid]["target_id"] == saved["target_id"]
+    plan = client.post(f"/api/cases/{cid}/targets/{saved['target_id']}/stages", json={}).json()
+    assert plan["strategy"] == "manual" and plan["manual"] is True and plan["n_stages"] == 2   # 0.4 mm at 0.25 mm per aligner
+    assert not any(v["type"] == "space_deficit" for v in s.plans[plan["plan_id"]]["violations"])
+    assert client.post("/api/cases/nope/targets/scan").status_code == 404

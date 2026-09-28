@@ -646,8 +646,8 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .cards .empty, #clRows .empty { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 13px; }
 
 /* 직접 이동 (manual.js): 목표 단계의 편집 모드. 버튼·탭은 목표 단계에서만, 편집 막대는 단계 막대 자리에 편집 중에만 */
-body:not(.step-target) #moveBtn { display: none; }
-body:not(.step-target) .side-tab[data-tab="move"] { opacity: 0.35; pointer-events: none; }
+body:not(.step-target):not(.step-setup) #moveBtn { display: none; }   /* 셋업: 처음부터 수동 배치 · 목표: 수동으로 조정 */
+body:not(.step-target):not(.step-setup) .side-tab[data-tab="move"] { opacity: 0.35; pointer-events: none; }
 .move-bar { display: none; position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 body.manual-on .move-bar { display: flex; }
 .move-bar .ibtn:disabled { opacity: 0.35; cursor: default; }

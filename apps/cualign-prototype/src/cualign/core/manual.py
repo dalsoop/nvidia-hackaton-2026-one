@@ -18,7 +18,7 @@ from .case import Case
 from .constraints import Constraints
 from .fdi import label
 from .limits import MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER, months_from_stages
-from .planner import NEW_OVERLAP_MM3, Moves, _touching_pairs, cut_case, yaw_of
+from .planner import NEW_OVERLAP_MM3, Moves, _touching_pairs, crowding_mm, cut_case, yaw_of
 
 # Bounds of one hand edit (assumed PoC limits, not clinical): a crown further than this from the scan, or turned more,
 # is a slip of the mouse rather than a movement to stage.
@@ -42,6 +42,24 @@ def frames(case: Case) -> dict[int, dict[str, list[float]]]:
         out[i] = {"mesial": np.round([*mesial, 0.0], 4).tolist(), "buccal": np.round([*n, 0.0], 4).tolist(),
                   "occlusal": [0.0, 0.0, 1.0]}
     return out
+
+
+def scan_start(case: Case, constraints: Constraints) -> tuple[Moves, dict]:
+    """(target, info) to place by hand from the scan (처음부터 수동 배치, before any strategy): every crown where it
+    stands, the prescribed extraction teeth removed, only the prescribed IPR contacts cut (no automatic IPR, no
+    expansion). Strategy "manual"; nothing is computed about space, so no space deficit is claimed either."""
+    constraints.check_case(case.ids)
+    removed = sorted(set(constraints.extraction))
+    target = Moves({i: (None if i in removed else np.zeros(3)) for i in case.ids})
+    surfaces = [[int(a), int(b), float(mm)] for a, b, mm in constraints.ipr_surfaces]
+    info = {"strategy": "manual", "source": "scan", "space_gain_mm": 0.0, "crowding_mm": round(crowding_mm(case), 2),
+            "space_deficit_mm": 0.0, "open_space_mm": 0.0, "mean_move_mm": 0.0, "max_move_mm": 0.0,
+            "notes": ["치료 전 위치에서 시작한 수동 배치 (전략 없음 · 자동 IPR·확장 없음)"],
+            "removed": removed, "locked": sorted(constraints.lock), "extraction": removed,
+            "ipr_mm_per_surface": 0.0, "ipr_applied_teeth": sorted({t for a, b, _ in surfaces for t in (a, b)}),
+            "ipr_surfaces": surfaces, "ipr_exclude": sorted(constraints.ipr_exclude), "expansion_mm_per_side": 0.0,
+            "rotation_deg": {}, "vertical_mm": {}}
+    return target, info
 
 
 def apply_edits(base: dict, edits: dict[int, dict], constraints: Constraints) -> tuple[Moves, list[int]]:

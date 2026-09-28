@@ -373,6 +373,22 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             raise HTTPException(400, reason_ko(e))
         return t, case, new, changed
 
+    @app.post("/api/cases/{case_id}/targets/scan")
+    async def scan_target(case_id: str):
+        """처음부터 수동 배치: a target with every crown where the scan has it (the case's confirmed conditions: the
+        prescribed extraction teeth removed, only prescribed IPR cut; strategy "manual", info.source "scan"), to move by
+        hand with …/check and …/manual. Stored, not put in the flow (only an applied edit is). Answers as GET …/targets/{id}."""
+        try:
+            cid, case = STORE.load_case(case_id)
+            STORE.require_current_input(cid)
+            constraints = STORE.constraints_for(cid)
+            target, info = manual.scan_start(case, constraints)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, reason_ko(e))
+        return target_view(cid, STORE.put_target(cid, target, info, constraints))
+
     @app.post("/api/cases/{case_id}/targets/{target_id}/check")
     async def check_manual(case_id: str, target_id: str, req: ManualEditRequest):
         """직접 이동 while dragging: the edited arrangement is checked, not stored. {max_move_mm, max_yaw_deg, min_stages,

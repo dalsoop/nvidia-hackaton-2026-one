@@ -167,6 +167,7 @@ NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 설정된
 직접 이동(PoC): 「목표」 단계에서 의사가 목표 배열의 치아를 3D 화살표·회전 고리나 숫자로 옮긴다(`static/manual.js`).
 축은 치아마다 스캔 치열궁의 접선(근원심)·바깥 법선(협설)·+z(정출)이다(`core/manual.py` `frames`).
 드래그 중에는 `POST /api/cases/{id}/targets/{tid}/check`가 저장 없이 겹침(검증기와 같은 1mm³ 기준)과 최소 단계 수를 돌려준다.
+셋업 단계의 「처음부터 수동 배치」는 `POST /api/cases/{id}/targets/scan`으로 치료 전 위치의 출발 목표를 만든다(전략 `manual`, 처방된 발치 치아 제외, 처방된 IPR 접촉면만 절삭, 자동 IPR·확장 없음, 공간 부족 판정 없음). 출발 목표만으로는 흐름의 목표가 바뀌지 않는다.
 적용은 `POST …/manual`로 새 목표를 만들고(`info.source = "manual"`, `parent_target_id`, `manual_teeth`) 흐름의 목표를 바꾼다.
 이후 에이전트 단계 턴은 문맥의 `target_manual_ko`를 보고 그 목표를 그대로 `plan_stages`에 넣고, 에이전트 없는 경로는 `POST …/stages`다.
 발치·고정 치아와 한 번에 10mm·45°를 넘는 이동은 거부한다(PoC 한도). 저장소가 메모리라 서버 재시작 뒤에는 이 목표도 남지 않는다.

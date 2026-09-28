@@ -115,11 +115,27 @@ export function createManual(ctx) {
   function changed() { redraw(); renderTable(); renderBar(); scheduleCheck(); }
   function push() { M.undo.push(snapshot()); if (M.undo.length > 100) M.undo.shift(); M.redo = []; }
 
-  // ---- open / close
-  function open() {
+  // ---- open / close. On 셋업 the edit starts from the scan (처음부터 수동 배치): the server makes a target with every
+  // crown in place (POST …/targets/scan), shown as the 목표 while it is edited; 취소 goes back to 셋업 as it was.
+  async function open() {
     if (M.active) { showTab("move"); return; }
-    if (state.step !== "target" || !state.target || !state.targetId) { toast("목표 배열이 있을 때 직접 이동할 수 있습니다."); return; }
-    if (state.streaming || state.loading) return;
+    if (state.streaming || state.loading || M.opening) return;
+    if (state.step === "setup") return openFromScan();
+    if (state.step !== "target" || !state.target || !state.targetId) { toast("셋업이나 목표 단계에서 직접 이동할 수 있습니다."); return; }
+    start(null);
+  }
+  async function openFromScan() {
+    const prev = { target: state.target, targetId: state.targetId, progress: state.progress };
+    M.opening = true;
+    try {
+      const t = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/scan`, { method: "POST" });
+      ctx.enterTarget(t);
+      start(prev);
+    } catch (e) {
+      addMsg("error", "수동 배치를 시작하지 못했습니다: " + e.message);
+    } finally { M.opening = false; }
+  }
+  function start(restore) {
     M.base = state.target;
     const st = M.base.stages?.[0] ?? {}, rot = M.base.rotations?.[0] ?? {};
     const gone = removed();
@@ -131,7 +147,7 @@ export function createManual(ctx) {
     }
     M.draft = { d: Object.fromEntries(Object.entries(M.baseDraft.d).map(([k, v]) => [k, [...v]])), yaw: { ...M.baseDraft.yaw } };
     M.view = { ...M.base, violations: [], stages: [], rotations: [] };
-    M.undo = []; M.redo = []; M.sel = null; M.check = null;
+    M.undo = []; M.redo = []; M.sel = null; M.check = null; M.restore = restore;
     M.active = true;
     state.selected.clear();
     document.body.classList.add("manual-on");
@@ -152,6 +168,7 @@ export function createManual(ctx) {
     if (!M.active) return;
     state.target = M.base;
     close();
+    if (M.restore) { const prev = M.restore; M.restore = null; ctx.restoreFlow(prev); return; }   // 처음부터 수동 배치: back to 셋업
     applyStage(state.step === "target" ? (state.target?.stages?.length ?? 0) : state.stage);
     if (state.tab === "move") showTab("cond");
   }
@@ -163,7 +180,8 @@ export function createManual(ctx) {
     try {
       const res = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(state.targetId)}/manual`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teeth }) });
-      const words = changeWords(M.draft, M.baseDraft, M.base.frames ?? {}, fdi), check = M.check;
+      const words = changeWords(M.draft, M.baseDraft, M.base.frames ?? {}, fdi), check = M.check, fromScan = !!M.restore;
+      M.restore = null;
       close();
       // the last check's overlaps stay red on the stored target until the stages are validated (the GET gives none)
       if (check && !check.error) res.violations = check.overlaps.map((o) => ({ stage: 1, type: "collision", teeth: o.teeth, overlap_mm3: o.overlap_mm3 }));
@@ -172,7 +190,7 @@ export function createManual(ctx) {
       ctx.loadTargetCut(res.target_id);
       showTab("cond");
       const est = check && !check.error ? ` · 예상 최소 ${check.min_stages}단계(약 ${check.min_months}개월)` : "";
-      addMsg("system", `직접 이동을 목표 배열에 적용했습니다 — ${words.join(" / ")}${est}.`);
+      addMsg("system", (fromScan ? "치료 전 위치에서 수동 배치한 목표 배열을 저장했습니다" : "직접 이동을 목표 배열에 적용했습니다") + ` — ${words.join(" / ")}${est}.`);
       ctx.afterApply();
     } catch (e) {
       addMsg("error", "직접 이동을 적용하지 못했습니다: " + e.message);
