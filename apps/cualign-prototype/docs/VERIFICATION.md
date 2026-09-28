@@ -426,3 +426,25 @@ moderate 확장+IPR 안을 «검토 다시 요청» 경로로 여러 번 검토�
 - #168 3D 뷰어(배율·탭·회전·단계숨김): pytest 669 passed·90skip·8xfail·0failed, `node --test` 3/3, `browser_flow.py` 단독 PASS(재시도 후), 8002 별도서버 NIM호출 0회로 회전·배율 수치 실측(표로 기록), 스크린샷 3장. 못 한 것: 수정 전 스크린샷 없음, 창크기 재맞춤은 1600→1280 1회만, 최종 코드는 눈으로 재확인 안 하고 pytest·browser_flow로만 확인.
 - #169 연출 레퍼런스 조사 문서: 코드 변경 없음. 본문에 검증 기록 없음(리서치 문서).
 - #170 CI layout HANDOFF.md 허용: 본문에 검증 기록 없음.
+
+## 2026-09-28 직접 이동 검증
+
+### 오프라인
+- `uv run pytest -q -p no:warnings` 통과. 새 시험 `tests/test_manual_move.py` 6개(축 방향, 편집 거부 규칙, 겹침 검사, 저장·단계 API, 단계 턴 문맥).
+- `node --test tests/manual-move.test.mjs` 2개 통과(치아 축 변환, 보낼 편집·변경 요약). CI는 이 파일을 실행하지 않는다.
+- 설치된 Chrome(헤드리스)과 실제 서버, 모델 없이: poseidon-000097 녹화된 셋업·목표 → 직접 이동 → 11번 근심 화살표 드래그 2.0mm, 21번 협설 숫자 +0.5 → 되돌리기·다시 하기 → 적용 → 에이전트 없이 단계 계산(29단계, 11-21 충돌 위반 20건 — 일부러 밀어 넣은 결과) → 마지막 단계 11번 위치가 옮긴 위치와 일치. 콘솔 오류 없음. 스크립트는 커밋하지 않은 임시 점검이다.
+
+### NVIDIA NIM 실호출
+- `uv run --frozen python tests/nim_manual_live_check.py http://127.0.0.1:8000 poseidon-000097`: 녹화된 셋업·목표(모델 없음) 뒤 21번 협측 +0.5mm 직접 이동, 실제 NIM 단계 턴 1회(18.9초).
+- 호출 도구 `plan_stages → select_plan → reviewer`, `propose_target` 없음. 선택 계획의 목표가 직접 옮긴 목표(source manual, 부모 목표 일치), 계획 목록 `manual` 참, 21번 마지막 단계 위치 일치, `step_done` 목표 일치. 발치 27단계, 규칙 통과, 검토 통과. 6개 판정 모두 PASS.
+- 첫 실행 1회는 점검 스크립트의 필드 오류(메모리 계획 상세에 `target_id` 없음)로 결과를 저장하지 못했고, 고친 뒤 다시 실행했다.
+
+### 이번에 실행하지 않은 검사
+- 모델이 셋업·목표 턴까지 직접 한 흐름(녹화 재생 대신), 다른 샘플 케이스, 「다시 조정」으로 두 번 고친 목표의 에이전트 단계 턴.
+- 브라우저에서 적용 뒤 겹침 표시 유지와 계획 카드 「수동 조정」 표시는 브라우저 점검 뒤에 고쳐서 화면으로는 다시 보지 않았다(서버 값은 시험으로 확인).
+
+### 처음부터 수동 배치 (같은 날 추가)
+- `uv run pytest -q -p no:warnings` 통과. `tests/test_manual_move.py`에 출발 목표(발치·고정·처방 IPR 반영)와 출발 → 편집 → 단계 API 시험 2개 추가(모두 8개).
+- 설치된 Chrome과 실제 서버, 모델 없이: poseidon-000097 녹화된 셋업 → 직접 이동 → 취소하면 셋업으로 복귀(목표 없음) → 다시 열어 13번 근심 0.40mm → 적용 → 에이전트 없이 단계 계산(수동 배치 2단계, 13-12 충돌 1건). 콘솔 오류 없음.
+- NVIDIA NIM 실호출: `uv run --frozen python tests/nim_manual_live_check.py http://127.0.0.1:8000 poseidon-000097 --from-scan` — 녹화된 셋업(모델 없음) → 치료 전 위치 출발 목표 → 21번 협측 +0.5mm → 실제 NIM 단계 턴 1회(27.6초). 도구 `plan_stages → select_plan → reviewer`, `propose_target` 없음, 전략 manual 유지, 7개 판정 모두 PASS. 수동 배치 3단계, 규칙 통과, 검토 통과.
+

@@ -44,6 +44,9 @@
     <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/> <path d="m12 5 7 7-7 7"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
     <symbol id="i-send-horizontal" viewBox="0 0 24 24"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/> <path d="M6 12h16"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20"/> <path d="m15 19-3 3-3-3"/> <path d="m19 9 3 3-3 3"/> <path d="M2 12h20"/> <path d="m5 9-3 3 3 3"/> <path d="m9 5 3-3 3 3"/></symbol>
+    <symbol id="i-undo-2" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/> <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></symbol>
+    <symbol id="i-redo-2" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/> <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></symbol>
     <symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M10 11v6"/> <path d="M14 11v6"/> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/> <path d="M3 6h18"/> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
   </svg>
   <header class="topbar">
@@ -251,6 +254,8 @@
           <button class="btn ghost small" type="button" data-view="right" aria-label="우측 · 환자 오른쪽 볼 쪽에서"><span class="vic" style="--icon: url(icons/view-right.png)"></span></button>
           <span class="rail-tools">
             <button id="overlayBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="겹쳐 보기 · 치료 전 치열을 흰 윤곽으로 겹칩니다"><span class="vic" style="--icon: url(icons/view-overlay.png)"></span></button>
+            <!-- 직접 이동 (manual.js): 셋업(치료 전 위치부터)·목표(목표 배열을) 단계에서만 보인다. 누르면 편집 모드, 한 번 더 누르면 취소 -->
+            <button id="moveBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="직접 이동 · 치아를 손으로 옮깁니다 (셋업: 치료 전 위치부터 · 목표: 목표 배열을)"><svg class="ic" aria-hidden="true"><use href="#i-move"></use></svg></button>
             <button id="focusBtn" class="btn ghost small" type="button" aria-pressed="false" aria-label="크게 · 대화 패널을 접고 3D를 크게 봅니다"><svg class="ic ic-off" aria-hidden="true"><use href="#i-maximize-2"></use></svg><svg class="ic ic-on" aria-hidden="true"><use href="#i-minimize-2"></use></svg></button>
           </span>
         </div>
@@ -280,6 +285,16 @@
         <button id="lastBtn" class="ibtn" type="button" aria-label="목표 배열로" title="목표 배열로"><svg class="ic" aria-hidden="true"><use href="#i-skip-forward"></use></svg></button>
         <span id="stageLabel" class="stage-label">계획 없음</span>
       </div>
+      <!-- 직접 이동 편집 막대 (manual.js): 목표 단계의 편집 중에만, 단계 막대 자리에 -->
+      <div id="moveBar" class="move-bar">
+        <button id="moveUndo" class="ibtn" type="button" aria-label="되돌리기" title="되돌리기 · Ctrl+Z"><svg class="ic" aria-hidden="true"><use href="#i-undo-2"></use></svg></button>
+        <button id="moveRedo" class="ibtn" type="button" aria-label="다시 하기" title="다시 하기 · Ctrl+Y"><svg class="ic" aria-hidden="true"><use href="#i-redo-2"></use></svg></button>
+        <button id="moveResetTooth" class="btn ghost small" type="button" title="선택한 치아를 적용 전 목표 위치로">이 치아 초기화</button>
+        <button id="moveResetAll" class="btn ghost small" type="button" title="모든 치아를 적용 전 목표 위치로">전체 초기화</button>
+        <span id="moveSel" class="move-sel">치아를 눌러 선택</span>
+        <button id="moveCancel" class="btn ghost small" type="button">취소</button>
+        <button id="moveApply" class="btn primary small" type="button" title="옮긴 배열을 새 목표 배열로 저장합니다">적용</button>
+      </div>
     </section>
 
     <div id="sideSplitter" class="splitter side-splitter" role="separator" aria-orientation="vertical" aria-label="사이드바 크기 조정" tabindex="0" title="끌어서 너비 조절 · 두 번 눌러 원래대로"></div>
@@ -290,6 +305,7 @@
         <button id="tabStages" class="side-tab" type="button" role="tab" data-tab="stages" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-table-2"></use></svg><span>단계 표</span></button>
         <button id="tabRules" class="side-tab" type="button" role="tab" data-tab="rules" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-shield-check"></use></svg><span>규칙</span></button>
         <button id="tabCond" class="side-tab" type="button" role="tab" data-tab="cond" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-sliders-horizontal"></use></svg><span>조건</span></button>
+        <button id="tabMove" class="side-tab" type="button" role="tab" data-tab="move" aria-selected="false" title="직접 이동 · 목표 배열의 치아를 손으로 옮깁니다"><svg class="ic" aria-hidden="true"><use href="#i-move"></use></svg><span>이동</span></button>
       </div>
       <!-- 스캔 사실 (#20): 케이스를 연 직후의 오른쪽 패널 -->
       <section id="paneScan" class="pane" role="tabpanel">
@@ -339,6 +355,13 @@
           <button id="condRecalc" class="btn primary cond-run" type="button" title="이 조건으로 규칙 계획을 다시 계산합니다 (에이전트 없이)" hidden disabled>다시 계산</button>
           <button id="condApply" class="btn ghost cond-run" type="button" title="이 조건으로 셋업 턴을 다시 보냅니다" hidden>이 조건으로 셋업 다시</button>
         </div>
+      </section>
+      <!-- 직접 이동 (manual.js): 치료 전 스캔 기준 누적 이동을 치아마다의 축으로. 값을 적거나 3D의 화살표를 끈다 -->
+      <section id="paneMove" class="pane" role="tabpanel" hidden>
+        <div class="pane-head"><h2>이동</h2><p class="sub">치아를 누르고 화살표·고리를 끌거나 값을 적습니다 · 치료 전 스캔 기준 누적 mm·°</p></div>
+        <div id="moveSummary" class="move-summary" aria-live="polite"></div>
+        <div id="moveTable" class="move-table" aria-label="치아별 이동"></div>
+        <p class="sub move-note">근원심 + 근심(정중선 쪽) · 협설 + 협측 · 수직 + 정출(교합면 쪽) · 회전 + 교합면에서 볼 때 반시계 · ✎ 손으로 옮긴 치아</p>
       </section>
     </aside>
   </main>

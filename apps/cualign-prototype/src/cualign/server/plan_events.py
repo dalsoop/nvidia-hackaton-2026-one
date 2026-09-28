@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from cualign.agent import steps
 from cualign.agent.context import CURRENT_RUN, PlanRun
 from cualign.core.constraints import ConstraintPatch, ExtractionTeethNeeded, reason_ko
+from cualign.core.fdi import label
 from cualign.core.store import STORE
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,10 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     flow = store.flow.get(cid) if hasattr(store, "flow") else None
     if flow and flow.get("target_id") and ctx.step == "stages" and flow["target_id"] in store.targets:
         context["target_id"] = run.inherited_target_id = flow["target_id"]   # the target turn's target: plan_stages may take it
+        tinfo = store.targets[flow["target_id"]]["info"]
+        if tinfo.get("source") == "manual":   # 직접 이동 (core/manual.py): a new propose_target would drop the dentist's moves
+            context["target_manual_ko"] = (f"이 목표 배열은 의사가 화면에서 직접 옮긴 것이다({label(tinfo.get('manual_teeth') or [])}). "
+                                           "propose_target 으로 새로 만들지 말고 target_id 를 그대로 plan_stages 에 넣는다.")
     if ctx.base_plan_id is not None:
         context["base_plan_ko"] = base_plan_ko(store, cid, ctx.base_plan_id)   # the plan on screen, and a revert (#90)
         rep = getattr(store, "replays", {}).get(cid)
@@ -66,7 +71,7 @@ def open_run(ctx: ChatContext, store=None, preload=None) -> tuple[PlanRun, dict]
     return run, {"role": "system", "content": "cuAlign server context: " + json.dumps(context, ensure_ascii=False)}
 
 
-STRATEGY_KO = {"expansion": "확장", "ipr": "IPR", "expansion_ipr": "확장 + IPR", "extraction": "발치"}
+STRATEGY_KO = {"expansion": "확장", "ipr": "IPR", "expansion_ipr": "확장 + IPR", "extraction": "발치", "manual": "수동 배치"}
 
 
 def base_plan_ko(store, case_id: str, base_plan_id: str) -> str:

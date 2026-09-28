@@ -15,7 +15,8 @@ from cualign.agent import steps
 from cualign.server import export_jobs
 from cualign.server.plan_events import setup_view
 from cualign.agent.reviewer import MANUAL_RETRY
-from cualign.core import Case, patients, planner, samples
+from cualign.core import Case, manual, patients, planner, samples
+from cualign.server import manual_api
 from cualign.core.constraints import ConstraintPatch, reason_ko
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -157,6 +158,7 @@ def _summary(pid):
             "passed": p["passed"], "violations": len(p["violations"]), "by_type": planner.summarize(p["violations"]),
             "constraints": p["constraints"], "review": p["review"], "approval": p["approval"],
             "input_stale": p["input_stale"],   # same rule as GET /api/plans/{id}: the scan was renumbered since
+            "manual": (p.get("target") or {}).get("source") == "manual",   # staged from a hand-edited target (직접 이동)
             "previous_calculation": p["previous_calculation"]}   # computed by another core version: listed as «이전 계산» only (10)
 
 
@@ -331,24 +333,38 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         cid, case = STORE.load_case(case_id)
         return ipr_cut_view(cid, case, None, target_id)
 
-    @app.get("/api/cases/{case_id}/targets/{target_id}")
-    async def get_target(case_id: str, target_id: str):
-        """The target arrangement a target turn made, in the shape of a plan response with one stage (the final
-        arrangement): stages[0] = displacement per tooth, rotations[0] = yaw per tooth, pivots, target/info,
-        violations [] (nothing was validated yet). The screen draws it as 「목표」."""
+    def require_target(case_id: str, target_id: str) -> dict:
         t = STORE.targets.get(target_id)
         if t is None or t["case_id"] != case_id:
             raise HTTPException(404, "목표 배열이 없습니다")
+        return t
+
+    def target_view(case_id: str, target_id: str) -> dict:
+        t = STORE.targets[target_id]
         target, info = t["target"], t["info"]
         stage = {str(i): np.round(np.asarray(v, float), 4).tolist() for i, v in target.items() if v is not None}
         yaw = {str(i): round(float(y), 3) for i, y in getattr(target, "yaw", {}).items()}
         c = t["constraints"]
+        case = STORE.cases.get(case_id)
         return {"target_id": target_id, "case_id": case_id, "strategy": info.get("strategy"),
                 "constraints": c if isinstance(c, dict) else c.model_dump(mode="json"),
                 "info": info, "target": info, "violations": [], "passed": True, "summary": steps.target_summary(info),
                 "stages": [stage], "rotations": [yaw],
-                "pivots": {str(i): np.round(p, 4).tolist() for i, p in STORE.cases[case_id].pos0.items()}
-                if case_id in STORE.cases else {}}
+                "pivots": {str(i): np.round(p, 4).tolist() for i, p in case.pos0.items()} if case else {},
+                # the axes 직접 이동 moves along (core/manual.py): mesial, buccal, occlusal per crown
+                "frames": {str(i): f for i, f in manual.frames(case).items()} if case else {}}
+
+    @app.get("/api/cases/{case_id}/targets/{target_id}")
+    async def get_target(case_id: str, target_id: str):
+        """The target arrangement a target turn made, in the shape of a plan response with one stage (the final
+        arrangement): stages[0] = displacement per tooth, rotations[0] = yaw per tooth, pivots, target/info,
+        violations [] (nothing was validated yet), frames (the crowns' own axes for 직접 이동). The screen draws it as
+        「목표」."""
+        require_target(case_id, target_id)
+        return target_view(case_id, target_id)
+
+    # 직접 이동 (server/manual_api.py): the scan start, the drag check, apply, and staging a hand-edited target
+    manual_api.add_manual_routes(app, store=lambda: STORE, require_target=require_target, target_view=target_view, summary=_summary)
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str, plan_id: str | None = None, target_id: str | None = None):

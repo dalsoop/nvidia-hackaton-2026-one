@@ -28,6 +28,7 @@
 | `src/cualign/core/skills.py` | `workspace/skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증. 발치는 처방된 치아 목록(`extraction`, #56); `allow_extraction`은 계산값 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
+| `src/cualign/core/manual.py` | 직접 이동: 치아별 축(`frames`), 치료 전 위치의 출발 목표(`scan_start`), 손으로 옮긴 목표 만들기(`apply_edits`), 드래그 중 겹침·최소 단계 검사(`check`) |
 | `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
 | `src/cualign/core/intake.py` | 업로드한 치아별 스캔을 코어 좌표계로 정렬(잇몸·치관 경계 기준, 원본은 `original/`), 좌우 번호 점검·뒤집기 |
 | `src/cualign/core/gum.py` | 3D 표시용 잇몸 생성. 검증·출력 대상은 아님 |
@@ -55,6 +56,7 @@
 | `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구 연결. 계획 에이전트 지시문은 `workspace/AGENTS.md` 를 `file://` 로 그대로 읽음 |
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트(과부하로 죽은 턴의 `plan_error` `kind`·안내 문장 포함), 에이전트가 건너뛴 검토의 서버 실행. `open_run` 이 서버 문맥 시스템 메시지를 만들고 `preload` 로 케이스 요약·한도·스킬을 덧붙임(#48) |
+| `src/cualign/server/static/manual.js` | 직접 이동 화면: 3D 화살표·회전 고리, 「이동」 탭 숫자 표, 편집 막대(되돌리기·초기화·적용), 서버 검사 표시 |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
 | `src/cualign/server/export_jobs.py` | 승인 순간부터 내보내기 ZIP(단계 STL·프린트 모형)을 백그라운드로 만들고 계획별로 보관 |
