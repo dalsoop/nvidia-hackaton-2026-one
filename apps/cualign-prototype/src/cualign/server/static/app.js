@@ -1715,7 +1715,11 @@ function renderPlanList() {
       d.innerHTML = `<summary></summary><div class="plan-list"></div>`;
       d.querySelector("summary").textContent = `시도한 전략 ${row.rule_run.tried?.length ?? alts.length + 1}개 보기`;
       d.querySelector(".plan-list").replaceChildren(...alts.map(make));
-      div.append(d);
+      // card and fold in one frame, side by side in the DOM: a selector on the card (.plan-row.current .pill) never
+      // reaches the rows in the fold
+      const group = document.createElement("div"); group.className = "plan-group" + (row.plan_id === cur ? " current" : "");
+      group.append(div, d);
+      return group;
     }
     return div;
   };

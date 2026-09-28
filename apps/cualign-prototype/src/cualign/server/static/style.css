@@ -565,8 +565,10 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .old-plans[open] > summary { margin-bottom: 8px; }
 .old-plans[hidden] { display: none; }
 /* one 다시 계산's other strategies, folded inside the card of the plan it chose */
-.plan-row:has(> .plan-tries) { flex-wrap: wrap; }
-.plan-tries { flex: 0 0 100%; min-width: 0; margin: 2px 0 4px; padding-right: 6px; box-sizing: border-box; }
+.plan-group { display: flex; flex-direction: column; gap: 6px; padding: 0 0 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+.plan-group.current { border-color: var(--green); background: #0d1a00; }
+.plan-group > .plan-row { border: 0; background: none; }   /* the frame is the card */
+.plan-tries { min-width: 0; padding: 0 8px 0 10px; }
 .plan-tries > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
 .plan-tries > summary::before { content: "\25B8"; margin-right: 6px; }
 .plan-tries[open] > summary::before { content: "\25BE"; }
