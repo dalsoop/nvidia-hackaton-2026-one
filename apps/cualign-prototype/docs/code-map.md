@@ -25,7 +25,7 @@
 | `src/cualign/core/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`). `scripts/import_poseidon.py`로 만들었고 패키지에 포함 |
 | `src/cualign/core/samples/ATTRIBUTION.md` | 샘플 스캔의 출처·라이선스(CC-BY-4.0)·변경 내용. 자산과 함께 보존 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
-| `src/cualign/core/recorded.py` | 샘플 케이스의 녹화된 에이전트 답(`samples/recorded/<case>/<step>.json`) 읽기·검사. 재생은 규칙 엔진으로 계획을 다시 계산하고 답의 단계 수·개월을 그 값으로 맞춤 |
+| `src/cualign/core/recorded.py` | 샘플 케이스의 녹화된 에이전트 답(`samples/recorded/<case>/<step>.json`) 읽기·검사. 재생은 규칙 엔진으로 계획을 다시 계산하고 답의 단계 수·개월을 그 값으로 맞춤. 선택 필드 `reasoning` 은 실호출 턴의 추론 이벤트(000097 셋업) |
 | `src/cualign/core/skills.py` | `workspace/skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증. 발치는 처방된 치아 목록(`extraction`, #56); `allow_extraction`은 계산값 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
@@ -50,12 +50,12 @@
 | `src/cualign/agent/steps.py` | 턴의 단계(`setup`·`target`·`stages`)별로 쓸 수 있는 도구를 서버가 제한하고, 목표 배열 요약을 만듦 |
 | `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`), 수치의 뜻을 알려주는 필드 설명(`FIELD_NOTES`) |
 | `src/cualign/agent/followup.py` | 매 턴 뒤 화면 칩이 될 «다음에 정할 것» 질문·선택지 JSON을 경량 모델에서 만드는 지시문·파서(`POST /api/followup`, #90·#102). 워크플로·레일 밖이며 실패는 `None` |
-| `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
+| `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드. 스트림에서 플래너의 추론(`reasoning_content`·`<think>`)을 뽑아 턴의 추론 중계로 넘김 |
 | `src/cualign/agent/react_history_patch.py` | NAT ReAct 네이티브 도구 호출 모드가 다음 프롬프트에서 빠뜨리는 «실제로 부른 도구·인자»를 기록에 붙이는 호환 가드(같은 도구 반복 방지) |
 | `src/cualign/agent/nim_stream_patch.py` | NIM 스트림 첫 줄의 오류(과부하 503 등)와 스트림 요청의 HTTP 429·5xx 를 빈 답·즉시 실패 대신 재요청·예외로 바꾸고, 스트림이 아닌 호출(검토)의 429·5xx 를 짧게 재요청하는 호환 가드. 간격·코드·대체 모델은 `configs/workflow.yml` 의 `nim_retry` 에서 읽음(`NimRetryConfig`) |
 | `src/cualign/agent/overload.py` | 실패가 NVIDIA API 과부하인지 판정하는 하나의 기준(서버의 화면 안내와 골든셋 A 의 «판정 불가» 가 같이 씀) |
 | `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구 연결. 계획 에이전트 지시문은 `workspace/AGENTS.md` 를 `file://` 로 그대로 읽음 |
-| `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
+| `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 추론 이벤트는 `type: reasoning` 으로 보냄, 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트(과부하로 죽은 턴의 `plan_error` `kind`·안내 문장 포함), 에이전트가 건너뛴 검토의 서버 실행. `open_run` 이 서버 문맥 시스템 메시지를 만들고 `preload` 로 케이스 요약·한도·스킬을 덧붙임(#48) |
 | `src/cualign/server/static/manual.js` | 직접 이동 화면: 3D 화살표·회전 고리, 「이동」 탭 숫자 표, 편집 막대(되돌리기·초기화·적용), 서버 검사 표시 |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
@@ -64,7 +64,7 @@
 | `src/cualign/server/mcp_server.py` | NemoClaw용 MCP 서버(`/mcp`): 토큰 확인, `cualign_plan`은 서버 안에서 `/chat/stream`으로 요청해 UI와 같은 경로를 탐, 승인 도구는 승인하지 않고 내보내기 도구는 의사 승인을 요구 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
 | `src/cualign/server/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터. NeMo Guardrails 기능이 아닌 하네스 검사라 `core/`가 아니라 여기 둠(#79) |
-| `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공. 레일이 꺼져 있어도, 선택한 계획이 규칙 검증에 실패했는데 답의 첫머리가 위반이 없다고 하면 그 구절을 실제 규칙 상태로 바꿈(비교 턴 제외, #91) |
+| `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 답을 쥐는 동안 플래너의 추론은 문장·60자 단위, 1초에 한 번 이하로 진행 이벤트로 먼저 보냄(`ReasoningRelay`, 식별정보 조각은 버림). 검토 메모에도 같은 출력 검사를 제공. 레일이 꺼져 있어도, 선택한 계획이 규칙 검증에 실패했는데 답의 첫머리가 위반이 없다고 하면 그 구절을 실제 규칙 상태로 바꿈(비교 턴 제외, #91) |
 | `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
 | `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
 | `src/cualign/winjob.py` | Windows 에서 `serve` 가 끝나면 `nat serve` 도 끝나게 함(kill-on-close 잡, 띄운 `uv.exe`·셸 감시). 프로세스 목록에 python 이 둘씩 보이는 이유(venv 런처) |
@@ -95,7 +95,7 @@
 | `tests/test_core.py` | 전략·단계·제약·STL 출력 검증 |
 | `tests/test_print_model.py` | 합성 잇몸 띠로 모형의 닫힘·치아 위치·잇몸 추종·잇몸 없음 건너뜀·치아별 출력 불변 검사 |
 | `tests/test_stack_offline.py` | NAT 구성·도구 등록·Guardrails 구성 검사 |
-| `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·예외 문구·검토 건너뛴 턴·메모 레일·과부하 안내 이벤트 검사 |
+| `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·추론 이벤트·예외 문구·검토 건너뛴 턴·메모 레일·과부하 안내 이벤트 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
 | `tests/test_skill_tool.py` | Skill 이름 검증·도구 등록(검토 에이전트 제외)·지시문 연결 검사 |
 | `tests/test_winjob.py` | Windows 전용: `serve` 대역을 죽이거나 띄운 프로세스가 사라지면 그 자식(`nat serve` 대역)도 끝나는지 실제 프로세스로 검사 |

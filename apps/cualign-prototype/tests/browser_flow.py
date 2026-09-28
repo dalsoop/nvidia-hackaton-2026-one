@@ -125,6 +125,10 @@ async def fake_chat(request: Request):
             # as the real setup turn streams (2026-09-28, 000001): no tool event — the form already carries the
             # prescription, the agent answers directly — only the answer and step_done; the screen writes 조건 설정
             run.constraints = run.constraints.patched({"extraction": [5, 12]})   # the conditions the answer states (a case started over has none)
+            # the planner's reasoning comes first, as NAT sends it (rails_middleware.ReasoningRelay, worker.ToolStepsOnly)
+            for i, line in enumerate(("We need to read the prescription. It gives extraction 14 and 24.", "So we set the constraints.")):
+                yield "intermediate_data: " + json.dumps({"id": f"r{i}", "type": "reasoning", "name": "reasoning", "payload": line}) + "\n\n"
+                await asyncio.sleep(0.3)
             yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
             yield 'data: {"value":"처방을 조건으로 옮겼습니다. 발치 14·24, IPR 면당 0.25 mm."}\n\n'
             return
@@ -208,8 +212,17 @@ async def main():
             assert await next_chip("이 케이스의 처방 넣기").count() == 1
             # turn 1 (setup): the chip sends the prescription; step_done{setup} fills the conditions, the extracted crowns flash
             # red and go, the strip opens 셋업, the next chips ask for the target
+            # which reaches the transcript first, the reasoning line or the answer (reasoning events, stream-reasoning)
+            await page.evaluate("""() => { const seen = window.__firstSeen = [];
+              new MutationObserver(() => {
+                if (!seen.includes('thinking') && document.querySelector('.trace .thinking')) seen.push('thinking');
+                if (!seen.includes('answer') && [...document.querySelectorAll('.msg.assistant')].some((m) => m.textContent.includes('처방을 조건으로 옮겼습니다'))) seen.push('answer');
+              }).observe(document.getElementById('transcript'), { subtree: true, childList: true, characterData: true }); }""")
             await next_chip("이 케이스의 처방 넣기").click()
             await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            # the reasoning line reached the transcript before the answer, and folded to a count once the answer came
+            assert await page.evaluate("window.__firstSeen") == ["thinking", "answer"], await page.evaluate("window.__firstSeen")
+            assert (await page.locator(".trace").last.locator(".thinking").inner_text()).startswith("모델 추론 2줄")
             assert await page.locator("#cExtract").input_value() == "14, 24"
             assert await page.locator("#tabCond").get_attribute("aria-selected") == "true"
             # no dimming over the 3D during a turn (only a chip under it), and the chip is off once the turn is over

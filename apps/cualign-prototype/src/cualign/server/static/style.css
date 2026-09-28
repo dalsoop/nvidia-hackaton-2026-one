@@ -181,6 +181,8 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .trace .rows { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; }
 .trace:not(.running) .rows:empty { display: none; }
 .trace .reason { padding: 2px 4px; color: var(--muted); }
+.trace .thinking { padding: 2px 4px; color: var(--muted); font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.trace .thinking.folded { color: var(--faint); font-style: normal; }
 .trace .raw { padding-left: 12px; }
 .trace .raw > summary { cursor: pointer; color: var(--faint); padding: 2px 4px; border-radius: var(--radius); width: fit-content; }
 .trace .raw > summary:hover { background: var(--hover); }
@@ -194,6 +196,7 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .step .arrow { color: var(--muted); flex: none; }
 .step .out { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .trace .log pre { margin: 2px 0 4px 4px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 260px; overflow: auto; }
+.trace .log .think-log { margin: 2px 0 4px 4px; padding: 8px; border: 1px dashed var(--line); border-radius: var(--radius); white-space: pre-wrap; color: var(--muted); max-height: 260px; overflow: auto; }
 
 /* ---------- viewer ---------- */
 .canvas-wrap { position: relative; flex: 1; min-height: 320px; background: var(--bg); }

@@ -18,6 +18,9 @@ mode the model writes reasoning ("We have a plan that passed... Action: cualign_
 calls, so that reasoning was prepended to the Korean answer. The non-streaming path returns only the last message.
 `build_graph` is wrapped so the graph's message stream passes on only the agent's last LLM call, which is the one
 that ended the loop, matching the non-streaming answer.
+
+The same filter is where the planner's reasoning is seen as it streams (the answer is held until the output verdict,
+so without it a setup turn showed nothing for 37 s): each agent chunk's reasoning goes to the turn's relay at once.
 """
 from __future__ import annotations
 
@@ -29,6 +32,7 @@ from typing import Any
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.messages import AIMessageChunk
 
+from cualign.agent.context import REASONING
 from nat.plugins.langchain.agent.react_agent import agent as _agent
 from nat.plugins.langchain.agent.react_agent import output_parser as _op
 
@@ -63,10 +67,47 @@ def _call_key(msg: AIMessageChunk, metadata: dict) -> Any:
     return msg.id or (metadata.get("langgraph_step"), metadata.get("langgraph_checkpoint_ns"))
 
 
+THINK_OPEN, THINK_CLOSE = "<think>", "</think>"
+
+
+class ThinkTags:
+    """The text inside one LLM call's <think>…</think>, piece by piece as the call's content chunks arrive. A closing
+    tag that is still arriving in pieces is not passed on as reasoning."""
+
+    def __init__(self):
+        self.text, self.sent = "", 0
+
+    def feed(self, chunk: str) -> str:
+        self.text += chunk
+        start = self.text.find(THINK_OPEN)
+        if start < 0:
+            return ""
+        start += len(THINK_OPEN)
+        end = self.text.find(THINK_CLOSE, start)
+        if end < 0:
+            end = len(self.text) - next((k for k in range(len(THINK_CLOSE) - 1, 0, -1)
+                                         if self.text.endswith(THINK_CLOSE[:k])), 0)
+        begin = max(start, self.sent)
+        self.sent = max(self.sent, end)
+        return self.text[begin:end] if end > begin else ""
+
+
+def reasoning_of(msg: AIMessageChunk, think: ThinkTags) -> tuple[str, str]:
+    """(reasoning, where it came from) for one agent chunk: the NIM client puts the API's reasoning_content (or
+    reasoning) delta in additional_kwargs with empty content, which NAT's _stream_fn skips; a model that thinks in
+    its text puts it inside <think>, which NAT strips from the answer."""
+    kw = msg.additional_kwargs or {}
+    for field in ("reasoning_content", "reasoning"):
+        if isinstance(kw.get(field), str) and kw[field]:
+            return kw[field], field
+    return (think.feed(msg.content) if isinstance(msg.content, str) else ""), "think"
+
+
 async def last_agent_call_only(stream):
     """Filter a `stream_mode="messages"` stream: agent-node LLM chunks are held per call and only the last call's
-    chunks are passed on at the end. Everything else passes through at once."""
-    key, held = object(), []
+    chunks are passed on at the end. Everything else passes through at once. The reasoning in each agent chunk goes
+    to the turn's relay (context.REASONING) as it arrives, not held."""
+    key, held, think, relay = object(), [], ThinkTags(), REASONING.get()
     async for item in stream:
         msg, metadata = item if isinstance(item, tuple) and len(item) == 2 else (None, None)
         if not (isinstance(msg, AIMessageChunk) and isinstance(metadata, dict)
@@ -75,8 +116,14 @@ async def last_agent_call_only(stream):
             continue
         k = _call_key(msg, metadata)
         if k != key:
-            key, held = k, []
+            key, held, think = k, [], ThinkTags()
+            if relay is not None:
+                relay.flush()   # one call's reasoning does not run into the next call's
         held.append(item)
+        if relay is not None:
+            text, source = reasoning_of(msg, think)
+            if text:
+                relay.feed(text, source)
     for item in held:
         yield item
 

@@ -16,6 +16,9 @@ The answer is held until the output verdict, streamed or not: a blocked answer (
 unchecked one) is replaced by the refusal, and PlanRun.refused keeps its plan out of the UI's plan events.
 Progress events are not held; worker.py keeps them to tool starts (tool names and arguments) and tool ends without the
 result, and drops the workflow's own start and end (the start would echo the request).
+The planner's reasoning is not the answer and is not held either (docs/demo/guardrails.md): on a streamed turn
+ReasoningRelay sends it as `reasoning` progress events, a sentence or 60 characters at a time and at most once a
+second, each piece through the personal-identifier regex rail first (a match drops the piece, not the turn).
 A workflow exception reaches the client with its type only: NAT sends str(e) on every route, and a ReAct parse failure
 puts the model's raw text in it, past the output rail. The whole exception goes to the server log.
 
@@ -36,23 +39,27 @@ import importlib
 import logging
 import os
 import re
+import time
 import unicodedata
 from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any
+from uuid import uuid4
 
 from pydantic import Field
 
 from nat.builder.builder import Builder
+from nat.builder.context import Context
 from nat.cli.register_workflow import register_middleware
 from nat.data_models.api_server import ChatResponse, ChatResponseChunk, Usage
+from nat.data_models.intermediate_step import IntermediateStepPayload, IntermediateStepType, StreamEventData
 from nat.data_models.middleware import FunctionMiddlewareBaseConfig
 from nat.middleware.function_middleware import FunctionMiddleware
 
 from cualign.agent import nim_stream_patch
-from cualign.agent.context import CURRENT_RUN
+from cualign.agent.context import CURRENT_RUN, REASONING
 from cualign.agent.overload import is_auth_error, is_overload_error
 from cualign.keys import nvidia_key_available
 from cualign.server.rail_patterns import PII, PRESCRIPTIVE
@@ -296,6 +303,77 @@ def _refuse(kind: str = "rails", text: str = REFUSAL) -> str:
     return text
 
 
+# The progress step that carries one reasoning event; worker.ToolStepsOnly sends it as intermediate_data type reasoning.
+REASONING_STEP = "cualign_reasoning"
+# A piece ends at a sentence mark followed by a space, or a line break ("0.4" and "FDI." at the buffer's end wait).
+SENTENCE_END = re.compile(r"[.!?。](?=\s)|\n")
+
+
+def push_reasoning(text: str) -> None:
+    """One reasoning event on the turn's progress stream: a start and an end of the same custom step."""
+    manager, uid = Context.get().intermediate_step_manager, str(uuid4())
+    manager.push_intermediate_step(IntermediateStepPayload(UUID=uid, event_type=IntermediateStepType.CUSTOM_START,
+                                                           name=REASONING_STEP, data=StreamEventData(input=text)))
+    manager.push_intermediate_step(IntermediateStepPayload(UUID=uid, event_type=IntermediateStepType.CUSTOM_END,
+                                                           name=REASONING_STEP))
+
+
+class ReasoningRelay:
+    """The planner's reasoning for the screen while the answer is held: cut into pieces at a sentence mark or at
+    PIECE_CHARS (at the last space before it when there is one), sent at most once every GAP_SECONDS (the pieces
+    that came in between go out together), each piece checked by the personal-identifier regex when the rails are on
+    (a match drops that piece only). Counts what it saw for the turn's log line."""
+    PIECE_CHARS = 60
+    GAP_SECONDS = 1.0
+
+    def __init__(self, emit, check_pii: bool, clock=time.monotonic):
+        self.emit, self.check_pii, self.clock = emit, check_pii, clock
+        self.t0, self.buf, self.ready, self.last = self.clock(), "", [], None
+        self.sources, self.events, self.dropped, self.first = Counter(), 0, 0, None
+
+    def feed(self, text: str, source: str) -> None:
+        self.sources[source] += len(text)
+        self.buf += text
+        while True:
+            m = SENTENCE_END.search(self.buf)
+            if m and m.end() <= self.PIECE_CHARS:
+                cut = m.end()
+            elif len(self.buf) >= self.PIECE_CHARS:
+                space = self.buf.rfind(" ", 0, self.PIECE_CHARS)
+                cut = space + 1 if space >= self.PIECE_CHARS // 3 else self.PIECE_CHARS
+            else:
+                break
+            self._piece(self.buf[:cut])
+            self.buf = self.buf[cut:].lstrip()
+        if self.ready and (self.last is None or self.clock() - self.last >= self.GAP_SECONDS):
+            self._send()
+
+    def flush(self) -> None:
+        """The unfinished piece and everything waiting, at once (a call or the turn ended)."""
+        self._piece(self.buf)
+        self.buf = ""
+        if self.ready:
+            self._send()
+
+    def _piece(self, text: str) -> None:
+        text = " ".join(text.split())
+        if not text:
+            return
+        if self.check_pii and matches(PII, text):
+            self.dropped += 1   # the text is not logged: it holds the identifier
+            logger.warning("cuAlign rails: personal identifier in the planner's reasoning — that piece not sent")
+            return
+        self.ready.append(text)
+
+    def _send(self) -> None:
+        text, self.ready = " ".join(self.ready), []
+        self.last = self.clock()
+        if self.first is None:
+            self.first = self.last - self.t0
+        self.events += 1
+        self.emit(text)
+
+
 class RailsMiddleware(FunctionMiddleware):
 
     def __init__(self, rails: Any | None, fail_closed: bool, overload_notice: str = ""):
@@ -399,14 +477,21 @@ class RailsMiddleware(FunctionMiddleware):
         return response_like(value, refusal) if refusal else out
 
     async def function_middleware_stream(self, *args: Any, call_next, context, **kwargs: Any) -> AsyncIterator[Any]:
-        """Holds every chunk until the output verdict (the base class passes each chunk on at once)."""
+        """Holds every chunk until the output verdict (the base class passes each chunk on at once). The planner's
+        reasoning goes out meanwhile as progress events (ReasoningRelay)."""
         user, state, refusal = await self._check_input(args[0] if args else None)
         held = []
         if not refusal:
+            relay = ReasoningRelay(push_reasoning, check_pii=self.rails is not None)
+            token = REASONING.set(relay)
             try:
                 held = [chunk async for chunk in call_next(*args, **kwargs)]
             except Exception as e:
                 raise self._failed(e) from None
+            finally:
+                REASONING.reset(token)
+            relay.flush()
+            held_at = relay.clock() - relay.t0
             answer = "".join(_text(c) for c in held)
             stripped = _strip_deliberation(_strip_label(answer))
             if stripped != answer:
@@ -415,6 +500,11 @@ class RailsMiddleware(FunctionMiddleware):
             if fixed is not None:
                 held, answer = [ChatResponseChunk.create_streaming_chunk(fixed)], fixed
             refusal = _no_korean(answer) or await self._check_output(user, answer, state)
+            # the turn's timeline: first reasoning event, whole answer from the model, output verdict (seconds)
+            logger.info("cuAlign rails: reasoning %d events (first at %s s, chars by field %s, %d pieces dropped); "
+                        "answer complete at %.1f s; verdict at %.1f s", relay.events,
+                        "-" if relay.first is None else f"{relay.first:.1f}", dict(relay.sources), relay.dropped,
+                        held_at, relay.clock() - relay.t0)
         if refusal:
             yield ChatResponseChunk.create_streaming_chunk(refusal)
             return

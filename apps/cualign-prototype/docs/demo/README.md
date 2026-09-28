@@ -7,6 +7,7 @@
 | `scenario-*.log`, `summary-*.md` | 다섯 시나리오 실호출 로그(`scripts/run_scenarios.py`) |
 | `guardrails*.md` | Guardrails 범위 검사·오탐 확인 기록 |
 | `scan-reveal/` | 셋업 턴 스캔 인식·처방 적용 연출(#161) |
+| `stream-reasoning/` | 셋업 턴 추론 줄 실호출 1회(000097, 2026-09-28): 첫 추론 줄이 뜬 순간, 답 도착 뒤 접힌 모습 |
 | `viewer-3d/` | 3D 뷰어 확인 화면 |
 | `ui-*.jpg` | 2026-09-25 무렵의 옛 화면(합성 `moderate`·`severe` 케이스, 옛 대화 패널). 지금 화면과 다르다 |
 

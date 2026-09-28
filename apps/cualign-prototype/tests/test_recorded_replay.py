@@ -218,3 +218,29 @@ def test_setup_and_target_replays_walk_the_flow(client):
     # the old name still works
     assert client.post(f"/api/cases/{cid}/replay", json={"step": "plan", "base_plan_id": pid}).status_code == 200
     assert client.post(f"/api/cases/{cid}/replay", json={"step": "export"}).status_code == 422
+
+
+def test_replay_hands_the_recorded_reasoning_and_makes_none_up(client):
+    """A recording with `reasoning` (the live turn's reasoning events) hands it to the screen in order, which plays it
+    before the answer; a recording without it hands none — the replay does not write reasoning from the answer."""
+    cid = "poseidon-000097"
+    lines = ["We need to set constraints.", "Extraction 14 and 24."]
+    recorded.save(cid, "setup", {"step": "setup", "request": "x", "constraints": {"extraction": [5, 12]}, "answer_md": SETUP_ANSWER,
+                                 "review": None, "recorded_at": "2026-09-28T00:00:00+00:00", "model": "fake", "reasoning": lines})
+    recorded.save(cid, "target", {"step": "target", "request": "x", "constraints": {"extraction": [5, 12]}, "answer_md": TARGET_ANSWER,
+                                  "review": None, "recorded_at": "2026-09-28T00:00:00+00:00", "model": "fake", "strategy": "extraction"})
+    assert client.post(f"/api/cases/{cid}/replay", json={"step": "setup"}).json()["reasoning"] == lines
+    assert "reasoning" not in client.post(f"/api/cases/{cid}/replay", json={"step": "target"}).json()
+    for bad in ("one string", [""], [1]):
+        with pytest.raises(ValueError):
+            recorded.check({"step": "setup", "request": "x", "constraints": {}, "answer_md": "a", "review": None,
+                            "recorded_at": "t", "model": "m", "reasoning": bad})
+
+
+def test_only_the_097_setup_recording_has_reasoning():
+    """The one live setup turn of 2026-09-28 (NIM reasoning_content, 10 events) is stored with 000097's setup; the other
+    recordings predate reasoning events and keep none."""
+    with_reasoning = [(cid, step) for cid in ("poseidon-000001", "poseidon-000097", "poseidon-000131")
+                      for step in recorded.STEPS if (recorded.load(cid, step) or {}).get("reasoning")]
+    assert with_reasoning == [("poseidon-000097", "setup")]
+    assert len(recorded.load("poseidon-000097", "setup")["reasoning"]) == 10
