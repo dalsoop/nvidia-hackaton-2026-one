@@ -275,10 +275,17 @@ def cut_crown(case: Case, i: int, cuts: list[tuple[int, float]]) -> tuple[trimes
     return m, planes
 
 
-def per_tooth(surfaces: list[Surface], exclude=frozenset()) -> dict[int, list[tuple[int, float]]]:
+def per_tooth(surfaces: list[Surface], exclude=frozenset(), faces=None) -> dict[int, list[tuple[int, float]]]:
     """{tooth: [(neighbour, depth mm), ...]} - half of each contact's amount per tooth; an excluded tooth takes none
-    and its partner takes all of it."""
+    and its partner takes all of it. `faces` {(tooth, neighbour): mm} (Constraints.face_amounts, 직접 이동's per-face
+    IPR) gives each tooth its own depth instead."""
     out: dict[int, list[tuple[int, float]]] = {}
+    if faces is not None:
+        for a, b, _ in surfaces:
+            for t, n in ((a, b), (b, a)):
+                if t not in exclude and faces.get((t, n), 0.0) >= MIN_CUT_MM:
+                    out.setdefault(t, []).append((n, faces[(t, n)]))
+        return out
     for a, b, mm in surfaces:
         ea, eb = a in exclude, b in exclude
         if mm < MIN_CUT_MM or (ea and eb):
@@ -290,14 +297,14 @@ def per_tooth(surfaces: list[Surface], exclude=frozenset()) -> dict[int, list[tu
     return out
 
 
-def cut_ipr(case: Case, surfaces: list[Surface], exclude=frozenset()) -> Case:
+def cut_ipr(case: Case, surfaces: list[Surface], exclude=frozenset(), faces=None) -> Case:
     """A derived Case with the prescribed IPR cut from its crowns. `case` itself is unchanged (the scan as it is).
 
     The result keeps the original crown positions, arch and rotation pivots (the target and stages are computed
     against them) and carries `ipr_cut = {tooth: {"mm": total taken off this crown, "planes": [...], "faces": [...]}}`
     and `teeth_cut = {tooth: cut mesh}` for the cut crowns only. With nothing to cut it returns `case`.
     """
-    plan = per_tooth(surfaces, frozenset(exclude))
+    plan = per_tooth(surfaces, frozenset(exclude), faces)
     plan = {i: c for i, c in plan.items() if i in case.mesh}
     if not plan:
         return case

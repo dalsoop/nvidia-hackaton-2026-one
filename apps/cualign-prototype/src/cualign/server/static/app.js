@@ -7,7 +7,7 @@ import { createValidateSweep } from "./validate-sweep.js";
 
 const $ = (id) => document.getElementById(id);
 // 직접 이동 (manual.js): created once the screen's functions exist (end of file); until then nothing is being edited
-let manualEdit = { active: false, open() {}, cancel() {}, leave() {} };
+let manualEdit = { active: false, open() {}, leave() { return false; }, drop() {} };
 const isManualTarget = () => state.target?.info?.source === "manual";
 // FDI ↔ Universal (upper arch only, #113): the dentist reads and writes FDI on screen; the core, planner and API
 // keep Universal. Convert at the screen boundary only — never show Universal alongside FDI (decision 2026-09-27).
@@ -469,7 +469,7 @@ const STEPS = ["initial", "setup", "target", "stages"];
 // that are done (초기 ↔ 목표 to compare). The plan the 3D shows for a step: the target before any plan exists,
 // otherwise the plan.
 const stepIndex = (s) => STEPS.indexOf(s);
-const viewPlan = () => (state.step === "target" && state.target ? state.target : state.plan);
+const viewPlan = () => ((state.step === "target" || manualEdit.active) && state.target ? state.target : state.plan);   // 직접 이동 draws its draft as the target, on 셋업 too
 function setProgress(step, reset = false) {   // reset: a new setup or target makes the later steps stale again
   if (!reset && stepIndex(step) <= stepIndex(state.progress)) return;
   state.progress = step;
@@ -478,7 +478,7 @@ function setProgress(step, reset = false) {   // reset: a new setup or target ma
 }
 function setStep(step) {
   if (!STEPS.includes(step) || stepIndex(step) > stepIndex(state.progress)) step = state.progress;
-  manualEdit.leave(step);   // an unapplied hand edit does not follow the view off the 목표 step
+  if (manualEdit.leave(step)) return;   // a hand edit is stored before the view leaves its step (manual.js sets the step once stored)
   state.step = step;
   for (const s of STEPS) document.body.classList.toggle("step-" + s, s === step);
   stopPlay();
@@ -1586,7 +1586,7 @@ async function openCase(caseId, { greet = true, restart = false } = {}) {
   state.messages = [];
   state.followup = null;
   state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
-  stopPlay(); scanFx.cancel();
+  stopPlay(); scanFx.cancel(); manualEdit.drop();
   if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
@@ -2469,8 +2469,7 @@ function nextChips() {
   const extraction = state.setup ? (state.setup.extraction ?? []).length > 0 : ($("cExtract").value.trim() !== "");
   switch (state.progress) {
     case "initial": return sample ? [{ label: "이 케이스의 처방 넣기", message: sample.request, step: "setup", hint: sample.prescription }] : [];
-    case "setup": return [{ label: "목표 배열 만들기", message: "이 조건으로 목표 배열을 만들어줘.", step: "target" }, { label: "조건 바꾸기", action: "cond" },
-                          { label: "처음부터 수동 배치", action: "manualScan", hint: "에이전트 목표 없이, 치료 전 위치에서 치아를 직접 옮깁니다" }];
+    case "setup": return [{ label: "목표 배열 만들기", message: "이 조건으로 목표 배열을 만들어줘.", step: "target" }, { label: "조건 바꾸기", action: "cond" }];
     // a hand-edited target (직접 이동) is staged as it is: a condition change or a comparison would make new targets
     case "target": return isManualTarget()
       ? [{ label: "단계 만들기", message: "직접 옮긴 이 목표 배열 그대로 단계를 만들어줘.", step: "stages" },
@@ -2500,7 +2499,6 @@ function addNextChips(after) {
     const b = e.target.closest("button");
     if (!b || state.streaming || state.loading) return;
     if (b.dataset.action === "manual") { if (state.step !== "target") setStep("target"); manualEdit.open(); return; }
-    if (b.dataset.action === "manualScan") { if (state.step !== "setup") setStep("setup"); manualEdit.open(); return; }
     if (manualEdit.active) { toast("직접 이동을 적용하거나 취소한 뒤 진행해 주세요."); return; }
     if (b.dataset.action === "manualStages") { stageManualTarget(); return; }
     if (b.dataset.action === "cond") { showTab("cond"); $("cAllowExt").focus(); return; }   // the form's first field (발치 치아 may be locked)
@@ -3414,11 +3412,21 @@ canvas.addEventListener("dblclick", () => setView("occlusal"));   // back to the
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
 
-manualEdit = createManual({ THREE, scene, camera, canvas, state, $, fdi, api, applyStage, showTab, followStep, addMsg, toast, loadTargetCut,
+manualEdit = createManual({ THREE, scene, camera, canvas, ghost, state, $, fdi, api, applyStage, showTab, followStep, setStep, addMsg, toast, loadTargetCut,
   afterApply: () => addNextChips($("transcript").lastElementChild),
-  // 처음부터 수동 배치: the scan-position target is shown as the 목표 while it is edited; 취소 puts the flow back
+  // a 셋업 edit, stored: the scan-position target it made is the 목표 now
   enterTarget: (t) => { state.target = t; state.targetId = t.target_id; state.targetSummary = null; setProgress("target", true); setStep("target"); loadTargetCut(t.target_id); },
-  restoreFlow: (prev) => { state.target = prev.target; state.targetId = prev.targetId; setProgress(prev.progress, true); setStep("setup"); } });
+  // the 셋업 right-click changed the prescription (POST …/setup/conditions answers as step_done setup): the setup is
+  // redrawn from it as a landed setup is — the form, the marks, the cut crowns, the 스캔 tab's chart; later steps are stale
+  setupChanged: (done) => {
+    state.setup = done.constraints; state.targetId = null;
+    fillConstraints(done.constraints);
+    setProgress("setup", true);
+    loadSetupCut();
+    renderSetupMarks();
+    renderScanPane(state.caseInfo);
+    applyStage(state.stage);
+  } });
 
 (async function init() {
   try {

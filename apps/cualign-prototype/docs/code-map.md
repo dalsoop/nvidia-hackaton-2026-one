@@ -57,7 +57,8 @@
 | `configs/workflow.yml` | 계획·검토 에이전트, 모델, 도구 연결. 계획 에이전트 지시문은 `workspace/AGENTS.md` 를 `file://` 로 그대로 읽음 |
 | `src/cualign/server/worker.py` | NAT 서버에 결과 API·UI·계획 이벤트 연결, 진행 표시를 도구 이름·인자·«완료» 로 줄임(워크플로 단계 제거·도구 결과 제거), 추론 이벤트는 `type: reasoning` 으로 보냄, 검토 재요청에 워크플로 reviewer 설정·모델 연결 |
 | `src/cualign/server/plan_events.py` | 요청 컨텍스트 검증과 최종 SSE 계획 이벤트(과부하로 죽은 턴의 `plan_error` `kind`·안내 문장 포함), 에이전트가 건너뛴 검토의 서버 실행. `open_run` 이 서버 문맥 시스템 메시지를 만들고 `preload` 로 케이스 요약·한도·스킬을 덧붙임(#48) |
-| `src/cualign/server/static/manual.js` | 직접 이동 화면: 3D 화살표·회전 고리, 「이동」 탭 숫자 표, 편집 막대(되돌리기·초기화·적용), 서버 검사 표시 |
+| `src/cualign/server/static/manual.js` | 직접 이동 화면: 3D 화살표·회전 고리, 「이동」 탭 숫자 표, 편집 막대(되돌리기·전부 되돌리기·적용), 서버 검사 표시, 모드를 끄면 저장 |
+| `src/cualign/server/static/manual-rx.js` | 셋업 직접 이동의 우클릭 메뉴: 발치·IPR…(면·양 폼)·취소 → `POST …/setup/conditions`, 발치 치관 들림·페이드 |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
 | `src/cualign/server/export_jobs.py` | 승인 순간부터 내보내기 ZIP(단계 STL·프린트 모형)을 백그라운드로 만들고 계획별로 보관 |

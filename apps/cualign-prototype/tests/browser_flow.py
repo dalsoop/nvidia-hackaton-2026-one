@@ -821,12 +821,64 @@ async def main():
             finally:
                 await no3d.close()
 
+            # 직접 이동 follow-ups (000001, its 9-contact IPR prescription landed as the setup): (a) the edit leaves 겹쳐 보기
+            # alone, (c) on 셋업 a right-click on a crown gives 발치 / IPR…, IPR 0.2 on FDI 16's mesial face swaps in the cut
+            # crown, (b) leaving the edit with a crown moved keeps it (stored as the 목표), and on 목표 a right-click gives no menu
+            cid = "poseidon-000001"
+            api.STORE.set_flow(cid, "setup", constraints=api.STORE.constraints_for(cid), target_id=None, plan_id=None)
+            page = await browser.new_page(viewport={"width": 1500, "height": 1000})
+            page.on("pageerror", lambda error: (errors.append("manual: " + str(error)), print("PAGEERROR (manual):", error, file=sys.stderr)))
+            await page.goto(url + f"/ui/?nofx=1#case={cid}&step=setup")
+            await page.wait_for_function(f"document.body.classList.contains('step-setup') && window.__cualign.state.activeCase === '{cid}' && !!window.__cualign.state.setup && !window.__cualign.state.loading", timeout=120000)
+            overlay = await page.locator("#overlayBtn").get_attribute("aria-pressed")
+            await page.locator("#moveBtn").click()
+            await page.wait_for_function("document.body.classList.contains('manual-on') && document.querySelector('#moveTable .mv-row[data-id]')", timeout=60000)
+            assert await page.locator("#overlayBtn").get_attribute("aria-pressed") == overlay            # (a)
+            assert await page.locator("body").evaluate("b => b.classList.contains('step-setup')")        # the step stays 셋업
+            crown_at = """(id) => { const s = window.__cualign.state, m = s.teeth[id], c = window.__cualign.camera;
+              const p = s.center[id].clone().add(m.position); p.z = m.geometry.boundingBox.max.z; p.project(c);
+              const r = document.querySelector('#viewCanvas').getBoundingClientRect();
+              return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height]; }"""
+            x, y = await page.evaluate(crown_at, "3")                                                     # FDI 16
+            await page.mouse.click(x, y, button="right")
+            await page.wait_for_selector(".rx-menu.menu")
+            assert await page.locator(".rx-menu.menu .rx-title").inner_text() == "16번"
+            assert await page.locator('.rx-menu button[data-act="extract"]').is_disabled()               # a molar: premolars only
+            await page.locator('.rx-menu button[data-act="ipr"]').click()
+            await page.wait_for_selector(".rx-menu.form")
+            assert await page.locator('.rx-menu input[value="mesial"]').is_checked()
+            await page.locator("#rxMm").fill("0.2")
+            await page.locator('.rx-menu [data-act="ok"]').click()
+            await page.wait_for_function("(window.__cualign.state.setup.ipr_amounts ?? []).some(([t, n, mm]) => t === 3 && n === 4 && mm === 0.2)", timeout=30000)
+            await page.wait_for_function("(() => { const s = window.__cualign.state, c = s.cutSets.setup?.['3']; return !!c && s.teeth['3'].geometry === c.geo; })()", timeout=60000)   # (c) the cut crown on screen
+            assert await page.locator("#cSurf").input_value() == "16-15 0.2, 15-14 0.4, 14-13 0.4, 13-12 0.4, 12-11 0.4, 11-21 0.4, 21-22 0.4, 22-23 0.4, 23-24 0.4, 24-25 0.4"
+            # (b) a crown moved 1 mm mesially, then Esc: stored as the 목표 and still where it was put
+            row = page.locator('#moveTable input[data-id="7"][data-key="mesial"]')
+            await row.fill("1"); await row.dispatch_event("change")
+            await page.locator("#viewCanvas").click(position={"x": 5, "y": 5})     # off the input (a click on nothing selects nothing)
+            await page.keyboard.press("Escape")
+            await page.wait_for_function("document.body.classList.contains('step-target') && !document.body.classList.contains('manual-on') && window.__cualign.state.target?.info?.source === 'manual'", timeout=60000)
+            moved = await page.evaluate("(() => { const s = window.__cualign.state; return [Math.hypot(...s.target.stages[0]['7']), s.teeth['7'].position.length()]; })()")
+            assert abs(moved[0] - 1) < 0.05 and moved[1] > 0.5, moved
+            # on 목표 the edit has no right-click menu
+            await page.locator("#moveBtn").click()
+            await page.wait_for_function("document.body.classList.contains('manual-on')", timeout=60000)
+            x, y = await page.evaluate(crown_at, "3")
+            await page.mouse.click(x, y, button="right")
+            await page.wait_for_timeout(300)
+            assert await page.locator(".rx-menu").count() == 0
+            await page.keyboard.press("Escape")                                         # nothing moved: the edit just ends
+            await page.wait_for_function("!document.body.classList.contains('manual-on')", timeout=10000)
+            assert await page.locator(".next:not(.done) button", has_text="처음부터 수동 배치").count() == 0
+            await page.close()
+
             assert not errors, errors
             print("PASS: agent-driven steps (setup → target → stages, look back, five replay steps), export/approval, revision, plan cards (보기 switches the plan), reviewer failure, manual re-review, "
                   "stale response, reload keeps case and plan, case switch opens its own preview plan, "
                   "my scan: unsupported gap → 스캔 삭제, rejected upload card, unoriented scan, reversed numbering → mirror, "
                   "no-plan failure card → 이 조건으로 다시 계산, no_answer notice → 다시 보내기, "
-                  "no WebGL (--disable-3d-apis): the card over the 3D, steps → ▶ → approval")
+                  "no WebGL (--disable-3d-apis): the card over the 3D, steps → ▶ → approval, "
+                  "직접 이동: 겹쳐 보기 untouched, 셋업 right-click IPR → cut crown, leaving keeps the move, no menu on 목표")
             await browser.close()
             browser = None
     finally:

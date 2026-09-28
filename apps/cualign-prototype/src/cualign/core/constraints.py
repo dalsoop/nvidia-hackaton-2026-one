@@ -7,9 +7,12 @@ those contacts only. With the list empty the older uniform rule applies (every c
 `ipr_exclude`, `ipr_limit_mm` per contact). The cap is IPR_PER_SURFACE per tooth surface, so 2x that per contact. `allow_extraction` survives only as a derived value
 in the output (screens, logs, evaluations read it); as an input, false clears the list and true without teeth is
 refused with ExtractionTeethNeeded, so the caller asks the dentist which teeth.
+`ipr_amounts` (optional, 직접 이동's right-click IPR) splits a prescribed contact per tooth face: (tooth, neighbour, mm
+off that tooth's face); a contact listed there takes its faces' amounts (a face not listed takes none) instead of half
+each, and its `ipr_surfaces` amount is their sum. Empty (the default) changes nothing and is left out of the dump.
 """
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_serializer, model_validator
 from .limits import IPR_PER_SURFACE, PREMOLARS
 
 Tooth = Annotated[int, Field(strict=True, ge=2, le=15)]
@@ -73,8 +76,16 @@ class Constraints(BaseModel):
     ipr_exclude: tuple[Tooth, ...] = ()
     ipr_limit_mm: float = Field(default=IPR_PER_SURFACE, ge=0, le=IPR_PER_SURFACE, allow_inf_nan=False)
     ipr_surfaces: tuple[Surface, ...] = ()
+    ipr_amounts: tuple[Surface, ...] = ()    # (tooth, neighbour, mm off this tooth's face) - see the module docstring
     stage_cap: int | None = Field(default=None, gt=0)
     order: Order = "simultaneous"
+
+    @model_serializer(mode="wrap")
+    def _dump_without_empty_amounts(self, handler):
+        data = handler(self)
+        if not self.ipr_amounts:   # without per-face amounts the dump is what it always was (saved plans, golden sets)
+            data.pop("ipr_amounts", None)
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -99,6 +110,45 @@ class Constraints(BaseModel):
                                  f"(치아 면당 {IPR_PER_SURFACE:g}mm)를 넘습니다")
             out[(a, b)] = float(mm)
         return tuple((a, b, mm) for (a, b), mm in sorted(out.items()))
+
+    @field_validator("ipr_amounts")
+    @classmethod
+    def faces_within_the_cap(cls, value):
+        """Each face names a tooth and its neighbour once, with an amount from 0 to the per-surface cap."""
+        out: dict[tuple[int, int], float] = {}
+        for t, n, mm in value:
+            if abs(t - n) != 1:
+                raise ValueError(f"IPR 면은 이웃한 두 치아여야 합니다: {_fdi_pair(t, n)}")
+            if (t, n) in out:
+                raise ValueError(f"IPR 면이 두 번 처방되었습니다: {_fdi_pair(t, n)}")
+            if not 0 <= mm <= IPR_PER_SURFACE + 1e-9:
+                raise ValueError(f"IPR 면당 양은 0~{IPR_PER_SURFACE:g}mm 입니다: {_fdi_pair(t, n)} {mm:g}mm")
+            out[(t, n)] = float(mm)
+        return tuple((t, n, mm) for (t, n), mm in sorted(out.items()))
+
+    @model_validator(mode="after")
+    def _faces_add_up_to_their_contact(self):
+        contacts = {(a, b): mm for a, b, mm in self.ipr_surfaces}
+        faces: dict[tuple[int, int], float] = {}
+        for t, n, mm in self.ipr_amounts:
+            faces[(min(t, n), max(t, n))] = faces.get((min(t, n), max(t, n)), 0.0) + mm
+        for (a, b), total in faces.items():
+            if (a, b) not in contacts:
+                raise ValueError(f"처방되지 않은 접촉면의 IPR 면입니다: {_fdi_pair(a, b)}")
+            if abs(total - contacts[(a, b)]) > 1e-6:
+                raise ValueError(f"IPR 면의 합이 접촉면 처방과 다릅니다: {_fdi_pair(a, b)} {total:g}mm ≠ {contacts[(a, b)]:g}mm")
+        return self
+
+    def face_amounts(self) -> dict[tuple[int, int], float]:
+        """{(tooth, neighbour): mm off that face} for every prescribed contact: its listed faces, else half each."""
+        split = {(min(t, n), max(t, n)) for t, n, _ in self.ipr_amounts}
+        out = {(t, n): mm for t, n, mm in self.ipr_amounts}
+        for a, b, mm in self.ipr_surfaces:
+            if (a, b) in split:
+                out.setdefault((a, b), 0.0); out.setdefault((b, a), 0.0)
+            else:
+                out[(a, b)] = out[(b, a)] = mm / 2
+        return out
 
     @model_validator(mode="after")
     def _prescribed_contacts_not_excluded(self):
@@ -164,6 +214,12 @@ class Constraints(BaseModel):
 
     def patched(self, changes: dict) -> "Constraints":
         changes = _legacy_extraction(changes, self.extraction)
+        if "ipr_surfaces" in changes and "ipr_amounts" not in changes and self.ipr_amounts:
+            # a new contact list (the form, a turn) keeps the face split only of the contacts it leaves as they were
+            kept = {(min(int(a), int(b)), max(int(a), int(b))): float(mm) for a, b, mm in changes["ipr_surfaces"]}
+            old = {(a, b): mm for a, b, mm in self.ipr_surfaces}
+            changes = {**changes, "ipr_amounts": [f for f in self.ipr_amounts
+                                                  if kept.get((min(f[0], f[1]), max(f[0], f[1]))) == old.get((min(f[0], f[1]), max(f[0], f[1])))]}
         return Constraints.model_validate({**self.model_dump(exclude={"allow_extraction"}), **changes})
 
     def check_case(self, ids):

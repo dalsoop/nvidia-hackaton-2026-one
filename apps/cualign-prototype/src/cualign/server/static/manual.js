@@ -2,17 +2,20 @@
 // A draft of the target is drawn through the viewer's own applyStage (state.target is swapped for the draft while
 // editing); a click picks a crown and puts the handles on it (manual-gizmo.js). The 「이동」 tab lists every crown's
 // total move from the scan in its own axes, editable as numbers (manual-panel.js). Each change is checked by the server
-// (overlaps, the fewest aligners); 적용 stores a new target (POST …/manual) that the next stages turn stages as it is.
-// This file holds the edit itself: open · cancel · apply, the draft and its undo, the server check.
+// (overlaps, the fewest aligners). Leaving the edit keeps it (the button again, 적용, Esc, another step): a change is
+// stored as a new target (POST …/manual) that the next stages turn stages as it is; 전부 되돌리기 is the way back.
+// On 셋업 a right-click also changes the prescription (manual-rx.js: 발치 · IPR per tooth face).
+// This file holds the edit itself: open · leave, the draft and its undo, the server check.
 
 import { MAX_DEG, MAX_MM, STEP_DEG, STEP_MM, DEFAULT_FRAME, changeWords, clamp, copyDraft, editsOf, overlapViolations, snap, withLocal } from "./manual-math.js";
 import { createGizmo } from "./manual-gizmo.js";
 import { markRow, renderBar, renderSummary, renderTable } from "./manual-panel.js";
+import { createSetupMenu } from "./manual-rx.js";
 
 export function createManual(ctx) {
-  const { state, $, fdi, api, applyStage, showTab, addMsg, toast } = ctx;
-  const M = { active: false, opening: false, base: null, baseDraft: null, draft: null, view: null, sel: null, undo: [], redo: [],
-              drag: null, check: null, checkSeq: 0, checkTimer: null, frame: 0, overlayWas: false, restore: null };
+  const { state, $, fdi, api, canvas, applyStage, showTab, addMsg, toast } = ctx;
+  const M = { active: false, opening: false, saving: false, step: null, caseId: null, prev: null, base: null, baseDraft: null,
+              draft: null, view: null, sel: null, undo: [], redo: [], drag: null, check: null, checkSeq: 0, checkTimer: null, frame: 0, pending: null };
   const url = (tail) => `/api/cases/${encodeURIComponent(state.meshCase)}/targets/${tail}`;
   const post = (tail, body) => api(url(tail), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
 
@@ -53,6 +56,7 @@ export function createManual(ctx) {
     M.view.rotations = [{ ...M.draft.yaw }];
     state.target = M.view;
     applyStage(1);
+    ctx.ghost.visible = true;   // where the crowns started, faint, for the edit only (not 겹쳐 보기: its button and legend stay)
     const m = state.teeth[M.sel];
     if (m) m.material.emissive.setHex(0x5a9400);
     if (M.active && M.sel && M.draft.d[M.sel]) {
@@ -83,28 +87,26 @@ export function createManual(ctx) {
     changed();
   }
 
-  // ---- open / close. On 셋업 the edit starts from the scan (처음부터 수동 배치): the server makes a target with every
-  // crown in place (POST …/targets/scan), shown as the 목표 while it is edited; 취소 goes back to 셋업 as it was.
+  // ---- open / leave. On 셋업 the edit starts from the scan: the server makes a target with every crown in place under
+  // the case's prescription (POST …/targets/scan), drawn as the draft while the step stays 셋업; a stored change makes
+  // it the 목표. On 목표 the edit starts from the target on screen.
   async function open() {
     if (M.active) { showTab("move"); return; }
     if (state.streaming || state.loading || M.opening) return;
-    if (state.step === "setup") return openFromScan();
+    if (state.step === "setup") return openOnSetup();
     if (state.step !== "target" || !state.target || !state.targetId) { toast("셋업이나 목표 단계에서 직접 이동할 수 있습니다."); return; }
-    start(null);
+    start(state.target, "target");
   }
-  async function openFromScan() {
-    const prev = { target: state.target, targetId: state.targetId, progress: state.progress };
+  async function openOnSetup() {
     M.opening = true;
-    try {
-      ctx.enterTarget(await post("scan"));
-      start(prev);
-    } catch (e) {
-      addMsg("error", "수동 배치를 시작하지 못했습니다: " + e.message);
-    } finally { M.opening = false; }
+    try { start(await post("scan"), "setup"); }
+    catch (e) { addMsg("error", "직접 이동을 시작하지 못했습니다: " + e.message); }
+    finally { M.opening = false; }
   }
-  function start(restoreTo) {
-    M.base = state.target;
-    const st = M.base.stages?.[0] ?? {}, rot = M.base.rotations?.[0] ?? {}, gone = removed();
+  // the edit's base: its crowns where the target has them; `keep` (the poses edited so far) stays on the crowns still there
+  function setBase(base, keep = {}) {
+    M.base = base;
+    const st = base.stages?.[0] ?? {}, rot = base.rotations?.[0] ?? {}, gone = removed();
     M.baseDraft = { d: {}, yaw: {} };
     for (const id of Object.keys(state.teeth)) {
       if (gone.has(id)) continue;
@@ -112,54 +114,82 @@ export function createManual(ctx) {
       M.baseDraft.yaw[id] = rot[id] ?? 0;
     }
     M.draft = copyDraft(M.baseDraft);
-    M.view = { ...M.base, violations: [], stages: [], rotations: [] };
-    Object.assign(M, { undo: [], redo: [], sel: null, check: null, restore: restoreTo, active: true });
+    for (const [id, p] of Object.entries(keep)) if (M.draft.d[id]) { M.draft.d[id] = [...p.d]; M.draft.yaw[id] = p.yaw; }
+    M.view = { ...base, violations: [], stages: [], rotations: [] };
+  }
+  function start(base, step) {
+    Object.assign(M, { step, caseId: state.meshCase, prev: { target: state.target, targetId: state.targetId } });
+    setBase(base);
+    Object.assign(M, { undo: [], redo: [], sel: null, check: null, active: true });
     state.selected.clear();
     document.body.classList.add("manual-on");
     $("moveBtn").setAttribute("aria-pressed", "true");
-    M.overlayWas = state.overlay;
-    if (!state.overlay) $("overlayBtn").click();   // the scan's arch as the white ghost: where the crowns started
     showTab("move");
     draw(); table(); bar(); runCheck();
   }
   function close() {
-    M.active = false; M.drag = null; gizmo.hide();
+    M.active = false; M.drag = null; gizmo.hide(); menu.close();
     clearTimeout(M.checkTimer); M.checkSeq++;
     document.body.classList.remove("manual-on");
     $("moveBtn").setAttribute("aria-pressed", "false");
-    if (state.overlay !== M.overlayWas) $("overlayBtn").click();
   }
-  function cancel() {
-    if (!M.active) return;
-    state.target = M.base;
+  // nothing moved: the view as it was before the edit
+  function discard() {
+    state.target = M.prev.target; state.targetId = M.prev.targetId;
     close();
-    if (M.restore) { const prev = M.restore; M.restore = null; ctx.restoreFlow(prev); return; }   // 처음부터 수동 배치: back to 셋업
-    applyStage(state.step === "target" ? (state.target?.stages?.length ?? 0) : state.stage);
+    applyStage(state.step === "target" ? (state.target?.stages?.length ?? 0) : 0);
     if (state.tab === "move") ctx.followStep(state.step);   // the panel the step shows (app.js STEP_TAB)
   }
-  async function apply() {
+  // another case is opening (or this one restarts): the edit belongs to the old one and is not stored
+  function drop() { if (M.active) close(); }
+  // leaving the edit keeps it: a change is stored as a new target; one the server refuses keeps the edit on, with why
+  async function finish(then) {
+    if (!M.active || M.saving) return;
+    if (M.pending) await M.pending.catch(() => {});   // the 셋업 base under the new prescription first (rebase)
     if (!M.active) return;
     const teeth = edits();
-    if (!Object.keys(teeth).length) { toast("옮긴 치아가 없습니다."); return; }
-    const btn = $("moveApply"); btn.disabled = true;
+    if (!Object.keys(teeth).length) { discard(); then?.(); return; }
+    M.saving = true; $("moveApply").disabled = true;
+    let res;
     try {
-      const res = await post(`${encodeURIComponent(state.targetId)}/manual`, { teeth });
-      const words = changeWords(M.draft, M.baseDraft, M.base.frames ?? {}, fdi), check = M.check, fromScan = !!M.restore;
-      M.restore = null;
-      close();
-      // the last check's overlaps stay red on the stored target until the stages are validated (the GET gives none)
-      if (check && !check.error) res.violations = overlapViolations(check.overlaps);
+      res = await post(`${encodeURIComponent(M.base.target_id)}/manual`, { teeth });
+    } catch (e) {
+      M.check = { error: "저장하지 못해 직접 이동을 끝내지 않았습니다 — " + e.message };
+      renderSummary($("moveSummary"), M.check, fdi); showTab("move");
+      toast("직접 이동을 저장하지 못했습니다: " + e.message);
+      return;
+    } finally { M.saving = false; if (M.active) bar(); }
+    const words = changeWords(M.draft, M.baseDraft, M.base.frames ?? {}, fdi), check = M.check, fromScan = M.step === "setup";
+    close();
+    // the last check's overlaps stay red on the stored target until the stages are validated (the GET gives none)
+    if (check && !check.error) res.violations = overlapViolations(check.overlaps);
+    if (fromScan) ctx.enterTarget(res);   // the scan-position edit becomes the 목표
+    else {
       state.target = res; state.targetId = res.target_id; state.targetSummary = null;
       applyStage(res.stages.length);
       ctx.loadTargetCut(res.target_id);
       ctx.followStep(state.step);
-      const est = check && !check.error ? ` · 예상 최소 ${check.min_stages}단계(약 ${check.min_months}개월)` : "";
-      addMsg("system", (fromScan ? "치료 전 위치에서 수동 배치한 목표 배열을 저장했습니다" : "직접 이동을 목표 배열에 적용했습니다") + ` — ${words.join(" / ")}${est}.`);
-      ctx.afterApply();
-    } catch (e) {
-      addMsg("error", "직접 이동을 적용하지 못했습니다: " + e.message);
-    } finally { btn.disabled = false; }
+    }
+    const est = check && !check.error ? ` · 예상 최소 ${check.min_stages}단계(약 ${check.min_months}개월)` : "";
+    addMsg("system", (fromScan ? "치료 전 위치에서 직접 옮긴 목표 배열을 저장했습니다" : "직접 이동을 목표 배열에 저장했습니다") + ` — ${words.join(" / ")}${est}.`);
+    ctx.afterApply();
+    then?.();
   }
+  // the 셋업 prescription changed (manual-rx.js): the edit goes on over a scan target made under it
+  async function rebase() {
+    M.pending = post("scan");
+    let base;
+    try { base = await M.pending; } finally { M.pending = null; }
+    if (!M.active) return;
+    // the poses as they are now: a crown moved while the new base was on its way stays moved
+    const keep = Object.fromEntries(Object.keys(edits()).map((id) => [id, { d: M.draft.d[id], yaw: M.draft.yaw[id] }]));
+    M.prev = { target: null, targetId: null };   // a later target is stale now (the server's flow is back at 셋업)
+    setBase(base, keep);
+    Object.assign(M, { undo: [], redo: [], check: null });
+    if (M.sel && !M.draft.d[M.sel]) M.sel = null;
+    draw(); table(); bar(); scheduleCheck();
+  }
+  const menu = createSetupMenu(ctx, { rx: () => M.base?.constraints ?? {}, onChanged: rebase });
 
   // ---- the server check: overlaps and the fewest aligners, a moment after the last change
   function scheduleCheck() { clearTimeout(M.checkTimer); M.checkTimer = setTimeout(runCheck, 250); }
@@ -168,7 +198,7 @@ export function createManual(ctx) {
     const seq = ++M.checkSeq;
     $("moveSummary").classList.add("busy");
     try {
-      const res = await post(`${encodeURIComponent(state.targetId)}/check`, { teeth: edits() });
+      const res = await post(`${encodeURIComponent(M.base.target_id)}/check`, { teeth: edits() });
       if (seq !== M.checkSeq || !M.active) return;
       M.check = res;
       M.view.violations = overlapViolations(res.overlaps);
@@ -216,25 +246,51 @@ export function createManual(ctx) {
     const id = e.target.closest("input[data-key]")?.dataset.id;
     if (id && id !== M.sel) { M.sel = id; draw(); bar(); markRow($("moveTable"), id); }
   });
-  $("moveBtn").addEventListener("click", () => (M.active ? cancel() : open()));
+  $("moveBtn").addEventListener("click", () => (M.active ? finish() : open()));
   $("moveUndo").addEventListener("click", () => restore(M.undo, M.redo));
   $("moveRedo").addEventListener("click", () => restore(M.redo, M.undo));
   $("moveResetTooth").addEventListener("click", () => resetTooth(M.sel));
   $("moveResetAll").addEventListener("click", () => { push(); M.draft = copyDraft(M.baseDraft); changed(); });
-  $("moveCancel").addEventListener("click", cancel);
-  $("moveApply").addEventListener("click", apply);
+  $("moveApply").addEventListener("click", () => finish());
   document.addEventListener("keydown", (e) => {
-    if (!M.active || e.target.closest?.("input, textarea, select")) return;
+    if (!M.active) return;
+    if (e.key === "Escape" && menu.isOpen) { menu.close(); return; }   // the right-click menu or its IPR form first
+    if (e.target.closest?.("input, textarea, select")) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? restore(M.redo, M.undo) : restore(M.undo, M.redo); }
     else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); restore(M.redo, M.undo); }
-    else if (k === "escape") select(null);
+    else if (k === "escape") finish();
+  });
+  // 셋업 only: a right-click on a crown (not the end of a right-drag) opens the prescription menu; elsewhere nothing
+  // happens here. An extracted crown is hidden, so a click that meets no shown crown tries the hidden ones (발치 취소).
+  let rightDown = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.button === 2) rightDown = [e.clientX, e.clientY];
+    else if (e.button === 0) menu.close();
+  });
+  canvas.addEventListener("contextmenu", (e) => {
+    if (!M.active || M.step !== "setup" || state.step !== "setup" || M.saving) return;
+    if (rightDown && Math.hypot(e.clientX - rightDown[0], e.clientY - rightDown[1]) > 4) return;
+    const teeth = Object.values(state.teeth);
+    const id = (gizmo.pick(e, teeth.filter((m) => m.visible)) ?? gizmo.pick(e, teeth.filter((m) => !m.visible)))?.object.userData.id;
+    if (!id) { menu.close(); return; }
+    e.preventDefault();
+    menu.open(e, id);
   });
 
   return {
     get active() { return M.active; },
-    open, cancel,
-    // the flow moved off the 목표 step (a turn, the strip, a plan): the draft is dropped
-    leave(step) { if (M.active && step !== "target") cancel(); },
+    open,
+    // the flow is going to another step (the strip, a turn, a plan): the edit is kept — stored first, then the step
+    // follows (true = wait: finish() moves on once stored). Another case (or a restart) drops it unsaved.
+    leave(step) {
+      if (!M.active) return false;
+      if (M.caseId !== state.meshCase) { drop(); return false; }
+      if (step === M.step) return false;
+      if (!Object.keys(edits()).length) { discard(); return false; }
+      finish(() => { if (state.step !== step) ctx.setStep(step); });
+      return true;
+    },
+    drop,
   };
 }

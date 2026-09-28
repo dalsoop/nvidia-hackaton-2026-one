@@ -777,7 +777,7 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .cards .empty, #clRows .empty { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 13px; }
 
 /* 직접 이동 (manual.js): 목표 단계의 편집 모드. 버튼·탭은 목표 단계에서만, 편집 막대는 단계 막대 자리에 편집 중에만 */
-body:not(.step-target):not(.step-setup) #moveBtn { display: none; }   /* 셋업: 처음부터 수동 배치 · 목표: 수동으로 조정 */
+body:not(.step-target):not(.step-setup) #moveBtn { display: none; }   /* 셋업: 치료 전 위치부터 (우클릭 발치·IPR) · 목표: 수동으로 조정 */
 body:not(.step-target):not(.step-setup) .side-tab[data-tab="move"] { opacity: 0.35; pointer-events: none; }
 .move-bar { display: none; position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 body.manual-on .move-bar { display: flex; }
@@ -785,6 +785,19 @@ body.manual-on .move-bar { display: flex; }
 .move-sel { margin-left: auto; font-size: 13px; color: var(--muted); }
 body.manual-on .legend { bottom: 64px; }
 body.manual-on #selChips, body.manual-on .pick-hint { display: none !important; }
+/* 직접 이동 on 셋업: the right-click prescription menu and its IPR form (manual-rx.js), over the 3D where it was clicked */
+.rx-menu { position: absolute; z-index: 8; display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 6px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 13px; }
+.rx-menu .rx-title { margin: 0 4px 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.rx-menu.menu button { padding: 6px 8px; font: inherit; text-align: left; color: var(--text); background: none; border: 0; border-radius: var(--radius); cursor: pointer; }
+.rx-menu.menu button:hover:not(:disabled) { background: var(--panel-2); }
+.rx-menu.menu button:disabled { color: var(--faint); cursor: default; }
+.rx-menu .rx-why { margin: 0 8px 4px; font-size: 11px; color: var(--faint); }
+.rx-menu.form { gap: 8px; padding: 10px; }
+.rx-faces { display: flex; gap: 12px; }
+.rx-faces label:has(input:disabled) { color: var(--faint); }
+.rx-mm input { width: 64px; height: 26px; padding: 0 4px; font: inherit; text-align: right; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.rx-mm span { margin-left: 4px; font-size: 11px; color: var(--faint); }
+.rx-acts { display: flex; justify-content: flex-end; gap: 6px; }
 .move-summary { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; font-size: 13px; flex: none; }
 .move-summary p { margin: 0; line-height: 1.5; }
 .move-summary .l1 { font-size: 15px; font-weight: 700; }
