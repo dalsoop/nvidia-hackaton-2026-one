@@ -36,6 +36,8 @@ CPU 가 100% 에 붙어 Orca 와 터미널이 멎었다. 원인은 세션마다 
 
 - `pytest -n 2`. 전체 테스트는 PR 직전 한 번, 편집 중엔 건드린 모듈만.
 - `browser_flow.py` 는 **PR 직전 한 번**, 서버는 확인 뒤 즉시 내린다. 다른 무거운 실행과 겹치면 30초 대기가 초과돼 거짓 실패가 난다.
+- `browser_flow.py` 는 기계 전역 잠금(`%TEMP%\cualign-browser-flow.lock`)으로 한 번에 하나만 돈다. 워크트리가 달라도 둘째는 10초마다 기다리는 중이라고 찍고, 첫째가 끝나면 시작한다(최대 15분, 15분 넘은 잠금은 죽은 실행으로 보고 넘겨받는다).
+- `browser_flow.py` 의 헤드리스 Chrome 은 GPU(ANGLE D3D11)로 WebGL 을 그린다(`--headless=new --use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist`, Playwright 기본 `--enable-unsafe-swiftshader` 제외). RTX 5090 에서 000097 케이스 30초 동안 GPU 프로세스 CPU 가 SwiftShader 352초 → 5.1초. 프레임 제한은 `?fps=N` 으로만 건다.
 - 스크린샷은 마지막 한 장씩. 헤드리스 Chrome 을 세션당 하나 이상 띄우지 않는다.
 - NIM 실호출은 작업 세션에서 금지(턴은 재생·가짜 스트림으로). 여러 세션이 한 키를 쓰면 429 가 몰려 시연 서버까지 느려진다. 실호출은 오케스트레이터가 재녹화할 때만.
 

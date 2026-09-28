@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 import socket
 import sys
+import tempfile
 import threading
 import time
 
@@ -192,6 +193,44 @@ async def fake_chat(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+# a wait for "the next frame" to be drawn, in ms: generous, so it holds under load and at a lowered ?fps= (app.js)
+FRAME = 250
+
+# one browser_flow at a time on this machine, whatever the worktree: two at once (each a server and a software-WebGL
+# Chrome) took the whole CPU and timed each other out. A live run touches its lock every minute, so one untouched for
+# 15 minutes is a run that died: it is taken over.
+LOCK = Path(tempfile.gettempdir()) / "cualign-browser-flow.lock"
+LOCK_STALE = 15 * 60
+
+
+def take_lock():
+    t0 = time.monotonic(); said = 0
+    while True:
+        try:
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, f"{os.getpid()} {Path.cwd()}".encode()); os.close(fd)
+            def beat():   # a live run keeps its lock fresh however long it takes
+                while True:
+                    try: os.utime(LOCK)
+                    except FileNotFoundError: return
+                    time.sleep(60)
+            threading.Thread(target=beat, daemon=True).start()
+            print(f"browser_flow 시작 ({int(time.monotonic() - t0)}초 기다림)", flush=True)
+            return
+        except FileExistsError:
+            try:
+                if time.time() - LOCK.stat().st_mtime > LOCK_STALE:
+                    LOCK.unlink(missing_ok=True); continue
+            except FileNotFoundError:
+                continue
+        waited = time.monotonic() - t0
+        if waited > LOCK_STALE:
+            raise SystemExit(f"another browser_flow still holds {LOCK} after {LOCK_STALE // 60} minutes")
+        if waited >= said:
+            print(f"다른 browser_flow 가 끝나기를 기다리는 중 … {int(waited)}초", flush=True); said += 10
+        time.sleep(1)
+
+
 async def main():
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -210,8 +249,11 @@ async def main():
             raise AssertionError("test server did not start")
         async with async_playwright() as pw:
             executable = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE", r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-            browser = await pw.chromium.launch(executable_path=executable, headless=True,
-                args=["--enable-unsafe-swiftshader", "--use-angle=swiftshader"])
+            # the 3D on the machine's GPU (Direct3D 11 through ANGLE), not SwiftShader: software WebGL took whole cores. Playwright's
+            # own --enable-unsafe-swiftshader is dropped too, so a GPU that is not there fails the 3D steps instead of falling
+            # back to the CPU unseen.
+            browser = await pw.chromium.launch(executable_path=executable, headless=True, ignore_default_args=["--enable-unsafe-swiftshader"],
+                args=["--headless=new", "--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"])
             page = await browser.new_page(viewport={"width":1500,"height":1000})
             errors = []
             page.on("pageerror", lambda error: (errors.append(str(error)), print("PAGEERROR:", error, file=sys.stderr)))   # visible when a step times out
@@ -385,7 +427,7 @@ async def main():
             for _ in range(8):
                 await page.mouse.move(960, 300); await page.mouse.down(); await page.mouse.move(960, 300 + px / 8, steps=15)
                 await page.wait_for_timeout(120); await page.mouse.up()      # a still pointer at release: no inertia
-                await page.wait_for_timeout(120)
+                await page.wait_for_timeout(FRAME)
             end = await page.evaluate(cam)
             assert math.dist(start["p"], end["p"]) < 8 and abs(start["d"] - end["d"]) < 1e-3, (start, end)
             await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1260, 500, steps=10); await page.wait_for_timeout(120); await page.mouse.up()
@@ -396,10 +438,10 @@ async def main():
                 return best.id; }"""
             screen_x = "(id) => { const { camera, state } = window.__cualign; return state.center[id].clone().add(state.teeth[id].position).project(camera).x; }"
             for view in ["occlusal", "frontal", "left", "right"]:
-                await page.locator(f'.view-rail [data-view="{view}"]').click(); await page.wait_for_timeout(120)   # project() reads the last frame's camera
+                await page.locator(f'.view-rail [data-view="{view}"]').click(); await page.wait_for_timeout(FRAME)   # project() reads the last frame's camera
                 tooth = await page.evaluate(near); x0 = await page.evaluate(screen_x, tooth)
                 await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1000, 500, steps=5); await page.wait_for_timeout(120); await page.mouse.up()
-                await page.wait_for_timeout(60)
+                await page.wait_for_timeout(FRAME)
                 assert await page.evaluate(screen_x, tooth) > x0, view
             await page.mouse.dblclick(960, 500)
             await page.wait_for_function("document.querySelector('.view-rail [data-view=\"occlusal\"]').getAttribute('aria-pressed') === 'true'")
@@ -785,7 +827,7 @@ async def main():
             # the per-contact prescription (#57): the 조건 tab shows it in FDI, the 3D marks exactly those three contacts,
             # and the patch carries it back in FDI
             assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"
-            assert await page.locator(".ipr-mark").count() == 3
+            await page.wait_for_function("document.querySelectorAll('.ipr-mark').length === 3", timeout=5000)   # a CSS2D mark enters the page on the next drawn frame
             assert await page.evaluate("window.__cualign.readConstraints().ipr_surfaces") == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]]
             # the recorded setup tells the same lines a live setup does, in the same order, from the recording's values
             # (the lines follow the landing, which may still be fetching after the recorded bubble shows)
@@ -930,4 +972,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    take_lock()
+    try:
+        asyncio.run(main())
+    finally:
+        LOCK.unlink(missing_ok=True)
