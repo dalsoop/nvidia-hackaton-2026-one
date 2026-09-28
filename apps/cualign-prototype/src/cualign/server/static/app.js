@@ -1055,7 +1055,7 @@ function setSideWidth(px) {
     setChatWidth(document.querySelector(".chat").getBoundingClientRect().width + (e.key === "ArrowLeft" ? -16 : 16));
   });
 }
-const fmtDate = (iso) => (iso ?? "").slice(0, 16).replace("T", " ");
+const fmtDate = (iso) => iso ? new Date(iso).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "";   // server sends UTC (+00:00); show the viewer's local time
 
 // The patient list of the modal. `open` (a GET /api/patients/{id} payload) is shown expanded with its scans.
 async function loadPatients(open = null) {
@@ -1412,6 +1412,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.requestId = null;
   state.messages = [];
   state.followup = null;
+  state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
   stopPlay();
   if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
