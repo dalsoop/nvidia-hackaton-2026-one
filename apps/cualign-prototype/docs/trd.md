@@ -166,7 +166,9 @@ NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 설정된
 직접 이동(PoC): 「목표」 단계에서 의사가 목표 배열의 치아를 3D 화살표·회전 고리나 숫자로 옮긴다(`static/manual.js`).
 축은 치아마다 스캔 치열궁의 접선(근원심)·바깥 법선(협설)·+z(정출)이다(`core/manual.py` `frames`).
 드래그 중에는 `POST /api/cases/{id}/targets/{tid}/check`가 저장 없이 겹침(검증기와 같은 1mm³ 기준)과 최소 단계 수를 돌려준다.
-셋업 단계의 「처음부터 수동 배치」는 `POST /api/cases/{id}/targets/scan`으로 치료 전 위치의 출발 목표를 만든다(전략 `manual`, 처방된 발치 치아 제외, 처방된 IPR 접촉면만 절삭, 자동 IPR·확장 없음, 공간 부족 판정 없음). 출발 목표만으로는 흐름의 목표가 바뀌지 않는다.
+셋업 단계의 직접 이동은 `POST /api/cases/{id}/targets/scan`으로 치료 전 위치의 출발 목표를 만든다(전략 `manual`, 처방된 발치 치아 제외, 처방된 IPR 접촉면만 절삭, 자동 IPR·확장 없음, 공간 부족 판정 없음). 출발 목표만으로는 흐름의 목표가 바뀌지 않는다. 직접 이동을 끄면(버튼·적용·Esc·다른 단계로 이동) 옮긴 상태가 `…/manual` 로 저장되고, 서버가 거절하면 모드가 켜진 채 이유를 보인다. 되돌리기는 「전부 되돌리기」로만 한다.
+
+셋업 단계의 직접 이동에서 치관을 우클릭하면 처방을 바꾼다: `POST /api/cases/{id}/setup/conditions` `{op: extract|unextract|ipr|unipr, tooth: FDI, face: mesial|distal, mm}`. 조건은 `Constraints.patched` 로 바뀌어 케이스 조건과 흐름의 셋업이 되고(이후 목표·계획은 낡은 것이 된다) 응답은 step_done setup 과 같다. 발치는 소구치만이고 그 치아의 IPR 접촉면을 함께 지운다. IPR 은 치아 면 하나의 양(0.05mm 단위, 면당 0.25mm 이하)이며 접촉면 양은 두 면의 합이다. 두 면이 다르면 `Constraints.ipr_amounts`(치아, 이웃, 그 면의 mm)에 나눠 적고, 비어 있으면 덤프에 나오지 않는다(기존 조건·골든셋 그대로). `/setup/cut` 은 이 면별 양대로 깎는다. 플래너는 접촉면 합만 읽는다(치아별 반반).
 적용은 `POST …/manual`로 새 목표를 만들고(`info.source = "manual"`, `parent_target_id`, `manual_teeth`) 흐름의 목표를 바꾼다.
 이후 에이전트 단계 턴은 문맥의 `target_manual_ko`를 보고 그 목표를 그대로 `plan_stages`에 넣고, 에이전트 없는 경로는 `POST …/stages`다.
 발치·고정 치아와 한 번에 10mm·45°를 넘는 이동은 거부한다(PoC 한도). 저장소가 메모리라 서버 재시작 뒤에는 이 목표도 남지 않는다.

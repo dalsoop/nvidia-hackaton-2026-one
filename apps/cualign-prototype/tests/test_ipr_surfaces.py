@@ -140,3 +140,41 @@ def test_the_target_tool_keeps_the_prescription():
         svc.target("mild", "ipr", Constraints(extraction=(5, 12)))
     assert svc.target("mild", "expansion_ipr", cons) == "expansion_ipr"
     assert svc.target("mild", "expansion", Constraints()) == "expansion"
+
+
+def test_ipr_amounts_split_a_contact_per_face_and_stay_out_of_the_dump_when_empty():
+    """직접 이동's right-click IPR (ipr_amounts): (tooth, neighbour, mm off that face), the contact the sum of its faces.
+    Without it the conditions dump, validate and patch exactly as before (saved plans, golden sets, plan_context)."""
+    old = Constraints(extraction=(5, 12), ipr_surfaces=((7, 8, 0.4),))
+    assert "ipr_amounts" not in old.model_dump() and "ipr_amounts" not in old.model_dump(mode="json")
+    assert Constraints.model_validate(old.model_dump(exclude={"allow_extraction"})) == old
+    assert old.face_amounts() == {(7, 8): 0.2, (8, 7): 0.2}                    # half each, as the planner cuts it
+    c = Constraints(ipr_surfaces=((6, 7, 0.2), (7, 8, 0.45)), ipr_amounts=((7, 6, 0.2), (7, 8, 0.25), (8, 7, 0.2)))
+    assert c.model_dump()["ipr_amounts"] == ((7, 6, 0.2), (7, 8, 0.25), (8, 7, 0.2))
+    assert c.face_amounts() == {(7, 6): 0.2, (6, 7): 0.0, (7, 8): 0.25, (8, 7): 0.2}
+    for surfaces, amounts, text in (
+        (((7, 8, 0.4),), ((7, 8, 0.3),), "면당 양은 0~0.25mm"),
+        (((7, 8, 0.4),), ((7, 8, 0.25),), "합이 접촉면 처방과 다릅니다"),
+        ((), ((7, 8, 0.2),), "처방되지 않은 접촉면"),
+        (((7, 8, 0.4),), ((7, 9, 0.2),), "이웃한 두 치아"),
+    ):
+        with pytest.raises(ValueError) as e:
+            Constraints(ipr_surfaces=surfaces, ipr_amounts=amounts)
+        assert text in reason_ko(e.value)
+    # a new contact list (the form or a turn repeating it) keeps the split of the contacts it leaves as they were
+    again = c.patched(ConstraintPatch(ipr_surfaces=[[13, 12, 0.2], [12, 11, 0.45]]).changes())
+    assert again.ipr_amounts == c.ipr_amounts
+    moved = c.patched(ConstraintPatch(ipr_surfaces=[[13, 12, 0.2], [12, 11, 0.4]]).changes())
+    assert moved.ipr_amounts == ((7, 6, 0.2),) and moved.ipr_surfaces == ((6, 7, 0.2), (7, 8, 0.4))
+
+
+def test_the_planner_reads_the_contact_amount_not_the_face_split():
+    """The planner plans a contact's total (half off each tooth, #57); the per-face split changes the setup's cut only."""
+    s = Store()
+    cid, case = s.load_case("poseidon-000131")
+    even = Constraints(ipr_surfaces=((7, 8, 0.4),))
+    split = even.model_copy(update={"ipr_amounts": ((7, 8, 0.25), (8, 7, 0.15))})
+    Constraints.model_validate(split.model_dump(exclude={"allow_extraction"}))   # a valid split of the same contact
+    t_even, i_even = planner.propose_target(case, "ipr", constraints=even)
+    t_split, i_split = planner.propose_target(case, "ipr", constraints=split)
+    assert i_even == i_split and all((t_even[k] == t_split[k]).all() for k in t_even if t_even[k] is not None)

@@ -218,3 +218,51 @@ def test_setup_view_fills_the_ipr_surfaces_the_uniform_rule_would_cut(store):
     given = c.patched({"ipr_surfaces": [[7, 8, 0.3], [8, 9, 0.3]]})
     assert setup_view(store, cid, given)["constraints"]["ipr_surfaces"] == [[7, 8, 0.3], [8, 9, 0.3]]
     assert view["conditions_ko"] == c.describe_ko()
+
+
+
+def test_setup_right_click_changes_the_prescription_and_the_setup_cut(store):
+    """직접 이동 on 셋업 (manual_api.setup_conditions): 발치 / IPR per tooth face and their 취소 go through
+    Constraints.patched into the case's conditions and the flow's setup, the answer is step_done setup's, /setup/cut
+    cuts the face as given, and the next turn's plan_context starts from the changed conditions."""
+    from cualign.server.plan_events import ChatContext, open_run
+    app = FastAPI()
+    api.add_api_routes(app)
+    client = TestClient(app)
+    cid = "poseidon-000097"                                          # 14·24 (Universal 5, 12) prescribed
+    edit = lambda **body: client.post(f"/api/cases/{cid}/setup/conditions", json=body)   # noqa: E731
+    assert edit(op="extract", tooth=15).status_code == 409           # before the setup there is nothing to change
+    store.set_flow(cid, "setup", constraints=store.constraints_for(cid), target_id=None, plan_id=None)
+    assert client.get(f"/api/cases/{cid}/setup/cut").json()["teeth_cut"] == {}
+
+    res = edit(op="ipr", tooth=12, face="distal", mm=0.2)            # FDI 12 (U7) distal = the 12-13 contact (U6-7)
+    assert res.status_code == 200, res.text
+    done = res.json()
+    assert done["step"] == "setup" and "conditions_ko" in done
+    assert done["constraints"]["ipr_surfaces"] == [[6, 7, 0.2]] and done["constraints"]["ipr_amounts"] == [[7, 6, 0.2]]
+    assert store.flow[cid]["constraints"].ipr_amounts == ((7, 6, 0.2),) and store.flow[cid]["target_id"] is None
+    cut = client.get(f"/api/cases/{cid}/setup/cut").json()
+    assert set(cut["teeth_cut"]) == set(cut["ipr_cut"]) == {"7"} and cut["ipr_cut"]["7"]["mm"] == 0.2   # that face only
+    assert 0 < len(cut["ipr_cut"]["7"]["faces"]) < len(cut["teeth_cut"]["7"]["f"])
+
+    both = edit(op="ipr", tooth=13, face="mesial", mm=0.2).json()   # the other face of the same contact, as much: half each
+    assert both["constraints"]["ipr_surfaces"] == [[6, 7, 0.4]] and "ipr_amounts" not in both["constraints"]
+    assert set(client.get(f"/api/cases/{cid}/setup/cut").json()["teeth_cut"]) == {"6", "7"}
+    left = edit(op="unipr", tooth=13).json()                         # 13's face off, 12's stays
+    assert left["constraints"]["ipr_surfaces"] == [[6, 7, 0.2]] and left["constraints"]["ipr_amounts"] == [[7, 6, 0.2]]
+    assert edit(op="unipr", tooth=12).json()["constraints"]["ipr_surfaces"] == []
+    assert client.get(f"/api/cases/{cid}/setup/cut").json()["teeth_cut"] == {}
+    assert "IPR 이 없습니다" in edit(op="unipr", tooth=12).json()["detail"]
+
+    assert edit(op="extract", tooth=15).json()["constraints"]["extraction"] == [4, 5, 12]
+    assert store.constraints_for(cid).extraction == (4, 5, 12)
+    assert "이웃 치아가 없습니다" in edit(op="ipr", tooth=16, face="mesial", mm=0.25).json()["detail"]   # 15 is extracted
+    assert edit(op="unextract", tooth=15).json()["constraints"]["extraction"] == [5, 12]
+    assert "소구치" in edit(op="extract", tooth=13).json()["detail"]
+    assert edit(op="ipr", tooth=12, face="distal", mm=0.3).status_code == 422          # over 0.25 per face
+    assert "0.05mm 단위" in edit(op="ipr", tooth=12, face="distal", mm=0.12).json()["detail"]
+
+    edit(op="ipr", tooth=11, face="mesial", mm=0.15)
+    run, _ = open_run(ChatContext(case_id=cid, step="target"), store=store)   # the next turn, the form as it was
+    assert run.constraints.extraction == (5, 12) and run.constraints.ipr_surfaces == ((8, 9, 0.15),)
+    assert run.constraints.model_dump(mode="json")["ipr_amounts"] == [[8, 9, 0.15]]   # as the plan_context event dumps it

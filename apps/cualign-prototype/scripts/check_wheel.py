@@ -6,7 +6,7 @@ from zipfile import ZipFile
 def check_wheel(path):
     required = {f"cualign/core/templates/{tooth}.stl" for tooth in range(2, 16)}
     required.add("cualign/core/templates/ATTRIBUTION.md")
-    required.update(f"cualign/server/static/{name}" for name in ("index.html", "app.js", "manual.js", "manual-math.js", "manual-gizmo.js", "manual-panel.js", "style.css", "plan-stream.js", "intro-arch.png", "logo.png"))
+    required.update(f"cualign/server/static/{name}" for name in ("index.html", "app.js", "manual.js", "manual-math.js", "manual-gizmo.js", "manual-panel.js", "manual-rx.js", "style.css", "plan-stream.js", "intro-arch.png", "logo.png"))
     # the 3D view icon bar (#13 polish)
     required.update(f"cualign/server/static/icons/view-{view}.png" for view in ("occlusal", "front", "left", "right", "overlay"))
     # start-screen samples (#46): real scans, their credit and thumbnails
