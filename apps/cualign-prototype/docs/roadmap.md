@@ -1,7 +1,7 @@
 # 예선 데모 개선 작업
 
 > 2026-09-25 · `feat/cualign-demo-completion` 브랜치에서 네 기능을 함께 구현한다.
-> 대상 앱: `apps/cualign-prototype/`. 검증 범위는 [VERIFICATION](VERIFICATION.md)을 따른다.
+> 대상 앱: `apps/cualign-prototype/`. 검증 범위는 [VERIFICATION](verification.md)을 따른다.
 > 오프라인·가짜 모델 브라우저 검증과 NVIDIA 실호출을 구분한다.
 
 | 작업 | 구현 동작 | 검사 |
@@ -36,4 +36,4 @@
 [PR #10](https://github.com/dalsoop/nvidia-hackaton-2026-one/pull/10)은 확인 시 미병합이므로 반영된 기능으로 계산하지 않는다.
 서버·도구 등록·워크플로 파일의 병합 충돌과 #10의 이전 앱 경로를 확인해야 한다.
 #10의 503→빈 답변 관측과 KNOWN_ISSUES의 reviewer 파싱 오류가 같은 근본 원인이라고 단정하지 않는다.
-Skill API 요건의 확인 수준은 [NVIDIA_STACK](NVIDIA_STACK.md)에 남긴다.
+Skill API 요건의 확인 수준은 [NVIDIA_STACK](nvidia-stack.md)에 남긴다.

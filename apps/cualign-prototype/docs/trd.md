@@ -1,7 +1,7 @@
 # cuAlign 기술 요구사항
 
 > 아키텍처·계산 방식·데이터 계약·검증 기준을 정의한다. 2026-09-25 기준.
-> 제품 범위는 [PRD](PRD.md), 파일별 역할은 [코드 안내](CODE_MAP.md)를 참조한다.
+> 제품 범위는 [PRD](prd.md), 파일별 역할은 [코드 안내](code-map.md)를 참조한다.
 
 ## 1. 기술 방향
 
@@ -36,7 +36,7 @@
 | 실행 격리·규칙 자산 | OpenShell 정책, Skill·스캔 리포트 | 서버 샌드박스 정책과 규칙 전달 자료. 서버 샌드박스 상태는 [OpenShell](openshell.md#상태) |
 | 배포·운영 | uv, Dockerfile, CI, 로그 | 소스 체크아웃 실행 기준. Docker Linux arm64 빌드·서버 검사 결과는 VERIFICATION 참조 |
 
-NVIDIA 구성별 코드와 실행 근거는 [NVIDIA 활용](NVIDIA_STACK.md)을 참조한다.
+NVIDIA 구성별 코드와 실행 근거는 [NVIDIA 활용](nvidia-stack.md)을 참조한다.
 
 ## 3. 코드가 실제로 수행하는 계산
 
@@ -145,7 +145,7 @@ NAT 워크플로 밖의 별도 경량 호출이라 계획 도구·검토·Guardr
 NIM 스트림이 첫 줄에 재시도할 오류(429·5xx)만 보내면 설정된 간격(기본 1·2·4…32초, 최대 6회) 뒤 다시 요청하고, 설정된 대체 모델이 있으면 거기에 한 번씩 더 보낸 뒤, 그래도 안 되거나 재시도할 수 없는 오류면 빈 답 대신 예외로 턴을 끝낸다(`agent/nim_stream_patch.py`).
 검토 호출이 HTTP 429·5xx 를 받으면 설정된 간격(기본 1·2·4초, 최대 3회) 뒤 다시 요청하고, 그래도 안 되면 원래 예외를 그대로 던진다(같은 모듈). 간격·코드·대체 모델은 `configs/workflow.yml` 의 `middleware.cualign_rails.nim_retry` 에 있다. 레일 판정은 Guardrails 자체 클라이언트가 최대 4회 다시 묻는다(`guardrails/config.yml` 의 `max_retries`).
 과부하로 죽은 턴은 `plan_error` 이벤트에 `kind: "nim_overload"` 와 같은 yml 의 `overload_notice` 문장을 실어 보내고, 화면은 «다시 보내기» 버튼을 보여 준다(`agent/overload.py`, `server/plan_events.py`).
-재현 조건·영향·수정 확인 기준은 [알려진 문제](KNOWN_ISSUES.md)에 기록한다.
+재현 조건·영향·수정 확인 기준은 [알려진 문제](known-issues.md)에 기록한다.
 
 현재 입력 범위 레일은 차단 판정 시 에이전트를 실행하지 않는다. content safety 입력 판정의 모드는 [OpenShell](openshell.md#상태)에 적는다.
 출력은 스트림이든 아니든 출력 판정이 날 때까지 쥐고, 막히면 답 전체를 거절문으로 바꾼다. 그 턴의 `plan_selected` 는 내보내지 않는다(계획은 저장된 채 남는다).
@@ -188,7 +188,7 @@ ZIP 생성 성공을 장치 제조 준비 완료로 판단하지 않는다.
 확인 기준 코드: `87f4a221569ac9307d6ca2d9a082f4c95be0067a`.
 기반 코드의 기존 테스트는 18개이며, 패키징·API 회귀 검사 추가 후 2026-09-24 새 환경에서 총 22개가 통과했다.
 2026-09-25 조건·계획 식별·검토·승인과 ReAct 프롬프트·도구 입력 계약 검사를 추가해 총 41개가 통과했다.
-자세한 실행 결과는 [재현 검증](VERIFICATION.md)을 참조한다. 계산 코어·NAT 구성/등록·Guardrails 구성·
+자세한 실행 결과는 [재현 검증](verification.md)을 참조한다. 계산 코어·NAT 구성/등록·Guardrails 구성·
 라벨 기반 분리·파서 가드를 확인하는 테스트다. 모델 실호출, UI, 임상 결과, Docker 배포의 검증을 대신하지 않는다.
 
 PoC 체크아웃에서 실행:

@@ -63,7 +63,8 @@ def main() -> int:
         print("   ", final.replace("\n", " ")[:300])
     md = ["| # | scenario | exit | seconds | tool calls | final answer (head) |", "|---|---|---|---|---|---|"]
     md += [f"| {a} | {b} | {c} | {d} | {e} | {f} |" for a, b, c, d, e, f in summary]
-    (out_dir / f"summary-{args.llm}-{mode}.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    # the summary is a document, so its name is kebab-case (CONTRIBUTING «문서 파일 이름»); the logs keep the llm name
+    (out_dir / f"summary-{args.llm.replace('_', '-')}-{mode}.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     return 0
 
 

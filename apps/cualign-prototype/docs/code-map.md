@@ -1,8 +1,8 @@
 # 코드·파일 안내
 
-제품 범위는 [PRD](PRD.md), 기술 구조·데이터 계약·한계는 [TRD](TRD.md),
-설치·실행은 [README](../README.ko.md), NVIDIA별 연결과 검증 수준은 [NVIDIA 활용](NVIDIA_STACK.md)을 참조한다.
-여러 세션이 워크트리로 나눠 동시에 고칠 때는 [병렬 세션 운영 방식](PARALLEL_WORK.md)을 먼저 읽는다.
+제품 범위는 [PRD](prd.md), 기술 구조·데이터 계약·한계는 [TRD](trd.md),
+설치·실행은 [README](../README.ko.md), NVIDIA별 연결과 검증 수준은 [NVIDIA 활용](nvidia-stack.md)을 참조한다.
+여러 세션이 워크트리로 나눠 동시에 고칠 때는 [병렬 세션 운영 방식](parallel-work.md)을 먼저 읽는다.
 
 ## 실행 흐름
 
@@ -113,10 +113,10 @@
 | `tests/test_context_preload.py` | 서버 문맥에 미리 싣는 케이스 요약·한도·스킬이 설정대로 들어가고, 끄거나 블록이 없으면 전과 같은지(#48) |
 | `tests/plan-stream.test.mjs`, `tests/browser_flow.py` | 스트림 파서·브라우저 선택/재계획/검토 재요청/승인·지연 응답 검사 |
 | `tests/nim_review_live_check.py` | 실제 워크플로(NIM 검토·Guardrails)로 미실행·실패 계획의 검토 재요청 확인. 원격 사용량 발생 |
-| `docs/VERIFICATION.md` | 새 환경 재현 결과와 미검증 범위 |
-| `docs/DEVELOPMENT.md`, `docs/ROADMAP.md` | 개발 진입점과 네 기능 작업·검증 범위 |
-| `docs/KNOWN_ISSUES.md` | reviewer 오류의 관측·재현 조건·영향과 인수 시 주의점 |
-| `docs/DESIGN_REFERENCES.md` | 기존 UI·형상 조사에서 계승한 설계 관찰과 출처 |
+| `docs/verification.md` | 새 환경 재현 결과와 미검증 범위 |
+| `docs/development.md`, `docs/roadmap.md` | 개발 진입점과 네 기능 작업·검증 범위 |
+| `docs/known-issues.md` | reviewer 오류의 관측·재현 조건·영향과 인수 시 주의점 |
+| `docs/design-references.md` | 기존 UI·형상 조사에서 계승한 설계 관찰과 출처 |
 | `bench/bench.py` | 합성 케이스의 규칙 기반 비교 실행 |
 | `bench/results.md` | 위 비교의 당시 결과 |
 | `scripts/run_scenarios.py` | 다섯 실호출 시나리오 실행 |

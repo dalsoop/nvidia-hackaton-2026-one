@@ -19,8 +19,8 @@ uv run python scripts/check_wheel.py dist/cualign-0.1.0-py3-none-any.whl
 
 ## 요구사항과 구현 선택
 
-- [PRD](docs/PRD.md)는 제품 목표·수용 기준이다. 미결정 사용자 동작을 확정 기능으로 바꾸기 전에는 기획·UI/UX 담당과 논의한다. 가정을 명시한 실험·프로토타입까지 금지하는 것은 아니다.
-- [TRD](docs/TRD.md)는 현재 PoC 구조와 필요한 동작을 구분한다. 현재 폴더·스택·API를 영구 고정하는 문서가 아니다.
+- [PRD](docs/prd.md)는 제품 목표·수용 기준이다. 미결정 사용자 동작을 확정 기능으로 바꾸기 전에는 기획·UI/UX 담당과 논의한다. 가정을 명시한 실험·프로토타입까지 금지하는 것은 아니다.
+- [TRD](docs/trd.md)는 현재 PoC 구조와 필요한 동작을 구분한다. 현재 폴더·스택·API를 영구 고정하는 문서가 아니다.
 - 프레임워크, 모듈 분리, 저장 방식, 테스트 도구, 브랜치·리뷰 방식은 팀이 선택한다. 기존 자산을 재사용하되 필요하면 근거와 영향 범위를 설명하고 리팩터링·교체할 수 있다.
 - 모든 구현 세부사항에 기획자의 승인을 요구하지 않는다. 제품 범위·사용자 경험·안전 경계에 영향을 주는 변경은 관련 담당과 함께 결정한다.
 
@@ -35,6 +35,14 @@ uv run python scripts/check_wheel.py dist/cualign-0.1.0-py3-none-any.whl
 - 소스·자산·설정이 함께 필요한 변경은 빌드와 실행도 확인한다. 정적 UI와 치아 템플릿의 패키지 누락을 검사한다.
 - 형상 자산의 `ATTRIBUTION.md`와 라이선스를 유지한다.
 - 다른 작업자의 변경을 보존하고 합의한 작업 범위 밖 변경은 섞지 않는다.
+
+## 문서 파일 이름
+
+`docs/` 아래 문서(스크립트가 만드는 기록 포함)는 소문자 kebab-case(`code-map.md`, `known-issues.md`)로 짓는다. 대문자는 도구나
+관례가 이름으로 찾는 파일에만 쓴다. 예: `README.md`(언어판 `README.ko.md` 포함), `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`,
+`SKILL.md`, OpenClaw 워크스페이스 파일(`SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`), 자체 형식을 따르는
+앱 루트의 `DESIGN.md`, 형상 자산과 함께 패키징되는 `ATTRIBUTION.md`. 명문화된 공식 규약은 아니고 NemoClaw 저장소가 실제로 쓰는
+방식이다(#81). macOS 파일 시스템은 대소문자만 다른 이름 변경을 알아보지 못하므로 임시 이름을 거쳐 `git mv` 를 두 번 한다.
 
 ## 화면·이벤트 회귀 검사
 
@@ -58,7 +66,7 @@ Guardrails 원격 판정도 함께 실행된다. 결과는 out/nim-live/에 남�
 변경 이유·범위, 실행한 검증과 결과, 실행하지 못한 검증, 알려진 한계를 적는다.
 동작을 바꾸면 해당 명세·테스트도 갱신한다. 성공 결과만이 아니라 오류 경로도 검사한다.
 개인 전용 스킬·기기·다른 레포·하네스·커밋 의식은 개발 전제조건이 아니다.
-작업 후보와 인수 시 주의점은 [개발 시작 안내](docs/DEVELOPMENT.md)와 [알려진 문제](docs/KNOWN_ISSUES.md)를 참고한다.
+작업 후보와 인수 시 주의점은 [개발 시작 안내](docs/development.md)와 [알려진 문제](docs/known-issues.md)를 참고한다.
 
 ## 데이터·보안
 
