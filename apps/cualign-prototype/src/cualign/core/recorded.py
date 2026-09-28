@@ -59,6 +59,25 @@ def check(data: dict) -> None:
         raise ValueError("recording's reasoning must be a list of sentences")
 
 
+def chip(text: str) -> bool:
+    """Whether the sentence is one a chip sends (the sample's prescription, REQUESTS): its step is the chip's."""
+    from cualign.core.samples import SAMPLES
+    return text in REQUESTS.values() or any(text == s.request for s in SAMPLES.values())
+
+
+def replay_step(text: str, sent: str | None, as_sent: bool = False) -> str:
+    """Which recording a turn replays: its step (agent/steps.turn_step, the one rule for a sentence's step; `as_sent`
+    keeps the step sent, as the screen's stepOf does), and for a stages turn the re-plan the sentence asks for — a
+    period (cap) or a comparison (compare)."""
+    from cualign.agent.steps import turn_step
+    step = turn_step(text, sent, as_sent or chip(text))
+    if step == "stages" and re.search(r"개월|기간", text):
+        return "cap"
+    if step == "stages" and re.search(r"비교|둘 ?다", text):
+        return "compare"
+    return step
+
+
 def save(case_id: str, step: str, data: dict) -> Path:
     check(data)
     p = path(case_id, step)

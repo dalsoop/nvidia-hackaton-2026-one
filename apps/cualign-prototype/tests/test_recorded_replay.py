@@ -244,3 +244,19 @@ def test_only_the_097_setup_recording_has_reasoning():
                       for step in recorded.STEPS if (recorded.load(cid, step) or {}).get("reasoning")]
     assert with_reasoning == [("poseidon-000097", "setup")]
     assert len(recorded.load("poseidon-000097", "setup")["reasoning"]) == 10
+
+
+def test_replay_plays_the_step_the_server_ran(client):
+    """A free sentence ran as another step than the screen sent (step-intent: 「목표배열 다시 만들어줘」 with a target on
+    screen went as stages, the server ran target): 건너뛰기 asks for the step the screen sent, and gets the recording of
+    the one the server ran. Once: the next replay asks for itself."""
+    cid = "poseidon-000001"
+    _record(cid, "target", "목표 배열을 만들었습니다. 단계로 나눌까요?", {"extraction": []}, review=None)
+    _record(cid, "setup", "셋업했습니다. 이대로 목표 배열을 만들까요?", {"extraction": []}, review=None)
+    client.post(f"/api/cases/{cid}/activate")
+    api.STORE.turn_steps[cid] = {"screen": "stages", "turn": "target"}
+    body = client.post(f"/api/cases/{cid}/replay", json={"step": "stages"}).json()
+    assert body["step"] == "target" and body["target_id"] in api.STORE.targets and cid not in api.STORE.turn_steps
+    # a replay of another step than the turn's is left as asked
+    api.STORE.turn_steps[cid] = {"screen": "cap", "turn": "cap"}
+    assert client.post(f"/api/cases/{cid}/replay", json={"step": "setup"}).json()["step"] == "setup"

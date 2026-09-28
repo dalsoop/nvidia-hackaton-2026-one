@@ -695,6 +695,11 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         rule engine under the recorded constraints, the answer's stage counts are checked against them, the recorded
         review is attached, and the side effects are the agent turn's (plans stored, case constraints, context line)."""
         from cualign.core import recorded
+        # the screen asks for the recording of the step it sent; when the server ran the turn as another step (a free
+        # sentence's words, step-intent), the recording of that one (Store.turn_steps, set when the turn opened)
+        turn = STORE.turn_steps.pop(case_id, None)
+        if turn and turn["screen"] == recorded.ALIASES.get(req.step, req.step):
+            req = req.model_copy(update={"step": turn["turn"]})
         rec = recorded.load(case_id, req.step)
         if rec is None or samples.get(case_id) is None:
             raise HTTPException(404, recorded.NO_RECORDING)
