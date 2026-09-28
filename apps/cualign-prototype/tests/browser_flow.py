@@ -172,6 +172,9 @@ async def fake_chat(request: Request):
             yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
             return
         if step == "target":
+            # the target tool runs a moment first (target-reveal.js draws the arch and settles the crowns meanwhile)
+            yield nat_step("Start", "propose_target", {"strategy": "extraction"}, "t1"); await asyncio.sleep(2.0)
+            yield nat_step("End", "propose_target", {"strategy": "extraction"}, "t1")
             yield sse("step_done", {"request_id": run.request_id, "step": "target", "target_id": "t-fake",
                                     "summary": {"crowding_mm": 7.9, "space_mm": 15.8, "strategy": "extraction", "extraction": [14, 24], "ipr": []}})
             yield 'data: {"value":"목표 배열을 만들었습니다. 초기와 비교해 보세요."}\n\n'
@@ -380,7 +383,13 @@ async def main():
             assert again[0] == "14, 24" and "목표 배열 만들기" in again[1], again
             # turn 2 (target): step_done{target_id} → GET /targets → the 3D shows the target state (one stage); 초기 ↔ 목표 look back
             await next_chip("목표 배열 만들기").click()
+            # 치열궁을 따라 자리 잡는다 (target-reveal.js): 1 s into the target tool the arch line is drawn and the setup stands
+            # as the ghost; after the landing neither is left
+            await page.locator('.step.tool.running[data-tool="propose_target"]').wait_for(timeout=30000)
+            await page.wait_for_timeout(1000)
+            assert await page.evaluate("[window.__targetReveal.lineShown, window.__targetReveal.ghostShown]") == [True, True]
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.targetId === 't-fake' && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            await page.wait_for_function("!window.__targetReveal.lineShown && !window.__targetReveal.ghostShown", timeout=10000)
             assert await page.evaluate("window.__cualign.state.stage") == 1 and not document_has_plan(await page.evaluate("document.body.className"))
             assert await page.locator("#tabRules").get_attribute("aria-selected") == "true"      # 목표 → 규칙, the target's checks
             assert "단계 계획 전" in await page.locator("#rulesFor").inner_text()
