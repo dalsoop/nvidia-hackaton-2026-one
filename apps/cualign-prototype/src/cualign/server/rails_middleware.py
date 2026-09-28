@@ -64,6 +64,8 @@ logger = logging.getLogger(__name__)
 # fixed closing line removed (tests/test_rail_patterns.py::test_refusal_defers_to_dentist). Wording: lumatic2.
 REFUSAL = ("요청이 cuAlign 의 범위를 벗어납니다. 진단·처방 같은 임상 판단은 의사가 합니다. 이 도구는 얼라이너 단계 계획 초안을 "
            "계산하고 조건별 안을 비교해 드릴 수 있습니다. 최종 판단은 의사가 합니다.")
+# A personal identifier says so: the scope refusal above told the dentist nothing they could fix (#157).
+PII_REFUSAL = "전화번호·주민등록번호·이메일 같은 개인정보가 들어 있어 보내지 않았습니다. 그 부분을 지우고 다시 보내 주세요."
 # The user side of the output check for a review memo, which has no user message of its own.
 MEMO_REQUEST = "이 계획의 검토 메모를 써줘."
 # Worst state wins within a turn: a blocked check is not hidden by a later error, nor an error by a pass.
@@ -277,12 +279,13 @@ def _no_korean(answer: str) -> str | None:
     return NO_ANSWER
 
 
-def _refuse() -> str:
+def _refuse(kind: str = "rails", text: str = REFUSAL) -> str:
     """The rails replace this turn's answer, so the UI must not be offered its plan either."""
     run = CURRENT_RUN.get()
     if run is not None:
         run.refused = True
-    return REFUSAL
+        run.refused_kind = kind
+    return text
 
 
 class RailsMiddleware(FunctionMiddleware):
@@ -314,7 +317,10 @@ class RailsMiddleware(FunctionMiddleware):
         if any(matches(PII, t) for t in request_texts(value)):
             # The text is not logged: it holds the identifier.
             logger.warning("cuAlign rails: personal identifier in the request — refused before any model")
-            return user, _record("input", "blocked"), _refuse()
+            # In the last message, the screen takes that message back out of the chat it resends every turn (#157);
+            # left there, every later turn would carry it and be refused too.
+            kind = "pii" if matches(PII, user) else "pii_context"
+            return user, _record("input", "blocked"), _refuse(kind, PII_REFUSAL)
         if not user:
             logger.error("cuAlign rails: no non-empty user message to check")
             state = "error"

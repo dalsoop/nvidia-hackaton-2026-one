@@ -30,7 +30,7 @@ from cualign.agent import nim_stream_patch, register, reviewer
 from cualign.core import store as store_module
 from cualign.server import api, plan_events, rails_middleware
 from cualign.server.rails import Rails
-from cualign.server.rails_middleware import REFUSAL
+from cualign.server.rails_middleware import PII_REFUSAL, REFUSAL
 from cualign.server.worker import CuAlignWorker
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,6 +158,7 @@ def test_blocked_input_never_enters_planning(store, tmp_path, monkeypatch):
         body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
     assert "plan_selected" not in body and not store.plans
     assert sse_event(body, "plan_context")["rails"] == "blocked"
+    assert sse_event(body, "turn_refused")["kind"] == "rails"   # the screen keeps a scope refusal's message (#157)
 
 
 def test_rails_config_error_stops_boot(store, tmp_path, monkeypatch):
@@ -335,7 +336,8 @@ def test_pii_blocked_before_model(store, tmp_path, monkeypatch):
     with FakeLLM() as llm, RailLLM() as rail_llm:
         with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE}], cualign={"case_id": "moderate"})
-            assert REFUSAL in body and MARK not in body
+            assert PII_REFUSAL in body and MARK not in body
+            assert sse_event(body, "turn_refused")["kind"] == "pii"   # the screen takes this message back (#157)
             assert "0000-0000" not in body  # nothing of the refused request comes back, not even as a progress step
             assert rail_llm.requests == [] and llm.requests == []
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE.split(" 보호자")[0]}],
@@ -354,7 +356,9 @@ def test_pii_in_history_and_case_id(store, tmp_path, monkeypatch):
                                                {"role": "user", "content": "계획 짜줘"}], cualign={"case_id": "moderate"})
         folder = ask(client, "/chat/stream", [{"role": "user", "content": "계획 짜줘"}], cualign={"case_id": str(case)})
     for body in (history, folder):  # ask() already checked each is a 200, not the 400 of an unknown case
-        assert REFUSAL in body and MARK not in body
+        assert PII_REFUSAL in body and MARK not in body
+        # not in the last message: taking that one back would not help, so the screen keeps it (#157)
+        assert sse_event(body, "turn_refused")["kind"] == "pii_context"
     assert FakeRails.last.inputs == [] and llm.requests == []
 
 

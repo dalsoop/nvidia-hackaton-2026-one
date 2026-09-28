@@ -2050,12 +2050,14 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   let skipRow = null;
   const skipTimer = sample ? setTimeout(() => { if (state.requestId === requestId) skipRow = addSkipRow(bubble, requestId); }, 8000) : null;
   $("retryFallback").hidden = sample; $("skipBtn").hidden = !sample;
-  let answer = "", selected = null, streamError = false, overload = null, stepDone = null;
+  let answer = "", selected = null, streamError = false, overload = null, stepDone = null, refusedPii = false;
   const handle = ({type, data: obj}) => {
     if (type === "plan_selected") {
       if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
     } else if (type === "step_done") {
       if (!obj.request_id || obj.request_id === state.requestId) stepDone = obj;   // setup: constraints · target: target_id + summary · stages: nothing more
+    } else if (type === "turn_refused") {
+      if (obj.request_id === state.requestId && obj.kind === "pii") refusedPii = true;
     } else if (type === "plan_context") {
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
@@ -2082,6 +2084,17 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       if (done) break;
     }
     if (state.requestId !== requestId || state.meshCase !== caseId) return;
+    if (refusedPii) {
+      // The server refused a personal identifier in this message (#157). It checks every message of the chat this
+      // screen resends each turn, so the message leaves the chat (and goes back to the box to be edited), or every
+      // later turn would be refused too. The refusal is shown but not kept in the chat either.
+      const i = state.messages.findLastIndex((m) => m.role === "user" && m.content === text);
+      if (i >= 0) state.messages.splice(i, 1);
+      $("chatInput").value = text; autosize();
+      $("planNotice").textContent = "";
+      addNextChips(bubble);
+      return;
+    }
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
     if (stepDone && !streamError) await landStep(stepDone);
