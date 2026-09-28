@@ -3,6 +3,7 @@ import { THREE, CSS2DRenderer, CSS2DObject, threeError } from "./three-load.js";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { createManual } from "./manual.js";
 import { createScanFx } from "./scan-reveal.js";
+import { createValidateSweep } from "./validate-sweep.js";
 
 const $ = (id) => document.getElementById(id);
 // 직접 이동 (manual.js): created once the screen's functions exist (end of file); until then nothing is being edited
@@ -64,6 +65,9 @@ const state = {
   numLabels: [],         // CSS2DObject tooth numbers shown during the input check
   planRows: {},          // plan_id -> /api/plans row of the case on screen (the decision bar names plans by these)
   planRowsCase: null,
+  reviewSeen: {},        // plan id → the review status its card last showed (running → passed/failed lights the card)
+  reviewLand: {},        // plan id → { ok, t }: a review this screen watched land; its badge keeps the check / X
+  reviewPending: new Set(),   // plans whose review ran in this turn before their card existed
   newPlans: 0,           // plans added by the last refreshPlans: more than one means the turn compared strategies
   oldPlans: new Set(),   // plans that already existed when the case was opened: folded as 지난 계획 (#105, #111)
   tab: "stages",         // the open sidebar tab: stages | rules | cond (#111)
@@ -166,6 +170,8 @@ const scanFx = createScanFx({ THREE, CSS2DObject, group, state, fdi, notice: $("
 // the 스캔 tab's chart subscribes to scan-reveal ② (the prescription on the 3D): every applyPrescription marks it too
 const applyPrescription3d = scanFx.applyPrescription;
 scanFx.applyPrescription = (rx) => { applyPrescription3d(rx); markScanRx(rx); };
+// the crowns swept while the rule check runs, its violations left red (validate-sweep.js)
+const sweepFx = createValidateSweep({ state });
 const raycaster = new THREE.Raycaster();
 
 function resize() {
@@ -183,7 +189,7 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
 (function loop() {
-  controls.update(); scanFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  controls.update(); scanFx.tick(); sweepFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
   requestAnimationFrame(loop);
 })();
 
@@ -332,6 +338,7 @@ function fixGumBaseNormals(geo) {
   geo.attributes.normal.needsUpdate = true;
 }
 function buildTeeth(mesh) {
+  sweepFx.clear();
   group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels(); scanFx.cancel();
   state.violLabels = []; state.selected.clear(); state.ruleMarked.clear(); renderSelection();
   for (const [id, t] of Object.entries(mesh.teeth)) {
@@ -532,7 +539,7 @@ function renderSetupMarks() {
     }
   }
 }
-$("flow").addEventListener("click", (e) => { const s = e.target.closest("button:not([disabled])")?.dataset.step; if (s && state.meshCase) setStep(s); });
+$("flow").addEventListener("click", (e) => { const s = e.target.closest("button:not([disabled])")?.dataset.step; if (s && state.meshCase) { if (s !== state.step) sweepFx.clear(); setStep(s); } });
 
 // ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
 function clearLabels() { for (const l of state.labels) l.parent?.remove(l); state.labels = []; }
@@ -571,6 +578,7 @@ function violationsAt(k) {
 }
 
 function applyStage(k) {
+  if (state.stageTouched) sweepFx.clear();   // the dentist moved the stage: the rule check's red goes
   state.stage = k;
   const plan = viewPlan();
   const st = k > 0 ? (plan?.stages?.[k - 1] ?? {}) : {};
@@ -1026,6 +1034,7 @@ async function reviewCurrent() {
     }
   } catch (e) {
     addMsg("error", "검토 요청 실패: " + e.message);
+    if (row) row.review = state.plan?.plan_id === p.plan_id ? state.plan.review : row.review;   // not left 검토 중
     if (state.plan?.plan_id === p.plan_id) renderResult(state.plan);
   }
   finally { state.loading = false; updateActions(); }
@@ -1746,6 +1755,31 @@ function planPill(row) {
   const review = state.skippedPlans.has(row.plan_id) ? "건너뜀" : REVIEW_SHORT[row.review?.status] ?? "검토 전";   // rules and review in one line (#14)
   return viol ? [`위반 ${viol}건 · ${review}`, "fail"] : [`규칙 통과 · ${review}`, "pass"];
 }
+// The review badge on a card: a pulse dot while the review runs. When a review this screen watched lands (the card was
+// 검토 중, or the turn's reviewer / the server reviewed a new plan: state.reviewPending), the dot settles as a check or an
+// X, the badge turns red on a failure (review failed, or every allowed plan broke a rule), and the card's frame lights
+// once for 300 ms — the flash is timed from the first render the dentist can see, so a re-render continues it.
+const FLASH_MS = 300;
+const planViolations = (row) => (typeof row.violations === "number" ? row.violations : (row.violations ?? []).length);
+function reviewBadge(row, pl) {
+  const id = row.plan_id, status = state.skippedPlans.has(id) ? "skipped" : row.review?.status, landed = ["passed", "failed"].includes(status);
+  if (landed && (state.reviewSeen[id] === "running" || state.reviewPending.has(id))) state.reviewLand[id] = { ok: status === "passed" && !planViolations(row), t: null };
+  if (!landed) delete state.reviewLand[id];
+  state.reviewSeen[id] = status;
+  state.reviewPending.delete(id);
+  if (status === "running") { pl.prepend(Object.assign(document.createElement("i"), { className: "pulse-dot" })); return null; }
+  const land = state.reviewLand[id];
+  if (!land || row.approval || row.approved || row.input_stale) return null;
+  pl.prepend(Object.assign(document.createElement("i"), { className: "pulse-dot " + (land.ok ? "ok" : "fail") }));
+  if (!land.ok) { pl.classList.remove("pass", "ok"); pl.classList.add("fail"); }
+  if (!$("plans").hidden) land.t ??= performance.now();
+  const age = land.t == null ? 0 : performance.now() - land.t;
+  return age < FLASH_MS ? { ok: land.ok, age } : null;
+}
+function flashCard(el, flash) {
+  if (flash) { el.classList.add(flash.ok ? "flash-ok" : "flash-fail"); el.style.animationDelay = `-${Math.round(flash.age)}ms`; }
+  return el;
+}
 // The plan cards on the panel top (#111): one row per plan, the plan on screen marked 보는 중, the rest with 보기.
 // Plans that existed before the case was opened sit folded under 지난 계획 (#105).
 function renderPlanList() {
@@ -1765,6 +1799,7 @@ function renderPlanList() {
     div.querySelector(".n").textContent = `계획 ${n}`;
     div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual && row.strategy !== "manual" ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
+    const flash = reviewBadge(row, pl);
     // the other strategies one 다시 계산 tried sit folded in its chosen plan's card: alternatives of one request,
     // not a time line like 지난 계획 (the server keeps every plan, so their ids and numbers stay)
     const alts = tries.get(row.plan_id) ?? [];
@@ -1779,9 +1814,9 @@ function renderPlanList() {
       // reaches the rows in the fold
       const group = document.createElement("div"); group.className = "plan-group" + (row.plan_id === cur ? " current" : "");
       group.append(div, d);
-      return group;
+      return flashCard(group, flash);
     }
-    return div;
+    return flashCard(div, flash);
   };
   // a rule plan's run (rule_run): the plan it chose leads, the others it tried go under that card
   const tries = new Map(), folded = new Set();
@@ -1808,6 +1843,7 @@ async function loadPlan(planId) {
     if (version !== state.selectionVersion || caseId !== state.meshCase) return;
     if (plan.case_id !== caseId) throw new Error("선택 케이스와 계획이 다릅니다.");
     stopPlay();
+    if (sweepFx.planId && sweepFx.planId !== planId) sweepFx.clear();   // another plan: the rule check's red was another plan's
     state.plan = plan;
     if (cut && cut.plan_id === planId) setCut(cut, "plan:" + planId);
     fillConstraints(plan.constraints);
@@ -2147,7 +2183,7 @@ function addMsg(role, text = "") {
 function newTrace(before = null) {
   const box = document.createElement("div");
   box.className = "trace";
-  box.innerHTML = '<div class="head"><span class="dot">\u25CF</span><span class="text"></span></div><div class="rows"></div>'
+  box.innerHTML = '<div class="head"><span class="pulse-dot"></span><span class="text"></span></div><div class="rows"></div>'
     + '<details class="raw" hidden><summary>자세히</summary><div class="log"></div></details>';
   before ? before.before(box) : $("transcript").appendChild(box);
   return { box, el: box.querySelector(".rows"), log: box.querySelector(".log"), rows: new Map() };
@@ -2205,19 +2241,47 @@ const RUN_KO = { "케이스 읽기": "케이스를 읽는 중", "케이스 목�
   "계획 읽기": "계획을 읽는 중", "임상 규칙 읽기": "임상 규칙을 읽는 중", "검토": "계획을 검토하는 중", "모델 추론": "생각하는 중" };
 function traceSummary(trace) {
   const rows = [...trace.el.querySelectorAll(":scope > .step")];
-  const running = rows.find((r) => r.classList.contains("running"));
+  const running = rows.findLast((r) => r.classList.contains("running"));
   trace.box.classList.toggle("running", !!running);
+  const recorded = trace.box.classList.contains("recorded");
+  if (trace === state.trace || recorded) setWorkPhrase(running?.dataset.tool);
+  if (recorded) return;   // a replay keeps its 「녹화된 답」 line; the dot still breathes while its rows play
   const names = [...new Set(rows.map((r) => r.querySelector(".name").textContent))].filter((n) => n !== "모델 추론");
   trace.box.querySelector(".text").textContent = running
     ? (RUN_KO[running.querySelector(".name").textContent] ?? running.querySelector(".name").textContent + " 중") + "…"
     : (names.length ? `도구 ${rows.length}회 · ` + names.join(" → ") : `모델 응답 ${rows.length}회`);
 }
 // While a turn runs a chip at the bottom of the 3D says the agent is at work; the 3D keeps its brightness and controls.
-// `text` replaces the chip's words for this turn (the setup turn's reasoning: 처방 읽는 중); off or no text, the default.
+// Its pulse dot and its words follow the running tool (by name, else the turn's step); between tools (a model call, a
+// 429 wait) the plain sentence; the setup turn's reasoning says 처방 읽는 중. At the end the dot settles: a check held
+// 0.6 s before the chip fades, or an X as the failure card shows in the transcript.
+// setWorkNote(true, text): on, pulsing, with `text` (the default without); again while on, only the words change.
+// setWorkNote(false): the dot settles as a check, the chip fades 0.6 s later. workNoteFailed(): an X, gone at once.
 const WORK_NOTE = "에이전트가 작업 중입니다";
+const WORK_KO = { set_constraints: "처방 읽는 중", propose_target: "목표 배열 계산 중", plan_stages: "단계 나누는 중",
+  compare_strategies: "단계 나누는 중", validate: "규칙 검증 중", reviewer: "검토 요청 중" };
+const WORK_STEP_KO = { setup: "처방 읽는 중", target: "목표 배열 계산 중", stages: "단계 나누는 중", cap: "단계 나누는 중", compare: "단계 나누는 중" };
 function setWorkNote(on, text = null) {
-  $("workNote").classList.toggle("on", on);
-  $("workNote").querySelector("span").textContent = (on && text) || WORK_NOTE;
+  const note = $("workNote"), dot = note.querySelector(".pulse-dot");
+  if (on) {
+    if (note.dataset.state !== "run") { clearTimeout(note.fade); note.dataset.state = "run"; dot.className = "pulse-dot"; note.classList.add("on"); }
+    note.querySelector("span").textContent = text || WORK_NOTE;
+    return;
+  }
+  if (note.dataset.state !== "run") return;   // settled already (a failed turn's X), or never on
+  note.dataset.state = "ok"; dot.className = "pulse-dot ok";
+  note.fade = setTimeout(() => note.classList.remove("on"), 600);
+}
+function workNoteFailed() {
+  const note = $("workNote");
+  if (note.dataset.state !== "run") return;
+  clearTimeout(note.fade);
+  note.dataset.state = "fail"; note.querySelector(".pulse-dot").className = "pulse-dot fail";
+  note.classList.remove("on");
+}
+function setWorkPhrase(tool) {
+  if ($("workNote").dataset.state !== "run") return;
+  setWorkNote(true, tool ? (WORK_KO[tool] ?? WORK_STEP_KO[state.turnStep]) : null);
 }
 // The planner's reasoning while the answer is held (reasoning events, rails_middleware.ReasoningRelay): one line shows
 // the latest sentences, the earlier ones go under 자세히. Once the answer arrives the line folds to a count.
@@ -2283,9 +2347,20 @@ function outSummary(name, output) {
   return (output ?? "").replace(/\s+/g, " ").slice(0, 110);
 }
 
-function addStep(name, payload, cls = "", trace = state.trace, id = null) {
+// A tool row (not a model or rule-plan row) shows a pulse dot and its seconds counting in tenths while it runs; its end
+// settles the dot as a check with 「완료 · 3.2s」. `quiet`: no reasoning line (a replay adds its own, in its order).
+const toolName = (label) => (label ?? "").replace(/^Function (Start|End): /, "").replace(/^cualign__/, "");
+const stepSecs = (row) => ((performance.now() - row.t0) / 1000).toFixed(1) + "s";
+let stepClock = null;
+function tickSteps() {
+  const rows = document.querySelectorAll("#transcript .step.tool.running");
+  for (const r of rows) r.querySelector(".time").textContent = stepSecs(r);
+  if (!rows.length) { clearInterval(stepClock); stepClock = null; }
+}
+function addStep(name, payload, cls = "", trace = state.trace, id = null, { quiet = false } = {}) {
   if (!trace) trace = state.trace = newTrace();
   const isLlm = /llm|thought|reason|nim_/i.test(name ?? "") || cls === "llm";
+  const isTool = !isLlm && !cls;
   const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 1);
   const { input, output } = isLlm || cls ? { input: "", output: text } : splitPayload(text);
   const label = (name ?? "step").replace(/^Function (Start|End): /, "");
@@ -2293,8 +2368,10 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
   if (!row) {
     fresh = true;
     row = document.createElement("div");
-    row.className = `step ${isLlm ? "llm" : cls}`;
-    row.innerHTML = `<span class="dot"></span><span class="name"></span><span class="arrow">→</span><span class="out"></span>`;
+    row.className = `step ${isLlm ? "llm" : cls || "tool"}`;
+    row.innerHTML = (isTool ? `<span class="pulse-dot"></span>` : `<span class="dot"></span>`)
+      + `<span class="name"></span><span class="arrow">→</span><span class="out"></span>` + (isTool ? `<span class="time"></span>` : "");
+    if (isTool) row.dataset.tool = toolName(label);
     row.t0 = performance.now();
     row.raw = document.createElement("pre");
     keepBottom(() => trace.el.appendChild(row));
@@ -2302,15 +2379,55 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
     if (id) trace.rows.set(id, row);
   }
   row.querySelector(".name").textContent = isLlm ? "모델 추론" : toolKo(label);
-  const done = !!output;
-  row.querySelector(".arrow").style.visibility = done && !isLlm ? "visible" : "hidden";
-  row.querySelector(".out").textContent = done ? (isLlm ? "" : outSummary(label, output)) : "";
+  const done = !!output, wasRunning = row.classList.contains("running");
+  // the server's tool end says only 완료 (worker.py): the seconds say it, not a second 「→ 완료」
+  const out = done && !isLlm && output !== "완료" ? outSummary(label, output) : "";
+  row.querySelector(".arrow").style.visibility = out ? "visible" : "hidden";
+  row.querySelector(".out").textContent = out;
   row.classList.toggle("running", !done);
+  if (isTool) {
+    row.querySelector(".pulse-dot").className = "pulse-dot" + (done ? " ok" : "");
+    row.querySelector(".time").textContent = !done ? stepSecs(row) : wasRunning ? "완료 · " + stepSecs(row) : "완료";
+    if (!done) stepClock ??= setInterval(tickSteps, 100);
+  }
   // 자세히: the raw event, the arguments as the model chose them and the time the call took
   row.raw.textContent = (isLlm ? `모델 추론 (${label})` : toolKo(label)) + (input ? ` (${argsSummary(input)})` : "")
     + (done ? ` · ${((performance.now() - row.t0) / 1000).toFixed(1)}초` : "") + "\n" + (text ?? "");
   traceSummary(trace);
-  if (fresh && !isLlm && !cls) addReasons([reasonForTool(label, input)].filter(Boolean), trace);
+  if (fresh && isTool && !quiet) addReasons([reasonForTool(label, input)].filter(Boolean), trace);
+  if (isTool && (fresh || wasRunning)) toolMoment(row.dataset.tool, tryJson(input) ?? {}, !done ? "start" : "end");
+}
+// a turn that failed: its tool rows still running settle as an X with the server's sentence (nothing when it gave none)
+function failRows(trace, reason = "") {
+  for (const row of trace?.el.querySelectorAll(":scope > .step.tool.running") ?? []) {
+    row.classList.remove("running"); row.classList.add("failed");
+    row.querySelector(".pulse-dot").className = "pulse-dot fail";
+    row.querySelector(".time").textContent = "실패" + (reason ? " · " + reason : "");
+    row.querySelector(".time").title = reason;
+  }
+  if (trace) traceSummary(trace);
+  if (sweepFx.running) sweepFx.end(null);
+}
+// The one hook the tool events drive besides the row: the rule check sweeps the 3D and lands its violations (their
+// plan read back, since the tool's end carries no result), and the reviewer's plan card shows 검토 중 → its result.
+async function toolMoment(tool, input, phase) {
+  const planId = input.plan_id ?? null;
+  if (tool === "validate") {
+    if (phase === "start") return sweepFx.start();
+    let plan = planId && state.plan?.plan_id === planId ? state.plan : null;
+    if (!plan && planId) plan = await api("/api/plans/" + encodeURIComponent(planId)).catch(() => null);
+    sweepFx.end(plan ? plan.violations ?? [] : null, planId);
+  } else if (tool === "reviewer" && planId) {
+    const row = state.planRows[planId];
+    if (phase === "start") {
+      if (row) { row.review = { ...(row.review ?? {}), status: "running" }; renderPlanList(); }
+      else state.reviewPending.add(planId);   // a plan of this turn: its card comes with plan_selected
+      return;
+    }
+    if (!row) return;
+    const plan = await api("/api/plans/" + encodeURIComponent(planId)).catch(() => null);
+    if (plan && state.planRows[planId]) { state.planRows[planId].review = plan.review; renderPlanList(); }
+  }
 }
 
 // The agent's question card (#90): the question and two or three choices. A choice with a message is sent as the
@@ -2456,6 +2573,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
       streamError = true; addStep("error", obj, "fallback");
+      failRows(state.trace, obj.message ?? "");
       // the server's own sentence, worth a 다시 보내기: NIM overload, or a final answer with no Korean in it (no_answer)
       if ((obj.kind === "nim_overload" || obj.kind === "no_answer" || obj.kind === "nim_auth") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
       if (overload && overload.kind !== "no_answer") showSkip();   // 429 / 401·403: no reason to wait the stream out
@@ -2503,6 +2621,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       if (stepDone.step === "target") addReasons(reasonsForTarget(stepDone.summary));
     }
     if (selected && !streamError) {
+      if (selected.reviewed_by_server) state.reviewPending.add(selected.plan_id);   // reviewed after the stream: its card lands the result
       await refreshPlans(selected.plan_id);
       setStep("stages"); showPlanEnd();
       if (state.plan?.plan_id === selected.plan_id) addReasons(reasonsForPlan(state.plan));
@@ -2522,6 +2641,8 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   } catch (e) {
     if (state.skippedTurn === requestId) { await replayOrAdopt(bubble, caseId, prevPlanId); return; }   // 건너뛰기 stopped the stream
     if (answer) setAnswer(bubble, answer); else bubble.remove();
+    failRows(state.trace, overload?.message ?? "");
+    workNoteFailed();   // the chip's X goes as the failure card below shows
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 · 현재 3D는 이전 계획입니다." : "";
     if (turnStep === "stages" && !Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
     // the way out the bar really offers: a sample has 건너뛰기 (the recorded answer), a patient has 에이전트 없이 계산
@@ -2533,6 +2654,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
     skipTimers.forEach(clearTimeout); clearInterval(skipRow.tick); skipRow.remove(); scanFx.release(); foldThinking();
+    if (sweepFx.running) sweepFx.end(null);   // a turn cut while the rule check ran
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
 }
@@ -2590,6 +2712,20 @@ function skipTurn(requestId) {
 // the turn's kind for the recorded answers (#20): the step it asks for, or a time cap / a strategy comparison on the stages
 const stepOf = (text, step) => step === "stages" && /개월|기간/.test(text) ? "cap" : step === "stages" && /비교|둘 ?다/.test(text) ? "compare" : step;
 const REPLAY_REASONING_MS = 1200;   // one recorded reasoning event per 1.2 s, about a live turn's pace (one a second or slower)
+// A recording lands at once; its tool rows are told one after another, each 도는 중 for 0.4 s and then 완료, so a replayed
+// turn keeps a live turn's rhythm — and the chip, the rule-check sweep and the review badge follow the rows as they
+// would. Each row's reasoning line shows as it starts.
+const REPLAY_GAP = 400;
+async function playTools(trace, tools) {
+  for (const { name, input = {}, reasons = [] } of tools) {
+    const id = "replay-" + crypto.randomUUID(), args = "**Input:**\n```json\n" + JSON.stringify(input) + "\n```";
+    addStep("cualign__" + name, args, "", trace, id, { quiet: true });
+    addReasons(reasons, trace);
+    await new Promise((r) => setTimeout(r, REPLAY_GAP));
+    if (!trace.box.isConnected) return;
+    addStep("cualign__" + name, args + "\n\n**Output:**\n완료", "", trace, id, { quiet: true });
+  }
+}
 // 건너뛰기 plays the recorded answer for this step (contract 12-replay.md); with none recorded (404) the rule plan on
 // screen is adopted. The recorded answer sits where the agent's would, marked grey with its date.
 async function replayOrAdopt(bubble, caseId, prevPlanId) {
@@ -2597,6 +2733,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
   // a recorded answer makes its own targets; a hand-edited target is staged as it is instead
   if (isManualTarget() && state.progress === "target" && !["setup", "target"].includes(state.turnStep)) { bubble.remove(); return stageManualTarget(); }
   if (state.turnStep === "setup") scanFx.startNumbers(caseId);   // a no-op when the cut turn already started it
+  if (sweepFx.running) sweepFx.end(null);   // the cut turn's rule check
   let trace = null;
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -2632,20 +2769,29 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
       // the recording lands at once: its reasoning and the prescription wait for the scan numbers, then go on together
       await scanFx.numbersDone();
       if (state.meshCase !== caseId) return;
-      addReasons([reasonForTool("set_constraints"), ...reasonsForSetup(rec)], trace);
+      await playTools(trace, [{ name: "set_constraints", input: rec.constraints, reasons: [reasonForTool("set_constraints")] }]);
+      if (state.meshCase !== caseId) return;
+      addReasons(reasonsForSetup(rec), trace);
       scanFx.applyPrescription(rec.constraints);
       await landStep({ step: "setup", constraints: rec.constraints });
     } else if (rec.target_id) {
       await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
-      addReasons([reasonForTool("propose_target", JSON.stringify({ strategy: rec.summary?.strategy })), ...reasonsForTarget(rec.summary)], trace);
+      const strategy = { strategy: rec.summary?.strategy };
+      await playTools(trace, [{ name: "propose_target", input: strategy, reasons: [reasonForTool("propose_target", JSON.stringify(strategy))] }]);
+      if (state.meshCase !== caseId) return;
+      addReasons(reasonsForTarget(rec.summary), trace);
     }
     const sel = rec.plan_selected;   // null on a compare of an extraction case (the answer only asks back): the bubble alone, cards and 3D stay
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
       setStep("stages"); showPlanEnd();
-      addReasons([reasonForTool(rec.step === "compare" ? "compare_strategies" : "plan_stages"), reasonForTool("select_plan"),
-        reasonForTool("reviewer"), ...(state.plan?.plan_id === sel.plan_id ? reasonsForPlan(state.plan) : [])], trace);
+      // the server recomputed the plans now (compare → stages · check), then the recorded pick and its recorded review
+      const made = rec.step === "compare" ? "compare_strategies" : "plan_stages", pick = { plan_id: sel.plan_id };
+      await playTools(trace, [{ name: made, reasons: [reasonForTool(made)] }, { name: "validate", input: pick },
+        { name: "select_plan", input: pick, reasons: [reasonForTool("select_plan")] }, { name: "reviewer", input: pick, reasons: [reasonForTool("reviewer")] }]);
+      if (state.meshCase !== caseId) return;
+      addReasons(state.plan?.plan_id === sel.plan_id ? reasonsForPlan(state.plan) : [], trace);
       addDecision(prevPlanId, sel.plan_id);
       if (state.plan?.plan_id === sel.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
     }
@@ -2696,6 +2842,7 @@ async function runFallback({ fromCond = false } = {}) {
     }
     if (!res.chosen) { addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다."); if (selected) { renderRulesPane(state.plan); showTab("rules"); } }
   } catch (e) {
+    workNoteFailed();
     addMsg("error", "계산 실패: " + e.message);
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 이전 결과를 유지합니다." : "";
     if (!Object.keys(state.planRows).length) { state.planError = e.message; renderPlanFail(); }
@@ -2721,6 +2868,7 @@ async function stageManualTarget() {
     addNextChips($("transcript").lastElementChild);
   } catch (e) {
     $("planNotice").textContent = "";
+    workNoteFailed();
     addMsg("error", "단계를 만들지 못했습니다: " + e.message);
   } finally { setStreaming(false); updateActions(); }
 }
@@ -3311,4 +3459,4 @@ manualEdit = createManual({ THREE, scene, camera, canvas, state, $, fdi, api, ap
   } else { history.replaceState(null, "", "#start"); renderRail(); }   // the rail lights 「환자」 on the very first paint too
   } finally { document.documentElement.classList.remove("booting"); }   // the address's screen is on: show it (#15)
 })();
-window.__cualign = { renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView, cutKeyNow, readConstraints };   // test hook (scratch browser checks)
+window.__cualign = { sweepFx, renderMd, reviewQuestions, addReviewQuestions, loadPlan, state, camera, controls, setView, cutKeyNow, readConstraints };   // test hook (scratch browser checks)
