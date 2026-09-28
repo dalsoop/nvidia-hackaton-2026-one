@@ -1,7 +1,7 @@
 // 「치열궁을 따라 자리 잡는다」 (시연 연출): while the target tool (propose_target) runs, the target arch is drawn and the
 // crowns settle onto it one by one, so the 셋업 → 목표 turn is seen being made instead of the target simply appearing.
 //   ① the arch line (0.6 s): a thin green line from between the central incisors out to both ends, the agent's cursor
-//      (the IPR tool cursor of scan-reveal.js) at its tip, 1 mm above the gum. It goes 2 s after the landing.
+//      (the reticle of scan-reveal.js — the saw disc is the IPR cut's only) at its tip, 1 mm above the gum. It goes 2 s after the landing.
 //   ② the settling: the cursor touches the crowns, the most moved first (in an extraction case the extraction's
 //      neighbours first), and each glides from where it stood to its target in 0.35 s (two or three overlap; the round
 //      is 6 s). The setup positions stay as the pale ghost until the last crown is there.
@@ -18,7 +18,7 @@
 //     "target"), and writes the crowns, the ghost and the chip over what applyStage wrote from scene.onBeforeRender —
 //     after the app's own tick, before the frame is drawn.
 //   - prefers-reduced-motion or ?nofx=1: nothing runs; the target lands at once, as before.
-import { CURSOR_SVG } from "./scan-reveal.js";
+import { makeCursor } from "./scan-reveal.js";
 
 const OFF = new URLSearchParams(location.search).has("nofx");
 const LINE = 0.6, SLIDE = 0.35, ROUND = 6, LAND = 0.4, LINE_HOLD = 2, LINE_FADE = 0.3, IDLE_OFF = 1.5;   // s
@@ -148,9 +148,8 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     run.order = order; run.gap = gap; run.lineGuess = !res;
     buildLine(to);
     run.ghostWas = showGhost();
-    const o = new CSS2DObject(document.createElement("div"));
-    o.element.className = "ipr-tool"; o.element.innerHTML = `<i>${CURSOR_SVG}</i>`;
-    group.add(o); run.cursor = o;
+    run.cursor = makeCursor({ THREE, CSS2DObject, kind: "reticle" }); run.touched = -1;
+    group.add(run.cursor.obj);
   }
   // a live round cut by 건너뛰기: the replay that follows goes on from where the crowns are, to the landed target
   function becomeReplay() {
@@ -170,7 +169,7 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     const r = run, to = resultPoses(result());
     for (const id of r.ids) r.st[id] = { from: poseAt(r.st[id], t), to: to[id], t, dur: LAND };
     r.land = { t0: t };
-    r.cursor?.parent?.remove(r.cursor);
+    r.cursor?.remove();
     if (r.lineGuess) { buildLine(to); r.lineGuess = false; }
     drawLine(1);
   }
@@ -182,7 +181,7 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
   // the run is over: its cursor, its ghost and its chip go (the crowns stay as last written)
   function end() {
     const r = run;
-    r.cursor?.parent?.remove(r.cursor);
+    r.cursor?.remove();
     restoreGhost();
     run = null;
     if (r.chip !== null && !state.streaming && !stageGrowing()) setWorkNote(false);
@@ -203,11 +202,11 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     run.chip = text;
   }
   function cursorAt(t) {
-    const r = run, o = r.cursor;
+    const r = run, c = r.cursor, o = c.obj;
     const on = (id) => state.center[id].clone().add(poseAt(r.st[id], t).p).setZ(state.center[id].z + 4);
     const u = (t - r.t0) / LINE;
-    if (u < 1) { o.position.copy(lineTip(u)); o.element.style.opacity = String(Math.min(1, u * 4)); return; }
-    o.element.style.opacity = "1";
+    if (u < 1) { o.position.copy(lineTip(u)); c.opacity = Math.min(1, u * 4); return; }
+    c.opacity = 1;
     if (t >= r.t0 + ROUND) {   // the round is done, the result not yet: circling in front of the incisors
       o.position.copy(line.mid).add(new THREE.Vector3(Math.cos(t * 1.2) * 2, 6 + Math.sin(t * 1.2) * 2, 4));
       return;
@@ -217,6 +216,7 @@ export function createTargetReveal({ THREE, CSS2DObject, scene, group, ghost, st
     const v = next ? (t - r.st[next].t + fly) / fly : 0;
     if (next && v > 0) o.position.lerpVectors(here, on(next), ease(v));
     else o.position.copy(here);
+    if (k >= 0 && r.touched !== k) { r.touched = k; c.touch(); }   // on the crown: the ring swells once
   }
 
   function tick() {

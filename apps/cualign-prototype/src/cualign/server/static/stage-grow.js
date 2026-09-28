@@ -1,5 +1,5 @@
 // 「단계가 자라난다」 (시연 연출): while the stage tool (plan_stages) runs, the target arrangement lies as a white ghost,
-// the agent's cursor (the IPR tool cursor of scan-reveal.js) touches the crowns in their order of movement and each one
+// the agent's cursor (the reticle of scan-reveal.js — the saw disc is the IPR cut's only) touches the crowns in their order of movement and each one
 // slides one step toward its ghost; once the plan is on screen the stage table fills row by row in the same rhythm, and
 // the whole lands at the plan's last stage, the treatment done (the crowns glide there in 0.6 s, the ghost lifts, the
 // slider at its end, ▶ blinks with 「▶ 처음부터 재생」 by the slider).
@@ -13,7 +13,7 @@
 //     filled. Only a rule check (validate) of the same turn lands it early, so its sweep never overlaps the round; a
 //     replay lands before its tool rows play. A turn with no plan puts it all back.
 //   - prefers-reduced-motion or ?nofx=1: nothing runs; the replay keeps its old landing (the last stage).
-import { CURSOR_SVG } from "./scan-reveal.js";
+import { makeCursor } from "./scan-reveal.js";
 
 const OFF = new URLSearchParams(location.search).has("nofx");
 const PER = 0.5, GATHER = 0.4, LAND = 0.6, MIN_FILL = 1.2, STEP_MM = 0.25;   // s, mm
@@ -61,9 +61,8 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
       r.ghostWas.kids.push([g, g.position.clone(), g.rotation.z, g.visible]);
       g.position.copy(r.to[id].p); g.rotation.set(0, 0, r.to[id].r); g.visible = ids.includes(id);
     });
-    const o = new CSS2DObject(document.createElement("div"));
-    o.element.className = "ipr-tool"; o.element.innerHTML = `<i>${CURSOR_SVG}</i>`; o.element.style.opacity = "0";
-    group.add(o); r.cursor = o;
+    r.cursor = makeCursor({ THREE, CSS2DObject, kind: "reticle" }); r.cursor.opacity = 0; r.touched = -1;
+    group.add(r.cursor.obj);
     run = r;
     note();
     return true;
@@ -122,9 +121,11 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
       const at = state.center[id].clone().add(m.position).setZ(state.center[id].z + m.position.z + 4);
       const u = (t - r.t0 - GATHER - i * PER) / (PER * 0.3);
       if (t >= roundEnd()) at.add(new THREE.Vector3(Math.cos(t * 1.6) * 1.2, Math.sin(t * 1.6) * 1.2, 0));
-      if (i > 0 && u < 1) { const pid = r.order[i - 1]; r.cursor.position.lerpVectors(state.center[pid].clone().add(state.teeth[pid].position).setZ(at.z), at, ease(u)); }
-      else r.cursor.position.copy(at);
-      r.cursor.element.style.opacity = String(Math.min(1, Math.max(0, (t - r.t0 - GATHER * 0.5) / 0.3)));
+      const o = r.cursor.obj;
+      if (i > 0 && u < 1) { const pid = r.order[i - 1]; o.position.lerpVectors(state.center[pid].clone().add(state.teeth[pid].position).setZ(at.z), at, ease(u)); }
+      else o.position.copy(at);
+      if (u >= 1 && touched >= 0 && r.touched !== i) { r.touched = i; r.cursor.touch(); }   // on the crown: the ring swells once
+      r.cursor.opacity = Math.min(1, Math.max(0, (t - r.t0 - GATHER * 0.5) / 0.3));
     }
     // the table: rows appear top to bottom (the phase rule with them), the chip counts the stages
     if (r.fill) {
@@ -137,7 +138,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
     if (!run || run.land) return;
     if (!run.fill) beginFill(t);
     for (const el of run.fill.rows) showRow(el, true);
-    run.cursor.parent?.remove(run.cursor);
+    run.cursor.remove();
     restoreGhost();
     run.land = { t0: t, from: Object.fromEntries(Object.entries(state.teeth).map(([id, m]) => [id, { p: m.position.clone(), r: m.rotation.z }])),
                  to: lastFrame(run.plan ?? state.plan) };
@@ -174,7 +175,7 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
   function stop(landed) {
     if (!run) return;
     const r = run;
-    r.cursor?.parent?.remove(r.cursor);
+    r.cursor?.remove();
     restoreGhost();
     for (const el of r.fill?.rows ?? []) showRow(el, true);
     run = null;
@@ -207,7 +208,8 @@ export function createStageGrow({ THREE, CSS2DObject, group, ghost, state, apply
   addEventListener("keydown", (e) => { if (e.key === "Escape") skip(); });
   document.getElementById("workNote")?.addEventListener("click", skip);
 
-  const api = { tool, play, tick, skip, cancel: () => stop(false), get running() { return !!run; }, get ghostShown() { return !!run && !run.land; } };
+  const api = { tool, play, tick, skip, cancel: () => stop(false), get running() { return !!run; }, get ghostShown() { return !!run && !run.land; },
+                get cursorKind() { return run && !run.land && run.cursor.obj.parent ? run.cursor.kind : null; } };
   window.__stageGrow = api;   // browser checks
   return api;
 }
