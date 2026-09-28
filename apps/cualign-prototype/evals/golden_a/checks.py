@@ -105,10 +105,10 @@ VIOLATION_KO = {"space_deficit": "공간 부족", "collision": "충돌", "move_l
                 "extraction_mismatch": "처방과 다른 발치", "extraction_space_open": "닫지 못한 발치 공간",
                 "ipr_unprescribed": "처방에 없는 IPR"}
 # A strategy named as a plan ("확장 전략", "확장 안", "- 확장:", "확장(위반)"), not a word inside a condition such as
-# "IPR 한도", "발치 허용" or "비발치". Longest first; a match is consumed so "확장 + IPR" is not also 확장 and IPR.
+# "IPR 한도", "발치 허용" or "비발치", nor the memo figure "양측 확장(한쪽당)" (a live A02 answer). Longest first; a match is consumed so "확장 + IPR" is not also 확장 and IPR.
 _NAMED = r"(?=\s*(?:전략|안|[:：(（·→,]|$))"
 STRATEGY_NAME_RES = [("expansion_ipr", re.compile(r"(?:확장\s*\+\s*IPR|expansion_ipr)" + _NAMED, re.M)),
-                     ("expansion", re.compile(r"(?<![A-Za-z_])(?:확장|expansion)" + _NAMED, re.M)),
+                     ("expansion", re.compile(r"(?<![A-Za-z_])(?:확장|expansion)(?!\s*[(（]\s*한쪽당)" + _NAMED, re.M)),   # not the memo figure 양측 확장(한쪽당)
                      ("ipr", re.compile(r"(?<![A-Za-z_])(?:IPR|ipr)" + _NAMED, re.M)),
                      ("extraction", re.compile(r"(?:(?<!비)발치|(?<![A-Za-z_])extraction)" + _NAMED, re.M))]
 # What a dentist must not read in the answer (#47): plan ids (the screen shows them), tool and field names, raw enum
