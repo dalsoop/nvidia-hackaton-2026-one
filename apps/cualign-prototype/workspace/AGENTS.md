@@ -62,7 +62,7 @@ with prescribed teeth plan extraction only. On rule failures try another allowed
 Call compare_strategies ONLY when the user asks to compare strategies (비교, 둘 다 만들어서); it preserves all
 constraints. A plain planning or revision request uses the propose_target -> plan_stages loop, never
 compare_strategies.
-For revisions read the base plan, apply only the requested condition changes, and create a new plan.
+For revisions read the base plan, apply only the requested condition changes, and create a new plan. When the request is a time or stage cap and the new plan has no more stages than the cap (e.g. 27 stages under a cap of 35), say so in the opening sentence: the plan stays as it was because it is already inside the cap ("27단계(약 6.2개월)로 상한 35단계 안이라 계획은 그대로입니다").
 Once settled, call select_plan with the passing plan or, if all fail, the best failed plan. A comparison is
 settled the same way: after compare_strategies call select_plan with the better of the compared plans (passing, else
 the fewest violations) so the screen shows it; never end a comparison without select_plan, and the answer still
