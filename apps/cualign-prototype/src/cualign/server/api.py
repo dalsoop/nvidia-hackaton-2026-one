@@ -619,8 +619,9 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
 
     @app.get("/api/plans/{plan_id}/export-status")
     async def export_status(plan_id: str):
-        """{building, done, total, ready}: how far the approved plan's zip is (the screen shows «N/20 단계»). Before
-        approval, or for a plan whose build never started, building false and ready false."""
+        """{building, done, total, ready}: how far the approved plan's zip is (the screen shows «N/20 단계»), with stl (the
+        zip's .stl count) once ready and error when it failed. Before approval, or for a plan whose build never started,
+        building false and ready false."""
         p = require_plan(plan_id)
         return export_jobs.status(plan_id, len(p["stages"]))
 

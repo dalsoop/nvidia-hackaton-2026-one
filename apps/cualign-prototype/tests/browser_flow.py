@@ -342,11 +342,18 @@ async def main():
             assert await page.locator('#rail button[data-go="export"]').is_enabled()      # the rail item is the visible 내보내기
             await page.locator('#rail button[data-go="export"]').click()
             await page.wait_for_selector("#exportPop:not([hidden])")
+            # the link's place over the 3D records what it says while the zip builds (펄스 점: 만드는 중 → a check)
+            await page.evaluate("""() => { window.__exportTexts = []; const s = document.querySelector('#stlLink span');
+                new MutationObserver(() => window.__exportTexts.push(s.textContent)).observe(s, { childList: true, characterData: true, subtree: true }); }""")
             t0 = time.monotonic()
             async with page.expect_download(timeout=180000) as download:      # a real scan's zip takes a while (#119; 000097 with the filled gum)
                 await page.locator("#exportGo").click()
             print(f"STL download started after {time.monotonic() - t0:.1f}s")
             await page.wait_for_function("!!window.__cualign.state.plan?.approval")
+            await page.wait_for_selector("#exportState:not([hidden]) #stlLink.ready .pulse-dot.ok")
+            assert any(t.startswith("STL 만드는 중") for t in await page.evaluate("window.__exportTexts"))
+            n_stages = store_module.STORE.plan_json(parent)["info"]["n_stages"]
+            assert (await page.locator("#stlLink span").inner_text()).startswith(f"STL 내려받기 ({n_stages}단계 · ")
             assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
             assert (await page.locator("#exportBtn").text_content()) == "STL 내려받기"

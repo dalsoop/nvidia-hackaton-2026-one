@@ -241,6 +241,27 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .export-pop .export-skip[hidden] { display: none; }
 .export-why { align-self: center; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .export-why:empty { display: none; }
+/* 펄스 점: the one motion for "the agent is working on it" (no grey spinner). A brand-green dot breathing 1 → 1.35 → 1
+   every 1.2 s; .ok sets it as a green check, .fail as a red X, in the same 8px box (the tool line's ● at 12px text) so
+   nothing moves when it settles. Reduced motion: a still dot */
+.pulse-dot { position: relative; display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse-dot 1.2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.6; } }
+.pulse-dot.ok, .pulse-dot.fail { background: none; border-radius: 0; animation: none; }
+.pulse-dot.ok::before { content: ""; position: absolute; left: 2px; top: -1px; width: 3px; height: 7px; border: solid var(--green); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.pulse-dot.fail::before, .pulse-dot.fail::after { content: ""; position: absolute; left: 3px; top: -1px; width: 2px; height: 10px; background: var(--red); transform: rotate(45deg); }
+.pulse-dot.fail::after { transform: rotate(-45deg); }
+@media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }
+/* the approved plan's zip at the top right of the 3D (the download link's place): building N/총 → a check and the link */
+.view-bar:has(.export-state:not([hidden])) { min-width: 0; margin-top: 44px; }   /* the row under the centred step pill (.flow): beside it a 3D this narrow has no room */
+.view-actions.export, .export-state { min-width: 0; }
+.export-state { display: flex; align-items: center; gap: 6px; }
+.export-state[hidden], .export-state .pulse-dot[hidden] { display: none; }
+.export-state a { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 12px; font-size: 12px; color: var(--muted); text-decoration: none; white-space: nowrap;
+  background: rgba(0,0,0,0.62); border: 1px solid var(--line-strong); border-radius: 999px; font-variant-numeric: tabular-nums; }
+.export-state a span { overflow: hidden; text-overflow: ellipsis; }
+.export-state a.ready { color: var(--text); cursor: pointer; }
+.export-state a.ready:hover { border-color: var(--green); }
+.export-state a.fail { color: var(--red-text); }
 .btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
 .coll-label { font: 700 11px/1 var(--font); color: #ffffff; background: var(--red); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 .legend .before { background: transparent; border: 1px solid #ffffff; }

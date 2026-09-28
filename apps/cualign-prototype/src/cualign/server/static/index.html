@@ -248,7 +248,11 @@
                   <button id="exportCancel" class="btn ghost small" type="button">취소</button>
                 </div>
               </div>
-              <a id="stlLink" hidden download></a>
+              <!-- 승인된 계획의 STL zip (펄스 점): 만드는 중 N/총 → 체크 + 「STL 내려받기 (N단계 · M개)」, 실패면 X + 이유 + 다시 만들기 -->
+              <span id="exportState" class="export-state" hidden>
+                <a id="stlLink" download><i class="pulse-dot"></i><span></span></a>
+                <button id="exportRetry" class="btn ghost small" type="button" hidden>다시 만들기</button>
+              </span>
               <span id="exportWhy" class="export-why"></span>
             </span>
           </span>

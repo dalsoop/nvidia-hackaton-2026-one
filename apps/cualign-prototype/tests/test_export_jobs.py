@@ -54,7 +54,7 @@ def test_approval_starts_the_build_and_the_download_serves_the_cache(monkeypatch
     assert client.post(f"/api/plans/{pid}/approval", json={"confirmed": True}).status_code == 200
     assert pid in export_jobs.JOBS                                          # the build started with the approval
     st = _wait_ready(client, pid)
-    assert st == {"building": False, "done": n, "total": n, "ready": True}
+    assert st == {"building": False, "done": n, "total": n, "ready": True, "stl": n * 14}   # no gingiva: no print models
     job = export_jobs.JOBS[pid]
     r = client.get(f"/api/plans/{pid}/stl.zip")
     assert r.status_code == 200 and export_jobs.JOBS[pid] is job              # served from the cache, no new build
