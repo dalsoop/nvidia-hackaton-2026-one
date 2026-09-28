@@ -71,7 +71,7 @@
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결, 과부하 실패 뒤 «다시 보내기»(같은 글·조건을 새 요청으로), 대화 흐름의 도구 줄·추론 문장(원문·인자·소요 시간은 「자세히」) |
 | `src/cualign/server/static/validate-sweep.js` | 규칙 검증 도구 연출: 도구 시작에 치아를 치열 순서로 60ms씩 왕복해 옅게 밝힘(도구 이벤트에 치아가 없어 연출), 끝에 계획의 실제 `violations` — 없으면 전체 초록 한 번, 있으면 위반 치아 붉게. 선택 강조의 발광(emissive)을 매 프레임 덮어쓰고 재질은 새로 만들지 않음. `app.js` 의 `toolMoment` 가 훅 |
-| `src/cualign/server/static/scan-reveal.js` | 셋업 턴 연출: 전송 즉시 `startNumbers` 치아 번호 순회(17→27, 0.1초), 대화창에 「처방을 읽었습니다」 줄이 붙는 순간 `applyPrescription` 발치 치아 들림/페이드·「발치」 표식·IPR 도구 커서(커서가 지난 치관부터 절삭, `cutShown`), 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
+| `src/cualign/server/static/scan-reveal.js` | 셋업 턴 연출: 대화창에 에이전트의 첫 줄(추론·도구 줄·답, 없으면 8초 뒤)이 붙는 순간 `startNumbers` 치아 번호 순회(17→27, 0.1초), 「처방을 읽었습니다」 줄이 붙는 순간 `applyPrescription` 발치 치아가 화면 위쪽으로 들리며 0.6초에 페이드(끝나면 `extracted` → 셋업 착지)·「발치」 표식·IPR 도구 커서(커서가 지난 치관부터 절삭, `cutShown`), 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
 | `src/cualign/server/static/three-load.js` | three.js CDN 로드. 실패(오프라인)면 모든 호출을 받아 넘기는 대역을 내주고 `app.js` 가 3D 자리에 「3D 를 그릴 수 없습니다」 카드를 띄운다(WebGL 없음도 같은 카드) |
 | `src/cualign/server/static/drawers.js` | ≤1280 사이드바·≤1024 대화 패널 서랍 열고 닫기(경계 손잡이 클릭·Enter, 3D 누름·Esc 로 닫기). 폭 규칙은 `style.css` 끝 「반응형」 절 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |

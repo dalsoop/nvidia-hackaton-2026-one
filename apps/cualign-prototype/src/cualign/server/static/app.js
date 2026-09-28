@@ -164,7 +164,7 @@ const under = new THREE.DirectionalLight(0xffffff, 0.5); under.position.set(0, -
 const group = new THREE.Group(); scene.add(group);
 // the scan reveal on the setup turn and the IPR tool cursor (scan-reveal.js); the prescription it plays is the one the
 // setup landed with (step_done / the recording, Universal)
-const scanFx = createScanFx({ THREE, CSS2DObject, group, state, fdi, notice: $("planNotice"),
+const scanFx = createScanFx({ THREE, CSS2DObject, group, camera, state, fdi, notice: $("planNotice"),
   refresh: () => { applyStage(state.stage); renderSetupMarks(); }, recut: () => applyStage(state.stage),
   stageContacts: (p) => contactsOnScreen(surfacesOf(p.target, p.info), new Set((p.target?.removed ?? []).map(String))) });
 // the 스캔 tab's chart subscribes to scan-reveal ② (the prescription on the 3D): every applyPrescription marks it too
@@ -1071,8 +1071,10 @@ function endCheck() {
 async function showStart() {
   setHash("#start");
   await loadCases();
+  await fxOut(document.body);   // the work screen goes first (style.css body.vanishing), then the start comes over it
   endCheck();
   $("caseGate").hidden = true;
+  document.body.classList.remove("vanishing");
   document.body.classList.add("start");
   resize();
   lockComposer(true);
@@ -1573,12 +1575,21 @@ async function activateCase(caseId, opts) {
   if (fresh) meshLoading(true);
   try { return await openCase(caseId, opts); } finally { if (fresh) meshLoading(false); }
 }
+// the 「사라짐」 half of the one transition rule (style.css): `el` gets .vanishing and this resolves once its fade is
+// through — 120 ms, and 80 ms more for the panels that follow the 3D; at once with reduced motion or nothing on screen.
+// The caller takes .vanishing off in the same task that hides or empties it.
+function fxOut(el) {
+  const screen = el === document.body;
+  if (screen ? el.classList.contains("start") : !el.childElementCount) return Promise.resolve();
+  el.classList.add("vanishing");
+  return new Promise((r) => setTimeout(r, REDUCE_MOTION.matches ? 0 : screen ? 120 + 2 * 40 : 120));
+}
 function meshLoading(on) {
   const el = $("meshLoading");
   clearTimeout(el.fade);
   if (on) { el.hidden = false; el.classList.remove("out"); return; }
   el.classList.add("out");
-  el.fade = setTimeout(() => { el.hidden = true; }, REDUCE_MOTION.matches ? 0 : 220);
+  el.fade = setTimeout(() => { el.hidden = true; }, REDUCE_MOTION.matches ? 0 : 140);   // the 120 ms fade (style.css), then off
 }
 async function openCase(caseId, { greet = true, restart = false } = {}) {
   ++state.selectionVersion;
@@ -1593,6 +1604,8 @@ async function openCase(caseId, { greet = true, restart = false } = {}) {
   state.oldPlans = new Set(before.plans.map((p) => p.plan_id));
   // 「처음부터」 (restart): the server forgets the case's step flow and conditions first, then answers like /activate
   const info = await api(`/api/cases/${encodeURIComponent(caseId)}/${restart ? "restart" : "activate"}`, { method: "POST" });
+  await fxOut($("transcript"));
+  $("transcript").classList.remove("vanishing");
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   state.planError = info.plan_error ?? null;   // the case opened but no plan could be made: the server's sentence
   state.setup = null; state.target = null; state.targetId = null; state.setupRed = false; state.caseInfo = info;
@@ -2540,7 +2553,6 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   $("retryBar").hidden = true;
   $("planNotice").textContent = turnStep === "setup" ? "처방을 조건으로 옮기는 중" : turnStep === "target" ? "목표 배열 만드는 중"
     : state.plan ? "재계획 중 · 현재 3D는 이전 계획입니다." : "단계 계획 만드는 중";
-  if (turnStep === "setup") scanFx.startNumbers(caseId);   // the scan is read at once; the prescription goes on with the reasoning (landSetup)
   $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
@@ -2548,6 +2560,8 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   const userBubble = addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
+  // the setup's 3D reading goes with the agent's first line; the prescription goes on with the reasoning (landSetup)
+  const firstLine = turnStep === "setup" ? onFirstAgentLine(state.trace, bubble, () => scanFx.startNumbers(caseId)) : null;
   // a sample case may skip the agent (#15): a waiting line under the answer counts the seconds; its 건너뛰기 shows after
   // 5 s while nothing has come (a 429 sends not even a tool event), after 8 s once the turn is moving (a tool event or an
   // answer token — a working turn is not nudged to be skipped), at once on the server's overload / key error. A failed
@@ -2616,7 +2630,11 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
     if (stepDone && !streamError) {
-      if (stepDone.step === "setup") landSetup(stepDone);   // the reasoning and the prescription on the 3D, together
+      if (stepDone.step === "setup") {   // the reasoning and the prescription on the 3D, together; the setup lands once the extracted crowns are away
+        firstLine?.fire(); landSetup(stepDone);
+        await scanFx.extracted();
+        if (state.requestId !== requestId || state.meshCase !== caseId) return;
+      }
       await landStep(stepDone);
       if (stepDone.step === "target") addReasons(reasonsForTarget(stepDone.summary));
     }
@@ -2653,10 +2671,26 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
-    skipTimers.forEach(clearTimeout); clearInterval(skipRow.tick); skipRow.remove(); scanFx.release(); foldThinking();
+    skipTimers.forEach(clearTimeout); clearInterval(skipRow.tick); skipRow.remove(); firstLine?.stop(); scanFx.release(); foldThinking();
     if (sweepFx.running) sweepFx.end(null);   // a turn cut while the rule check ran
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
+}
+// The setup turn's 3D reading (scan-reveal ①) starts as the transcript gets the agent's first line — a reasoning line, a
+// tool row or the answer, whichever comes first — so the 3D does not run ahead of an empty conversation. With no line
+// in FIRST_LINE_WAIT (the answer held by the output rails) it starts anyway: the 3D is not left still for long.
+const FIRST_LINE_WAIT = 8000;
+function onFirstAgentLine(trace, bubble, go) {
+  let done = false;
+  const obs = new MutationObserver(() => {
+    if ([...trace.el.children].some((c) => !c.classList.contains("fallback")) || bubble.textContent.trim()) fire();
+  });
+  const timer = setTimeout(() => fire(), FIRST_LINE_WAIT);
+  const stop = () => { done = true; obs.disconnect(); clearTimeout(timer); };
+  function fire() { if (done) return; stop(); go(); }
+  obs.observe(trace.el, { childList: true });
+  obs.observe(bubble, { childList: true, subtree: true, characterData: true });
+  return { fire, stop };
 }
 // step_done (#20): the agent finished a step. setup → its constraints go to the form and the 3D marks them; target →
 // the target state comes from /targets and the 3D shows it; stages → plan_selected does the rest.
@@ -2773,6 +2807,8 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
       if (state.meshCase !== caseId) return;
       addReasons(reasonsForSetup(rec), trace);
       scanFx.applyPrescription(rec.constraints);
+      await scanFx.extracted();
+      if (state.meshCase !== caseId) return;
       await landStep({ step: "setup", constraints: rec.constraints });
     } else if (rec.target_id) {
       await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });

@@ -27,6 +27,10 @@
 }
 
 * { box-sizing: border-box; }
+/* no scrollbar anywhere (the transcript, the side panel's tabs, the start screen's table): the areas still scroll by
+   wheel, keys and the transcript's own follow; only the bar is gone */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { width: 0; height: 0; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
@@ -410,7 +414,9 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .msg .restart-link { display: block; margin-top: 6px; font-size: 12px; padding: 0; text-decoration: underline; }   /* 「처음부터 다시」 under the restored case's line */
 /* opening a case (#163 follow-up): over the 3D and the dimmed start pane at once, a faint arch and one line; fades out */
 .mesh-loading { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-                background: var(--bg); color: var(--muted); font-size: 13px; pointer-events: none; transition: opacity 0.2s ease; }
+                background: var(--bg); color: var(--muted); font-size: 13px; pointer-events: none; transition: opacity var(--fx-out) var(--fx-ease);
+                animation: fx-fade-in var(--fx-in) var(--fx-ease) backwards; }   /* the cover itself only fades (a rising cover would bare a strip of 3D); its arch and line rise */
+.mesh-loading > * { animation: fx-in var(--fx-in) var(--fx-ease) backwards; }
 .mesh-loading img { width: 180px; opacity: 0.22; }
 .mesh-loading.out { opacity: 0; }
 .mesh-loading[hidden] { display: none; }
@@ -477,17 +483,39 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 #dOpen { margin-top: auto; }
 body.start .intro { display: flex; }
 body.start .start-pane { display: flex; }
-/* picking a sample: the start pane fades out while the case loads, then the workspace fades in */
-/* leaving the start (#15): only opacity moves. The start pane stays over the 3D, dimmed, until the case is on screen; the
-   column widths change once, with the renderer resized in the same task, so nothing slides sideways */
-.start-pane, .intro { transition: opacity 0.25s ease; }
-body.leaving .start-pane, body.leaving .intro { opacity: 0.5; pointer-events: none; }
-@keyframes rise { from { opacity: 0; } to { opacity: 1; } }
-body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar { animation: rise 0.35s ease both; }
-body.start .start-pane, body.start .intro { animation: rise 0.35s ease; }   /* #20: both ways, 환자 ↔ 디자인; no fill, so body.leaving still dims it */
+/* One rule for what shows and what goes, on every screen change and every transcript line: it shows with a 180 ms fade
+   rising 6 px, it goes with a 120 ms fade, on the scan reveal's easing (ease-out cubic, scan-reveal.js `ease`), the 3D
+   first, the left panel 40 ms later, the right panel 80 ms later. `translate` composes with an element's own transform
+   (the pill's centring), and the fill is only `backwards`: once run nothing stays applied, so the settled screen is the
+   one without the rule, pixel for pixel. Reduced motion: every time is 0. */
+:root { --fx-ease: cubic-bezier(0.33, 1, 0.68, 1); --fx-in: 180ms; --fx-out: 120ms; --fx-step: 40ms; }
+@keyframes fx-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes fx-fade-in { from { opacity: 0; } }
+@keyframes fx-out { to { opacity: 0; } }
+/* picking a sample (#15): the start pane stays over the 3D, dimmed, until the case is on screen, the intro goes; the column
+   widths change once, with the renderer resized in the same task, so nothing slides sideways */
+.start-pane, .intro { transition: opacity var(--fx-out) var(--fx-ease); }
+body.leaving .start-pane { opacity: 0.5; pointer-events: none; }
+body.leaving .intro { opacity: 0; pointer-events: none; }
+/* start → work: 3D, left, right */
+body:not(.start) :is(#viewCanvas, #labels, #flow, .view-rail, .view-head, .stage-bar, .legend) { animation: fx-in var(--fx-in) var(--fx-ease) backwards; }
+body:not(.start) :is(.case-head, .transcript) { animation: fx-in var(--fx-in) var(--fx-ease) var(--fx-step) backwards; }
+body:not(.start) .side { animation: fx-in var(--fx-in) var(--fx-ease) calc(2 * var(--fx-step)) backwards; }
+/* work → start (showStart): the work screen goes first (body.vanishing), then the start pane over the 3D and the intro */
+body.vanishing :is(#flow, .view-rail, .view-head, .stage-bar, .legend) { animation: fx-out var(--fx-out) var(--fx-ease) forwards; }
+body.vanishing :is(.case-head, .transcript) { animation: fx-out var(--fx-out) var(--fx-ease) var(--fx-step) forwards; }
+body.vanishing .side { animation: fx-out var(--fx-out) var(--fx-ease) calc(2 * var(--fx-step)) forwards; }
+body.start .start-pane { animation: fx-in var(--fx-in) var(--fx-ease) backwards; }
+body.start .intro { animation: fx-in var(--fx-in) var(--fx-ease) var(--fx-step) backwards; }
+/* another case, 처음부터: the old conversation goes before the new one is written */
+.transcript.vanishing > * { animation: fx-out var(--fx-out) var(--fx-ease) forwards; }
+/* the transcript's lines as they are added (my message, the answer, a tool row, a reasoning line, a system line; a replay
+   too): the rule once, when the line first shows. The answer's bubble waits empty and hidden, so it shows with its
+   first words; the words streaming in after do not move it again. */
+.transcript > *, .trace :is(.step, .reason, .thinking) { animation: fx-in var(--fx-in) var(--fx-ease) backwards; }
+.msg.assistant:empty { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .start-pane, .intro { transition: none; }
-  body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar, body.start .start-pane, body.start .intro { animation: none; }
+  :root { --fx-in: 0ms; --fx-out: 0ms; --fx-step: 0ms; }
   .export-pop, .toast { transition: none; }
   .cl-detail, .cl-detail.open, .cl-detail .cl-dcard, .cl-detail.open .cl-dcard { transition: none; }
   .mesh-loading { transition: none; }
@@ -500,6 +528,8 @@ body.start .side, body.checking .side, body.start .side-splitter, body.checking 
 body.checking .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(420px, 1fr) 0 0; }
 body.start .intro { flex: 1; }
 body.no-case .composer { opacity: 0.55; }   /* the input stays in place, locked, until a case is on (#20) */
+.composer { transition: opacity var(--fx-in) var(--fx-ease) var(--fx-step); }   /* unlocked with the left panel (the one rule); locked in 120 ms */
+body.no-case .composer { transition: opacity var(--fx-out) var(--fx-ease); }
 /* the case list takes the whole width: the chat panel waits for a case (v2 보드 02) */
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 
