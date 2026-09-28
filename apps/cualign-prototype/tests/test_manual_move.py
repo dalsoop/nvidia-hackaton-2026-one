@@ -170,14 +170,20 @@ def test_api_scan_start_then_edit_and_stage(client):
     s = store.STORE
     cid, case = s.load_case("poseidon-000097")
     s.case_constraints[cid] = s.constraints_for(cid).patched({"extraction": [5, 12]})   # what the setup turn confirmed
+    n_targets = len(s.targets)
     start = client.post(f"/api/cases/{cid}/targets/scan").json()
     tid = start["target_id"]
+    assert tid == "scan" and len(s.targets) == n_targets                       # opening the edit alone stores nothing
     assert start["strategy"] == "manual" and start["info"]["source"] == "scan" and set(start["frames"]) == {str(i) for i in case.ids}
     assert "5" not in start["stages"][0] and all(v == [0, 0, 0] for v in start["stages"][0].values())
     assert s.flow.get(cid) is None or s.flow[cid].get("target_id") != tid       # a start alone is not the case's target
     d = (0.4 * np.asarray(start["frames"]["6"]["mesial"])).tolist()
+    check = client.post(f"/api/cases/{cid}/targets/{tid}/check", json={"teeth": {"6": {"d": d}}}).json()
+    assert check["changed"] == [6] and len(s.targets) == n_targets              # nor does the check while dragging
     saved = client.post(f"/api/cases/{cid}/targets/{tid}/manual", json={"teeth": {"6": {"d": d}}}).json()
-    assert saved["info"]["source"] == "manual" and saved["strategy"] == "manual" and saved["info"]["parent_target_id"] == tid
+    parent = saved["info"]["parent_target_id"]                                  # applied: the scan start stored as its parent
+    assert saved["info"]["source"] == "manual" and saved["strategy"] == "manual" and s.targets[parent]["info"]["source"] == "scan"
+    assert len(s.targets) == n_targets + 2
     assert s.flow[cid]["target_id"] == saved["target_id"]
     plan = client.post(f"/api/cases/{cid}/targets/{saved['target_id']}/stages", json={}).json()
     assert plan["strategy"] == "manual" and plan["manual"] is True and plan["n_stages"] == 2   # 0.4 mm at 0.25 mm per aligner

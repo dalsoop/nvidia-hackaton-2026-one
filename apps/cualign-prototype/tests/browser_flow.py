@@ -784,6 +784,11 @@ async def main():
             cut_ids = await page.evaluate(f"Object.keys({cut_set} ?? {{}})")
             assert cut_ids and await page.evaluate("window.__cualign.cutKeyNow()") == f"plan:{ipr_plan}", cut_ids
             assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => {{ const m = window.__cualign.state.teeth[id]; return m.geometry === c.geo && m.userData.cutMesh.visible && m.userData.cutMesh.material === m.material && c.faces.index.count > 0; }})")
+            # the IPR tool cursor is the setup's and a ▶ playback's only (scan-reveal.js): the slider reaching stage 1 of this
+            # IPR plan, its first stage ≥ 1 on screen, brings none (it did, once per plan, on any stage change)
+            await page.locator("#stageSlider").evaluate("el => { el.value = 1; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+            await page.wait_for_timeout(3 * FRAME)
+            assert await page.evaluate("window.__cualign.state.stage") == 1 and await page.locator(".ipr-tool").count() == 0
             await page.locator('#flow button[data-step="initial"]').click()
             assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full && !m.userData.cutMesh.visible)")
             await page.locator('#flow button[data-step="stages"]').click()
@@ -930,7 +935,8 @@ async def main():
             await page.locator("#chatInput").fill("단계 도구가 오래 도는 단계 만들기"); await page.locator("#sendBtn").click()
             await page.wait_for_function("window.__stageGrow.running", timeout=10000)
             await page.wait_for_timeout(2500)
-            assert await page.evaluate("window.__stageGrow.ghostShown") and await page.locator(".ipr-tool").count() == 1
+            # its cursor is the agent's reticle, not the IPR saw disc (that one is the cut's only)
+            assert await page.evaluate("[window.__stageGrow.ghostShown, window.__stageGrow.cursorKind]") == [True, "reticle"] and await page.locator(".ipr-tool").count() == 0
             await page.wait_for_function("!window.__stageGrow.running && window.__cualign.state.plan && !document.querySelector('#sendBtn').disabled", timeout=60000)
             last = await page.evaluate("String(window.__cualign.state.plan.stages.length)")
             assert await page.locator("#stageSlider").input_value() == last and "처음부터 재생" in await page.locator("#stageTip").inner_text()
@@ -1023,6 +1029,47 @@ async def main():
             await page.keyboard.press("Escape")                                         # nothing moved: the edit just ends
             await page.wait_for_function("!document.body.classList.contains('manual-on')", timeout=10000)
             assert await page.locator(".next:not(.done) button", has_text="처음부터 수동 배치").count() == 0
+            # (d) a drag that starts on a crown turns the view, the crown picked or not: nothing is stored, the 목표 stays
+            async def drag(x, y, dx, dy):
+                await page.mouse.move(x, y); await page.mouse.down()
+                for k in range(1, 11):
+                    await page.mouse.move(x + dx * k / 10, y + dy * k / 10)
+                await page.mouse.up()
+            pose = "(id) => window.__cualign.state.target.stages[0][id]"
+            saves = []
+            page.on("request", lambda r: r.method == "POST" and r.url.endswith("/manual") and saves.append(r.url))
+            tid, p0 = await page.evaluate("window.__cualign.state.targetId"), await page.evaluate(pose, "3")
+            await page.locator("#moveBtn").click()
+            await page.wait_for_function("document.body.classList.contains('manual-on')", timeout=60000)
+            x, y = await page.evaluate(crown_at, "3")
+            await drag(x, y, 120, 30)
+            x, y = await page.evaluate(crown_at, "3")
+            await page.mouse.click(x, y)                                                # picked: the handles show
+            await page.wait_for_selector('#moveTable .mv-row.sel[data-id="3"]')
+            await drag(x, y, 120, 30)
+            assert await page.evaluate(pose, "3") == p0
+            await page.locator("#moveBtn").click()                                     # 끄기: nothing moved, nothing stored
+            await page.wait_for_function("!document.body.classList.contains('manual-on')", timeout=10000)
+            assert not saves and await page.evaluate("window.__cualign.state.targetId") == tid and await page.evaluate(pose, "3") == p0
+            # (e) a picked crown's handle moves it; Ctrl+Z puts it back
+            await page.locator("#moveBtn").click()
+            await page.wait_for_function("document.body.classList.contains('manual-on')", timeout=60000)
+            x, y = await page.evaluate(crown_at, "3")
+            await page.mouse.click(x, y)
+            await page.wait_for_selector('#moveTable .mv-row.sel[data-id="3"]')
+            hx, hy = await page.evaluate("""(id) => { const t = window.__cualign.state.target, c = window.__cualign.camera, V = c.position.constructor;
+              const p = t.pivots[id], d = t.stages[0][id], f = t.frames[id].mesial;
+              const v = new V(p[0] + d[0] + f[0] * 5.75, p[1] + d[1] + f[1] * 5.75, p[2] + d[2] + f[2] * 5.75).project(c);
+              const r = document.querySelector('#viewCanvas').getBoundingClientRect();
+              return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; }""", "3")   # the mesial arrow's head
+            await drag(hx, hy, 40, 0)
+            moved = await page.evaluate(pose, "3")
+            assert max(abs(a - b) for a, b in zip(moved, p0)) >= 0.05, (moved, p0)
+            await page.keyboard.press("Control+z")
+            assert await page.evaluate(pose, "3") == p0
+            await page.keyboard.press("Escape")                                         # back where it was: nothing to store
+            await page.wait_for_function("!document.body.classList.contains('manual-on')", timeout=10000)
+            assert not saves and await page.evaluate("window.__cualign.state.targetId") == tid
             await page.close()
 
             assert not errors, errors
@@ -1031,7 +1078,8 @@ async def main():
                   "my scan: unsupported gap → 스캔 삭제, rejected upload card, unoriented scan, reversed numbering → mirror, "
                   "no-plan failure card → 이 조건으로 다시 계산, no_answer notice → 다시 보내기, "
                   "no WebGL (--disable-3d-apis): the card over the 3D, steps → ▶ → approval, "
-                  "직접 이동: 겹쳐 보기 untouched, 셋업 right-click IPR → cut crown, leaving keeps the move, no menu on 목표")
+                  "직접 이동: 겹쳐 보기 untouched, 셋업 right-click IPR → cut crown, leaving keeps the move, no menu on 목표, "
+                  "a drag on a crown turns the view (nothing stored), a handle move undone by Ctrl+Z")
             await browser.close()
             browser = None
     finally:

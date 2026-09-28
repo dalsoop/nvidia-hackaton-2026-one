@@ -77,6 +77,9 @@ class Store:
         # case_id -> how far the step flow went: {"step": setup|target|stages, "constraints": Constraints (the setup
         # conditions), "target_id", "plan_id"} (agent/steps.py); what activate returns as `flow` so a refresh restores it
         self.flow: dict[str, dict] = {}
+        # case_id -> the last chat turn's recording {"screen": the one its 건너뛰기 asks for, "turn": the one the server's
+        # step makes} (recorded.replay_step): a free sentence's step can differ from the step the screen sent (step-intent)
+        self.turn_steps: dict[str, dict] = {}
         self.active_case: str | None = None
         self.targets: dict[str, dict] = {}
         self.plans: dict[str, dict] = {}
@@ -232,6 +235,15 @@ class Store:
             for f in (OUT_DIR / "plans" / f"{pid}.json", OUT_DIR / "stl" / f"{pid}.zip"):
                 f.unlink(missing_ok=True)
         return gone
+
+    def discard(self, plan_ids, target_ids=()) -> None:
+        """Drop what a cancelled agent turn made (server/plan_events.cancel): it was never offered, and left in place
+        its plans would show up in the case's plan list after the 건너뛰기 that cut it."""
+        for tid in list(target_ids):
+            self.targets.pop(tid, None)
+        for pid in list(plan_ids):
+            if self.plans.pop(pid, None) is not None:
+                (OUT_DIR / "plans" / f"{pid}.json").unlink(missing_ok=True)
 
     def put_target(self, case_id: str, target: dict, info: dict, constraints: Constraints | None = None) -> str:
         tid = _new_id("t", self.targets)

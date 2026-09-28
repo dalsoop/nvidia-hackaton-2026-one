@@ -37,6 +37,8 @@ import re
 from langchain_nvidia_ai_endpoints import _common
 from pydantic import BaseModel, Field
 
+from cualign.agent.context import CURRENT_RUN
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,6 +75,14 @@ class NIMStreamError(RuntimeError):
     """The stream's first message was an error from the API."""
 
 
+def _cut() -> None:
+    """A turn cut by 건너뛰기 (server/plan_events.cancel) sends no more NIM requests, re-requests included: its task is
+    cancelled too, but a request started from a task nobody noted would still go out."""
+    run = CURRENT_RUN.get()
+    if run is not None and run.cancelled:
+        raise asyncio.CancelledError(f"turn {run.request_id} was cut")
+
+
 def apply() -> None:
     client_cls = _common._NVIDIAAsyncClient
     if getattr(client_cls, "_cualign_patched", False):
@@ -88,6 +98,7 @@ def apply() -> None:
         for attempt, delay in enumerate(waits, 1):
             model = models[max(0, attempt - 1 - len(DELAYS))]
             body = payload if model == primary else {**payload, "model": model}
+            _cut()
             stream = original(self, body, *args, **kwargs)
             try:
                 try:
@@ -128,6 +139,7 @@ def apply() -> None:
 
     async def aget_req(self, *args, **kwargs):
         for attempt, delay in enumerate((*REQUEST_DELAYS, None), 1):
+            _cut()
             try:
                 return await original_req(self, *args, **kwargs)
             except Exception as e:

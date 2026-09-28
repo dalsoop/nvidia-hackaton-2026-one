@@ -82,7 +82,7 @@ def test_gating_table():
 def test_setup_turn_sets_conditions_and_stops(tmp_path, monkeypatch, store):
     with SetupLLM() as llm, serve(tmp_path, monkeypatch, llm) as client:
         text = ask(client, "/chat/stream", [{"role": "user", "content": PRESCRIPTION}],
-                   cualign={"case_id": "moderate", "request_id": "r-setup"}, step="setup")
+                   cualign={"case_id": "moderate", "request_id": "r-setup"}, step="setup", step_source="chip")
     done = sse_event(text, "step_done")
     assert done["step"] == "setup" and done["request_id"] == "r-setup" and done["case_id"] == "moderate"
     assert done["constraints"]["extraction"] == [5, 12] and done["constraints"]["stage_cap"] is None   # Universal, as plan_context
@@ -151,6 +151,63 @@ def test_stages_turn_takes_the_target_the_previous_turn_made(tmp_path, monkeypat
         text = ask(client, "/chat/stream", [{"role": "user", "content": "계획 짜줘."}], cualign={"case_id": "mild"})
     assert sse_event(text, "step_done")["step"] == "stages" and sse_event(text, "plan_selected")
     assert _context(llm)["step"] == "stages"
+
+
+def test_the_intent_words_table():
+    """The words that name a step, checked in this order (steps.INTENT_WORDS): stages, then target, then setup."""
+    assert [(step, words.pattern) for step, words in steps.INTENT_WORDS] == [
+        ("stages", r"단계|장수|\d+\s*개월\s*안에|비교"),
+        ("target", r"목표|배열\s*을?\s*다시|target"),
+        ("setup", r"조건|처방|발치|IPR\s*한도|셋업"),
+    ]
+
+
+@pytest.mark.parametrize("text, sent, chip, want", [
+    ("목표배열 다시 만들어줘", "stages", False, "target"),                 # the screen sent the step after its progress
+    ("발치 없이 IPR 한도 0.3mm 로 바꿔줘", "target", False, "setup"),       # condition words only
+    ("8개월 안에 끝나게 다시 짜줘", "target", False, "stages"),
+    ("좋아요, 그렇게 해 주세요", "target", False, "target"),               # no word: the step sent (the flow's)
+    ("이 목표로 단계를 만들어줘.", "target", True, "target"),              # a chip's step stands
+])
+def test_a_free_sentence_names_its_step(text, sent, chip, want):
+    assert steps.turn_step(text, sent, chip) == want
+
+
+def test_intent_details_and_the_replay_step():
+    assert steps.intent("이 목표로 단계를 만들어줘.") == "stages"          # stages words win over the target's
+    assert steps.intent("발치로 목표 배열을 다시 만들어줘") == "target"     # a target sentence that changes a condition
+    assert steps.intent("배열을 다시 잡아줘") == "target" and steps.intent("make a new Target") == "target"
+    assert steps.intent("안녕하세요") is None and steps.turn_step("안녕하세요", None) == steps.DEFAULT_STEP
+    # the recording a turn replays (core/recorded.py) comes from the same rule
+    from cualign.core import recorded, samples
+    assert recorded.replay_step("목표배열 다시 만들어줘", "stages") == "target"
+    assert recorded.replay_step("목표배열 다시 만들어줘", "stages", as_sent=True) == "stages"   # what the screen asks for
+    assert recorded.replay_step("12개월 안에 끝나게 단계를 만들어줘.", "stages") == "cap"
+    assert recorded.replay_step("확장안이랑 IPR안 둘 다 만들어서 비교해줘.", "stages") == "compare"
+    # the chips' sentences keep the chip's step: the sample prescription is a setup turn whatever its words
+    assert recorded.chip(samples.SAMPLES["poseidon-000097"].request) and not recorded.chip("목표배열 다시 만들어줘")
+    assert recorded.replay_step(samples.SAMPLES["poseidon-000097"].request, "setup") == "setup"
+
+
+def test_a_target_sentence_remakes_the_target_over_a_manual_one(tmp_path, monkeypatch, store):
+    """000001 (step-intent): a target on screen — the dentist's own moves, auto-saved — and the free sentence
+    「목표배열 다시 만들어줘」, sent by the screen as a stages turn. The server runs it as a target turn: propose_target
+    makes a new target, which becomes the flow's; the manual one stays in the list."""
+    cid, case = store.load_case("moderate")
+    manual = PlanningService(store).target(cid, "expansion", store.constraints_for(cid))
+    store.targets[manual]["info"]["source"] = "manual"
+    store.set_flow(cid, "target", constraints=store.constraints_for(cid), target_id=manual, plan_id=None)
+    with TargetLLM() as llm, serve(tmp_path, monkeypatch, llm) as client:
+        text = ask(client, "/chat/stream", [{"role": "user", "content": "목표배열 다시 만들어줘"}],
+                   cualign={"case_id": cid, "request_id": "r-again"}, step="stages")
+    context = _context(llm)
+    assert context["step"] == "target" and "target_id" not in context and "target_manual_ko" not in context
+    assert sse_event(text, "plan_context")["step"] == "target"
+    done = sse_event(text, "step_done")
+    assert done["step"] == "target" and done["request_id"] == "r-again" and done["target_id"] != manual
+    assert store.flow[cid]["target_id"] == done["target_id"] and manual in store.targets   # the manual target stays listed
+    assert "plan_selected" not in text and store.plan_ids_for(cid) == [] and _refusals(llm, "plan_stages")
+    assert store.turn_steps[cid] == {"screen": "stages", "turn": "target"}
 
 
 def test_restart_forgets_the_flow_and_the_conditions_but_keeps_the_plans(store):

@@ -1,4 +1,5 @@
 """Request-local state shared by NAT tasks through ContextVar inheritance."""
+import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,9 +29,23 @@ class PlanRun:
     refused_kind: str | None = None
     redacted: str | None = None  # "pii": the last message with its personal identifiers taken out, for the screen
     error: dict | None = None  # {"kind": "nim_overload" | "workflow_error", "message": ...} when the workflow raised
+    # 건너뛰기 or a closed stream cut the turn (server/plan_events.cancel): its tasks are cancelled, its plans dropped,
+    # and whatever it still produces is not offered
+    cancelled: bool = False
+    tasks: set = field(default_factory=set, repr=False, compare=False)  # the workflow's tasks (track_task)
 
 
 CURRENT_RUN: ContextVar[PlanRun | None] = ContextVar("cualign_plan_run", default=None)
 # The streamed turn's reasoning relay (rails_middleware.ReasoningRelay): react_patch feeds it the planner's reasoning
 # as it arrives, while the answer is held for the output rail.
 REASONING: ContextVar[Any] = ContextVar("cualign_reasoning", default=None)
+
+
+def track_task() -> None:
+    """Note the running task as one of the current turn's workflow tasks. NAT runs the workflow in a task of its own
+    and does not cancel it when the client goes (response_helpers.generate_streaming_response); plan_events.cancel
+    cancels the tasks noted here."""
+    run = CURRENT_RUN.get()
+    task = asyncio.current_task()
+    if run is not None and task is not None:
+        run.tasks.add(task)
