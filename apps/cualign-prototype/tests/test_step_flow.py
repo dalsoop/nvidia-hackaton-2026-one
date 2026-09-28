@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from rails_fakes import FakeLLM, PlanningLLM
-from test_rails_middleware import ask, serve, sse_event, store  # noqa: F401  (store is a fixture)
+from test_rails_middleware import ask, plain, serve, sse_event, store  # noqa: F401  (store is a fixture)
 from cualign.agent import steps
 from cualign.agent.context import CURRENT_RUN, PlanRun
 from cualign.core import store as store_mod
@@ -198,8 +198,10 @@ def test_a_target_sentence_remakes_the_target_over_a_manual_one(tmp_path, monkey
     store.targets[manual]["info"]["source"] = "manual"
     store.set_flow(cid, "target", constraints=store.constraints_for(cid), target_id=manual, plan_id=None)
     with TargetLLM() as llm, serve(tmp_path, monkeypatch, llm) as client:
-        text = ask(client, "/chat/stream", [{"role": "user", "content": "목표배열 다시 만들어줘"}],
-                   cualign={"case_id": cid, "request_id": "r-again"}, step="stages")
+        res = client.post("/chat/stream", json={"messages": [{"role": "user", "content": "목표배열 다시 만들어줘"}],
+                                                 "cualign": {"case_id": cid, "request_id": "r-again"}, "step": "stages"})
+    text = plain(res.text)
+    assert res.status_code == 200 and res.headers["x-cualign-step"] == "target"   # before any event: 건너뛰기 reads it
     context = _context(llm)
     assert context["step"] == "target" and "target_id" not in context and "target_manual_ko" not in context
     assert sse_event(text, "plan_context")["step"] == "target"

@@ -141,9 +141,13 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   try {
     const r = await fetch("/chat/stream", { method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ messages: state.messages, step: turnStep, cualign: { request_id: requestId,
+      body: JSON.stringify({ messages: state.messages, step: turnStep, step_source: step ? "chip" : undefined, cualign: { request_id: requestId,
         case_id: caseId, base_plan_id: state.plan?.plan_id ?? null, constraints } }), signal: ac.signal });
     if (!r.ok || !r.body) throw new Error("HTTP " + r.status);
+    // the step the server runs: a free sentence's words may name another than the one sent (step-intent), and 건너뛰기
+    // plays that step's recording — a hand-edited target is staged by the screen only on a stages turn (replayOrAdopt)
+    const ran = r.headers.get("X-Cualign-Step");
+    if (ran && ran !== turnStep && state.requestId === requestId) state.turnStep = stepOf(text, ran);
     const reader = r.body.getReader(), parser = new PlanStream();
     for (;;) {
       const {value, done} = await reader.read();
