@@ -408,10 +408,19 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .case-row .c-rx { color: var(--muted); font-size: 12px; word-break: keep-all; }
 .case-row .c-plan { color: var(--muted); }
 /* the detail sits under the pressed card (full grid width) or row */
-.cl-detail { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px; }
+/* opening: the height grows (0fr → 1fr) while the card slides down, grows and fades in; closing runs back, shorter.
+   The margins live inside the clip, so a folded detail takes no room; the sample grid has no row gap (the detail is its
+   only second row), the space above the detail is its card's margin, so folding it leaves no gap behind */
+.cl-detail { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 160ms ease-in; }
+.cl-detail.open { grid-template-rows: 1fr; transition: grid-template-rows 240ms ease-out; }
+.cl-dclip { min-height: 0; overflow: hidden; }
+.cl-dcard { padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; gap: 8px;
+            opacity: 0; transform: translateY(-8px) scale(0.98); transform-origin: top center; transition: opacity 160ms ease-in, transform 160ms ease-in; }
+.cl-detail.open .cl-dcard { opacity: 1; transform: none; transition: opacity 240ms ease-out, transform 240ms ease-out; }
 .cl-detail[hidden] { display: none; }
 .cl-detail.in-cards { grid-column: 1 / -1; }
-#clRows .cl-detail { margin: 8px 12px 12px; }
+.cl-detail.in-cards .cl-dcard { margin-top: 12px; }
+#clRows .cl-dcard { margin: 8px 12px 12px; }
 .cl-dbody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 4px 24px; align-items: stretch; }   /* both columns full height: #dOpen (margin-top: auto) sits at the bottom */
 .cl-dbody > div { display: flex; flex-direction: column; gap: 8px; }
 #dArch { width: 100%; max-width: 300px; }
@@ -446,6 +455,7 @@ body.start .start-pane, body.start .intro { animation: rise 0.35s ease; }   /* #
   .start-pane, .intro { transition: none; }
   body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar, body.start .start-pane, body.start .intro { animation: none; }
   .export-pop, .toast { transition: none; }
+  .cl-detail, .cl-detail.open, .cl-detail .cl-dcard, .cl-detail.open .cl-dcard { transition: none; }
 }
 body.start .case-head, body.start .plans, body.start .plan-notice, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar,
@@ -634,7 +644,7 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 
 /* ---------- start screen sample cards (③, 2026-09-28): thumbnail, title, plain finding, badges, status dot ---------- */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.sample-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sample-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 0; }
 .case-card { position: relative; font: inherit; text-align: left; display: flex; flex-direction: column; padding: 0 0 14px; background: var(--panel-2); border: 1px solid var(--line); border-bottom: 2px solid var(--line); border-radius: var(--radius); color: var(--text); cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .case-card:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
 .case-card.on { border-bottom-color: var(--green); }   /* the pressed card: one green line under it */
@@ -644,3 +654,4 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .case-card .meta { font-size: 12px; color: var(--faint); padding: 6px 14px 0; }
 .case-card > span:empty { display: none; }
 .cards .empty, #clRows .empty { margin: 0; padding: 14px 16px; color: var(--muted); font-size: 13px; }
+#clRows .empty { font-size: 12px; }   /* the empty list reads like the hint under the samples */

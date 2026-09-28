@@ -181,7 +181,8 @@
               <div id="clRows"></div>
             </div>
             <!-- 상세: renderCaseList 가 선택한 카드/행 뒤로 옮긴다 -->
-            <aside id="clDetail" class="cl-detail" hidden>
+            <!-- outer = the height (grid rows 0fr ↔ 1fr), .cl-dclip clips it, .cl-dcard is the card that slides and fades -->
+            <aside id="clDetail" class="cl-detail" hidden><div class="cl-dclip"><div class="cl-dcard">
               <div class="cl-dhead"><button id="dClose" class="btn ghost small" type="button" aria-label="상세 닫기"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>닫기</button></div>
               <div class="cl-dbody">
                 <div>
@@ -199,7 +200,7 @@
                   <button id="dOpen" class="btn primary" type="button">디자인 시작하기<svg class="ic" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
                 </div>
               </div>
-            </aside>
+            </div></div></aside>
           </div>
         </div>
         <div id="labels" class="labels"></div>
