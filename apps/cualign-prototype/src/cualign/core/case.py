@@ -29,6 +29,13 @@ MD_WINDOW_OTHER_DEG = 15.0   # ... and for canines, premolars, molars: their rho
 # (.report/1-target-rotation.md).
 YAW_MEASURABLE = frozenset({7, 8, 9, 10, 23, 24, 25, 26})
 MD_TURN_COST = 0.03      # mm of extent per degree the axis must save to turn away from the tangent
+# A width axis the outline cannot decide: turning the other way from the tangent narrows the crown too, by at least
+# YAW_AMBIGUOUS_MM and YAW_AMBIGUOUS_SHARE of what the chosen way does (the tangent sits on a ridge of the extent curve —
+# a rounded or diagonal outline). Such a crown reads 0° (no rotation measured). Poseidon 000001's 11 read +24.3° so:
+# 0.76 mm narrower its way, 0.48 mm (0.63) the other, its incisal edge ~9° the other way. A real rotation narrows on
+# one side only: golden set B's template incisors rotated 8–20° at most 0.24, 000131's 12 (+15.8°) 0.02.
+YAW_AMBIGUOUS_MM = 0.2
+YAW_AMBIGUOUS_SHARE = 0.5
 # Crowding is measured the clinical way (#59): a tooth's width between its contact points, not its full outline. On a
 # curved arch the crown's straight-line extent also takes in the corners that flare into the embrasures, 0.15–1.1 mm per
 # side, 0.7–1.5 mm buccal or lingual of the contact (Poseidon3D 000174, no treatment needed, averaged +0.8 mm per
@@ -284,8 +291,26 @@ class Case:
 
     def crown_yaw(self, i: int) -> float:
         """Rotation (deg) of crown i about its vertical axis relative to the arch tangent, as found by the width axis.
-        Meaningful only where yaw_measurable(i); elsewhere it is the width axis's small turn, not a rotation."""
-        return self._md_axis(i)[1]
+        Meaningful only where yaw_measurable(i); elsewhere it is the width axis's small turn, not a rotation. 0 when
+        the outline cannot tell the way it turns (YAW_AMBIGUOUS_MM)."""
+        yaw = self._md_axis(i)[1]
+        return 0.0 if yaw and self._yaw_ambiguous(i, yaw) else yaw
+
+    def _yaw_ambiguous(self, i: int, yaw: float) -> bool:
+        """Whether crown i's extent also narrows turning the other way from the tangent (YAW_AMBIGUOUS_MM/_SHARE)."""
+        if i in (self.ids[0], self.ids[-1]) and len(self.ids) > 3:
+            t = self.arch.end_direction(last=i == self.ids[-1], pad=0.0)
+        else:
+            t = self.arch.tangent(self.arch.s_of(self.anchor[i]))
+        a0 = np.arctan2(t[1], t[0])
+        win = MD_WINDOW_DEG if i in YAW_MEASURABLE else MD_WINDOW_OTHER_DEG
+        deg = np.arange(0.5, win + 1e-9, 0.5) * np.sign(yaw)
+        a = a0 + np.radians(np.concatenate([[0.0], deg, -deg]))
+        proj = self._outline[i] @ np.stack([np.cos(a), np.sin(a)])
+        ext = proj.max(0) - proj.min(0)
+        n = len(deg)
+        own, other = ext[0] - ext[1:n + 1].min(), ext[0] - ext[n + 1:].min()
+        return bool(other >= YAW_AMBIGUOUS_MM and other >= YAW_AMBIGUOUS_SHARE * own)
 
     # ------------------------------------------------------------------ export
     def viewer_json(self, max_faces: int = 1500) -> dict:

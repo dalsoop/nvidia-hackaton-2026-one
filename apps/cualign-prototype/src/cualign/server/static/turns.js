@@ -141,9 +141,13 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   try {
     const r = await fetch("/chat/stream", { method: "POST",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ messages: state.messages, step: turnStep, cualign: { request_id: requestId,
+      body: JSON.stringify({ messages: state.messages, step: turnStep, step_source: step ? "chip" : undefined, cualign: { request_id: requestId,
         case_id: caseId, base_plan_id: state.plan?.plan_id ?? null, constraints } }), signal: ac.signal });
     if (!r.ok || !r.body) throw new Error("HTTP " + r.status);
+    // the step the server runs: a free sentence's words may name another than the one sent (step-intent), and 건너뛰기
+    // plays that step's recording — a hand-edited target is staged by the screen only on a stages turn (replayOrAdopt)
+    const ran = r.headers.get("X-Cualign-Step");
+    if (ran && ran !== turnStep && state.requestId === requestId) state.turnStep = stepOf(text, ran);
     const reader = r.body.getReader(), parser = new PlanStream();
     for (;;) {
       const {value, done} = await reader.read();
@@ -307,27 +311,37 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
   if (sweepFx.running) sweepFx.end(null);   // the cut turn's rule check
   let trace = null;
   try {
-    const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
-    if (r.status === 404) { bubble.remove(); adoptCurrentPlan(); return; }
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const rec = await r.json();
+    // the server recomputes the recording's plans (seconds on 000001: #212), so the POST goes first and the recording's
+    // head (step, date, reasoning: nothing computed) draws the trace at once while it runs
+    const step = state.turnStep ?? "stages";
+    const recP = fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step, base_plan_id: state.plan?.plan_id ?? null }) });
+    recP.catch(() => {});   // awaited below; a head 404 leaves it unread
+    const h = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay/${encodeURIComponent(step)}`);
+    if (h.status === 404) { bubble.remove(); adoptCurrentPlan(); return; }
+    if (!h.ok) throw new Error("HTTP " + h.status);
+    const head = await h.json();
     // the cut turn's trace goes; the recording's steps are told again from the recomputed values, as a live turn tells them
     if (bubble.previousElementSibling?.classList.contains("trace")) bubble.previousElementSibling.remove();
     trace = newTrace(bubble);
     trace.box.classList.add("recorded");
     trace.box.querySelector(".text").textContent = "녹화된 답 · 계산은 지금 다시 했습니다";
     // the recorded turn's reasoning events (000097 setup), at the pace a live turn sends them; none recorded, none made up
-    if (rec.reasoning?.length) {
+    if (head.reasoning?.length) {
       setStreaming(true);
-      if (rec.step === "setup") setWorkNote(true, "처방 읽는 중");
-      for (const line of rec.reasoning) {
+      if (head.step === "setup") setWorkNote(true, "처방 읽는 중");
+      for (const line of head.reasoning) {
         addThinking(line, trace);
         await new Promise((r) => setTimeout(r, REPLAY_REASONING_MS));
         if (state.meshCase !== caseId) { setStreaming(false); return; }
       }
       foldThinking(trace); setStreaming(false);
     }
+    const r = await recP;
+    if (r.status === 404) { bubble.remove(); trace.box.remove(); adoptCurrentPlan(); return; }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const rec = await r.json();
+    if (state.meshCase !== caseId) return;
     setAnswer(bubble, rec.answer_md ?? "");
     bubble.classList.add("recorded");
     const tag = document.createElement("small"); tag.className = "recorded-tag"; tag.textContent = "녹화된 답 · " + (rec.recorded_at ?? "").slice(0, 10);

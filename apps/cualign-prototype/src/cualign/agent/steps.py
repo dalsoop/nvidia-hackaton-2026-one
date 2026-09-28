@@ -9,6 +9,8 @@ screen can restore a case that was only set up or only targeted.
 """
 from __future__ import annotations
 
+import re
+
 from cualign.core.fdi import to_fdi
 
 STEPS = ("setup", "target", "stages")
@@ -20,6 +22,27 @@ ALLOWED = {"setup": READ_TOOLS | {"set_constraints"},
            "target": READ_TOOLS | {"set_constraints", "propose_target"},
            "stages": None}   # None: every tool
 REFUSED = "이 단계에서는 쓸 수 없는 도구"
+# A free sentence names its step by these words (turn_step); a chip names it outright. Checked in this order: a
+# sentence about stages that mentions the target ("이 목표로 단계를") is a stages turn, and a target sentence that
+# changes a condition ("발치로 목표 배열을 다시") a target turn — only the condition words alone make a setup turn.
+INTENT_WORDS = (
+    ("stages", re.compile(r"단계|장수|\d+\s*개월\s*안에|비교")),
+    ("target", re.compile(r"목표|배열\s*을?\s*다시|target", re.I)),
+    ("setup", re.compile(r"조건|처방|발치|IPR\s*한도|셋업", re.I)),
+)
+
+
+def intent(text: str) -> str | None:
+    """The step a free sentence asks for by its words (INTENT_WORDS), or None when no word matches."""
+    return next((step for step, words in INTENT_WORDS if words.search(text or "")), None)
+
+
+def turn_step(text: str, sent: str | None, chip: bool = False) -> str:
+    """The step a turn runs: the one the chip names (`chip`), else the sentence's (intent), else the one sent — the
+    screen sends the step after its progress for a free sentence too, so a 「목표배열 다시 만들어줘」 typed with a target
+    on screen came as `stages` (step-intent)."""
+    sent = sent if sent in STEPS else DEFAULT_STEP
+    return sent if chip else intent(text) or sent
 
 
 def allowed(step: str | None, tool: str) -> bool:

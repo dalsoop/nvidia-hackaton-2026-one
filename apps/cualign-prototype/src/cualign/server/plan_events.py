@@ -1,4 +1,5 @@
 """Attach verified plan selection to NAT's existing chat SSE route."""
+import asyncio
 import json
 import logging
 from uuid import uuid4
@@ -9,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from cualign.agent import steps
+from cualign.core import recorded
 from cualign.agent.context import CURRENT_RUN, PlanRun
 from cualign.core.constraints import ConstraintPatch, ExtractionTeethNeeded, reason_ko
 from cualign.core.fdi import label
@@ -89,6 +91,26 @@ def base_plan_ko(store, case_id: str, base_plan_id: str) -> str:
     return f"화면에 보이는 계획: {words}. 수정 요청은 이 계획을 기준으로 한다."
 
 
+def user_text(messages) -> str:
+    """The last user message's text (the turn's sentence), "" when there is none."""
+    for m in reversed(messages or []):
+        if isinstance(m, dict) and m.get("role") == "user":
+            c = m.get("content")
+            return c if isinstance(c, str) else " ".join(p.get("text", "") for p in c or [] if isinstance(p, dict))
+    return ""
+
+
+def resolve_step(data: dict, sent: str | None) -> str | None:
+    """The turn's step (step-intent): a chip's step as sent (`step_source: "chip"`, or a chip's sentence), a free
+    sentence's by its words (steps.turn_step) — the screen sends the step after its progress for a free sentence
+    too. A client that sends no step keeps the default (every tool)."""
+    source = data.pop("step_source", None)
+    if sent is None:
+        return None
+    text = user_text(data.get("messages"))
+    return steps.turn_step(text, sent, source == "chip" or recorded.chip(text))
+
+
 def event(name, payload):
     return ("\n\nevent: " + name + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
 
@@ -109,9 +131,9 @@ def step_done(run: PlanRun, store=None) -> dict | None:
     """The `step_done` event of a finished turn (None when the step did not get done), recording it in Store.flow:
     setup -> the conditions the turn set (Constraints JSON as in plan_context, plus conditions_ko for display);
     target -> the target the turn made and its summary; stages -> the plan selected (plan_selected carries the rest).
-    A failed or refused turn reports nothing: the screen stays where it was."""
+    A failed, refused or cut turn reports nothing: the screen stays where it was."""
     store = store or STORE
-    if run.error or run.refused:
+    if run.error or run.refused or run.cancelled:
         return None
     if run.step == "setup":
         store.set_flow(run.case_id, "setup", constraints=run.constraints, target_id=None, plan_id=None)
@@ -141,6 +163,35 @@ async def review_skipped(scope, plan_id) -> bool:
     return True
 
 
+# The turn streaming now, per case: 건너뛰기's /replay cuts it (api.replay_recorded) without waiting for it.
+RUNS: dict[str, PlanRun] = {}
+
+
+def cancel(run: PlanRun, why: str) -> bool:
+    """Cut an agent turn: the dentist closed its stream (건너뛰기 aborts the fetch) or asked for the recorded answer.
+    NAT leaves the workflow task running when the client goes (response_helpers.generate_streaming_response), so the
+    tasks the turn noted (context.track_task) are cancelled here, which also closes their NIM requests. Its tools
+    refuse from now on (run.closed), the plans and targets it made are dropped (never offered; left in place they
+    would show in the case's plan list), and its closing events are not sent. Returns False when already cut."""
+    if run.cancelled:
+        return False
+    run.cancelled = run.closed = True
+    me = asyncio.current_task()
+    tasks = [t for t in list(run.tasks) if t is not me and not t.done()]
+    for t in tasks:
+        t.cancel()
+    made = [pid for pid in list(run.plan_ids) if pid != run.base_plan_id]
+    STORE.discard(made, [t for t in list(run.target_ids) if t != run.inherited_target_id])
+    logger.info("cuAlign: turn %s (%s, %s) cancelled — %s; %d workflow task(s) cancelled, %d plan(s) dropped",
+                run.request_id, run.case_id, run.step, why, len(tasks), len(made))
+    return True
+
+
+def cancel_case(case_id: str, why: str) -> bool:
+    run = RUNS.get(case_id)
+    return run is not None and cancel(run, why)
+
+
 class PlanEventsASGI:
     def __init__(self, app):
         self.app = app
@@ -161,11 +212,18 @@ class PlanEventsASGI:
             if not isinstance(data, dict):
                 raise ValueError("expected JSON object")
             raw = data.pop("cualign", None)
-            step = data.pop("step", None)   # the turn's step is a top-level body field (the screen sends it beside `cualign`)
+            sent = data.pop("step", None)   # the turn's step is a top-level body field (the screen sends it beside `cualign`)
+            step = resolve_step(data, sent)
             # Non-UI clients may still use the ordinary NAT endpoint.
             ctx = ChatContext.model_validate({**raw, "step": step} if step else raw) if raw is not None                 else ChatContext(case_id=STORE.active_case or "moderate", **({"step": step} if step else {}))
             preload = getattr(getattr(scope.get("app"), "state", None), "cualign_preload", None)  # set by worker.add_routes
             run, system = open_run(ctx, preload=preload)
+            if sent is not None:
+                text = user_text(data.get("messages"))
+                STORE.turn_steps[run.case_id] = {"screen": recorded.replay_step(text, sent, as_sent=True),
+                                                 "turn": recorded.replay_step(text, run.step, as_sent=True)}
+                if step != sent:
+                    logger.info("cuAlign: turn step %s (the screen sent %s) for %r", step, sent, text[:60])
             data.setdefault("messages", []).insert(0, system)
             body = json.dumps(data).encode()
         except ExtractionTeethNeeded as e:     # the prescription is the dentist's: say what is missing (#56)
@@ -175,21 +233,29 @@ class PlanEventsASGI:
             return await JSONResponse({"detail": "Invalid case, parent plan or constraints" + (f": {why}" if why else "")},
                                       status_code=400)(scope, receive, send)
 
-        replayed = False
+        replayed = finished = False
         async def replay():
             nonlocal replayed
             if not replayed:
                 replayed = True
                 return {"type": "http.request", "body": body, "more_body": False}
-            return await receive()
+            msg = await receive()   # Starlette's StreamingResponse listens here for the client going
+            if msg["type"] == "http.disconnect" and not finished:
+                cancel(run, "the stream was closed")
+            return msg
 
         is_stream = False
         async def wrapped(message):
-            nonlocal is_stream
+            nonlocal is_stream, finished
             if message["type"] == "http.response.start":
                 is_stream = message["status"] == 200 and any(
                     k.lower() == b"content-type" and b"text/event-stream" in v for k, v in message.get("headers", []))
-            if is_stream and message["type"] == "http.response.body" and not message.get("more_body", False):
+                if is_stream:   # the step the server runs, before any event: 건너뛰기 can come before plan_context (step-intent)
+                    message = {**message, "headers": [*message.get("headers", []), (b"x-cualign-step", run.step.encode())]}
+            last = message["type"] == "http.response.body" and not message.get("more_body", False)
+            if run.cancelled:   # a cut turn's late events (and its step_done) are not the screen's any more
+                return
+            if is_stream and last:
                 extra = b""
                 common = {"request_id": run.request_id, "case_id": run.case_id}
                 if run.error:
@@ -203,6 +269,8 @@ class PlanEventsASGI:
                                                    **({"text": run.redacted} if run.refused_kind == "pii" else {})})
                 elif run.selected_plan_id:
                     by_server = await review_skipped(scope, run.selected_plan_id)
+                    if run.cancelled:   # cut while the server's own review ran: its plan is gone
+                        return
                     plan = STORE.plan_json(run.selected_plan_id)
                     extra = event("plan_selected", {**common, "schema_version": 1,
                         "plan_id": plan["plan_id"], "parent_plan_id": plan["parent_plan_id"],
@@ -210,17 +278,23 @@ class PlanEventsASGI:
                 elif run.plan_ids and run.step != "target":
                     extra = event("plan_error", {**common, "message": "계획은 생성됐으나 최종 선택을 받지 못했습니다."})
                 extra += event("plan_context", {**common, "constraints": run.constraints.model_dump(mode="json"),
-                                                 "rails": run.rails})
+                                                 "rails": run.rails, "step": run.step})
                 done = step_done(run)
                 if done is not None:
                     extra += event("step_done", {**common, **done})
                 message = {**message, "body": message.get("body", b"") + extra}
             await send(message)
+            finished = finished or last
 
         # Keep context alive through NAT's streaming response, including spawned tasks.
         token = CURRENT_RUN.set(run)
+        RUNS[run.case_id] = run
         try:
             await self.app(scope, replay, wrapped)
         finally:
+            if not finished:   # the response never ended (the client went, or the turn was cut): stop what still runs
+                cancel(run, "the stream ended early")
             run.closed = True
+            if RUNS.get(run.case_id) is run:
+                del RUNS[run.case_id]
             CURRENT_RUN.reset(token)

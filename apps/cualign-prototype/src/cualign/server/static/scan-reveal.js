@@ -4,8 +4,11 @@
 // ② 처방 적용 (applyPrescription, as the transcript gets 「처방을 읽었습니다 — …」; never before ① is through) — an
 //    extracted crown lifts toward the top of the screen and fades in FADE s, a 「발치」 mark stays (extracted() resolves then); an IPR contact gets the tool cursor (a strip disc that
 //    flies in, scrapes ~0.5 s, fades), then its mark, and its crowns show cut (cutShown). At least MIN_APPLY long.
-//    The same cursor runs once per plan when the stage playback first reaches a cut stage (the cut applies from
-//    stage 1, contract 8-ipr-cut.md).
+//    The same cursor runs once per plan when a playback the dentist started with ▶ first reaches stage 1 (the cut
+//    applies from stage 1, contract 8-ipr-cut.md) — nowhere else: every applyStage calls stageReached (the slider, a
+//    stage row, a violation, showPlanEnd, the stage-grow landing, the sweep), and each new plan used to get the cursor on
+//    the first of them, so it came up on 단계 out of the blue. A cursor still queued when the step, the case or the plan
+//    changes, or the playback stops, goes; so does the setup's once the view has left for 목표·단계.
 // The module owns nothing of the app's state: it reads `state`, draws its own objects into `group`, and while it runs
 // it overrides a few crown properties every frame from tick() (called in the render loop before the render), so the
 // app's applyStage can keep writing the true state underneath. ?nofx=1 turns it off (browser checks).
@@ -21,6 +24,39 @@ export const CURSOR_SVG = `<svg viewBox="0 0 32 32" width="44" height="44" aria-
   <circle cx="16" cy="16" r="4.5" fill="#e8f1fb" stroke="#0b1622" stroke-width="1.2"/></svg>`;
 
 const ease = (x) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
+
+// The agents' cursors, by what they do. 'saw': the IPR strip disc above, for the cut only (applyPrescription, a ▶
+// playback's first stage 1) — a CSS2D label. 'reticle': the stage and target rounds' pointer (stage-grow.js,
+// target-reveal.js) — a thin ring in the selection's green, 3 mm across at crown scale, a dot in its middle; touch()
+// swells it 1.15× and it settles back in 0.2 s, it never turns. { obj (to add and place), opacity (set), touch(), remove() }
+const RETICLE_MM = 3, TOUCH = 0.2, SWELL = 1.15;
+let reticleTex = null;
+export function makeCursor({ THREE, CSS2DObject, kind = "saw" }) {
+  if (kind === "saw") {
+    const o = new CSS2DObject(document.createElement("div"));
+    o.element.className = "ipr-tool"; o.element.innerHTML = `<i>${CURSOR_SVG}</i>`;
+    return { kind, obj: o, set opacity(v) { o.element.style.opacity = String(v); }, touch() {}, remove() { o.parent?.remove(o); } };
+  }
+  if (!reticleTex) {
+    const c = document.createElement("canvas"); c.width = c.height = 128;
+    const g = c.getContext("2d");
+    g.strokeStyle = g.fillStyle = "#76b900";   // --green, the selected crowns' outline
+    g.lineWidth = 9; g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(64, 64, 11, 0, Math.PI * 2); g.fill();
+    reticleTex = new THREE.CanvasTexture(c);
+    reticleTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const mat = new THREE.SpriteMaterial({ map: reticleTex, transparent: true, depthTest: false, depthWrite: false });
+  const o = new THREE.Sprite(mat);
+  o.renderOrder = 10; o.scale.set(RETICLE_MM, RETICLE_MM, 1); o.userData.cursor = "reticle";
+  let touched = -Infinity;
+  o.onBeforeRender = () => {   // before its model-view matrix is taken: the swell shows the same frame
+    const u = (performance.now() / 1000 - touched) / TOUCH, k = u < 1 ? SWELL - (SWELL - 1) * ease(u) : 1;
+    if (o.scale.x !== RETICLE_MM * k) { o.scale.set(RETICLE_MM * k, RETICLE_MM * k, 1); o.updateMatrixWorld(); }
+  };
+  return { kind, obj: o, set opacity(v) { mat.opacity = v; }, touch() { touched = performance.now() / 1000; },
+           remove() { o.parent?.remove(o); mat.dispose(); } };
+}
 const pairKey = (a, b) => `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;
 const now = () => performance.now() / 1000;
 
@@ -70,7 +106,14 @@ export function createScanFx({ THREE, CSS2DObject, group, camera, state, fdi, no
   // ---- ② the setup reveal
   let fx = null;              // the running (or held) setup reveal
   const cursors = [];         // stage-playback cursors, independent of the setup reveal
-  const cursorPlans = new Set();   // plans whose cut stage already had its cursor (dragging back does not repeat it)
+  const cursorPlans = new Set();   // plans whose cut stage already had its cursor (▶ again does not repeat it)
+  // ▶ pressed to start a playback (capture: before the app's own click, so state.playing is still the state before it);
+  // a click that pauses, or any stage change outside that playback, disarms it
+  let armed = null;   // { planId, caseId }
+  document.getElementById("playBtn")?.addEventListener("click", () => {
+    armed = !state.playing && state.plan ? { planId: state.plan.plan_id, caseId: state.meshCase } : null;
+  }, { capture: true });
+  const stale = (c) => state.step !== "stages" || state.meshCase !== c.caseId || state.plan?.plan_id !== c.planId || !state.playing;
 
   // ① as the setup turn is sent: the numbers; ② waits for applyPrescription (applyAt null until then)
   function startNumbers(caseId) {
@@ -151,10 +194,17 @@ export function createScanFx({ THREE, CSS2DObject, group, camera, state, fdi, no
   // the turn is over (its setup landed, or it failed): the app's own setup marks take over once the reveal ends
   function release() { if (!fx) return; fx.released = true; if (fx.finished) drop(); }
   function cancel() { if (fx) { clearResidue(); if (ownsNotice() && notice.textContent === fx.noticeLast) notice.textContent = ""; fx = null; }
-                      for (const c of cursors.splice(0)) c.stop(); }
+                      armed = null; for (const c of cursors.splice(0)) c.stop(); }
 
   function tickSetup(t) {
-    if (!fx.finished && !state.teeth[fx.ids[0]]) { cancel(); return; }
+    if (!fx.finished && (!state.teeth[fx.ids[0]] || state.meshCase !== fx.caseId)) { cancel(); return; }
+    // the view went on to 목표·단계 before the cursor was through: it does not follow there (the contacts count as done)
+    if (!fx.finished && fx.surfaces.length && (state.step === "target" || state.step === "stages") && !fx.cursor?.done) {
+      fx.cursor?.stop();
+      fx.cursor = { done: true, stop() {} };
+      for (const [a, b] of fx.surfaces) fx.iprDone.add(pairKey(a, b));
+      recut?.();
+    }
     fx.t0 ??= t;
     const u = t - fx.t0;
     // ① one number per crown, a short light on it
@@ -228,15 +278,22 @@ export function createScanFx({ THREE, CSS2DObject, group, camera, state, fdi, no
   function tick() {
     const t = now();
     if (fx) tickSetup(t);
-    for (let i = cursors.length - 1; i >= 0; i--) { cursors[i].tick(t); if (cursors[i].done) cursors.splice(i, 1); }
+    for (let i = cursors.length - 1; i >= 0; i--) {
+      if (stale(cursors[i].ctx)) cursors[i].stop(); else cursors[i].tick(t);
+      if (cursors[i].done) cursors.splice(i, 1);
+    }
   }
-  // the stage playback reached a cut stage for the first time on this plan: the cursor goes over its contacts once
+  // a playback started with ▶ reached stage 1 for the first time on this plan: the cursor goes over its contacts once
   function stageReached(k) {
-    const plan = state.plan;
-    if (OFF || state.step !== "stages" || k < 1 || !plan || cursorPlans.has(plan.plan_id)) return;
+    if (!armed) return;
+    const plan = state.plan, ctx = armed;
+    if (OFF || stale(ctx)) { armed = null; return; }
+    if (k !== 1) return;   // from the last stage ▶ goes to 치료 전 first, then 1
+    armed = null;
+    if (cursorPlans.has(plan.plan_id)) return;
     cursorPlans.add(plan.plan_id);
     const contacts = stageContacts(plan);
-    if (contacts.length) cursors.push(cursorRun(contacts, Math.min(0.9, Math.max(0.45, 2.4 / contacts.length))));
+    if (contacts.length) cursors.push(Object.assign(cursorRun(contacts, Math.min(0.9, Math.max(0.45, 2.4 / contacts.length))), { ctx }));
   }
   return { startNumbers, applyPrescription, landed, numbersDone, extracted, cutShown, release, cancel, tick, stageReached, busy: () => !!fx };
 }

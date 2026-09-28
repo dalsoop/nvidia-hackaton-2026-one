@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from cualign.agent import steps
 from cualign.server import export_jobs
-from cualign.server.plan_events import setup_view
+from cualign.server.plan_events import cancel_case, setup_view
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, manual, patients, planner, samples
 from cualign.server import manual_api
@@ -689,12 +689,35 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         return FileResponse(str(job.path), media_type="application/zip", filename=f"cualign_{plan_id}_stages.zip",
                             headers={"X-Cualign-Print-Models": note})
 
+    @app.get("/api/cases/{case_id}/replay/{step}")
+    async def recorded_head(case_id: str, step: str):
+        """What 건너뛰기 can show at once while POST .../replay recomputes the plans (up to ~9 s on 000001): the
+        recording's step, date and reasoning, read from the file, nothing computed. 404 as the POST gives it."""
+        from cualign.core import recorded
+        rec = recorded.load(case_id, step)
+        if rec is None or samples.get(case_id) is None:
+            raise HTTPException(404, recorded.NO_RECORDING)
+        step = recorded.ALIASES.get(step, step)
+        return {"recorded": True, "step": step, "step_ko": recorded.STEP_KO[step], "recorded_at": rec["recorded_at"],
+                **({"reasoning": rec["reasoning"]} if rec.get("reasoning") else {})}
+
     @app.post("/api/cases/{case_id}/replay")
     async def replay_recorded(case_id: str, req: ReplayRequest):
         """A sample's recorded agent answer (core/recorded.py) instead of a model turn: the plans are recomputed by the
         rule engine under the recorded constraints, the answer's stage counts are checked against them, the recorded
-        review is attached, and the side effects are the agent turn's (plans stored, case constraints, context line)."""
+        review is attached, and the side effects are the agent turn's (plans stored, case constraints, context line).
+        The agent turn still running on the case is cut first, not waited for (plan_events.cancel), and the
+        computation runs off the event loop: on the loop it held every other request for its seconds."""
+        cancel_case(case_id, "건너뛰기: the recorded answer was asked for")
+        return await asyncio.to_thread(replay_now, case_id, req)
+
+    def replay_now(case_id: str, req: ReplayRequest) -> dict:
         from cualign.core import recorded
+        # the screen asks for the recording of the step it sent; when the server ran the turn as another step (a free
+        # sentence's words, step-intent), the recording of that one (Store.turn_steps, set when the turn opened)
+        turn = STORE.turn_steps.pop(case_id, None)
+        if turn and turn["screen"] == recorded.ALIASES.get(req.step, req.step):
+            req = req.model_copy(update={"step": turn["turn"]})
         rec = recorded.load(case_id, req.step)
         if rec is None or samples.get(case_id) is None:
             raise HTTPException(404, recorded.NO_RECORDING)

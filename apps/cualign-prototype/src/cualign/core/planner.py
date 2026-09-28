@@ -19,8 +19,9 @@ from .case import MD_WINDOW_DEG, Case
 from .constraints import Constraints
 from .fdi import label, to_fdi
 from .ipr_cut import cut_ipr, surfaces_from_info
-from .limits import (ANTERIOR, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER, MAX_ROTATION_PER_ALIGNER,
-                     PREMOLARS, SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
+from .limits import (ANTERIOR, ARCH_STEP_MAX_MM, IPR_PER_SURFACE, MAX_EXPANSION_PER_SIDE, MAX_LINEAR_PER_ALIGNER,
+                     MAX_ROTATION_PER_ALIGNER, PREMOLAR_BUCCAL_EXTRA_MM, PREMOLARS, ROTATION_MAX_DEG,
+                     SPACE_DEFICIT_TOLERANCE_MM, STRATEGIES, months_from_stages)
 
 CLEARANCE = 0.05            # mm left between neighbouring crowns in the target
 # A pair collides when its hull overlap grows by more than this over where it started. Assumed tolerance: hulls of real
@@ -127,6 +128,7 @@ class _SpanModel:
         in_line = [j for j in order if j not in self.out]
         self.target = base
         self.mid: np.ndarray | None = None
+        self.axis: np.ndarray | None = None          # unit, along the midline towards the incisors
         self._target_ends: dict[float, tuple[float, float]] = {}
         if {3, 8, 9, 14} <= set(in_line):
             a3, a14 = case.anchor[3][:2], case.anchor[14][:2]
@@ -137,6 +139,7 @@ class _SpanModel:
             apex = base.point((sa + sb) / 2, self.e)
             centre = (a3 + a14) / 2
             self.mid = centre + axis * float((apex - centre) @ axis)     # the arc midpoint, on the bisector
+            self.axis = axis
             self.target = symmetric_arch(base, np.array([case.anchor[j] for j in in_line]), self.mid, axis,
                                          np.array([j in (3, 14) for j in in_line]))
 
@@ -635,6 +638,9 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
         yaw = rot.get(i, 0.0) + turn
         if abs(yaw) >= ROTATION_MIN_DEG:
             target.yaw[i] = round(yaw, 2)
+    _bound_rotations(target.yaw)
+    if anchored and _span_model(case).mid is not None:
+        _hold_premolars(case, target, lock, arch, s_cur, offset, _span_model(case))
     for i in ids:
         if i not in target:
             target[i] = None
@@ -667,6 +673,46 @@ def _place(case: Case, strategy: str, ipr_exclude, lock, ipr_limit_mm: float, ex
     laid = [i for i in active if i in SPAN or i in (3, 14)] if anchored else active
     pairs = {(a, b): (slack.get((a, b), 0.0) if anchored else 0.0) for a, b in zip(laid, laid[1:])}
     return target, info, pairs, fits
+
+
+def _bound_rotations(yaw: dict) -> None:
+    """At most ROTATION_MAX_DEG of derotation a crown in the target. (No pairing of the central incisors: golden set B
+    rotates one of them 20° and wants it derotated while its twin stays; 000001's 11 at −25° was a misread outline,
+    case.YAW_AMBIGUOUS_SHARE.)"""
+    for i in list(yaw):
+        yaw[i] = round(float(np.clip(yaw[i], -ROTATION_MAX_DEG, ROTATION_MAX_DEG)), 2)
+
+
+def _hold_premolars(case: Case, target: dict, lock, arch, s_cur: dict, offset: float, span) -> None:
+    """Keep the premolars from standing out of the target arch buccally. The symmetric curve through the first
+    molars can lie well outside premolars that stood lingual (000001: 14 +3.2 mm, 15 +2.4 mm against 0.6 mm of molar
+    expansion; the canine staying put left a 4.7 mm step from 13 to 14). A premolar keeps its place along the curve
+    and moves buccally (along the arch normal where it stands) at most the expansion + PREMOLAR_BUCCAL_EXTRA_MM, and
+    canine → first → second premolar each stand at most ARCH_STEP_MAX_MM further from the midline than the one before
+    (or the step the scan had). Only the bucco-lingual place changes: the layout along the arch, so the space, is as
+    laid out."""
+    ex = np.array([span.axis[1], -span.axis[0]])            # across the midline
+
+    def away(i):                                             # distance from the midline in the target
+        return abs(float((case.anchor[i][:2] + target[i][:2] - span.mid[:2]) @ ex))
+
+    for chain in ((6, 5, 4), (11, 12, 13)):                  # canine, first premolar, second premolar per side
+        for k, i in enumerate(chain[1:], 1):
+            prev = chain[k - 1]
+            if i in lock or target.get(i) is None or i not in s_cur:
+                continue
+            n = arch.normal(s_cur[i])
+            out = float(target[i][:2] @ n)
+            cap = offset + PREMOLAR_BUCCAL_EXTRA_MM
+            if out > cap:
+                target[i][:2] -= (out - cap) * n
+            if target.get(prev) is None:
+                continue
+            was = abs(float((case.anchor[i][:2] - span.mid[:2]) @ ex)) - abs(float((case.anchor[prev][:2] - span.mid[:2]) @ ex))
+            over = away(i) - away(prev) - max(ARCH_STEP_MAX_MM, was)
+            side = abs(float(n @ ex))
+            if over > 0 and side > 0.2 and float(target[i][:2] @ n) > 0:
+                target[i][:2] -= min(over / side, float(target[i][:2] @ n)) * n     # back towards where it stood
 
 
 def _corrections(case: Case, active: list[int], lock) -> tuple[dict[int, float], dict[int, float]]:
