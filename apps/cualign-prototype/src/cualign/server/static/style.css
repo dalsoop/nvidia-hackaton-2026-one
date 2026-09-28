@@ -475,8 +475,13 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .scan-facts { margin: 0; padding: 0 20px; display: grid; grid-template-columns: 56px 1fr; row-gap: 10px; font-size: 13px; }
 .scan-facts dt { color: var(--muted); }
 .scan-facts dd { margin: 0; }
-.ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
+.ipr-mark, .fx-ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
 .exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
+/* scan reveal (scan-reveal.js): the extraction mark in 셋업, the IPR tool cursor, the app's marks waiting their turn */
+.extract-mark { font: 700 11px/1 var(--font); color: #fff; background: var(--red); border-radius: var(--radius); padding: 2px 5px; white-space: nowrap; }
+.ipr-tool { pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
+.ipr-tool i { display: block; line-height: 0; }
+.fx-wait { visibility: hidden; }
 
 /* ---------- plans (#111): cards on the agent panel top, one per plan of this case ---------- */
 .plans { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }

@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { createScanFx } from "./scan-reveal.js";
 
 const $ = (id) => document.getElementById(id);
 // FDI ↔ Universal (upper arch only, #113): the dentist reads and writes FDI on screen; the core, planner and API
@@ -128,6 +129,12 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
 const group = new THREE.Group(); scene.add(group);
+// the scan reveal on the setup turn and the IPR tool cursor (scan-reveal.js); the prescription it plays is the form's
+// (Universal; the form's IPR contacts are FDI)
+const prescribed = (c) => ({ extraction: c?.extraction ?? [], ipr_surfaces: (c?.ipr_surfaces ?? []).map(([a, b, mm]) => [universal(a), universal(b), mm]) });
+const scanFx = createScanFx({ THREE, CSS2DObject, group, state, fdi, notice: $("planNotice"),
+  refresh: () => { applyStage(state.stage); renderSetupMarks(); },
+  stageContacts: (p) => contactsOnScreen(surfacesOf(p.target, p.info), new Set((p.target?.removed ?? []).map(String))) });
 const raycaster = new THREE.Raycaster();
 
 function resize() {
@@ -143,7 +150,7 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
 (function loop() {
-  controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  controls.update(); scanFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
   requestAnimationFrame(loop);
 })();
 
@@ -292,7 +299,7 @@ function fixGumBaseNormals(geo) {
   geo.attributes.normal.needsUpdate = true;
 }
 function buildTeeth(mesh) {
-  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels();
+  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels(); scanFx.cancel();
   state.violLabels = []; state.selected.clear(); renderSelection();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
@@ -466,8 +473,14 @@ function renderSetupMarks() {
   const put = (el, pos) => { const o = new CSS2DObject(el); o.position.copy(pos); group.add(o); state.setupMarks.push(o); };
   for (const [a, b, mm] of contactsOnScreen(src.surfaces, removed)) {
     const el = document.createElement("div"); el.className = "ipr-mark"; el.title = `IPR 접촉면 ${fdi(a)}-${fdi(b)} ${mm} mm`;
+    el.dataset.contact = `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;   // the scan reveal lights them in turn
     const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
     put(el, p);
+  }
+  for (const id of removed) {   // 발치 where the extracted crown was
+    if (!state.teeth[id]) continue;
+    const el = document.createElement("div"); el.className = "extract-mark"; el.textContent = "발치"; el.dataset.extract = id;
+    put(el, state.center[id].clone().setZ(state.center[id].z + 2));
   }
   if (src.expansion > 0 && order.length >= 2) {
     for (const [id, arrow] of [[order[0], "←"], [order[order.length - 1], "→"]]) {
@@ -588,6 +601,7 @@ function applyStage(k) {
   tip.textContent = k === 0 ? "치료 전" : `단계 ${k}` + (!boundary ? "" : k === boundary ? " · 뒤따라 이동 시작" : k > boundary ? " · 뒤따라 이동" : " · 먼저 이동");
   tip.style.left = n ? `calc(8px + ${(k / n) * 100}% - ${(k / n) * 16}px)` : "8px";   // the thumb's centre: 8px inset each side
   markStage(k);
+  scanFx.stageReached(k);
 }
 
 // ---- hover tooltip: tooth number · cumulative move · violations at this stage (number only on hover, as in 5/5 SW)
@@ -1413,7 +1427,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.messages = [];
   state.followup = null;
   state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
-  stopPlay();
+  stopPlay(); scanFx.cancel();
   if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
@@ -2036,6 +2050,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   $("retryBar").hidden = true;
   $("planNotice").textContent = turnStep === "setup" ? "처방을 조건으로 옮기는 중" : turnStep === "target" ? "목표 배열 만드는 중"
     : state.plan ? "재계획 중 · 현재 3D는 이전 계획입니다." : "단계 계획 만드는 중";
+  if (turnStep === "setup") scanFx.start(caseId, prescribed(constraints));   // the scan is read and the prescription applied on the 3D
   $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
@@ -2114,7 +2129,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
-    clearTimeout(skipTimer); skipRow?.remove();
+    clearTimeout(skipTimer); skipRow?.remove(); scanFx.release();
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
 }
@@ -2125,7 +2140,8 @@ async function landStep(done) {
     state.setup = done.constraints; state.target = null; state.targetId = null;
     fillConstraints(done.constraints);
     setProgress("setup", true);
-    state.setupRed = true;
+    scanFx.landed(done.constraints);
+    state.setupRed = !scanFx.busy();   // the scan reveal already lifted the extracted crowns away
     setStep("setup");
     setTimeout(() => { state.setupRed = false; if (state.step === "setup") applyStage(0); }, 1200);
   } else if (done.step === "target" && done.target_id) {
@@ -2159,6 +2175,7 @@ const stepOf = (text, step) => step === "stages" && /개월|기간/.test(text) ?
 // screen is adopted. The recorded answer sits where the agent's would, marked grey with its date.
 async function replayOrAdopt(bubble, caseId, prevPlanId) {
   $("retryBar").hidden = true;
+  if (state.turnStep === "setup") { try { scanFx.start(caseId, prescribed(readConstraints())); } catch { /* the form does not parse: no reveal */ } }
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
@@ -2188,7 +2205,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     bubble.remove();
     addMsg("error", "녹화된 답을 불러오지 못했습니다 (" + e.message + ").");
     adoptCurrentPlan();
-  }
+  } finally { scanFx.release(); }
 }
 function adoptCurrentPlan() {
   $("retryBar").hidden = true;
