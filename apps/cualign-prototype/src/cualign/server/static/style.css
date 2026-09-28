@@ -206,7 +206,6 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .legend .red { background: var(--red); }
 .legend .amber { background: var(--amber); }
 .legend .blue { background: var(--blue); }
-.legend .ghost { background: transparent; border: 1px dashed var(--muted); }
 .legend .ipr { background: var(--ipr); }
 .legend .ipr-face { background: var(--ipr-face); }
 
@@ -470,14 +469,17 @@ body.no-case .composer { opacity: 0.55; }   /* the input stays in place, locked,
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 
 /* ---------- design flow (#15): 초기 · 셋업 · 목표 · 단계 ---------- */
-.flow { display: flex; gap: 4px; padding: 10px 16px 0; }
-.flow button { flex: 1; font: inherit; font-size: 12px; color: var(--faint); background: none; border: 0; border-top: 2px solid var(--line); padding: 6px 0 4px; cursor: pointer; }
+/* a floating pill at the top centre of the 3D: only the buttons take the pointer, the drag/wheel around them reach the canvas */
+.flow { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 5; display: flex; gap: 2px; padding: 3px;
+        background: rgba(0,0,0,0.62); border: 1px solid var(--line-strong); border-radius: 999px; pointer-events: none; }
+.flow button { pointer-events: auto; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 5px 14px; cursor: pointer; white-space: nowrap; }
 .flow button:hover { color: var(--text); }
-.flow button.done { color: var(--muted); border-top-color: var(--line-strong); }
-.flow button.on { color: var(--green); border-top-color: var(--green); font-weight: 700; }
-.flow button[disabled] { color: var(--faint); border-top-color: var(--line); cursor: default; opacity: 0.5; }   /* not reached yet (#20) */
-.flow { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.flow button.done { color: var(--text); }
+.flow button.on { color: var(--green); background: rgba(118,185,0,0.16); font-weight: 700; }
+.flow button[disabled] { color: var(--faint); cursor: default; opacity: 0.5; }   /* not reached yet (#20) */
 body.start .flow { display: none; }
+/* the input check (#53) sits under the pill, not beside it: a long fact line would run under the steps */
+.canvas-wrap:has(#checkBar:not([hidden])) .view-head { top: 62px; }
 /* the slider, the legend and the mm labels belong to the stages (the target keeps the labels) */
 body:not(.step-stages) .stage-bar { display: none; }
 body.step-initial .legend, body.step-setup .legend, body.step-initial .ipr-label, body.step-setup .ipr-label, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }

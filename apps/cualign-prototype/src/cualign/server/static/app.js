@@ -62,6 +62,7 @@ const state = {
   oldPlans: new Set(),   // plans that already existed when the case was opened: folded as 지난 계획 (#105, #111)
   tab: "stages",         // the open sidebar tab: stages | rules | cond (#111)
   planError: null,       // the server's sentence when a case has no plan and the calculation failed (#112)
+  stageTouched: false,   // the dentist moved the stage (slider, ends, play, a stage row or violation) since the turn began: the new plan does not jump to its end
 };
 
 // ------------------------------------------------------------------ three.js
@@ -76,7 +77,7 @@ const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
 // poles, #132) and no roll drift: the right axis starts level with the arch plane and neither turn tilts it. The
 // presets place the camera with lookAt (up = −z, apical) and then only the quaternion is kept; camera.up is unused.
 const controls = {
-  target: new THREE.Vector3(), dist: 100, vel: { yaw: 0, pitch: 0 }, damping: 0.85, speed: 0.006, minDist: 5, maxDist: 1500,
+  target: new THREE.Vector3(), dist: 100, vel: { yaw: 0, pitch: 0 }, damping: 0.85, speed: 0.006, minDist: 5 * 1.25, maxDist: 1500 * 1.25,
   place() { camera.position.copy(controls.target).add(new THREE.Vector3(0, 0, controls.dist).applyQuaternion(camera.quaternion)); },
   rotate(yaw, pitch) {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -88,6 +89,7 @@ const controls = {
     controls.target.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), -dx * k)
       .addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion), dy * k);
   },
+  fitted: null,   // the preset on screen until the pointer or the wheel moves the view: a resize fits it again
   zoom(f) { controls.dist = Math.min(controls.maxDist, Math.max(controls.minDist, controls.dist * f)); },
   lookFrom(pos, up) {   // the presets: the camera at pos looking at the target, the arch plane level
     controls.dist = pos.distanceTo(controls.target);
@@ -110,7 +112,10 @@ canvas.style.touchAction = "none";
   let drag = null, lastMove = 0;
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
-    drag = { x: e.clientX, y: e.clientY, pan: e.button !== 0 || e.shiftKey }; controls.dragging = true;
+    // the near surface follows the pointer: a turn about world z reads the other way round when z points down on screen
+    // (every preset looks with up = −z, crowns down), so the horizontal sign is taken from the camera's up at the press
+    const yawSign = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).z < 0 ? -1 : 1;
+    drag = { x: e.clientX, y: e.clientY, pan: e.button !== 0 || e.shiftKey, yawSign }; controls.dragging = true; controls.fitted = null;
     controls.vel.yaw = controls.vel.pitch = 0;
     canvas.setPointerCapture(e.pointerId);
   });
@@ -118,12 +123,12 @@ canvas.style.touchAction = "none";
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; lastMove = performance.now();
     if (drag.pan) controls.pan(dx, dy);
-    else { controls.rotate(-dx * controls.speed, -dy * controls.speed); controls.vel.yaw = -dx * controls.speed * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
+    else { const yaw = -dx * controls.speed * drag.yawSign; controls.rotate(yaw, -dy * controls.speed); controls.vel.yaw = yaw * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
   });
   const end = () => { if (!drag) return; drag = null; controls.dragging = false; if (performance.now() - lastMove > 80) controls.vel.yaw = controls.vel.pitch = 0; };
   canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  canvas.addEventListener("wheel", (e) => { e.preventDefault(); controls.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); controls.fitted = null; controls.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
 }
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
@@ -144,6 +149,8 @@ function resize() {
   labelRenderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // the opening fit runs while the start screen still holds the layout; until the view is moved, a new size fits again
+  if (controls.fitted && w && h) setView(controls.fitted);
 }
 new ResizeObserver(resize).observe($("canvasWrap"));
 
@@ -314,12 +321,6 @@ function buildTeeth(mesh) {
     ghost.add(new THREE.Mesh(geo, GHOST_MAT));   // the untreated position, shown by 전후 겹쳐 보기
     state.teeth[id] = m;
     state.center[id] = geo.boundingBox.getCenter(new THREE.Vector3());
-    // a thin white outline for an extracted crown (#14): the same crown inflated 4% about its centre, back faces only,
-    // as a child so it follows the crown; shown only while the crown is a silhouette
-    const c = state.center[id];
-    const shell = new THREE.Mesh(geo.clone().translate(-c.x, -c.y, -c.z), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, opacity: 0.6, depthWrite: false }));
-    shell.position.copy(c); shell.scale.setScalar(1.04); shell.visible = false;
-    m.add(shell); m.userData.shell = shell;
     // the IPR cut (#22): the scan's crown stays as `full`; setCut fills `cut` {geo, faces} and applyStage swaps them in from 셋업 on
     m.userData.full = geo;
     const cutMesh = new THREE.Mesh(new THREE.BufferGeometry(), IPR_FACE_MAT); cutMesh.visible = false;
@@ -386,13 +387,15 @@ async function loadTargetCut(targetId) {
     if (cutKeyNow() === "target:" + targetId) applyStage(state.stage);   // the target is already on screen: swap its crowns in
   } catch { /* the target shows without its cut */ }
 }
+const FIT_MARGIN = 1.25 * 1.25;
 function setView(kind) {
   const box = new THREE.Box3().setFromObject(group);
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
-  // the fit is by the vertical fov; a narrow viewer (1366 wide, #17-10) is limited by width, so the camera backs off by the aspect
-  const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.25 / Math.min(1, camera.aspect);
+  // the fit is by the vertical fov; a narrow viewer (1366 wide, #17-10) is limited by width, so the camera backs off by the aspect.
+  // FIT_MARGIN: the opening view and every preset at 80% of the old size (1.25 → 1.25 × 1.25)
+  const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * FIT_MARGIN / Math.min(1, camera.aspect);
   const pos = new THREE.Vector3();
   if (kind === "frontal") {            // look from the anterior (+y) side; upper arch → crowns hang down (occlusal z=0 at the bottom)
     pos.set(c.x, c.y + dist, c.z - size.z * 0.3);
@@ -408,6 +411,7 @@ function setView(kind) {
   }
   controls.target.copy(c);
   controls.lookFrom(pos, new THREE.Vector3(0, 0, -1));
+  controls.fitted = kind;
   for (const b of document.querySelectorAll(".view-rail [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === kind));
 }
 
@@ -552,27 +556,21 @@ function applyStage(k) {
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
-    // #18 decision: 치료 전 (k = 0) is the scan with every crown, stages 1..n−1 show the silhouette, the target (k = n) none
+    // 치료 전 (k = 0) is the scan with every crown; the extracted crowns are gone from stage 1 on, no silhouette left
     const gone = hasPlan && removed.has(id) && !plain && !setup && k > 0;
     // 셋업 (#20): the extracted crowns flash red as the setup lands, then they are gone (the filled gum shows)
-    m.visible = setup && removed.has(id) ? state.setupRed : !gone || k < (plan?.stages?.length ?? 0);
-    // extracted teeth from stage 1 on: a translucent white silhouette (#14, #18); materials are per tooth and reused across
-    // plans, so every other tooth gets its solid look back
-    m.material.opacity = gone ? 0.45 : 1;
-    m.material.depthWrite = !gone;
-    m.userData.shell.visible = gone;
-    m.userData.cutMesh.visible = !!cut && !gone && m.visible;
+    m.visible = setup && removed.has(id) ? state.setupRed : !gone;
+    m.userData.cutMesh.visible = !!cut && m.visible;
     const moved = d ? Math.hypot(...d) : 0;
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
-    if (gone) m.material.color.setHex(0xffffff);
-    else if (plain) m.material.color.copy(IVORY);
+    if (plain) m.material.color.copy(IVORY);
     else if (setup) m.material.color.setHex(removed.has(id) ? RED : IVORY.getHex());   // 셋업: what the constraints remove
     else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
     else m.material.color.copy(IVORY);
-    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : gone ? 0x777777 : 0x000000);   // the silhouette reads white, not lit grey
+    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   }
   placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
@@ -747,8 +745,8 @@ $("overlayBtn").addEventListener("click", (e) => {
   $("overlayLegend").hidden = !state.overlay;
   ghost.visible = state.overlay && state.stage > 0;
 });
-$("firstBtn").addEventListener("click", () => { stopPlay(); applyStage(0); });
-$("lastBtn").addEventListener("click", () => { if (state.plan) { stopPlay(); applyStage(state.plan.stages.length); } });
+$("firstBtn").addEventListener("click", () => { state.stageTouched = true; stopPlay(); applyStage(0); });
+$("lastBtn").addEventListener("click", () => { if (state.plan) { state.stageTouched = true; stopPlay(); applyStage(state.plan.stages.length); } });
 
 // ------------------------------------------------------------------ API helpers
 async function api(path, opts) {
@@ -1713,7 +1711,7 @@ function renderResult(plan) {
 function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
-                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
+                 locked: (t.locked ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
                  ipr_face: Object.keys(state.cutSets[cutKeyNow()] ?? {}).length > 0 };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
@@ -2221,7 +2219,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   const requestId = crypto.randomUUID(), caseId = state.meshCase, prevPlanId = state.plan?.plan_id ?? null;
   // the step this turn asks for (#20): the next one after the progress, or the one the chip/button names
   const turnStep = step ?? (resend ? state.lastRequest?.step : null) ?? NEXT_STEP[state.progress] ?? "stages";
-  state.requestId = requestId;
+  state.requestId = requestId; state.stageTouched = false;
   setStreaming(true); updateActions();
   foldNextChips();
   $("retryBar").hidden = true;
@@ -2294,7 +2292,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     if (stepDone && !streamError) { await landStep(stepDone); addReasons(stepReasons(stepDone)); }
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
-      setStep("stages");
+      setStep("stages"); showPlanEnd();
       if (state.plan?.plan_id === selected.plan_id) addReasons(reasonsForPlan(state.plan));
       if (state.plan?.plan_id === selected.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
       addDecision(prevPlanId, selected.plan_id);
@@ -2400,7 +2398,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
-      setStep("stages");
+      setStep("stages"); showPlanEnd();
       addReasons([reasonForTool(rec.step === "compare" ? "compare_strategies" : "plan_stages"), reasonForTool("select_plan"),
         reasonForTool("reviewer"), ...(state.plan?.plan_id === sel.plan_id ? reasonsForPlan(state.plan) : [])], trace);
       addDecision(prevPlanId, sel.plan_id);
@@ -2461,6 +2459,9 @@ async function runFallback({ fromCond = false } = {}) {
 }
 
 // ------------------------------------------------------------------ stage playback
+// a plan the turn selected opens at its last stage, the target reached (▶ from there starts over at 치료 전), unless
+// the dentist was already moving the stage
+function showPlanEnd() { if (state.plan && !state.stageTouched) applyStage(state.plan.stages.length); }
 function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; $("playBtn").setAttribute("aria-pressed", "false"); } }
 function togglePlay() {
   if (!state.plan) return;
@@ -2706,13 +2707,13 @@ $("condApply").addEventListener("click", () => {
 $("stageGrid").addEventListener("click", (e) => {
   const k = e.target.closest("[data-stage]")?.dataset.stage;
   if (k == null || !state.plan) return;
-  stopPlay(); applyStage(+k);
+  state.stageTouched = true; stopPlay(); applyStage(+k);
 });
 // a violation item (or one of its stage buttons): playback stops, the slider goes to the stage, its teeth are selected
 $("violGroups").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-teeth]");
   if (!b || b.disabled || !state.plan) return;
-  stopPlay();
+  state.stageTouched = true; stopPlay();
   if (state.step !== "stages") setStep("stages");
   const ids = b.dataset.teeth.split(",").filter(Boolean);
   if (ids.length) {
@@ -2722,8 +2723,8 @@ $("violGroups").addEventListener("click", (e) => {
   }
   applyStage(b.dataset.stage != null ? +b.dataset.stage : state.stage);   // after the selection: it paints the highlight with the stage's marks
 });
-$("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
-$("playBtn").addEventListener("click", togglePlay);
+$("stageSlider").addEventListener("input", (e) => { state.stageTouched = true; stopPlay(); applyStage(+e.target.value); });
+$("playBtn").addEventListener("click", () => { state.stageTouched = true; togglePlay(); });
 $("retryFallback").addEventListener("click", () => { $("retryBar").hidden = true; runFallback(); });
 $("planFailRetry").addEventListener("click", () => { showTab("cond"); runFallback(); });
 $("condRecalc").addEventListener("click", () => runFallback({ fromCond: true }));
