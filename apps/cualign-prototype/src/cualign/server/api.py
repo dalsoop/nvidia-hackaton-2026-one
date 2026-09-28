@@ -16,6 +16,7 @@ from cualign.server import export_jobs
 from cualign.server.plan_events import setup_view
 from cualign.agent.reviewer import MANUAL_RETRY
 from cualign.core import Case, manual, patients, planner, samples
+from cualign.server import manual_api
 from cualign.core.constraints import ConstraintPatch, reason_ko
 from cualign.core.service import PlanningService
 from cualign.core.store import OUT_DIR, STORE
@@ -31,20 +32,6 @@ class RulePlanRequest(ConstraintPatch):
 class ReplayRequest(BaseModel):
     step: str = Field(pattern="^(setup|target|stages|plan|cap|compare)$")   # plan = stages (the name before the step flow)
     base_plan_id: str | None = None
-
-
-class ToothPose(BaseModel):
-    d: list[float] = Field(min_length=3, max_length=3)   # total translation from the scan, mm (world)
-    yaw: float = 0.0                                      # total turn about the crown's vertical axis, degrees
-
-
-class ManualEditRequest(BaseModel):
-    """The crowns the dentist moved by hand (Universal numbers; the screen converts from FDI). Others keep the base."""
-    teeth: dict[int, ToothPose] = Field(default_factory=dict, max_length=32)
-
-
-class TargetStagesRequest(BaseModel):
-    parent_plan_id: str | None = None
 
 
 class ApprovalRequest(BaseModel):
@@ -376,65 +363,8 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         require_target(case_id, target_id)
         return target_view(case_id, target_id)
 
-    def _edited(case_id: str, target_id: str, req: ManualEditRequest):
-        t = require_target(case_id, target_id)
-        _, case = STORE.load_case(case_id)
-        try:
-            STORE.require_current_input(case_id, t.get("input_revision"))   # the scan may have changed since
-            new, changed = manual.apply_edits(t["target"], {i: p.model_dump() for i, p in req.teeth.items()}, t["constraints"])
-        except ValueError as e:
-            raise HTTPException(400, reason_ko(e))
-        return t, case, new, changed
-
-    @app.post("/api/cases/{case_id}/targets/scan")
-    async def scan_target(case_id: str):
-        """처음부터 수동 배치: a target with every crown where the scan has it (the case's confirmed conditions: the
-        prescribed extraction teeth removed, only prescribed IPR cut; strategy "manual", info.source "scan"), to move by
-        hand with …/check and …/manual. Stored, not put in the flow (only an applied edit is). Answers as GET …/targets/{id}."""
-        try:
-            cid, case = STORE.load_case(case_id)
-            STORE.require_current_input(cid)
-            constraints = STORE.constraints_for(cid)
-            target, info = manual.scan_start(case, constraints)
-        except (KeyError, FileNotFoundError) as e:
-            raise HTTPException(404, str(e))
-        except ValueError as e:
-            raise HTTPException(400, reason_ko(e))
-        return target_view(cid, STORE.put_target(cid, target, info, constraints))
-
-    @app.post("/api/cases/{case_id}/targets/{target_id}/check")
-    async def check_manual(case_id: str, target_id: str, req: ManualEditRequest):
-        """직접 이동 while dragging: the edited arrangement is checked, not stored. {max_move_mm, max_yaw_deg, min_stages,
-        min_months, overlaps: [{teeth, overlap_mm3}], changed: [teeth]} (see core/manual.check)."""
-        t, case, new, changed = _edited(case_id, target_id, req)
-        return {**manual.check(case, new, t["info"]), "changed": changed}
-
-    @app.post("/api/cases/{case_id}/targets/{target_id}/manual")
-    async def save_manual(case_id: str, target_id: str, req: ManualEditRequest):
-        """직접 이동 적용: a new target from this one with the crowns moved by hand (info.source "manual",
-        parent_target_id, manual_teeth). It becomes the case's target in the flow, so the next stages turn (or
-        …/stages) stages it. Answers as GET …/targets/{new id}."""
-        t, case, new, changed = _edited(case_id, target_id, req)
-        if not changed:
-            raise HTTPException(400, "옮긴 치아가 없습니다.")
-        info = manual.manual_info(t["info"], target_id, changed, t["info"].get("manual_teeth", ()))
-        tid = STORE.put_target(case_id, new, info, t["constraints"])
-        STORE.set_flow(case_id, "target", constraints=t["constraints"], target_id=tid, plan_id=None)
-        return target_view(case_id, tid)
-
-    @app.post("/api/cases/{case_id}/targets/{target_id}/stages")
-    async def stage_target(case_id: str, target_id: str, req: TargetStagesRequest):
-        """This target staged and validated without the agent (a hand-edited target's 「에이전트 없이 단계 계산」): one
-        plan, review marked not run, the flow at stages with it. Answers as a row of GET /api/plans."""
-        require_target(case_id, target_id)
-        try:
-            pid = PlanningService(STORE).stages(target_id, req.parent_plan_id)
-        except ValueError as e:
-            raise HTTPException(400, reason_ko(e))
-        STORE.set_review(pid, {"status": "skipped", "attempts": 0, "message": "에이전트 없이 계산 — 검토 에이전트 미실행", "error": None})
-        t = STORE.targets[target_id]
-        STORE.set_flow(case_id, "stages", constraints=t["constraints"], target_id=target_id, plan_id=pid)
-        return _summary(pid)
+    # 직접 이동 (server/manual_api.py): the scan start, the drag check, apply, and staging a hand-edited target
+    manual_api.add_manual_routes(app, store=lambda: STORE, require_target=require_target, target_view=target_view, summary=_summary)
 
     @app.get("/api/cases/{case_id}/mesh")
     async def case_mesh(case_id: str, plan_id: str | None = None, target_id: str | None = None):

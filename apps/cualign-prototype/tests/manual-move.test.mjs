@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { localOf, withLocal, editsOf, changeWords } from "../src/cualign/server/static/manual.js";
+import { localOf, withLocal, editsOf, changeWords } from "../src/cualign/server/static/manual-math.js";
 
 const fdi = (u) => { u = Number(u); return u <= 8 ? 19 - u : 12 + u; };
 const s = Math.SQRT1_2;
