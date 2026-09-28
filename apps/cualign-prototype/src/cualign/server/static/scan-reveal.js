@@ -1,8 +1,8 @@
 // Scan reveal (시연 연출): on the setup turn the agent is seen reading the scan and applying the prescription.
-// ① 스캔 인식 (startNumbers, as the turn is sent) — one FDI number per crown, 17 → 27 at 0.1 s, each crown lit for
+// ① 스캔 인식 (startNumbers, as the agent's first line lands in the transcript) — one FDI number per crown, 17 → 27 at 0.1 s, each crown lit for
 //    ~150 ms as its number lands. The numbers stay until ② has run.
 // ② 처방 적용 (applyPrescription, as the transcript gets 「처방을 읽었습니다 — …」; never before ① is through) — an
-//    extracted crown lifts and fades, a 「발치」 mark stays; an IPR contact gets the tool cursor (a strip disc that
+//    extracted crown lifts toward the top of the screen and fades in FADE s, a 「발치」 mark stays (extracted() resolves then); an IPR contact gets the tool cursor (a strip disc that
 //    flies in, scrapes ~0.5 s, fades), then its mark, and its crowns show cut (cutShown). At least MIN_APPLY long.
 //    The same cursor runs once per plan when the stage playback first reaches a cut stage (the cut applies from
 //    stage 1, contract 8-ipr-cut.md).
@@ -11,7 +11,9 @@
 // app's applyStage can keep writing the true state underneath. ?nofx=1 turns it off (browser checks).
 const OFF = new URLSearchParams(location.search).has("nofx");
 const SCAN_GAP = 0.1, PULSE = 0.15, HOLD = 0.3, MIN_APPLY = 1.5;      // s
-const LIFT_MM = 3, FADE = 0.7, FADE_GAP = 0.3;
+// the lift goes up the screen, not along +z: from the opening (occlusal) view +z points at the camera, and a crown lifted
+// along it only faded where it stood (the user saw 14·24 simply vanish, 2026-09-28). The crowns go together.
+const LIFT_MM = 5, FADE = 0.6, FADE_GAP = 0;
 const PULSE_HEX = 0x5a5a5a;
 const CURSOR_SVG = `<svg viewBox="0 0 32 32" width="44" height="44" aria-hidden="true">
   <circle cx="16" cy="16" r="11" fill="#2f8ae8" stroke="#0b1622" stroke-width="1.5"/>
@@ -22,7 +24,7 @@ const ease = (x) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 const pairKey = (a, b) => `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;
 const now = () => performance.now() / 1000;
 
-export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, refresh, recut, stageContacts }) {
+export function createScanFx({ THREE, CSS2DObject, group, camera, state, fdi, notice, refresh, recut, stageContacts }) {
   const toothPos = (id) => state.center[id].clone().add(state.teeth[id].position);
   const contactPos = (a, b) => toothPos(a).add(toothPos(b)).multiplyScalar(0.5).setZ(Math.max(toothPos(a).z, toothPos(b).z) + 2);
   const label = (cls, text, pos) => {
@@ -109,6 +111,12 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
     const left = !fx || fx.finished ? 0 : fx.t0 === null ? fx.scanEnd : fx.scanEnd - (now() - fx.t0);
     return new Promise((r) => setTimeout(r, Math.max(0, left) * 1000));
   }
+  // resolves once the extracted crowns have lifted away (at once without a reveal or an extraction): the setup lands after
+  function extracted() {
+    const left = !fx || fx.applyAt === null || !fx.extraction.length ? 0
+      : fx.applyAt + FADE_GAP * (fx.extraction.length - 1) + FADE - (fx.t0 === null ? 0 : now() - fx.t0);
+    return new Promise((r) => setTimeout(r, Math.max(0, left) * 1000));
+  }
   // a crown with an IPR contact shows its cut once the cursor has passed all its contacts
   function cutShown(id) {
     if (!fx || fx.finished) return true;
@@ -184,13 +192,15 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
         fx.nums[id]?.parent?.remove(fx.nums[id]); delete fx.nums[id];
         const mat = m.material.clone(); mat.color.setHex(0xe9e3d6); mat.emissive.setHex(0); mat.transparent = true; mat.depthWrite = false;
         const c = new THREE.Mesh(m.geometry, mat); c.position.copy(m.position); c.rotation.copy(m.rotation);
-        c.userData.z = m.position.z; group.add(c); fx.clones[id] = c;
+        c.userData.from = m.position.clone();
+        c.userData.up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).transformDirection(group.matrixWorld.clone().invert());
+        group.add(c); fx.clones[id] = c;
       }
       const c = fx.clones[id];
       if (c?.parent) {
         const p = (u - at) / FADE;
         if (p >= 1) { c.parent.remove(c); c.material.dispose(); }
-        else { c.position.z = c.userData.z + LIFT_MM * ease(p); c.material.opacity = 1 - ease(p); }
+        else { c.position.copy(c.userData.from).addScaledVector(c.userData.up, LIFT_MM * ease(p)); c.material.opacity = 1 - p * p; }   // it rises at once, fades late
         if (p >= 0.6 && !fx.marks[id]) fx.marks[id] = label("extract-mark", "발치", state.center[id].clone().setZ(state.center[id].z + 2));
       }
     });
@@ -228,5 +238,5 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
     const contacts = stageContacts(plan);
     if (contacts.length) cursors.push(cursorRun(contacts, Math.min(0.9, Math.max(0.45, 2.4 / contacts.length))));
   }
-  return { startNumbers, applyPrescription, landed, numbersDone, cutShown, release, cancel, tick, stageReached, busy: () => !!fx };
+  return { startNumbers, applyPrescription, landed, numbersDone, extracted, cutShown, release, cancel, tick, stageReached, busy: () => !!fx };
 }

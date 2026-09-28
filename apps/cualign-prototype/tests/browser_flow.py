@@ -108,6 +108,9 @@ api.add_api_routes(app, review=fake_manual_review)
 app.add_middleware(plan_events.PlanEventsASGI)
 
 
+SETUP_TURNS = [0]   # the setup turns the fake agent answered
+
+
 def sse(name, obj):
     return f"event: {name}\ndata: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
@@ -130,15 +133,25 @@ async def fake_chat(request: Request):
     text = next((m["content"] for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
     async def generate():
         if step == "setup":
-            # as the real setup turn streams (2026-09-28, 000001): no tool event — the form already carries the
-            # prescription, the agent answers directly — only the answer and step_done; the screen writes 조건 설정
+            # the two real setup turns of 2026-09-28, in their order, the waits shortened. The first as 000097's (8000 log
+            # 17:22:41–17:23:28): nothing, then (since #189) the planner's reasoning, the set_constraints row, then the answer
+            # and step_done together (the output rails hold the answer). The next as 000001's: no tool event at all — the form already carries the
+            # prescription, the agent answers directly — only the answer and step_done; the screen writes 조건 설정.
+            SETUP_TURNS[0] += 1
             run.constraints = run.constraints.patched({"extraction": [5, 12]})   # the conditions the answer states (a case started over has none)
+            if SETUP_TURNS[0] == 1:
+                await asyncio.sleep(1.0)
             # the planner's reasoning comes first, as NAT sends it (rails_middleware.ReasoningRelay, worker.ToolStepsOnly)
             for i, line in enumerate(("We need to read the prescription. It gives extraction 14 and 24.", "So we set the constraints.")):
                 yield "intermediate_data: " + json.dumps({"id": f"r{i}", "type": "reasoning", "name": "reasoning", "payload": line}) + "\n\n"
                 await asyncio.sleep(0.3)
-            yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
+            if SETUP_TURNS[0] == 1:
+                args = '**Input:**\n```json\n{"extraction": [5, 12]}\n```'
+                yield "intermediate_data: " + json.dumps({"id": "s1", "name": "Function Start: cualign__set_constraints", "payload": args}) + "\n\n"
+                yield "intermediate_data: " + json.dumps({"id": "s1", "name": "Function End: cualign__set_constraints", "payload": args + "\n\n**Output:**\n완료"}) + "\n\n"
+                await asyncio.sleep(2.5)
             yield 'data: {"value":"처방을 조건으로 옮겼습니다. 발치 14·24, IPR 면당 0.25 mm."}\n\n'
+            yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
             return
         if step == "target":
             yield sse("step_done", {"request_id": run.request_id, "step": "target", "target_id": "t-fake",
@@ -242,7 +255,20 @@ async def main():
                 if (!seen.includes('thinking') && document.querySelector('.trace .thinking')) seen.push('thinking');
                 if (!seen.includes('answer') && [...document.querySelectorAll('.msg.assistant')].some((m) => m.textContent.includes('처방을 조건으로 옮겼습니다'))) seen.push('answer');
               }).observe(document.getElementById('transcript'), { subtree: true, childList: true, characterData: true }); }""")
+            # per frame from here: the extracted crowns' lifting copies (scan-reveal ②) and the moment step_done lands (its reasoning line)
+            await page.evaluate("""() => { const w = window, s = w.__cualign.state; w.__fx = [];
+              const tick = () => { const g = s.teeth['5']?.parent, teeth = new Set(Object.values(s.teeth));
+                const clones = g ? g.children.filter((o) => o.isMesh && !teeth.has(o) && o.material?.depthWrite === false && o.material.opacity < 1).length : 0;
+                const told = [...document.querySelectorAll('.trace .reason')].some((r) => r.textContent.startsWith('처방을 읽었습니다'));
+                w.__fx.push({ t: performance.now(), clones, told });
+                if (w.__fx.length < 3000) requestAnimationFrame(tick); };
+              tick(); }""")
             await next_chip("이 케이스의 처방 넣기").click()
+            # the 3D reads the scan only once the agent's first line is in the transcript (here a reasoning line, 1 s in)
+            await page.wait_for_timeout(500)
+            assert await page.locator(".trace .step, .trace .thinking").count() == 0 and await page.locator(".fx-num").count() == 0
+            await page.wait_for_function("document.querySelector('.trace .step, .trace .thinking')", timeout=10000)
+            await page.wait_for_function("document.querySelectorAll('.fx-num').length > 0", timeout=5000)
             await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
             # the reasoning line reached the transcript before the answer, and folded to a count once the answer came
             assert await page.evaluate("window.__firstSeen") == ["thinking", "answer"], await page.evaluate("window.__firstSeen")
@@ -263,6 +289,12 @@ async def main():
             assert not await trace.locator(".raw pre").is_visible() and "extraction" not in await trace.inner_text()
             await trace.locator(".raw > summary", has_text="자세히").click()
             assert await trace.locator(".raw pre").is_visible() and "extraction" in await trace.locator(".raw pre").inner_text()
+            # the extracted crowns lift and fade after step_done (0.6 s): a copy is on screen 0.3 s in, none 0.8 s in, then the setup lands
+            fx = await page.evaluate("window.__fx")
+            told = next(f["t"] for f in fx if f["told"])
+            after = [(round(f["t"] - told), f["clones"]) for f in fx if told <= f["t"] <= told + 1500]
+            assert any(n for dt, n in after if 200 <= dt <= 450), after
+            assert not any(n for dt, n in after if dt >= 800), after
             removed_crown = "() => { const s = window.__cualign.state; return s.teeth[String(s.setup.extraction[0])].visible; }"
             await page.wait_for_function(f"!({removed_crown})()", timeout=5000)      # red for a moment, then gone (#20)
             await page.wait_for_function(f"JSON.stringify({scan_rx}) === JSON.stringify([['14', '24'], true])", timeout=10000)      # the 스캔 tab: 14·24 and 처방 with the 3D
