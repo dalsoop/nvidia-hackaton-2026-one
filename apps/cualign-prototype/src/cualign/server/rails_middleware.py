@@ -53,7 +53,7 @@ from nat.middleware.function_middleware import FunctionMiddleware
 
 from cualign.agent import nim_stream_patch
 from cualign.agent.context import CURRENT_RUN
-from cualign.agent.overload import is_overload_error
+from cualign.agent.overload import is_auth_error, is_overload_error
 from cualign.keys import nvidia_key_available
 from cualign.server.rail_patterns import PII, PRESCRIPTIVE
 from cualign.core.store import STORE
@@ -211,6 +211,7 @@ DELIBERATION_MIN_LATIN = 200   # a dropped prefix has at least this many Latin l
 HANGUL_SHARE = 0.3     # a Korean answer with IPR/mm/FDI tokens keeps well above this; deliberation quoting one Korean
                        # sentence sits far below (the 2026-09-28 leak: about 6 percent)
 NO_ANSWER = "모델이 계획 대신 자기 추론문만 돌려보내 답을 만들지 못했습니다. 같은 요청을 다시 보내 주세요."
+AUTH_FAILED = "NVIDIA API 가 서버의 키를 거부했습니다 (HTTP 401/403). 서버의 NVIDIA_API_KEY 를 확인하세요."
 # The ReAct label the model answers under. NAT strips it from a parsed "Final Answer:" block, but an answer given
 # without a tool call in the same turn (E2E 2026-09-28, the compare turn under an extraction prescription: "Final
 # Answer: 발치 치아 14,24번 처방이 유지된 상태에서 …") reaches the screen with the label on. A label only ever opens the
@@ -296,11 +297,12 @@ class RailsMiddleware(FunctionMiddleware):
         """Call inside the except block: logs the whole exception, records for the UI's plan_error event whether the
         NVIDIA API's overload killed this turn (#51), and returns an exception that names only the type."""
         logger.exception("cuAlign rails: the workflow failed; the client gets only the exception type")
-        message = f"cuAlign: 에이전트 실행이 실패했습니다 ({type(e).__name__}). 자세한 내용은 서버 로그에 있습니다."
-        overload = is_overload_error(e)
+        overload, auth = is_overload_error(e), is_auth_error(e)
+        # a rejected key names itself (no secret in it): 다시 보내기 alone cannot fix it, the dentist needs to know why
+        message = AUTH_FAILED if auth else f"cuAlign: 에이전트 실행이 실패했습니다 ({type(e).__name__}). 자세한 내용은 서버 로그에 있습니다."
         run = CURRENT_RUN.get()
         if run is not None:
-            run.error = {"kind": "nim_overload" if overload else "workflow_error",
+            run.error = {"kind": "nim_overload" if overload else "nim_auth" if auth else "workflow_error",
                          "message": (self.overload_notice or message) if overload else message}
         return RuntimeError(message)
 

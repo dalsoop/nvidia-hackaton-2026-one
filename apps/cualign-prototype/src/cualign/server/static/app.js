@@ -2061,7 +2061,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     } else if (type === "plan_error" || type === "error" || obj.code) {
       streamError = true; addStep("error", obj, "fallback");
       // the server's own sentence, worth a 다시 보내기: NIM overload, or a final answer with no Korean in it (no_answer)
-      if ((obj.kind === "nim_overload" || obj.kind === "no_answer") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
+      if ((obj.kind === "nim_overload" || obj.kind === "no_answer" || obj.kind === "nim_auth") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
     } else if (type === "intermediate_data") {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
@@ -2106,10 +2106,12 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     if (answer) setAnswer(bubble, answer); else bubble.remove();
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 · 현재 3D는 이전 계획입니다." : "";
     if (turnStep === "stages" && !Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
+    // the way out the bar really offers: a sample has 건너뛰기 (the recorded answer), a patient has 에이전트 없이 계산
+    const alt = sample ? "「건너뛰기」로 녹화된 답을 볼 수 있습니다." : "「에이전트 없이 계산」할 수 있습니다.";
+    const when = overload?.kind === "nim_overload" ? " 잠시 뒤 " : overload?.kind === "nim_auth" ? " 키를 고쳐 서버를 다시 시작한 뒤 " : " ";
     addMsg("error", overload
-      ? overload.message + (overload.kind === "no_answer" ? " 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다."
-                                                            : " 잠시 뒤 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다.")
-      : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 「에이전트 없이 계산」할 수 있습니다.");
+      ? overload.message + when + "「다시 보내기」를 누르거나, " + alt
+      : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
     clearTimeout(skipTimer); skipRow?.remove();

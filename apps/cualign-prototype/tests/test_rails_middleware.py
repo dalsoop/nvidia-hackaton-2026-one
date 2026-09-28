@@ -639,3 +639,21 @@ def test_react_final_answer_label_is_stripped(store, tmp_path, monkeypatch):
         plain = ask(client, "/generate")
     assert "Final Answer" not in stream and "발치 치아 14,24번 처방이 유지된 상태에서" in stream and "plan_error" not in stream
     assert "Final Answer" not in plain and "발치 치아 14,24번 처방이 유지된 상태에서" in plain
+
+
+def test_rejected_key_reaches_the_ui_as_a_nim_auth_event(store, tmp_path, monkeypatch):
+    """QA 9/28 D: a turn the NVIDIA API killed with 401 (missing or wrong key) ends with plan_error kind=nim_auth and a
+    sentence naming the key, instead of the type-only 「에이전트 실행이 실패했습니다 (Exception)」 that left the dentist
+    pressing 다시 보내기. 401 is not in retry_codes, so the fake's first answer is the turn's last."""
+    def edit(cfg):
+        for llm in cfg["llms"].values():
+            llm.update(num_retries=1, max_retries=0)
+        cfg["middleware"]["cualign_rails"]["nim_retry"] = {"stream_delays": [0], "request_delays": [],
+                                                           "retry_codes": [503], "fallback_models": []}
+    with FakeLLM() as llm:
+        llm.busy, llm.busy_http, llm.busy_error = 99, True, {"message": "Unauthorized", "code": 401}
+        with serve(tmp_path, monkeypatch, llm, edit=edit) as client:
+            body = ask(client, "/chat/stream", cualign={"case_id": "moderate", "request_id": "r-401"})
+    error = sse_event(body, "plan_error")
+    assert error["kind"] == "nim_auth" and "NVIDIA_API_KEY" in error["message"] and "401" in error["message"]
+    assert error["request_id"] == "r-401" and "plan_selected" not in body
