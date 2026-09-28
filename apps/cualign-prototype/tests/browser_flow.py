@@ -122,10 +122,8 @@ async def fake_chat(request: Request):
     text = next((m["content"] for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
     async def generate():
         if step == "setup":
-            # one tool call as NAT streams it (start, then the end with the output the worker replaced by 완료)
-            args = '**Input:**\n```json\n{"extraction": [5, 12]}\n```'
-            yield "intermediate_data: " + json.dumps({"id": "s1", "name": "Function Start: cualign__set_constraints", "payload": args}) + "\n\n"
-            yield "intermediate_data: " + json.dumps({"id": "s1", "name": "Function End: cualign__set_constraints", "payload": args + "\n\n**Output:**\n완료"}) + "\n\n"
+            # as the real setup turn streams (2026-09-28, 000001): no tool event — the form already carries the
+            # prescription, the agent answers directly — only the answer and step_done; the screen writes 조건 설정
             yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
             yield 'data: {"value":"처방을 조건으로 옮겼습니다. 발치 14·24, IPR 면당 0.25 mm."}\n\n'
             return
@@ -213,6 +211,9 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
             assert await page.locator("#cExtract").input_value() == "14, 24"
             assert await page.locator("#tabCond").get_attribute("aria-selected") == "true"
+            # no dimming over the 3D during a turn (only a chip under it), and the chip is off once the turn is over
+            assert await page.evaluate("getComputedStyle(document.getElementById('viewCanvas')).opacity") == "1"
+            assert not await page.locator("#workNote").evaluate("e => e.classList.contains('on')")
             # the reasoning in sentences: the tool row and its line show without a click, the raw call only under 자세히
             trace = page.locator(".trace").last
             assert (await trace.locator(".head").inner_text()).endswith("도구 1회 · 조건 설정")
@@ -667,6 +668,8 @@ async def main():
                 await page.wait_for_function(f"document.querySelectorAll('.msg.assistant.recorded').length === {n} && !window.__cualign.state.streaming", timeout=60000)
             await page.locator("#tabCond").click(); await page.locator("#condApply").click()      # setup again, by hand-edited conditions
             await skip_turn(1)
+            # the recorded setup lands after the scan numbers (scan-reveal ①), with its reasoning
+            await page.wait_for_function("window.__cualign.state.setup?.lock?.[0] === 2", timeout=10000)
             assert await page.evaluate("window.__cualign.state.setup.lock") == [2] and await page.locator("#cLock").input_value() == "17"      # Universal 2 = FDI 17
             assert await page.locator("body").evaluate("b => b.classList.contains('step-setup')") and await page.locator('#flow button[data-step="stages"]').is_disabled()
             # the per-contact prescription (#57): the 조건 tab shows it in FDI, the 3D marks exactly those three contacts,

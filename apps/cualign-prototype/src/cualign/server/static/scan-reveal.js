@@ -1,13 +1,16 @@
-// Scan reveal (시연 연출): when the setup turn starts, the agent is seen reading the scan and applying the prescription.
-// ① 스캔 인식 — one FDI number per crown, 17 → 27 at 0.1 s, each crown lit for ~150 ms as its number lands.
-// ② 처방 적용 — an extracted crown lifts and fades, a 「발치」 mark stays; an IPR contact gets the tool cursor (a strip
-//    disc that flies in, scrapes ~0.5 s, fades) and then its mark. The same cursor runs once per plan when the stage
-//    playback first reaches a cut stage (the cut applies from stage 1, contract 8-ipr-cut.md).
+// Scan reveal (시연 연출): on the setup turn the agent is seen reading the scan and applying the prescription.
+// ① 스캔 인식 (startNumbers, as the turn is sent) — one FDI number per crown, 17 → 27 at 0.1 s, each crown lit for
+//    ~150 ms as its number lands. The numbers stay until ② has run.
+// ② 처방 적용 (applyPrescription, as the transcript gets 「처방을 읽었습니다 — …」; never before ① is through) — an
+//    extracted crown lifts and fades, a 「발치」 mark stays; an IPR contact gets the tool cursor (a strip disc that
+//    flies in, scrapes ~0.5 s, fades), then its mark, and its crowns show cut (cutShown). At least MIN_APPLY long.
+//    The same cursor runs once per plan when the stage playback first reaches a cut stage (the cut applies from
+//    stage 1, contract 8-ipr-cut.md).
 // The module owns nothing of the app's state: it reads `state`, draws its own objects into `group`, and while it runs
 // it overrides a few crown properties every frame from tick() (called in the render loop before the render), so the
 // app's applyStage can keep writing the true state underneath. ?nofx=1 turns it off (browser checks).
 const OFF = new URLSearchParams(location.search).has("nofx");
-const SCAN_GAP = 0.1, PULSE = 0.15, HOLD = 0.3;      // s
+const SCAN_GAP = 0.1, PULSE = 0.15, HOLD = 0.3, MIN_APPLY = 1.5;      // s
 const LIFT_MM = 3, FADE = 0.7, FADE_GAP = 0.3;
 const PULSE_HEX = 0x5a5a5a;
 const CURSOR_SVG = `<svg viewBox="0 0 32 32" width="44" height="44" aria-hidden="true">
@@ -19,7 +22,7 @@ const ease = (x) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 const pairKey = (a, b) => `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;
 const now = () => performance.now() / 1000;
 
-export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, refresh, stageContacts }) {
+export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, refresh, recut, stageContacts }) {
   const toothPos = (id) => state.center[id].clone().add(state.teeth[id].position);
   const contactPos = (a, b) => toothPos(a).add(toothPos(b)).multiplyScalar(0.5).setZ(Math.max(toothPos(a).z, toothPos(b).z) + 2);
   const label = (cls, text, pos) => {
@@ -67,34 +70,60 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
   const cursors = [];         // stage-playback cursors, independent of the setup reveal
   const cursorPlans = new Set();   // plans whose cut stage already had its cursor (dragging back does not repeat it)
 
-  function start(caseId, rx) {
+  // ① as the setup turn is sent: the numbers; ② waits for applyPrescription (applyAt null until then)
+  function startNumbers(caseId) {
     if (OFF || fx || !caseId) return;
     const ids = Object.keys(state.teeth).sort((a, b) => a - b);       // Universal 2 → 15 = FDI 17 → 27
     if (!ids.length) return;
-    const extraction = (rx?.extraction ?? []).map(String).filter((id) => state.teeth[id]);
-    const surfaces = (rx?.ipr_surfaces ?? []).map(([a, b]) => [String(a), String(b)])
-      .filter(([a, b]) => state.teeth[a] && state.teeth[b] && !extraction.includes(a) && !extraction.includes(b));
     const scanEnd = SCAN_GAP * (ids.length - 1) + PULSE + 0.2;
-    const extractEnd = extraction.length ? FADE_GAP * (extraction.length - 1) + FADE + 0.15 : 0;
-    const per = surfaces.length ? Math.min(0.9, Math.max(0.45, 2.4 / surfaces.length)) : 0;
-    fx = { caseId, ids, extraction, surfaces, per, t0: null, scanEnd, extractEnd, end: scanEnd + extractEnd + per * surfaces.length + HOLD,
+    fx = { caseId, ids, extraction: [], surfaces: [], per: 0, t0: null, scanEnd, extractEnd: 0, applyAt: null, end: Infinity,
            nums: {}, pulsed: new Map(), faded: new Set(), clones: {}, marks: {}, cursor: null, iprDone: new Set(),
            released: false, finished: false, noticeLast: null, noticeApp: notice.textContent, owner: state.requestId };
     window.dispatchEvent(new CustomEvent("cualign:scan-reveal", { detail: { ids, ms: SCAN_GAP * 1000 } }));   // the 스캔 tab's chart fills in the same order
   }
-  // step_done setup came in while the reveal runs: the contacts not reached yet follow the agent's constraints
-  function landed(setup) {
-    if (!fx || fx.finished || fx.cursor || !setup) return;
-    fx.surfaces = (setup.ipr_surfaces ?? []).map(([a, b]) => [String(a), String(b)])
-      .filter(([a, b]) => state.teeth[a] && state.teeth[b] && !fx.extraction.includes(a) && !fx.extraction.includes(b));
+  const surfacesOf = (rx, extraction) => (rx?.ipr_surfaces ?? []).map(([a, b]) => [String(a), String(b)])
+    .filter(([a, b]) => state.teeth[a] && state.teeth[b] && !extraction.includes(a) && !extraction.includes(b));
+  // ② as the transcript gets the setup's reasoning: the prescription (Universal) goes on the 3D, from the moment ①
+  // is through at the earliest, and runs at least MIN_APPLY
+  function applyPrescription(rx) {
+    if (!fx || fx.finished || fx.applyAt !== null || !rx) return;
+    fx.extraction = (rx.extraction ?? []).map(String).filter((id) => state.teeth[id]);
+    fx.surfaces = surfacesOf(rx, fx.extraction);
+    fx.extractEnd = fx.extraction.length ? FADE_GAP * (fx.extraction.length - 1) + FADE + 0.15 : 0;
     fx.per = fx.surfaces.length ? Math.min(0.9, Math.max(0.45, 2.4 / fx.surfaces.length)) : 0;
-    fx.end = fx.scanEnd + fx.extractEnd + fx.per * fx.surfaces.length + HOLD;
+    fx.applyAt = Math.max(fx.t0 === null ? 0 : now() - fx.t0, fx.scanEnd);
+    fx.end = fx.applyAt + Math.max(MIN_APPLY, fx.extractEnd + fx.per * fx.surfaces.length) + HOLD;
+  }
+  // step_done setup landed: ② starts now if the reasoning did not start it; once it runs, the contacts the cursor has
+  // not reached yet follow the agent's constraints
+  function landed(setup) {
+    if (!fx || fx.finished || !setup) return;
+    if (fx.applyAt === null) { applyPrescription(setup); return; }
+    if (fx.cursor) return;
+    fx.surfaces = surfacesOf(setup, fx.extraction);
+    fx.per = fx.surfaces.length ? Math.min(0.9, Math.max(0.45, 2.4 / fx.surfaces.length)) : 0;
+    fx.end = fx.applyAt + Math.max(MIN_APPLY, fx.extractEnd + fx.per * fx.surfaces.length) + HOLD;
+  }
+  // resolves once ① is through (at once without a reveal): a replay lands its reasoning and ② together after it
+  function numbersDone() {
+    const left = !fx || fx.finished ? 0 : fx.t0 === null ? fx.scanEnd : fx.scanEnd - (now() - fx.t0);
+    return new Promise((r) => setTimeout(r, Math.max(0, left) * 1000));
+  }
+  // a crown with an IPR contact shows its cut once the cursor has passed all its contacts
+  function cutShown(id) {
+    if (!fx || fx.finished) return true;
+    id = String(id);
+    return !fx.surfaces.some(([a, b]) => (a === id || b === id) && !fx.iprDone.has(pairKey(a, b)));
   }
   const ownsNotice = () => state.requestId === fx.owner;   // a later turn has its own line: the reveal leaves it alone
   const say = (text) => {
     if (!ownsNotice()) return;
     if (notice.textContent !== fx.noticeLast) fx.noticeApp = notice.textContent;   // the app wrote its own line meanwhile
     notice.textContent = fx.noticeLast = text;
+  };
+  const unsay = () => {
+    if (ownsNotice() && fx.noticeLast !== null && notice.textContent === fx.noticeLast) notice.textContent = fx.noticeApp;
+    fx.noticeLast = null;
   };
   function clearResidue() {
     for (const o of Object.values(fx.nums)) o.parent?.remove(o);
@@ -137,6 +166,7 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
       });
       const seen = fx.ids.filter((_, i) => u >= SCAN_GAP * i).length;
       if (u < fx.scanEnd) say(`스캔 인식 중 … ${seen}개 치아`);
+      else if (fx.applyAt === null) unsay();   // waiting for the reasoning: the app's own line
       else {
         const parts = [fx.extraction.length && `${fx.extraction.map(fdi).sort((a, b) => a - b).join("·")} 발치`,
                        fx.surfaces.length && `IPR ${fx.surfaces.length}면`].filter(Boolean);
@@ -145,7 +175,7 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
     }
     // ② extraction: the crown lifts and fades (a clone does it; the crown itself is hidden from then on), a mark stays
     fx.extraction.forEach((id, i) => {
-      const m = state.teeth[id], at = fx.scanEnd + FADE_GAP * i;
+      const m = state.teeth[id], at = fx.applyAt + FADE_GAP * i;
       if (!m) return;
       if (u < at) { m.visible = true; m.material.color.setHex(0xe9e3d6); return; }   // until its turn the crown stays as scanned
       m.visible = false;
@@ -165,9 +195,10 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
       }
     });
     // ② IPR: the tool cursor over each prescribed contact, the contact's mark once it is done
-    if (fx.surfaces.length && !fx.finished && u >= fx.scanEnd + fx.extractEnd && !fx.cursor)
+    if (fx.surfaces.length && !fx.finished && fx.applyAt !== null && u >= fx.applyAt + fx.extractEnd && !fx.cursor)
       fx.cursor = cursorRun(fx.surfaces, fx.per, (a, b) => {
         fx.iprDone.add(pairKey(a, b));
+        recut?.();   // the two crowns show cut from here
         if (!appMark(`[data-contact="${pairKey(a, b)}"]`)) fx.marks[pairKey(a, b)] = label("fx-ipr-mark", "", contactPos(a, b));
       });
     if (fx.cursor && !fx.cursor.done) fx.cursor.tick(t);
@@ -179,7 +210,8 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
       const mine = fx.marks[c ?? x];
       if (mine && ready) { mine.parent?.remove(mine); delete fx.marks[c ?? x]; }
     }
-    if (!fx.finished && u >= fx.end) finish();
+    // done: ② ran its time, or the turn ended without a prescription to apply (failed, or no setup came)
+    if (!fx.finished && (u >= fx.end || (fx.released && fx.applyAt === null && u >= fx.scanEnd))) finish();
   }
   const appMark = (sel) => (state.setupMarks ?? []).some((o) => o.element.matches(sel));
 
@@ -196,5 +228,5 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
     const contacts = stageContacts(plan);
     if (contacts.length) cursors.push(cursorRun(contacts, Math.min(0.9, Math.max(0.45, 2.4 / contacts.length))));
   }
-  return { start, landed, release, cancel, tick, stageReached, busy: () => !!fx };
+  return { startNumbers, applyPrescription, landed, numbersDone, cutShown, release, cancel, tick, stageReached, busy: () => !!fx };
 }
