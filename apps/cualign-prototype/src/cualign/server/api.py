@@ -416,7 +416,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
         surfaces = [[int(a), int(b), float(mm)] for a, b, mm in (c.ipr_surfaces if c is not None else ())]
         if c is not None and c.ipr_amounts:   # 직접 이동's right-click IPR: each tooth face as prescribed, not half each
             from cualign.core.ipr_cut import cut_ipr
-            return {"plan_id": None, "target_id": None, **cut_ipr(case, surfaces, faces=c.face_amounts()).cut_json()}
+            return {"plan_id": None, "target_id": None, **closed_cut_json(cid, case, cut_ipr(case, surfaces, faces=c.face_amounts()))}
         info = {"ipr_surfaces": surfaces, "ipr_applied_teeth": sorted({t for a, b, _ in surfaces for t in (a, b)})}
         return {"plan_id": None, "target_id": None, **closed_cut_json(cid, case, planner.cut_case(case, info if surfaces else None))}
 
