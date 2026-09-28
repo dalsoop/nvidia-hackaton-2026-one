@@ -71,3 +71,22 @@ def test_target_cut_gives_the_target_crowns_alone(tmp_path, monkeypatch):
         assert cut["teeth_cut"] == full["teeth_cut"] and cut["ipr_cut"] == full["ipr_cut"] and set(cut["ipr_cut"]) == {"7", "8", "9", "10"}
         assert client.get(f"/api/cases/poseidon-000097/targets/{tid}/cut").status_code == 404
         assert client.get("/api/cases/poseidon-000131/targets/t0/cut").status_code == 404
+
+
+def test_mesh_crowns_are_closed_for_the_view_only(tmp_path, monkeypatch):
+    """Scanned crowns are open at the margin; the mesh response fans that shut (a bared side shows no hole) while the
+    scan's own vertices and faces come first, unchanged, and the case the core measures stays open."""
+    import numpy as np
+    import trimesh
+    from cualign.core.ipr_cut import _boundary_loops
+    with _client(tmp_path, monkeypatch) as client:
+        data = client.get("/api/cases/poseidon-000097/mesh").json()
+        _, case = store.STORE.load_case("poseidon-000097")
+        raw = case.viewer_json()["teeth"]
+        assert set(data["teeth"]) == set(raw)
+        for i, t in data["teeth"].items():
+            m = trimesh.Trimesh(np.asarray(t["v"], float), np.asarray(t["f"]), process=False)
+            assert _boundary_loops(m) == []
+            n, k = len(raw[i]["v"]), len(raw[i]["f"])
+            assert t["v"][:n] == raw[i]["v"] and len(t["f"]) > k and t["f"][:k] == raw[i]["f"]
+        assert _boundary_loops(case.mesh[case.ids[0]])                                         # the core's crown is untouched
