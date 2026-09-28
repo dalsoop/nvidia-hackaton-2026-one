@@ -257,15 +257,18 @@ function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
     let all = 0, present = 0;
     for (let j = 0; j < GUM_K; j++) { const g = skin.w[v * GUM_K + j]; all += g; if (moves[skin.ids[v * GUM_K + j]]) present += g; }
     const share = present > 1e-6 ? all / present : 0;
-    let dx = 0, dy = 0, dz = 0;
+    let dx = 0, dy = 0;
     for (let j = 0; j < GUM_K; j++) {
       const t = moves[skin.ids[v * GUM_K + j]], g = skin.w[v * GUM_K + j] * share;
       if (!t) continue;
       const rx = x - t.c[0], ry = y - t.c[1];
       dx += g * (t.cos * rx - t.sin * ry + t.c[0] + t.d[0] - x);
       dy += g * (t.sin * rx + t.cos * ry + t.c[1] + t.d[1] - y);
-      dz += g * t.d[2];
     }
+    // vertical: the nearest crown still there alone (a levelled crown's gum rose only 20–30 % of it when averaged with
+    // neighbours that stay, PR #197 ③a); the blend is for xy, and the smoothing passes below soften the seams
+    const near = skin.ids.subarray(v * GUM_K, v * GUM_K + GUM_K).find((i) => !removed.has(skin.toothIds[i]));
+    const dz = present > 1e-6 && near !== undefined ? all * (st[skin.toothIds[near]]?.[2] ?? 0) : 0;
     skin.disp[3 * v] = dx; skin.disp[3 * v + 1] = dy; skin.disp[3 * v + 2] = dz;
   }
   // two Laplacian passes over the displacement (not the surface): the seams between crown territories blend, the scan's detail stays
