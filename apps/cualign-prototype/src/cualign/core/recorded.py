@@ -1,7 +1,8 @@
 """Recorded agent answers for the sample cases: what the screen replays when the NIM is down or slow during a demo.
 
 A recording is one file per sample and step (samples/recorded/<case_id>/<step>.json) holding the sentence that was
-sent, the turn's final constraint patch, the answer as the model wrote it and the reviewer's result. No plan is stored:
+sent, the turn's final constraint patch, the answer as the model wrote it and the reviewer's result, and optionally
+`reasoning`: the reasoning events the live turn sent before its answer, in order (000097 setup). No plan is stored:
 a replay recomputes the plans with the rule engine (deterministic) under the same constraints, and the stage count
 and months in the answer are checked against that computation and rewritten where they differ. The screen marks a
 replayed answer as recorded; nothing here pretends to be the agent.
@@ -53,6 +54,9 @@ def check(data: dict) -> None:
         raise ValueError("recording has a bad step, constraints or answer")
     if data["review"] is not None and not isinstance(data["review"], dict):
         raise ValueError("recording's review must be the reviewer's result or null")
+    reasoning = data.get("reasoning")
+    if reasoning is not None and not (isinstance(reasoning, list) and all(isinstance(x, str) and x.strip() for x in reasoning)):
+        raise ValueError("recording's reasoning must be a list of sentences")
 
 
 def save(case_id: str, step: str, data: dict) -> Path:

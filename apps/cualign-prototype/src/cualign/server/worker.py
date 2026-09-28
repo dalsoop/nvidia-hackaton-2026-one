@@ -10,9 +10,12 @@ from fastapi import FastAPI
 
 from nat.builder.component_utils import WORKFLOW_COMPONENT_NAME
 from nat.builder.workflow_builder import WorkflowBuilder
+from nat.data_models.api_server import ResponseIntermediateStep
 from nat.data_models.intermediate_step import IntermediateStep, IntermediateStepType, StreamEventData
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
+
+from cualign.server.rails_middleware import REASONING_STEP
 
 
 class ToolStepsOnly(StepAdaptor):
@@ -20,10 +23,17 @@ class ToolStepsOnly(StepAdaptor):
     start carries the whole request (chat and server context) and leaves before the rails run, so a refused request
     would come back through it. A tool's start passes as NAT builds it (tool name and the arguments the model chose).
     A tool's end is rebuilt with a fixed output in place of the tool result, because the UI closes a row only when an
-    end step with the same id arrives (app.js addStep); NAT's end body keeps the input block, so the arguments stay."""
+    end step with the same id arrives (app.js addStep); NAT's end body keeps the input block, so the arguments stay.
+    The one model text sent here is the planner's reasoning (rails_middleware.ReasoningRelay: not the answer, through
+    the personal-identifier regex), as `type: "reasoning"` with the sentences as the payload."""
 
     def process(self, step: IntermediateStep):
         payload = step.payload
+        if payload.name == REASONING_STEP:
+            if payload.event_type != IntermediateStepType.CUSTOM_START:
+                return None
+            return ResponseIntermediateStep(id=payload.UUID, parent_id=step.parent_id, type="reasoning",
+                                            name="reasoning", payload=(payload.data or StreamEventData()).input or "")
         if payload.name == WORKFLOW_COMPONENT_NAME and payload.event_type in (IntermediateStepType.FUNCTION_START,
                                                                               IntermediateStepType.FUNCTION_END):
             return None

@@ -668,3 +668,56 @@ def test_rejected_key_reaches_the_ui_as_a_nim_auth_event(store, tmp_path, monkey
     error = sse_event(body, "plan_error")
     assert error["kind"] == "nim_auth" and "NVIDIA_API_KEY" in error["message"] and "401" in error["message"]
     assert error["request_id"] == "r-401" and "plan_selected" not in body
+
+
+THINKING = ("<think>We need to read the prescription first. 보호자 연락처 010-0000-0000 는 빼야 한다. "
+            "Then set the constraints.</think>")
+
+
+def reasoning_steps(body):
+    return [sse_step(line) for line in body.splitlines()
+            if line.startswith("intermediate_data:") and sse_step(line).get("type") == "reasoning"]
+
+
+@pytest.mark.parametrize("factory", ["rails_fakes:passing", "rails_fakes:output_blocking"])
+def test_reasoning_streams_before_the_held_answer(store, tmp_path, monkeypatch, factory):
+    """The setup turn's 37 s of silence: the planner's reasoning is not the answer, so it leaves as `reasoning`
+    progress events while the answer is held. (a) it comes before the answer, whatever the verdict; (b) a blocked
+    answer is replaced by the refusal and the reasoning already sent stays; (c) a piece with a personal identifier
+    is not sent, and the turn is not refused for it."""
+    with FakeLLM(THINKING + OUT) as llm, serve(tmp_path, monkeypatch, llm, factory) as client:
+        body = ask(client, "/chat/stream", cualign={"case_id": "moderate"})
+    steps = reasoning_steps(body)
+    sent = " ".join(s["payload"] for s in steps)
+    assert sent == "We need to read the prescription first. Then set the constraints."
+    assert "010-0000-0000" not in body and "연락처" not in body   # (c) the piece is dropped, not redacted
+    first = body.index("intermediate_data:")
+    if factory.endswith("passing"):
+        assert "MARK-OUT" in body and first < body.index("MARK-OUT")   # (a)
+        assert "<think>" not in body and sse_event(body, "plan_context")["rails"] == "passed"   # (c) not refused
+    else:
+        assert REFUSAL in body and "MARK-OUT" not in body and first < body.index(REFUSAL)   # (b)
+
+
+def test_reasoning_relay_pieces_and_pace():
+    """A sentence mark or 60 characters makes a piece; pieces go out at most once a second, those in between
+    together; the NIM client's reasoning_content field and <think> text are both read."""
+    from langchain_core.messages import AIMessageChunk
+    from cualign.agent.react_patch import ThinkTags, reasoning_of
+    from cualign.server.rails_middleware import ReasoningRelay
+    now, sent = [0.0], []
+    relay = ReasoningRelay(sent.append, check_pii=True, clock=lambda: now[0])
+    relay.feed("First sentence. Second", "reasoning_content")
+    assert sent == ["First sentence."]
+    relay.feed(" sentence. Third sentence. ", "reasoning_content")
+    assert sent == ["First sentence."]            # within the second: waits
+    now[0] = 1.2
+    relay.feed("x" * 70, "reasoning_content")
+    assert sent[1:] == ["Second sentence. Third sentence. " + "x" * 60]
+    relay.flush()
+    assert sent[-1] == "x" * 10 and relay.events == 3 and relay.first == 0.0
+    think = ThinkTags()
+    got = [reasoning_of(AIMessageChunk(content=c), think)[0] for c in ("<thi", "nk>abc", " def</th", "ink>answer")]
+    assert "".join(got) == "abc def" and "<" not in "".join(got)
+    msg = AIMessageChunk(content="", additional_kwargs={"reasoning_content": "from the field"})
+    assert reasoning_of(msg, ThinkTags()) == ("from the field", "reasoning_content")

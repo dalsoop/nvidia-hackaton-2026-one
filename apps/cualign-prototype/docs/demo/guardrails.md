@@ -27,6 +27,8 @@ models: ['nvidia/nemotron-3.5-lightning-30b-a3b', 'nvidia/nemotron-3.5-content-s
 
 레일 호출은 `CUALIGN_RAILS_TIMEOUT`(기본 25s) 를 넘기면 ERROR 로 표시하고 열어 준다(fail-open, 보이게). 지금은 ERROR 로그와 `rails: "error"` 로 보인다. `CUALIGN_RAILS_FAIL_CLOSED=1` 이면 거절한다.
 
+**답은 판정까지 붙잡는다 — 추론 조각은 예외 (2026-09-28).** 스트림 턴의 답 청크는 출력 판정이 끝날 때까지 전부 붙잡고, 막히면 거절문으로 바꾼다. 플래너의 추론(NIM 스트림의 `reasoning_content` 델타, 또는 `<think>` 안의 글)은 이 붙잡기에서 뺀다. 문장이나 60자 단위로 끊어 1초에 한 번 이하로 곧바로 `reasoning` 진행 이벤트로 보낸다(`rails_middleware.ReasoningRelay`). 근거는 추론이 사용자에게 답으로 제시되는 문장이 아니라는 것이다. 답 말풍선이 아니라 트레이스의 추론 줄에 뜨고, 답이 오면 접혀 「자세히」로 들어간다. 개인정보 정규식 레일(`rail_patterns.PII`)은 레일이 켜져 있으면 조각마다 그대로 타고, 걸린 조각은 버린다(턴은 거절하지 않는다). 처방 문구 목록과 출력 레일 모델은 답에만 댄다. 답이 막혀도 이미 나간 추론은 그대로 남는다. 셋업 턴이 37초 동안 아무것도 보이지 않던 원인이 이 붙잡기였다.
+
 ## 왜 content safety 를 입력에서 advisory 로 두나 — 측정
 
 Nemotron content safety 가 짧은 한국어 계획 요청을 **"Criminal Planning/Confessions"** 로 분류했다(원문 판정 축자: `User Safety: unsafe Safety Categories: Criminal Planning/Confessions`). 프롬프트에 임상 맥락 한 줄을 붙여 2건 중 1건은 해소됐고, "빼고"(IPR 제외) 문장은 여전히 걸린다. 그래서 유해성 판정은 표시하되 차단 권한은 **범위 레일**에 둔다. 진짜 유해 요청("이웃집 개를 독살…")은 범위 레일도 BLOCKED 를 내므로 결과는 같다.

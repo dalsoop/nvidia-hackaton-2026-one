@@ -2190,7 +2190,44 @@ function traceSummary(trace) {
     : (names.length ? `도구 ${rows.length}회 · ` + names.join(" → ") : `모델 응답 ${rows.length}회`);
 }
 // While a turn runs a chip at the bottom of the 3D says the agent is at work; the 3D keeps its brightness and controls.
-function setWorkNote(on) { $("workNote").classList.toggle("on", on); }
+// `text` replaces the chip's words for this turn (the setup turn's reasoning: 처방 읽는 중); off or no text, the default.
+const WORK_NOTE = "에이전트가 작업 중입니다";
+function setWorkNote(on, text = null) {
+  $("workNote").classList.toggle("on", on);
+  $("workNote").querySelector("span").textContent = (on && text) || WORK_NOTE;
+}
+// The planner's reasoning while the answer is held (reasoning events, rails_middleware.ReasoningRelay): one line shows
+// the latest sentences, the earlier ones go under 자세히. Once the answer arrives the line folds to a count.
+function addThinking(text, trace = state.trace) {
+  if (!trace || !text) return;
+  if (!trace.thinking) {
+    trace.thinking = document.createElement("div");
+    trace.thinking.className = "thinking";
+    trace.thinking.lines = [];
+    keepBottom(() => trace.el.appendChild(trace.thinking));
+    trace.thinkLog = document.createElement("div");   // not a pre: the tool rows' raw calls are the log's pre elements
+    trace.thinkLog.className = "think-log";
+    trace.log.appendChild(trace.thinkLog); trace.log.parentElement.hidden = false;
+  }
+  const t = trace.thinking;
+  if (t.classList.contains("folded")) return;
+  t.textContent = latestSentences(text); t.lines.push(text);
+  trace.thinkLog.textContent = "모델 추론\n" + t.lines.join("\n");
+}
+// One event holds the pieces of about a second (the model writes ~300 characters a second, 2026-09-28): the line
+// shows its last sentences, at least 40 characters, so a trailing fragment does not stand alone.
+function latestSentences(text) {
+  const parts = text.split(/(?<=[.!?。])\s+/).filter(Boolean);
+  let out = parts.pop() ?? "";
+  while (parts.length && out.length < 40) out = parts.pop() + " " + out;
+  return out;
+}
+function foldThinking(trace = state.trace) {
+  const t = trace?.thinking;
+  if (!t || t.classList.contains("folded")) return;
+  t.classList.add("folded");
+  t.textContent = `모델 추론 ${t.lines.length}줄 · 자세히에 접어 두었습니다`;
+}
 function setStreaming(on) {
   state.streaming = on;
   document.body.classList.toggle("streaming", on);
@@ -2399,11 +2436,14 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       // the server's own sentence, worth a 다시 보내기: NIM overload, or a final answer with no Korean in it (no_answer)
       if ((obj.kind === "nim_overload" || obj.kind === "no_answer" || obj.kind === "nim_auth") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
       if (overload && overload.kind !== "no_answer") showSkip();   // 429 / 401·403: no reason to wait the stream out
+    } else if (type === "intermediate_data" && obj.type === "reasoning") {
+      addThinking(obj.payload ?? "");
+      if (turnStep === "setup") setWorkNote(true, "처방 읽는 중");
     } else if (type === "intermediate_data") {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
       const ch = obj.choices?.[0], delta = ch?.delta?.content ?? ch?.message?.content ?? obj.value ?? "";
-      if (typeof delta === "string") { answer += delta; setAnswer(bubble, answer); }
+      if (typeof delta === "string") { answer += delta; setAnswer(bubble, answer); if (delta) foldThinking(); }
     }
   };
   try {
@@ -2469,7 +2509,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
-    skipTimers.forEach(clearTimeout); clearInterval(skipRow.tick); skipRow.remove(); scanFx.release();
+    skipTimers.forEach(clearTimeout); clearInterval(skipRow.tick); skipRow.remove(); scanFx.release(); foldThinking();
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
 }
@@ -2525,6 +2565,7 @@ function skipTurn(requestId) {
 }
 // the turn's kind for the recorded answers (#20): the step it asks for, or a time cap / a strategy comparison on the stages
 const stepOf = (text, step) => step === "stages" && /개월|기간/.test(text) ? "cap" : step === "stages" && /비교|둘 ?다/.test(text) ? "compare" : step;
+const REPLAY_REASONING_MS = 1200;   // one recorded reasoning event per 1.2 s, about a live turn's pace (one a second or slower)
 // 건너뛰기 plays the recorded answer for this step (contract 12-replay.md); with none recorded (404) the rule plan on
 // screen is adopted. The recorded answer sits where the agent's would, marked grey with its date.
 async function replayOrAdopt(bubble, caseId, prevPlanId) {
@@ -2544,6 +2585,17 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     trace = newTrace(bubble);
     trace.box.classList.add("recorded");
     trace.box.querySelector(".text").textContent = "녹화된 답 · 계산은 지금 다시 했습니다";
+    // the recorded turn's reasoning events (000097 setup), at the pace a live turn sends them; none recorded, none made up
+    if (rec.reasoning?.length) {
+      setStreaming(true);
+      if (rec.step === "setup") setWorkNote(true, "처방 읽는 중");
+      for (const line of rec.reasoning) {
+        addThinking(line, trace);
+        await new Promise((r) => setTimeout(r, REPLAY_REASONING_MS));
+        if (state.meshCase !== caseId) { setStreaming(false); return; }
+      }
+      foldThinking(trace); setStreaming(false);
+    }
     setAnswer(bubble, rec.answer_md ?? "");
     bubble.classList.add("recorded");
     const tag = document.createElement("small"); tag.className = "recorded-tag"; tag.textContent = "녹화된 답 · " + (rec.recorded_at ?? "").slice(0, 10);

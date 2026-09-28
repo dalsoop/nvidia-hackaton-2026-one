@@ -1,6 +1,7 @@
 """Request-local state shared by NAT tasks through ContextVar inheritance."""
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from typing import Any
 from cualign.core.constraints import Constraints
 
 
@@ -30,3 +31,6 @@ class PlanRun:
 
 
 CURRENT_RUN: ContextVar[PlanRun | None] = ContextVar("cualign_plan_run", default=None)
+# The streamed turn's reasoning relay (rails_middleware.ReasoningRelay): react_patch feeds it the planner's reasoning
+# as it arrives, while the answer is held for the output rail.
+REASONING: ContextVar[Any] = ContextVar("cualign_reasoning", default=None)

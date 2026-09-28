@@ -682,6 +682,8 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             raise HTTPException(409, PREVIOUS_CALCULATION)
         step = recorded.ALIASES.get(req.step, req.step)
         out = {"recorded": True, "step": step, "answer_md": rec["answer_md"], "plan_selected": None, "plans": [], "recorded_at": rec["recorded_at"]}
+        if rec.get("reasoning"):   # the live turn's reasoning events; the screen plays them before the answer
+            out["reasoning"] = rec["reasoning"]
         STORE.replays[cid] = {"step": step, "step_ko": recorded.STEP_KO[step], "plan_id": None, "recorded_at": rec["recorded_at"]}
         if step == "setup":            # the recorded setup turn: its conditions become the case's, no plan
             STORE.case_constraints[cid] = constraints
