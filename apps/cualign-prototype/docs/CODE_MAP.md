@@ -1,7 +1,7 @@
 # 코드·파일 안내
 
 제품 범위는 [PRD](PRD.md), 기술 구조·데이터 계약·한계는 [TRD](TRD.md),
-설치·실행은 [README](../README.md), NVIDIA별 연결과 검증 수준은 [NVIDIA 활용](NVIDIA_STACK.md)을 참조한다.
+설치·실행은 [README](../README.ko.md), NVIDIA별 연결과 검증 수준은 [NVIDIA 활용](NVIDIA_STACK.md)을 참조한다.
 
 ## 실행 흐름
 

@@ -65,7 +65,9 @@ const state = {
   newPlans: 0,           // plans added by the last refreshPlans: more than one means the turn compared strategies
   oldPlans: new Set(),   // plans that already existed when the case was opened: folded as 지난 계획 (#105, #111)
   tab: "stages",         // the open sidebar tab: stages | rules | cond (#111)
+  tabPin: null,          // {caseId, step} when the dentist picked a tab by hand: the step flow leaves it until the next step
   planError: null,       // the server's sentence when a case has no plan and the calculation failed (#112)
+  stageTouched: false,   // the dentist moved the stage (slider, ends, play, a stage row or violation) since the turn began: the new plan does not jump to its end
 };
 
 // ------------------------------------------------------------------ three.js
@@ -80,7 +82,7 @@ const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
 // poles, #132) and no roll drift: the right axis starts level with the arch plane and neither turn tilts it. The
 // presets place the camera with lookAt (up = −z, apical) and then only the quaternion is kept; camera.up is unused.
 const controls = {
-  target: new THREE.Vector3(), dist: 100, vel: { yaw: 0, pitch: 0 }, damping: 0.85, speed: 0.006, minDist: 5, maxDist: 1500,
+  target: new THREE.Vector3(), dist: 100, vel: { yaw: 0, pitch: 0 }, damping: 0.85, speed: 0.006, minDist: 5 * 1.25, maxDist: 1500 * 1.25,
   place() { camera.position.copy(controls.target).add(new THREE.Vector3(0, 0, controls.dist).applyQuaternion(camera.quaternion)); },
   rotate(yaw, pitch) {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -92,6 +94,7 @@ const controls = {
     controls.target.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), -dx * k)
       .addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion), dy * k);
   },
+  fitted: null,   // the preset on screen until the pointer or the wheel moves the view: a resize fits it again
   zoom(f) { controls.dist = Math.min(controls.maxDist, Math.max(controls.minDist, controls.dist * f)); },
   lookFrom(pos, up) {   // the presets: the camera at pos looking at the target, the arch plane level
     controls.dist = pos.distanceTo(controls.target);
@@ -114,7 +117,10 @@ canvas.style.touchAction = "none";
   let drag = null, lastMove = 0;
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
-    drag = { x: e.clientX, y: e.clientY, pan: e.button !== 0 || e.shiftKey }; controls.dragging = true;
+    // the near surface follows the pointer: a turn about world z reads the other way round when z points down on screen
+    // (every preset looks with up = −z, crowns down), so the horizontal sign is taken from the camera's up at the press
+    const yawSign = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).z < 0 ? -1 : 1;
+    drag = { x: e.clientX, y: e.clientY, pan: e.button !== 0 || e.shiftKey, yawSign }; controls.dragging = true; controls.fitted = null;
     controls.vel.yaw = controls.vel.pitch = 0;
     canvas.setPointerCapture(e.pointerId);
   });
@@ -122,12 +128,12 @@ canvas.style.touchAction = "none";
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; lastMove = performance.now();
     if (drag.pan) controls.pan(dx, dy);
-    else { controls.rotate(-dx * controls.speed, -dy * controls.speed); controls.vel.yaw = -dx * controls.speed * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
+    else { const yaw = -dx * controls.speed * drag.yawSign; controls.rotate(yaw, -dy * controls.speed); controls.vel.yaw = yaw * 0.5; controls.vel.pitch = -dy * controls.speed * 0.5; }
   });
   const end = () => { if (!drag) return; drag = null; controls.dragging = false; if (performance.now() - lastMove > 80) controls.vel.yaw = controls.vel.pitch = 0; };
   canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  canvas.addEventListener("wheel", (e) => { e.preventDefault(); controls.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); controls.fitted = null; controls.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
 }
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
@@ -148,6 +154,8 @@ function resize() {
   labelRenderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // the opening fit runs while the start screen still holds the layout; until the view is moved, a new size fits again
+  if (controls.fitted && w && h) setView(controls.fitted);
 }
 new ResizeObserver(resize).observe($("canvasWrap"));
 
@@ -318,12 +326,6 @@ function buildTeeth(mesh) {
     ghost.add(new THREE.Mesh(geo, GHOST_MAT));   // the untreated position, shown by 전후 겹쳐 보기
     state.teeth[id] = m;
     state.center[id] = geo.boundingBox.getCenter(new THREE.Vector3());
-    // a thin white outline for an extracted crown (#14): the same crown inflated 4% about its centre, back faces only,
-    // as a child so it follows the crown; shown only while the crown is a silhouette
-    const c = state.center[id];
-    const shell = new THREE.Mesh(geo.clone().translate(-c.x, -c.y, -c.z), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, transparent: true, opacity: 0.6, depthWrite: false }));
-    shell.position.copy(c); shell.scale.setScalar(1.04); shell.visible = false;
-    m.add(shell); m.userData.shell = shell;
     // the IPR cut (#22): the scan's crown stays as `full`; setCut fills `cut` {geo, faces} and applyStage swaps them in from 셋업 on
     m.userData.full = geo;
     const cutMesh = new THREE.Mesh(new THREE.BufferGeometry(), IPR_FACE_MAT); cutMesh.visible = false;
@@ -390,13 +392,15 @@ async function loadTargetCut(targetId) {
     if (cutKeyNow() === "target:" + targetId) applyStage(state.stage);   // the target is already on screen: swap its crowns in
   } catch { /* the target shows without its cut */ }
 }
+const FIT_MARGIN = 1.25 * 1.25;
 function setView(kind) {
   const box = new THREE.Box3().setFromObject(group);
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
-  // the fit is by the vertical fov; a narrow viewer (1366 wide, #17-10) is limited by width, so the camera backs off by the aspect
-  const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.25 / Math.min(1, camera.aspect);
+  // the fit is by the vertical fov; a narrow viewer (1366 wide, #17-10) is limited by width, so the camera backs off by the aspect.
+  // FIT_MARGIN: the opening view and every preset at 80% of the old size (1.25 → 1.25 × 1.25)
+  const dist = Math.max(size.x, size.y, size.z) / (2 * Math.tan((camera.fov * Math.PI) / 360)) * FIT_MARGIN / Math.min(1, camera.aspect);
   const pos = new THREE.Vector3();
   if (kind === "frontal") {            // look from the anterior (+y) side; upper arch → crowns hang down (occlusal z=0 at the bottom)
     pos.set(c.x, c.y + dist, c.z - size.z * 0.3);
@@ -412,6 +416,7 @@ function setView(kind) {
   }
   controls.target.copy(c);
   controls.lookFrom(pos, new THREE.Vector3(0, 0, -1));
+  controls.fitted = kind;
   for (const b of document.querySelectorAll(".view-rail [data-view]")) b.setAttribute("aria-pressed", String(b.dataset.view === kind));
 }
 
@@ -441,10 +446,7 @@ function setStep(step) {
   renderSetupMarks();
   renderFlow();
   renderPlanList();
-  // the right panel follows the step: the scan's facts, then the conditions, from the stages on the table and rules
-  if (step === "initial") showTab("scan");
-  else if (step === "setup" || step === "target") showTab("cond");
-  else if (state.tab === "cond" || state.tab === "scan") showTab("stages");
+  followStep(step);   // the right panel follows the step
   if (state.activeCase) setHash(caseHash());
 }
 function renderFlow() {
@@ -557,27 +559,21 @@ function applyStage(k) {
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
     m.position.set(t[0] + c[0] - (Math.cos(a) * c[0] - Math.sin(a) * c[1]), t[1] + c[1] - (Math.sin(a) * c[0] + Math.cos(a) * c[1]), t[2]);
-    // #18 decision: 치료 전 (k = 0) is the scan with every crown, stages 1..n−1 show the silhouette, the target (k = n) none
+    // 치료 전 (k = 0) is the scan with every crown; the extracted crowns are gone from stage 1 on, no silhouette left
     const gone = hasPlan && removed.has(id) && !plain && !setup && k > 0;
     // 셋업 (#20): the extracted crowns flash red as the setup lands, then they are gone (the filled gum shows)
-    m.visible = setup && removed.has(id) ? state.setupRed : !gone || k < (plan?.stages?.length ?? 0);
-    // extracted teeth from stage 1 on: a translucent white silhouette (#14, #18); materials are per tooth and reused across
-    // plans, so every other tooth gets its solid look back
-    m.material.opacity = gone ? 0.45 : 1;
-    m.material.depthWrite = !gone;
-    m.userData.shell.visible = gone;
-    m.userData.cutMesh.visible = !!cut && !gone && m.visible;
+    m.visible = setup && removed.has(id) ? state.setupRed : !gone;
+    m.userData.cutMesh.visible = !!cut && m.visible;
     const moved = d ? Math.hypot(...d) : 0;
     m.userData.moved = moved;
     m.userData.viol = bad[id] ? [...bad[id]] : [];
-    if (gone) m.material.color.setHex(0xffffff);
-    else if (plain) m.material.color.copy(IVORY);
+    if (plain) m.material.color.copy(IVORY);
     else if (setup) m.material.color.setHex(removed.has(id) ? RED : IVORY.getHex());   // 셋업: what the constraints remove
     else if (bad[id]?.has("collision")) m.material.color.setHex(RED);
     else if (bad[id]?.has("move_limit")) m.material.color.setHex(AMBER);
     else if (locked.has(id)) m.material.color.setHex(BLUE);
     else m.material.color.copy(IVORY);
-    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : gone ? 0x777777 : 0x000000);   // the silhouette reads white, not lit grey
+    m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   }
   placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
@@ -646,6 +642,7 @@ function toothAt(e) {
 }
 function renderSelection() {
   for (const [id, m] of Object.entries(state.teeth)) m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
+  markChartSelection();
   const box = $("selChips");
   box.innerHTML = "";
   box.hidden = !state.selected.size;
@@ -753,8 +750,8 @@ $("overlayBtn").addEventListener("click", (e) => {
   $("overlayLegend").hidden = !state.overlay;
   ghost.visible = state.overlay && state.stage > 0;
 });
-$("firstBtn").addEventListener("click", () => { stopPlay(); applyStage(0); });
-$("lastBtn").addEventListener("click", () => { if (state.plan) { stopPlay(); applyStage(state.plan.stages.length); } });
+$("firstBtn").addEventListener("click", () => { state.stageTouched = true; stopPlay(); applyStage(0); });
+$("lastBtn").addEventListener("click", () => { if (state.plan) { state.stageTouched = true; stopPlay(); applyStage(state.plan.stages.length); } });
 
 // ------------------------------------------------------------------ API helpers
 async function api(path, opts) {
@@ -1719,7 +1716,7 @@ function renderResult(plan) {
 function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
-                 locked: (t.locked ?? []).length > 0, removed: (t.removed ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
+                 locked: (t.locked ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
                  ipr_face: Object.keys(state.cutSets[cutKeyNow()] ?? {}).length > 0 };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
@@ -1728,9 +1725,11 @@ function renderLegend(plan) {
 // ---- the sidebar's three panes read the plan on screen; null empties them
 function renderSide(plan) {
   renderStagePane(plan);
-  renderRulesPane(plan);
+  renderRulesPane(rulesPlan(plan));
   renderCondPane(plan);
 }
+// 목표 checks the target the target turn made (space, prescribed IPR); the stage rules wait for the plan
+const rulesPlan = (plan) => (state.step === "target" && state.target ? state.target : plan);
 function renderStagePane(plan) {
   const facts = $("stageFacts"), grid = $("stageGrid");
   facts.innerHTML = ""; grid.innerHTML = "";
@@ -1800,7 +1799,9 @@ const REVIEW_KO = { passed: "검토 통과", failed: "검토 실패", running: "
 function renderRulesPane(plan) {
   const cards = $("ruleCards"), groups = $("violGroups");
   cards.innerHTML = ""; groups.innerHTML = "";
-  $("rulesFor").textContent = plan ? `계획 ${planNo(plan.plan_id)} · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · ${plan.stages?.length ?? 0}장` : "";
+  const pre = !!plan && !plan.plan_id;   // a target (GET /targets): no stages yet, nothing validated
+  $("rulesFor").textContent = !plan ? "" : pre ? `목표 배열 · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · 단계 계획 전`
+    : `계획 ${planNo(plan.plan_id)} · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · ${plan.stages?.length ?? 0}장`;
   // the planner's movement notes (from the 단계 표 head, #13 polish); they name Universal ids: 「치아 13 회전 …」 → FDI
   // …and a Universal list like [5, 12] → 14·24 until the server writes FDI itself (temporary, #14)
   const toFdi = (s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)
@@ -1813,15 +1814,22 @@ function renderRulesPane(plan) {
   // at a glance: 규칙 통과 · 검토 통과 big, or the violation count; after a rule plan where every allowed strategy
   // failed, which plan this is (the least wrong one) and what was tried
   const allFailed = state.allFailed?.plan_id === plan.plan_id ? state.allFailed : null;
-  verdict.classList.toggle("fail", viol.length > 0);
-  verdict.querySelector("b").textContent = allFailed ? "허용 전략 전부 규칙 위반"
+  verdict.classList.toggle("fail", viol.length > 0 || (pre && +(plan.target?.space_deficit_mm ?? 0) > 0));
+  if (pre) { verdict.querySelector("b").textContent = "목표 배열 점검"; verdict.querySelector("span").textContent = "공간만 봅니다 · 단계 규칙은 단계를 만든 뒤 검증"; }
+  else verdict.querySelector("b").textContent = allFailed ? "허용 전략 전부 규칙 위반"
     : viol.length ? `규칙 위반 ${viol.length}건` : `규칙 통과 · ${REVIEW_KO[plan.review?.status] ?? "검토 전"}`;
-  verdict.querySelector("span").textContent = allFailed
-    ? `시도한 전략 ${allFailed.tried.map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — 가장 덜 틀린 ${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
+  if (!pre) verdict.querySelector("span").textContent = allFailed
+    ?`시도한 전략 ${allFailed.tried.map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — 가장 덜 틀린 ${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
     : viol.length ? "아래 위반 항목을 누르면 그 단계로 가서 치아를 강조합니다." : "검사한 규칙";
   const coll = by("collision"), mv = by("move_limit"), cap = by("stage_cap"), sp = by("space_deficit");
   const maxOf = (arr, key) => arr.length ? Math.max(...arr.map((v) => +v[key] || 0)) : 0;
-  const rules = [
+  const later = ["", "", "단계 계획 후 검증"], deficit = +(plan.target?.space_deficit_mm ?? 0);
+  const rules = pre ? [
+    ["충돌", "인접 치아 겹침이 치료 전 기준 이하", later],
+    ["장당 이동 한계", "장마다 이동량이 한계 이하", later],
+    ["장수 상한", "조건에 정한 최대 장수", later],
+    ["공간 부족", "처방 안에서 확보할 공간", deficit > 0 ? ["부족", "fail", `${deficit} mm 부족`] : ["통과", "pass", "부족 0 mm"]],
+  ] : [
     ["충돌", "인접 치아 겹침이 치료 전 기준 이하", coll.length ? ["위반", "fail", `${coll.length}건 · 최대 ${maxOf(coll, "overlap_mm3")} mm³`] : ["통과", "pass", "겹침 기준 이하"]],
     ["장당 이동 한계", "장마다 이동량이 한계 이하", mv.length ? ["위반", "fail", `${mv.length}건 · 최대 ${maxOf(mv, "mm")} mm`] : ["통과", "pass", plan.info?.per_stage_mm != null ? `장당 ${plan.info.per_stage_mm} mm` : ""]],
     ["장수 상한", cap.length ? `장당 이동 한계로 ${cap[0].n}장이 필요 — 상한 안에 넣으려면 이동량(처방)을 줄여야 함` : "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
@@ -1848,7 +1856,7 @@ function renderRulesPane(plan) {
   }
   // violations grouped by kind (충돌, 장당 이동 한계 …); each kind names its 발생 단계, then one item per tooth or pair.
   // An item jumps the slider to its first stage and selects its teeth in the 3D; a stage button jumps to that stage
-  if (!viol.length) { groups.innerHTML = '<p class="empty">위반 없음</p>'; return; }
+  if (!viol.length) { groups.innerHTML = `<p class="empty">${pre ? "단계를 만든 뒤 확인" : "위반 없음"}</p>`; return; }
   const byType = new Map();
   for (const v of viol) {
     const items = byType.get(v.type) ?? byType.set(v.type, new Map()).get(v.type);
@@ -1998,13 +2006,62 @@ function addMsg(role, text = "") {
 }
 
 // Inline trace (Claude Code style): one row per tool/LLM event, keyed by NAT step id, rendered
-// inside the transcript right before the assistant bubble. Click a row to expand the raw payload.
-function newTrace() {
-  const box = document.createElement("details");
+// inside the transcript right before the assistant bubble. The summary line, the tool rows and the reasoning lines
+// are always shown; the raw payloads (arguments, output, time) sit under 자세히.
+function newTrace(before = null) {
+  const box = document.createElement("div");
   box.className = "trace";
-  box.innerHTML = '<summary><span class="dot">\u25CF</span><span class="text"></span></summary><div class="rows"></div>';
-  $("transcript").appendChild(box);
-  return { box, el: box.querySelector(".rows"), rows: new Map() };
+  box.innerHTML = '<div class="head"><span class="dot">\u25CF</span><span class="text"></span></div><div class="rows"></div>'
+    + '<details class="raw" hidden><summary>자세히</summary><div class="log"></div></details>';
+  before ? before.before(box) : $("transcript").appendChild(box);
+  return { box, el: box.querySelector(".rows"), log: box.querySelector(".log"), rows: new Map() };
+}
+// follow a new line only when the transcript is already at its bottom (the dentist may be reading above)
+function keepBottom(add) {
+  const t = $("transcript"), pinned = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
+  const out = add();
+  if (pinned) t.scrollTop = t.scrollHeight;
+  return out;
+}
+// The agent's reasoning as sentences: one deterministic Korean line per tool call from its name and arguments, and
+// one per result the turn hands back (step_done, the selected plan). No model writes them, and the replay builds the
+// same lines from the same values. Tooth numbers only as the server wrote them (FDI); no ids.
+function reasonForTool(name, input) {
+  const n = (name ?? "").replace(/^Function (Start|End): /, "").replace(/^cualign__/, "");
+  const strategy = STRATEGY_KO[(tryJson(input) ?? {}).strategy];
+  return { set_constraints: "처방을 읽고 계획 조건으로 옮깁니다.", load_skill: "임상 규칙을 읽습니다.",
+    propose_target: strategy ? `${strategy} 전략으로 목표 배열을 만듭니다.` : "목표 배열을 만듭니다.",
+    plan_stages: "목표 배열까지 단계로 나눕니다.", compare_strategies: "같은 조건으로 전략들을 비교합니다.",
+    validate: "규칙을 다시 검증합니다.", select_plan: "화면에 보일 계획을 고릅니다.", reviewer: "검토를 요청했습니다." }[n] ?? null;
+}
+function reasonsForSetup(done) {
+  const cond = done?.conditions_ko ? done.conditions_ko.split(" · ").join(", ") : condWords().join(", ");
+  const crowding = state.caseInfo?.crowding_mm;
+  return [`처방을 읽었습니다 — ${cond}.`, ...(crowding != null ? [`총생 ${crowding} mm 만큼 공간이 필요합니다.`] : [])];
+}
+function reasonsForTarget(s) {
+  if (s?.space_mm == null || s?.crowding_mm == null) return [];
+  return [s.space_deficit_mm > 0 ? `확보 ${s.space_mm} mm 로 총생 ${s.crowding_mm} mm 중 ${s.space_deficit_mm} mm 가 모자랍니다.`
+    : `확보 ${s.space_mm} mm 로 총생 ${s.crowding_mm} mm 를 해결했습니다.`];
+}
+function reasonsForPlan(plan) {
+  if (!plan?.info) return [];
+  const v = plan.violations ?? [], by = {};
+  for (const x of v) by[x.type] = (by[x.type] ?? 0) + 1;
+  const review = { passed: "통과", failed: "실패" }[plan.review?.status];
+  return [`${plan.info.n_stages}단계(약 ${plan.info.months}개월)로 나눴습니다` + (plan.info.per_stage_mm ? ` — 단계당 최대 ${plan.info.per_stage_mm} mm.` : "."),
+    v.length ? `규칙 검증 — 위반 ${v.length}건: ` + Object.entries(by).map(([k, n]) => `${RULE_KO[k] ?? k} ${n}건`).join(", ") + "."
+      : "규칙 검증 — 위반 0건.",
+    ...(review ? [`검토 → ${review}.`] : [])];
+}
+const stepReasons = (done) => done.step === "setup" ? reasonsForSetup(done) : done.step === "target" ? reasonsForTarget(done.summary) : [];
+function addReasons(lines, trace = state.trace) {
+  if (!trace || !lines?.length) return;
+  keepBottom(() => { for (const text of lines) {
+    const row = document.createElement("div");
+    row.className = "reason"; row.textContent = text;
+    trace.el.appendChild(row);
+  } });
 }
 // The folded line reads as progress while a tool runs and as the list of tools used when the turn is done.
 const RUN_KO = { "케이스 읽기": "케이스를 읽는 중", "케이스 목록": "케이스 목록을 읽는 중", "임상 한계 읽기": "임상 한계를 읽는 중",
@@ -2012,7 +2069,7 @@ const RUN_KO = { "케이스 읽기": "케이스를 읽는 중", "케이스 목�
   "규칙 검증": "규칙을 검증하는 중", "전략 비교": "전략을 비교하는 중", "계획 선택": "계획을 고르는 중", "STL 내보내기": "STL을 내보내는 중",
   "계획 읽기": "계획을 읽는 중", "임상 규칙 읽기": "임상 규칙을 읽는 중", "검토": "계획을 검토하는 중", "모델 추론": "생각하는 중" };
 function traceSummary(trace) {
-  const rows = [...trace.el.children];
+  const rows = [...trace.el.querySelectorAll(":scope > .step")];
   const running = rows.find((r) => r.classList.contains("running"));
   trace.box.classList.toggle("running", !!running);
   const names = [...new Set(rows.map((r) => r.querySelector(".name").textContent))].filter((n) => n !== "모델 추론");
@@ -2062,23 +2119,28 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
   const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 1);
   const { input, output } = isLlm || cls ? { input: "", output: text } : splitPayload(text);
   const label = (name ?? "step").replace(/^Function (Start|End): /, "");
-  let row = id && trace.rows.get(id);
+  let row = id && trace.rows.get(id), fresh = false;
   if (!row) {
-    row = document.createElement("details");
+    fresh = true;
+    row = document.createElement("div");
     row.className = `step ${isLlm ? "llm" : cls}`;
-    row.innerHTML = `<summary><span class="dot"></span><span class="name"></span><span class="args"></span><span class="arrow">→</span><span class="out"></span></summary><pre></pre>`;
-    trace.el.appendChild(row);
+    row.innerHTML = `<span class="dot"></span><span class="name"></span><span class="arrow">→</span><span class="out"></span>`;
+    row.t0 = performance.now();
+    row.raw = document.createElement("pre");
+    keepBottom(() => trace.el.appendChild(row));
+    trace.log.appendChild(row.raw); trace.log.parentElement.hidden = false;
     if (id) trace.rows.set(id, row);
   }
   row.querySelector(".name").textContent = isLlm ? "모델 추론" : toolKo(label);
-  row.querySelector(".args").textContent = isLlm ? ` (${label})` : (input ? `(${argsSummary(input)})` : "");
   const done = !!output;
-  row.querySelector(".arrow").style.visibility = done ? "visible" : "hidden";
-  row.querySelector(".out").textContent = done ? (isLlm ? output.replace(/\s+/g, " ").slice(0, 110) : outSummary(label, output)) : "";
+  row.querySelector(".arrow").style.visibility = done && !isLlm ? "visible" : "hidden";
+  row.querySelector(".out").textContent = done ? (isLlm ? "" : outSummary(label, output)) : "";
   row.classList.toggle("running", !done);
-  row.querySelector("pre").textContent = text ?? "";
+  // 자세히: the raw event, the arguments as the model chose them and the time the call took
+  row.raw.textContent = (isLlm ? `모델 추론 (${label})` : toolKo(label)) + (input ? ` (${argsSummary(input)})` : "")
+    + (done ? ` · ${((performance.now() - row.t0) / 1000).toFixed(1)}초` : "") + "\n" + (text ?? "");
   traceSummary(trace);
-  $("transcript").scrollTop = $("transcript").scrollHeight;
+  if (fresh && !isLlm && !cls) addReasons([reasonForTool(label, input)].filter(Boolean), trace);
 }
 
 // The agent's question card (#90): the question and two or three choices. A choice with a message is sent as the
@@ -2185,7 +2247,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   const requestId = crypto.randomUUID(), caseId = state.meshCase, prevPlanId = state.plan?.plan_id ?? null;
   // the step this turn asks for (#20): the next one after the progress, or the one the chip/button names
   const turnStep = step ?? (resend ? state.lastRequest?.step : null) ?? NEXT_STEP[state.progress] ?? "stages";
-  state.requestId = requestId;
+  state.requestId = requestId; state.stageTouched = false;
   setStreaming(true); updateActions();
   foldNextChips();
   $("retryBar").hidden = true;
@@ -2255,10 +2317,11 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     }
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
-    if (stepDone && !streamError) await landStep(stepDone);
+    if (stepDone && !streamError) { await landStep(stepDone); addReasons(stepReasons(stepDone)); }
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
-      setStep("stages");
+      setStep("stages"); showPlanEnd();
+      if (state.plan?.plan_id === selected.plan_id) addReasons(reasonsForPlan(state.plan));
       if (state.plan?.plan_id === selected.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
       addDecision(prevPlanId, selected.plan_id);
       if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
@@ -2334,12 +2397,18 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
   // a recorded answer makes its own targets; a hand-edited target is staged as it is instead
   if (isManualTarget() && state.progress === "target" && !["setup", "target"].includes(state.turnStep)) { bubble.remove(); return stageManualTarget(); }
   if (state.turnStep === "setup") { try { scanFx.start(caseId, prescribed(readConstraints())); } catch { /* the form does not parse: no reveal */ } }
+  let trace = null;
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
     if (r.status === 404) { bubble.remove(); adoptCurrentPlan(); return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     const rec = await r.json();
+    // the cut turn's trace goes; the recording's steps are told again from the recomputed values, as a live turn tells them
+    if (bubble.previousElementSibling?.classList.contains("trace")) bubble.previousElementSibling.remove();
+    trace = newTrace(bubble);
+    trace.box.classList.add("recorded");
+    trace.box.querySelector(".text").textContent = "녹화된 답 · 계산은 지금 다시 했습니다";
     setAnswer(bubble, rec.answer_md ?? "");
     bubble.classList.add("recorded");
     const tag = document.createElement("small"); tag.className = "recorded-tag"; tag.textContent = "녹화된 답 · " + (rec.recorded_at ?? "").slice(0, 10);
@@ -2348,19 +2417,26 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     state.messages.push({ role: "assistant", content: rec.answer_md ?? "" });
     addMsg("system", "에이전트 답을 건너뛰고 녹화된 답을 보였습니다.");
     // a recorded setup or target lands like the agent's step_done (#20); a plan like its plan_selected
-    if (rec.constraints) await landStep({ step: "setup", constraints: rec.constraints });
-    else if (rec.target_id) await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
+    if (rec.constraints) {
+      await landStep({ step: "setup", constraints: rec.constraints });
+      addReasons([reasonForTool("set_constraints"), ...reasonsForSetup(rec)], trace);
+    } else if (rec.target_id) {
+      await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
+      addReasons([reasonForTool("propose_target", JSON.stringify({ strategy: rec.summary?.strategy })), ...reasonsForTarget(rec.summary)], trace);
+    }
     const sel = rec.plan_selected;   // null on a compare of an extraction case (the answer only asks back): the bubble alone, cards and 3D stay
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
-      setStep("stages");
+      setStep("stages"); showPlanEnd();
+      addReasons([reasonForTool(rec.step === "compare" ? "compare_strategies" : "plan_stages"), reasonForTool("select_plan"),
+        reasonForTool("reviewer"), ...(state.plan?.plan_id === sel.plan_id ? reasonsForPlan(state.plan) : [])], trace);
       addDecision(prevPlanId, sel.plan_id);
       if (state.plan?.plan_id === sel.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
     }
     addNextChips(bubble);
   } catch (e) {
-    bubble.remove();
+    bubble.remove(); trace?.box.remove();
     addMsg("error", "녹화된 답을 불러오지 못했습니다 (" + e.message + ").");
     adoptCurrentPlan();
   } finally { scanFx.release(); }
@@ -2437,6 +2513,9 @@ async function stageManualTarget() {
 }
 
 // ------------------------------------------------------------------ stage playback
+// a plan the turn selected opens at its last stage, the target reached (▶ from there starts over at 치료 전), unless
+// the dentist was already moving the stage
+function showPlanEnd() { if (state.plan && !state.stageTouched) applyStage(state.plan.stages.length); }
 function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; $("playBtn").setAttribute("aria-pressed", "false"); } }
 function togglePlay() {
   if (!state.plan) return;
@@ -2654,26 +2733,176 @@ $("plans").addEventListener("click", (e) => {
   if (!id || state.streaming || state.loading) return;
   loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
 });
-// sidebar tabs
-for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => (b.dataset.tab === "move" ? manualEdit.open() : showTab(b.dataset.tab)));
+// sidebar tabs: a tab picked by hand holds while the step stays (the turn in progress); the next step takes the panel again
+for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => {
+  if (b.dataset.tab === "move") { manualEdit.open(); return; }   // 직접 이동: the tab opens the edit, which shows its pane
+  state.tabPin = { caseId: state.meshCase, step: state.step };
+  showTab(b.dataset.tab);
+});
+const PANES = { scan: "paneScan", stages: "paneStages", rules: "paneRules", cond: "paneCond", move: "paneMove" };
 function showTab(name) {
   state.tab = name;
   for (const b of document.querySelectorAll(".side-tab")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
-  $("paneScan").hidden = name !== "scan"; $("paneStages").hidden = name !== "stages"; $("paneRules").hidden = name !== "rules"; $("paneCond").hidden = name !== "cond";
-  $("paneMove").hidden = name !== "move";
+  for (const [tab, id] of Object.entries(PANES)) {
+    const pane = $(id), was = pane.hidden;
+    pane.hidden = tab !== name;
+    if (was && !pane.hidden) { pane.classList.remove("fade-in"); void pane.offsetWidth; pane.classList.add("fade-in"); }   // a 120 ms fade, nothing moves
+  }
 }
-// the scan as it came (#20): tooth count, crowding, what is missing between 17 and 27
+// The one place the right panel follows the step (setStep: step_done, 건너뛰기's recorded answer, the strip's buttons):
+// 초기 → 스캔, 셋업 → 조건, 목표 → 규칙, 단계 → 단계 표. The scan tab and the rules re-read the step's state first.
+const STEP_TAB = { initial: "scan", setup: "cond", target: "rules", stages: "stages" };
+function followStep(step) {
+  renderScanPane(state.caseInfo);
+  renderRulesPane(rulesPlan(state.plan));
+  const pin = state.tabPin;
+  if (pin && pin.caseId === state.meshCase && pin.step === step) return;
+  state.tabPin = null;
+  showTab(STEP_TAB[step] ?? "scan");
+}
+// the scan as it came (#20): the tooth chart, then the prescription, crowding, the space the target makes, what is
+// missing and where the scan is from. A patient's own scan has no prescription: the chart and the scan's facts.
 function renderScanPane(info) {
-  const rows = [];
+  renderToothChart(info);
+  const sample = sampleOf(state.meshCase), rows = [];
   if (info) {
     const present = new Set(Object.keys(state.teeth).map((id) => fdi(id)));
     const missing = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27].filter((n) => !present.has(n));
-    rows.push(["치아", `${info.n_teeth ?? Object.keys(state.teeth).length}개`], ["총생", info.crowding_mm != null ? `${info.crowding_mm} mm` : "—"],
-              ["결손", missing.length ? missing.join(", ") + "번" : "없음"]);
+    const t = stepIndex(state.progress) >= stepIndex("target") ? state.target?.target ?? state.plan?.target : null;
+    if (sample?.prescription) rows.push(["처방", sample.prescription]);
+    rows.push(["치아", `${info.n_teeth ?? Object.keys(state.teeth).length}개`], ["총생", info.crowding_mm != null ? `${info.crowding_mm} mm` : "—"]);
+    if (t?.space_gain_mm != null) rows.push(["확보", `${t.space_gain_mm} mm` + (t.space_deficit_mm > 0 ? ` · 부족 ${t.space_deficit_mm} mm` : "")]);
+    rows.push(["결손", missing.length ? missing.join(", ") + "번" : "없음"]);
+    const row = state.cases.find((c) => c.case_id === state.meshCase);
+    rows.push(["출처", sample ? "공개 데이터셋 Poseidon3D" : row?.patient ? `업로드한 스캔 · ${row.patient.alias} ${row.patient.scan_id}` : "업로드한 스캔"]);
   }
   $("scanFacts").replaceChildren(...rows.flatMap(([k, v]) => { const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v; return [dt, dd]; }));
-  $("scanFor").textContent = info ? (sampleOf(state.meshCase)?.prescription ? "처방 · " + sampleOf(state.meshCase).prescription : "처방은 대화로") : "";
+  $("scanFor").textContent = info ? sample?.title ?? "처방은 대화로" : "";
 }
+
+// ---- the tooth chart on the 스캔 tab: the upper arch laid flat, one crown per FDI number (the state keeps Universal).
+// The crowns sit along a half-ellipse by their usual mesiodistal width (mm), so the chart reads like the start screen's
+// arch mark, the patient's right on the left as dental charts go. States: 있음 · 결손 (an empty outline) · 발치 처방
+// (red dashes and an X) · IPR contact (a yellow dot + mm inside the arch); the selected crowns are green like the 3D,
+// and a click on the chart selects in the 3D too.
+const CROWN = { 1: [8.5, 7], 2: [6.5, 6], 3: [7.5, 8], 4: [7, 9], 5: [6.5, 9], 6: [10, 11], 7: [9, 11], 8: [8.5, 10] };   // unit digit → [width, depth] mm
+const SVGNS = "http://www.w3.org/2000/svg";
+function chartLayout(fdis) {
+  const A = 33, B = 44, GAP = 0.5, pts = [[0, 0, 0]];   // x, y, arc length from the midline along x = A sin t, y = B (1 − cos t)
+  for (let i = 1, s = 0; i <= 600; i++) {
+    const t = (i / 600) * 2.2, x = A * Math.sin(t), y = B * (1 - Math.cos(t)), [px, py] = pts[i - 1];
+    s += Math.hypot(x - px, y - py); pts.push([x, y, s]);
+  }
+  const at = (s) => {
+    let i = pts.findIndex((p) => p[2] >= s);
+    if (i < 1) i = i === 0 ? 1 : pts.length - 1;
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    return { x: x1, y: y1, a: Math.atan2(y1 - y0, x1 - x0) };
+  };
+  const out = {};
+  for (const quad of [1, 2]) {   // 1 = the patient's right (drawn on the left), 2 = the patient's left
+    const side = quad === 1 ? -1 : 1;
+    let s = GAP / 2;
+    for (let unit = 1; unit <= 8; unit++) {
+      const n = quad * 10 + unit, [w, d] = CROWN[unit];
+      s += w / 2;
+      if (fdis.has(n)) { const p = at(s); out[n] = { x: side * p.x, y: p.y, deg: (side === 1 ? p.a : Math.PI - p.a) * 180 / Math.PI, w, d }; }
+      s += w / 2 + GAP;
+    }
+  }
+  return out;
+}
+// what the chart marks: the target's (or the plan's) once the flow is past 셋업, else the setup the agent read, else a
+// sample's prescription as the case opened; a patient's scan marks nothing until its setup
+function chartMarks() {
+  const t = stepIndex(state.progress) >= stepIndex("target") ? state.target?.target ?? state.plan?.target : null;
+  if (t) return { removed: t.removed ?? [], surfaces: surfacesOf(t, state.target?.target === t ? state.target.info : state.plan?.info) };
+  if (state.setup) return { removed: state.setup.extraction ?? [], surfaces: state.setup.ipr_surfaces ?? [] };
+  const c = sampleOf(state.meshCase) ? state.caseInfo?.constraints : null;
+  return { removed: c?.extraction ?? [], surfaces: c?.ipr_surfaces ?? [] };
+}
+function renderToothChart(info) {
+  const box = $("toothChart");
+  box.replaceChildren();
+  box.hidden = !info || !Object.keys(state.teeth).length;
+  if (box.hidden) return;
+  const present = new Set(Object.keys(state.teeth).map((id) => fdi(id)));
+  const shown = new Set([17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, ...present]);   // 18·28 only when scanned
+  const lay = chartLayout(shown), marks = chartMarks(), removed = new Set(marks.removed.map((u) => fdi(u)));
+  const svg = document.createElementNS(SVGNS, "svg");
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    parent.append(e); return e;
+  };
+  const xs = Object.values(lay).map((p) => p.x), ys = Object.values(lay).map((p) => p.y);
+  const x0 = Math.min(...xs) - 8, y0 = Math.min(...ys) - 7, cy = (Math.min(...ys) + Math.max(...ys)) / 2 + 4;
+  svg.setAttribute("viewBox", `${x0.toFixed(1)} ${y0.toFixed(1)} ${(Math.max(...xs) + 8 - x0).toFixed(1)} ${(Math.max(...ys) + 8 - y0).toFixed(1)}`);
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "상악 치아 차트");
+  const used = new Set();
+  for (const n of [...shown].sort((a, b) => a - b)) {
+    const p = lay[n], u = String(universal(n)), has = present.has(n);
+    const kind = !has ? "missing" : removed.has(n) ? "ext" : "ok";
+    if (kind !== "ok") used.add(kind);
+    const g = el("g", { class: `tooth ${kind}`, "data-id": u, "data-fdi": n }, svg);
+    const body = el("g", { transform: `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)}) rotate(${p.deg.toFixed(1)})` }, g);
+    el("rect", { x: -p.w / 2 + 0.3, y: -p.d / 2, width: p.w - 0.6, height: p.d, rx: Math.min(p.w, p.d) * 0.38 }, body);
+    if (kind === "ext") el("path", { class: "x", d: `M${-p.w / 4} ${-p.d / 4}L${p.w / 4} ${p.d / 4}M${p.w / 4} ${-p.d / 4}L${-p.w / 4} ${p.d / 4}` }, body);
+    el("text", { x: p.x.toFixed(2), y: (p.y + 1.1).toFixed(2) }, g).textContent = n;
+    el("title", {}, g).textContent = `${n}번` + (kind === "missing" ? " · 결손" : kind === "ext" ? " · 발치 처방" : "");
+    if (has) { g.classList.toggle("sel", state.selected.has(u)); g.classList.toggle("pending", revealPending(u)); }
+  }
+  // IPR: a dot at the contact, the mm just inside the arch
+  for (const [a, b, mm] of marks.surfaces ?? []) {
+    const pa = lay[fdi(a)], pb = lay[fdi(b)];
+    if (!pa || !pb) continue;
+    used.add("ipr");
+    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2, ang = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+    let nx = -Math.sin(ang), ny = Math.cos(ang);
+    if (nx * -mx + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }   // the normal that points into the arch
+    const k = el("g", { class: "ipr" }, svg);
+    el("circle", { cx: mx.toFixed(2), cy: my.toFixed(2), r: 1.3 }, k);
+    el("text", { x: (mx + nx * 6.2).toFixed(2), y: (my + ny * 6.2 + 0.9).toFixed(2) }, k).textContent = String(+mm);
+    el("title", {}, k).textContent = `IPR ${fdi(a)}-${fdi(b)} ${+mm} mm`;
+  }
+  el("text", { class: "center", x: 0, y: cy.toFixed(1) }, svg).textContent = "상악";
+  el("text", { class: "center sub", x: 0, y: (cy + 5).toFixed(1) }, svg).textContent = `${present.size}개`;
+  box.append(svg);
+  const legend = document.createElement("div"); legend.className = "chart-legend";
+  for (const [key, label] of [["ext", "발치 처방"], ["missing", "결손"], ["ipr", "IPR (mm)"]]) {
+    if (!used.has(key)) continue;
+    const s = document.createElement("span"); s.innerHTML = `<i class="${key}"></i>`; s.append(label); legend.append(s);
+  }
+  if (legend.childElementCount) box.append(legend);
+}
+// the chart's green follows the 3D selection (renderSelection calls this) without drawing the chart again
+function markChartSelection() {
+  for (const g of $("toothChart").querySelectorAll("g.tooth:not(.missing)")) g.classList.toggle("sel", state.selected.has(g.dataset.id));
+}
+// a crown clicked on the chart is picked like one clicked in the 3D
+$("toothChart").addEventListener("click", (e) => {
+  const id = e.target.closest("g.tooth:not(.missing)")?.dataset.id;
+  if (!id || !state.teeth[id]) return;
+  if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+  state.pickedOnce = true; $("pickedLegend").hidden = false; $("pickHint").hidden = true;
+  renderSelection();
+});
+// Scan reveal: the 3D's scan recognition on the setup turn (scan-reveal.js start(), 17 → 27 at 0.1 s) fills the chart in
+// the same order — window.dispatchEvent(new CustomEvent("cualign:scan-reveal", {detail: {ids: [Universal…], ms: 100}})).
+// With no ids the chart fills from the molars to the incisors.
+window.addEventListener("cualign:scan-reveal", (e) => {
+  const chart = $("toothChart"), teeth = [...chart.querySelectorAll("g.tooth:not(.missing)")], ms = e.detail?.ms ?? 100;
+  const order = e.detail?.ids?.map(String) ?? [...new Set(teeth.map((g) => g.dataset.fdi % 10))].sort((a, b) => b - a)
+    .flatMap((unit) => teeth.filter((g) => g.dataset.fdi % 10 === unit).map((g) => g.dataset.id));
+  // when each crown shows, kept so a chart drawn again meanwhile (the setup landing) stays in the sequence
+  const t0 = performance.now();
+  chartReveal = { due: new Map(order.map((id, i) => [id, t0 + i * ms])), end: t0 + order.length * ms + 50 };
+  for (const g of teeth) g.classList.add("pending");
+  order.forEach((id, i) => setTimeout(() => chart.querySelector(`g.tooth[data-id="${id}"]`)?.classList.remove("pending"), i * ms));
+  setTimeout(() => { chartReveal = null; for (const g of chart.querySelectorAll("g.tooth.pending")) g.classList.remove("pending"); }, order.length * ms + 50);
+});
+let chartReveal = null;
+const revealPending = (id) => !!chartReveal && performance.now() < (chartReveal.due.get(id) ?? chartReveal.end);
 $("condApply").addEventListener("click", () => {
   let constraints;
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
@@ -2683,13 +2912,13 @@ $("condApply").addEventListener("click", () => {
 $("stageGrid").addEventListener("click", (e) => {
   const k = e.target.closest("[data-stage]")?.dataset.stage;
   if (k == null || !state.plan) return;
-  stopPlay(); applyStage(+k);
+  state.stageTouched = true; stopPlay(); applyStage(+k);
 });
 // a violation item (or one of its stage buttons): playback stops, the slider goes to the stage, its teeth are selected
 $("violGroups").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-teeth]");
   if (!b || b.disabled || !state.plan) return;
-  stopPlay();
+  state.stageTouched = true; stopPlay();
   if (state.step !== "stages") setStep("stages");
   const ids = b.dataset.teeth.split(",").filter(Boolean);
   if (ids.length) {
@@ -2699,8 +2928,8 @@ $("violGroups").addEventListener("click", (e) => {
   }
   applyStage(b.dataset.stage != null ? +b.dataset.stage : state.stage);   // after the selection: it paints the highlight with the stage's marks
 });
-$("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
-$("playBtn").addEventListener("click", togglePlay);
+$("stageSlider").addEventListener("input", (e) => { state.stageTouched = true; stopPlay(); applyStage(+e.target.value); });
+$("playBtn").addEventListener("click", () => { state.stageTouched = true; togglePlay(); });
 $("retryFallback").addEventListener("click", () => { $("retryBar").hidden = true; runFallback(); });
 $("planFailRetry").addEventListener("click", () => { showTab("cond"); runFallback(); });
 $("condRecalc").addEventListener("click", () => runFallback({ fromCond: true }));
@@ -2788,7 +3017,7 @@ canvas.addEventListener("dblclick", () => setView("occlusal"));   // back to the
 canvas.addEventListener("pointerleave", () => { $("tip").hidden = true; });
 for (const b of document.querySelectorAll(".view-rail button[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
 
-manualEdit = createManual({ THREE, scene, camera, canvas, state, $, fdi, api, applyStage, showTab, addMsg, toast, loadTargetCut,
+manualEdit = createManual({ THREE, scene, camera, canvas, state, $, fdi, api, applyStage, showTab, followStep, addMsg, toast, loadTargetCut,
   afterApply: () => addNextChips($("transcript").lastElementChild),
   // 처음부터 수동 배치: the scan-position target is shown as the 목표 while it is edited; 취소 puts the flow back
   enterTarget: (t) => { state.target = t; state.targetId = t.target_id; state.targetSummary = null; setProgress("target", true); setStep("target"); loadTargetCut(t.target_id); },

@@ -135,7 +135,7 @@ export function createManual(ctx) {
     close();
     if (M.restore) { const prev = M.restore; M.restore = null; ctx.restoreFlow(prev); return; }   // 처음부터 수동 배치: back to 셋업
     applyStage(state.step === "target" ? (state.target?.stages?.length ?? 0) : state.stage);
-    if (state.tab === "move") showTab("cond");
+    if (state.tab === "move") ctx.followStep(state.step);   // the panel the step shows (app.js STEP_TAB)
   }
   async function apply() {
     if (!M.active) return;
@@ -152,7 +152,7 @@ export function createManual(ctx) {
       state.target = res; state.targetId = res.target_id; state.targetSummary = null;
       applyStage(res.stages.length);
       ctx.loadTargetCut(res.target_id);
-      showTab("cond");
+      ctx.followStep(state.step);
       const est = check && !check.error ? ` · 예상 최소 ${check.min_stages}단계(약 ${check.min_months}개월)` : "";
       addMsg("system", (fromScan ? "치료 전 위치에서 수동 배치한 목표 배열을 저장했습니다" : "직접 이동을 목표 배열에 적용했습니다") + ` — ${words.join(" / ")}${est}.`);
       ctx.afterApply();

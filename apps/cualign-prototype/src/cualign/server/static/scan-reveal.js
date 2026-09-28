@@ -80,6 +80,7 @@ export function createScanFx({ THREE, CSS2DObject, group, state, fdi, notice, re
     fx = { caseId, ids, extraction, surfaces, per, t0: null, scanEnd, extractEnd, end: scanEnd + extractEnd + per * surfaces.length + HOLD,
            nums: {}, pulsed: new Map(), faded: new Set(), clones: {}, marks: {}, cursor: null, iprDone: new Set(),
            released: false, finished: false, noticeLast: null, noticeApp: notice.textContent, owner: state.requestId };
+    window.dispatchEvent(new CustomEvent("cualign:scan-reveal", { detail: { ids, ms: SCAN_GAP * 1000 } }));   // the 스캔 tab's chart fills in the same order
   }
   // step_done setup came in while the reveal runs: the contacts not reached yet follow the agent's constraints
   function landed(setup) {

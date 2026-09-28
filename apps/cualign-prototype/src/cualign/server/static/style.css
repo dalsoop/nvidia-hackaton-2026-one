@@ -173,26 +173,27 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
 .trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
-.trace > summary { list-style: none; cursor: pointer; color: var(--muted); padding: 2px 4px; border-radius: var(--radius); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.trace > summary::-webkit-details-marker { display: none; }
-.trace > summary:hover { background: var(--hover); }
-.trace > summary .dot { color: var(--green); margin-right: 6px; }
-.trace.running > summary .dot { animation: blink 1s steps(2) infinite; }
+.trace .head { color: var(--muted); padding: 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trace .head:has(.text:empty) { display: none; }
+.trace .head .dot { color: var(--green); margin-right: 6px; }
+.trace.running .head .dot { animation: blink 1s steps(2) infinite; }
+.trace.recorded .head .dot { color: var(--faint); }
 .trace .rows { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; }
 .trace:not(.running) .rows:empty { display: none; }
-.step summary { list-style: none; cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 2px 4px; border-radius: var(--radius); color: var(--muted); white-space: nowrap; overflow: hidden; }
-.step summary::-webkit-details-marker { display: none; }
-.step summary:hover { background: var(--hover); }
+.trace .reason { padding: 2px 4px; color: var(--muted); }
+.trace .raw { padding-left: 12px; }
+.trace .raw > summary { cursor: pointer; color: var(--faint); padding: 2px 4px; border-radius: var(--radius); width: fit-content; }
+.trace .raw > summary:hover { background: var(--hover); }
+.step { display: flex; gap: 8px; align-items: baseline; padding: 2px 4px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .step .dot { color: var(--green); flex: none; }
 .step .dot::before { content: "\25CF"; }
 .step.llm .dot { color: var(--faint); }
 .step.fallback .dot { color: var(--amber); }
 .step.running .dot::before { content: "\25D0"; animation: blink 1s steps(2) infinite; }
 .step .name { color: var(--text); flex: none; }
-.step .args { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .step .arrow { color: var(--muted); flex: none; }
 .step .out { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.step pre { margin: 2px 0 4px 16px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 260px; overflow: auto; }
+.trace .log pre { margin: 2px 0 4px 4px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 260px; overflow: auto; }
 
 /* ---------- viewer ---------- */
 .canvas-wrap { position: relative; flex: 1; min-height: 320px; background: var(--bg); }
@@ -205,7 +206,6 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .legend .red { background: var(--red); }
 .legend .amber { background: var(--amber); }
 .legend .blue { background: var(--blue); }
-.legend .ghost { background: transparent; border: 1px dashed var(--muted); }
 .legend .ipr { background: var(--ipr); }
 .legend .ipr-face { background: var(--ipr-face); }
 
@@ -469,22 +469,53 @@ body.no-case .composer { opacity: 0.55; }   /* the input stays in place, locked,
 body.start .layout { grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 0 0; }
 
 /* ---------- design flow (#15): 초기 · 셋업 · 목표 · 단계 ---------- */
-.flow { display: flex; gap: 4px; padding: 10px 16px 0; }
-.flow button { flex: 1; font: inherit; font-size: 12px; color: var(--faint); background: none; border: 0; border-top: 2px solid var(--line); padding: 6px 0 4px; cursor: pointer; }
+/* a floating pill at the top centre of the 3D: only the buttons take the pointer, the drag/wheel around them reach the canvas */
+.flow { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 5; display: flex; gap: 2px; padding: 3px;
+        background: rgba(0,0,0,0.62); border: 1px solid var(--line-strong); border-radius: 999px; pointer-events: none; }
+.flow button { pointer-events: auto; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 5px 14px; cursor: pointer; white-space: nowrap; }
 .flow button:hover { color: var(--text); }
-.flow button.done { color: var(--muted); border-top-color: var(--line-strong); }
-.flow button.on { color: var(--green); border-top-color: var(--green); font-weight: 700; }
-.flow button[disabled] { color: var(--faint); border-top-color: var(--line); cursor: default; opacity: 0.5; }   /* not reached yet (#20) */
-.flow { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.flow button.done { color: var(--text); }
+.flow button.on { color: var(--green); background: rgba(118,185,0,0.16); font-weight: 700; }
+.flow button[disabled] { color: var(--faint); cursor: default; opacity: 0.5; }   /* not reached yet (#20) */
 body.start .flow { display: none; }
+/* the input check (#53) sits under the pill, not beside it: a long fact line would run under the steps */
+.canvas-wrap:has(#checkBar:not([hidden])) .view-head { top: 62px; }
 /* the slider, the legend and the mm labels belong to the stages (the target keeps the labels) */
 body:not(.step-stages) .stage-bar { display: none; }
 body.step-initial .legend, body.step-setup .legend, body.step-initial .ipr-label, body.step-setup .ipr-label, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }
 /* the tabs open with the progress (#20): 조건 from the setup, 단계 표·규칙 from the stages */
-body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-tab[data-tab="stages"], body:not(.prog-stages) .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
+body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-tab[data-tab="stages"], body:not(.prog-target) .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
 .scan-facts { margin: 0; padding: 0 20px; display: grid; grid-template-columns: 56px 1fr; row-gap: 10px; font-size: 13px; }
 .scan-facts dt { color: var(--muted); }
 .scan-facts dd { margin: 0; }
+/* 스캔 탭 치아 차트: the upper arch flat, FDI numbers; the colours are the 3D's */
+.tooth-chart { padding: 12px 20px 4px; }
+.tooth-chart svg { display: block; width: 100%; max-width: 360px; height: auto; margin: 0 auto; }
+.tooth-chart .tooth rect { fill: var(--panel-2); stroke: var(--line-strong); stroke-width: 0.4; transition: fill 120ms, stroke 120ms, opacity 120ms; }
+.tooth-chart .tooth text { font-size: 3.1px; font-weight: 700; fill: var(--text); text-anchor: middle; pointer-events: none; }
+.tooth-chart .tooth:not(.missing) { cursor: pointer; }
+.tooth-chart .tooth:not(.missing):hover rect { stroke: var(--green); }
+.tooth-chart .tooth.sel rect { fill: var(--green); stroke: var(--green); }
+.tooth-chart .tooth.sel text { fill: #000000; }
+.tooth-chart .tooth.missing rect { fill: none; stroke: var(--faint); stroke-dasharray: 1 0.8; }
+.tooth-chart .tooth.missing text { fill: var(--faint); font-weight: 400; }
+.tooth-chart .tooth.ext rect { fill: var(--red-surface); stroke: var(--red); stroke-dasharray: 1.2 0.8; }
+.tooth-chart .tooth.ext .x { stroke: var(--red); stroke-width: 0.5; stroke-linecap: round; opacity: 0.8; }
+.tooth-chart .tooth.ext text { fill: var(--red-text); }
+.tooth-chart .tooth.pending { opacity: 0; }
+.tooth-chart .ipr circle { fill: var(--ipr); stroke: #000000; stroke-width: 0.3; }
+.tooth-chart .ipr text { font-size: 2.6px; fill: var(--ipr); text-anchor: middle; }
+.tooth-chart .center { font-size: 3.4px; fill: var(--muted); text-anchor: middle; }
+.tooth-chart .center.sub { font-size: 2.8px; fill: var(--faint); }
+.chart-legend { display: flex; justify-content: center; gap: 14px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend i { width: 10px; height: 8px; border-radius: 2px; }
+.chart-legend i.ext { border: 1px dashed var(--red); background: var(--red-surface); }
+.chart-legend i.missing { border: 1px dashed var(--faint); }
+.chart-legend i.ipr { width: 7px; height: 7px; border-radius: 50%; background: var(--ipr); }
+.pane.fade-in { animation: pane-in 120ms ease-out; }
+@keyframes pane-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pane.fade-in { animation: none; } }
 .ipr-mark, .fx-ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
 .exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
 /* scan reveal (scan-reveal.js): the extraction mark in 셋업, the IPR tool cursor, the app's marks waiting their turn */
