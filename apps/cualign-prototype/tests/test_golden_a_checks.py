@@ -619,8 +619,8 @@ LIVE_DUMP = (f"선택된 계획: {P1}\n전략: expansion (악궁 편측 0.5mm �
 
 @pytest.mark.parametrize("answer,ok", [
     (LIVE_DUMP, False),
-    ("**확장 전략으로 12단계(약 2.8개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\n"
-     "- 조건: 발치 허용 아니요 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 52단계(약 12개월) · "
+    ("**확장 전략으로 12단계(약 5.5개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\n"
+     "- 조건: 발치 허용 아니요 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 26단계(약 12개월) · "
      "이동 순서 앞니 먼저\n- 검토: 통과. 단계당 이동량 0.239mm(한도 0.25mm)", True),
     (f"선택된 계획: {P1}", False),                                          # plan id
     ("선택된 계획: p3", False),                                             # legacy id
@@ -663,11 +663,12 @@ def test_no_false_success_without_ids(answer, calls, ok):
 
 
 def test_selected_plan_is_presented_without_ids():
-    ans = "- 조건: 발치 허용 아니요 · 단계 상한 52단계(약 12개월)"
-    assert CHECKS["states_constraints"](trace(ans, [_validate(P1, True), _select(P1)]))[0] is True
-    assert CHECKS["states_constraints"](trace(ans.replace("아니요", "예"), [_validate(P1, True), _select(P1)]))[0] is False
-    assert CHECKS["grounded_numbers"](trace(ans, [_validate(P1, True), _select(P1)]))[0] is True     # 52 x 7 / 30.4
-    assert CHECKS["grounded_numbers"](trace(ans.replace("12개월", "13개월"), [_validate(P1, True), _select(P1)]))[0] is False
+    CAP26 = [_validate(P1, True, stage_cap=26), _select(P1, stage_cap=26)]   # 12개월 at 14 days an aligner
+    ans = "- 조건: 발치 허용 아니요 · 단계 상한 26단계(약 12개월)"
+    assert CHECKS["states_constraints"](trace(ans, CAP26))[0] is True
+    assert CHECKS["states_constraints"](trace(ans.replace("아니요", "예"), CAP26))[0] is False
+    assert CHECKS["grounded_numbers"](trace(ans, CAP26))[0] is True     # 26 x 14 / 30.4
+    assert CHECKS["grounded_numbers"](trace(ans.replace("12개월", "13개월"), CAP26))[0] is False
     # selected but never validated: the presented plan still needs a successful validation
     assert CHECKS["presented_plan_validated"](trace("IPR 전략입니다.", [_select(P1)]))[0] is False
     assert CHECKS["answer_mentions_plans"](trace("IPR 전략입니다.", [_validate(P1, True), _select(P1)]))[0] is True

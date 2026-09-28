@@ -145,8 +145,8 @@ async def main(case_id):
             if rec["plan_selected"]:
                 d = (await client.get(url + f"/api/plans/{rec['plan_selected']}", timeout=30)).json()
                 rec["stage_cap"], rec["n_stages"], rec["passed"] = d["constraints"]["stage_cap"], d["info"]["n_stages"], d["passed"]
-                cap_ok = d["constraints"]["stage_cap"] == round(8 * 30.4 / 7) and d["parent_plan_id"] == selected
-            rec["pass"] = cap_ok and rec["korean"] and "35단계" in rec["answer"] and not rec["universal_numbers"] and not rec["internal_terms"]
+                cap_ok = d["constraints"]["stage_cap"] == round(8 * 30.4 / 14) and d["parent_plan_id"] == selected
+            rec["pass"] = cap_ok and rec["korean"] and "17단계" in rec["answer"] and not rec["universal_numbers"] and not rec["internal_terms"]
             steps["4_stage_cap"] = rec
             selected = rec["plan_selected"] or selected
             # 5. 비교

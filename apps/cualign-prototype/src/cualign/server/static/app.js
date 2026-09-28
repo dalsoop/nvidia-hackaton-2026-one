@@ -878,9 +878,9 @@ function readConstraints() {
   if (surf.length || state.plan?.constraints?.ipr_surfaces?.length || state.setup?.ipr_surfaces?.length) out.ipr_surfaces = surf;
   return out;
 }
-// 기간(개월) ↔ 단계 상한: the same formula as the server's limits.py (30.4 days a month, 7 days an aligner)
-const capOfMonths = (m) => Math.round((m * 30.4) / 7);
-const monthsOfCap = (cap) => Math.round(((cap * 7) / 30.4) * 10) / 10;
+// 기간(개월) ↔ 단계 상한: the same formula as the server's limits.py (30.4 days a month, 14 days an aligner)
+const capOfMonths = (m) => Math.round((m * 30.4) / 14);
+const monthsOfCap = (cap) => Math.round(((cap * 14) / 30.4) * 10) / 10;
 function fillConstraints(c) {
   $("cExtract").value = (c.extraction || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cAllowExt").checked = (c.extraction || []).length > 0; $("cExtract").disabled = !$("cAllowExt").checked;
@@ -1930,7 +1930,7 @@ function renderStagePane(plan) {
   facts.innerHTML = ""; grid.innerHTML = "";
   if (!plan) { for (const el of document.querySelectorAll(".grid-legend [data-kind]")) el.hidden = true; return; }
   const n = plan.stages?.length ?? 0, t = plan.target ?? {}, info = plan.info ?? {};
-  // two lines (#13 polish): 「확장 · 9단계 · 약 2.1개월」 / 「총생 1.6 mm → 확보 2.1 mm」; the movement notes are on the 규칙 tab
+  // two lines (#13 polish): 「확장 · 9단계 · 약 4.1개월」 / 「총생 1.6 mm → 확보 2.1 mm」; the movement notes are on the 규칙 tab
   const l1 = document.createElement("span"); l1.className = "l1";
   l1.textContent = [STRATEGY_KO[plan.strategy] ?? plan.strategy, `${n}단계`, info.months != null ? `약 ${info.months}개월` : null].filter(Boolean).join(" · ");
   const l2 = document.createElement("span"); l2.className = "l2";
