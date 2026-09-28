@@ -92,22 +92,45 @@ def test_setup_cut_follows_the_prescribed_contacts(tmp_path, monkeypatch):
 
 
 def test_mesh_crowns_are_closed_for_the_view_only(tmp_path, monkeypatch):
-    """Scanned crowns are open at the margin; the mesh response fans that shut (a bared side shows no hole) while the
-    scan's own vertices and faces come first, unchanged, and the case the core measures stays open."""
+    """Scanned crowns are open at the margin; the mesh response closes that with a root stub (a bared side shows no
+    hole and no flat cut) while the scan's own vertices and faces come first, unchanged, the shell keeps one outward
+    orientation, and the case the core measures stays open. The stub reaches 2–3 mm past the margin's deepest point
+    along the tooth axis."""
     import numpy as np
     import trimesh
-    from cualign.core.ipr_cut import _boundary_loops
+    from cualign.core.ipr_cut import _boundary_loops, _tooth_axis
     with _client(tmp_path, monkeypatch) as client:
         data = client.get("/api/cases/poseidon-000097/mesh").json()
         _, case = store.STORE.load_case("poseidon-000097")
         raw = case.viewer_json()["teeth"]
-        assert set(data["teeth"]) == set(raw)
+        assert set(data["teeth"]) == set(raw) == set(data["teeth_cap"])
+        assert set(data["teeth_cap"].values()) == {"stub"}                                      # one clean margin per crown here
         for i, t in data["teeth"].items():
             m = trimesh.Trimesh(np.asarray(t["v"], float), np.asarray(t["f"]), process=False)
-            assert _boundary_loops(m) == []
+            assert _boundary_loops(m) == [] and m.volume > 0
             n, k = len(raw[i]["v"]), len(raw[i]["f"])
             assert t["v"][:n] == raw[i]["v"] and len(t["f"]) > k and t["f"][:k] == raw[i]["f"]
+            V0 = np.asarray(raw[i]["v"], float)
+            margin = V0[_boundary_loops(trimesh.Trimesh(V0, np.asarray(raw[i]["f"]), process=False))[0]]
+            axis = _tooth_axis(V0, margin)
+            reach = (np.asarray(t["v"], float)[n:] @ axis).max() - (margin @ axis).max()
+            assert 2.0 <= reach <= 3.0, (i, reach)
         assert _boundary_loops(case.mesh[case.ids[0]])                                         # the core's crown is untouched
+
+
+def test_a_split_margin_gets_a_smoothed_dome():
+    """Two open loops (a margin split in two) or a short one: no stub, a dome over each, closed, the old part first."""
+    import numpy as np
+    import trimesh
+    from cualign.core.ipr_cut import _boundary_loops, closed_json
+    tube = trimesh.creation.cylinder(radius=3.0, height=6.0, sections=24)
+    keep = np.abs(tube.triangles_center[:, 2]) < 2.9                         # the side wall only: open at both ends
+    wall = trimesh.Trimesh(tube.vertices, tube.faces[keep], process=False)
+    wall.remove_unreferenced_vertices()
+    t = {"v": np.round(wall.vertices, 3).tolist(), "f": wall.faces.tolist()}
+    out, how = closed_json(t)
+    m = trimesh.Trimesh(np.asarray(out["v"], float), np.asarray(out["f"]), process=False)
+    assert how == "dome" and _boundary_loops(m) == [] and out["f"][:len(t["f"])] == t["f"] and out["v"][:len(t["v"])] == t["v"]
 
 
 def test_mesh_scan_part_is_cached_per_loaded_case(tmp_path, monkeypatch):

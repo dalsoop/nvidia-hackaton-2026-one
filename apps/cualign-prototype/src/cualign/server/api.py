@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
 import re
 import uuid
 import weakref
@@ -58,6 +59,8 @@ MAX_UPLOAD_BYTES = 400 * 1024 * 1024    # one scan upload
 
 
 FDI_ONLY_STEMS = set(range(17, 19)) | set(range(21, 29))   # stems that exist only in FDI on the upper arch
+
+log = logging.getLogger(__name__)
 
 
 def _batch_is_fdi(names) -> bool:
@@ -121,16 +124,21 @@ def gum_filled_view(case_id: str, case, gum: dict) -> dict:
     return _GUM_FILLED[key]
 
 
-_TEETH_CLOSED: dict[tuple, dict] = {}   # (case_id, per-tooth vertex and face counts) -> {tooth: closed {v, f}}
+_TEETH_CLOSED: dict[tuple, tuple] = {}   # (case_id, per-tooth vertex and face counts) -> ({tooth: closed {v, f}}, {tooth: how})
 
 
-def closed_teeth_view(case_id: str, teeth: dict) -> dict:
-    """`teeth` with each crown's open margin fanned shut (core/ipr_cut.closed_json) — the view only. Kept in memory per
-    case and scan, like gum_filled_view."""
+def closed_teeth_view(case_id: str, teeth: dict) -> tuple[dict, dict]:
+    """`teeth` with each crown's open margin closed by a root stub, or a smoothed dome where the margin is split or short
+    (core/ipr_cut.closed_json) — the view only — and {tooth: "stub" | "dome" | "closed"}. Kept in memory per case and
+    scan, like gum_filled_view."""
     key = (case_id, tuple((k, len(t["v"]), len(t["f"])) for k, t in sorted(teeth.items())))
     if key not in _TEETH_CLOSED:
         from cualign.core.ipr_cut import closed_json
-        _TEETH_CLOSED[key] = {k: closed_json(t) for k, t in teeth.items()}
+        done = {k: closed_json(t) for k, t in teeth.items()}
+        how = {k: d[1] for k, d in done.items()}
+        if dome := sorted((k for k, h in how.items() if h == "dome"), key=int):
+            log.info("cuAlign: %s crowns %s closed by a dome, not a root stub (split or short margin)", case_id, dome)
+        _TEETH_CLOSED[key] = ({k: d[0] for k, d in done.items()}, how)
     return _TEETH_CLOSED[key]
 
 
@@ -143,7 +151,7 @@ def mesh_base_json(cid: str, case) -> str:
     ~0.7 s of every opening. Keyed by the Case object, so a re-uploaded scan (a new Case) gets its own."""
     if case not in _MESH_JSON:
         data = case.viewer_json()
-        data["teeth"] = closed_teeth_view(cid, data["teeth"])   # a bared side shows no hole (the IPR-cut crowns are closed already)
+        data["teeth"], data["teeth_cap"] = closed_teeth_view(cid, data["teeth"])   # a bared side shows no hole (the IPR-cut crowns are closed already)
         data.update(gum_filled_view(cid, case, data["gum"]))
         _MESH_JSON[case] = json.dumps(data, separators=(",", ":"))
     return _MESH_JSON[case]
