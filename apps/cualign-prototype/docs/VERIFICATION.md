@@ -372,3 +372,57 @@ moderate 확장+IPR 안을 «검토 다시 요청» 경로로 여러 번 검토�
 - 000097의 NIM 실호출: #146에서 같은 단계 흐름으로 실행한 기록이 있어 다시 하지 않았다.
 - Docker 이미지 빌드와 실행.
 - 같은 케이스를 여러 번 돌린 반복 실행. 턴마다 모델 답이 달라질 수 있고, 위 결과는 한 번씩 실행한 결과다.
+
+## 2026-09-28 머지된 PR 의 검증 기록
+
+2026-09-28(KST)에 머지된 PR 의 본문에 적힌 검증을 PR 번호별로 옮긴 것이다. 이 절을 쓰면서 다시 실행하지 않았고,
+본문에 없는 검증은 적지 않았다. pytest 수는 각 PR 이 돌린 시점의 트리 기준이라 PR 끼리 비교하지 않는다.
+「PR 코멘트」라고 적힌 것은 본문이 아니라 PR 코멘트에 결과가 있다는 뜻이다.
+
+- #89 워크스페이스 이동: pytest 562수집·537통과·17건너뜀·8xfail·실패0, `nat validate` 유효, `test_workspace.py` sha256 확인. 못 한 것: 실호출 골든셋 미실행(지시문 바이트 동일이라 판단).
+- #94 OpenShell 정책 헤더·문서: 두 YAML 을 `yaml.safe_load` 로 읽은 결과가 main 과 같음(주석만 추가), WSL 2 + OpenShell 0.1.1 실제 샌드박스는 사용자 없음·seccomp 알림 검사로 뜨지 않음. 못 한 것: 0.0.116 실제 샌드박스, seccomp 실패 원인 판별, `openshell-prover check`, Landlock 적용 여부.
+- #116 규칙위반 서술 서버 교정: `test_rule_status.py`+`test_rails_middleware.py` 59통과, 전체 621통과·17건너뜀·8xfail, `nat validate` exit0. 후속 커밋 62통과. 못 한 것: 키 있는 골든셋 A08×10 실측, `browser_flow.py`·`plan-stream.test.mjs` 미실행.
+- #118 파비콘 교체: `test_api.py`·`test_ui_flow.py` 5개 통과. 못 한 것: 전체 스위트 미실행, 실제 브라우저 탭 육안 확인 안 함.
+- #120 서버·프롬프트 묶음: pytest 전부 통과(병합 상태), `nat validate` exit0, 라이브 NIM 4종 확인(후속질문 누출 0/40, 검토 토큰 0개, 답변누수 재현 후 수정 확인, 발치 FDI 3회). 못 한 것: 브라우저 화면별 확인, 60MB 초과 업로드 실측, 다른 샘플 라이브 턴.
+- #121 STL 다운로드 비블로킹: 새 시험 통과, 관련 pytest 66개 통과, `browser_flow.py` PASS, 실측 지연 비교 표(10.5초→0.5초), 브라우저 헤드리스 확인. 못 한 것: 실제 `nat serve`에서 에이전트 답변 중 다운로드 실험, 409 오류 화면 확인, 전체 시험 미실행, NIM 실호출 없음.
+- #122 rail_patterns.py 이동: import·정규식·환자·미들웨어 등 89통과, 전체 571통과·89건너뜀·8xfail, `nat validate` 통과. 못 한 것: 없음(동작 변경 없어 골든셋 미실행이라 명시).
+- #123 화면 v2 묶음: pytest 681 passed, `browser_flow.py` PASS, `node --check` 통과, 스크린샷 다수, 실서버 모델 턴 1회 관찰(누수 발견). 못 한 것: 실서버 200+plan_error 케이스(fixture 없음), 980px 이하 반응형·실기기 터치, input_stale 재번호 시나리오.
+- #124 서버묶음3: pytest 590 passed·89skip·8xfail, `nat validate` exit0, 라이브 3회(FDI 정확·발치 매핑 확인). 못 한 것: 되돌린 뒤 수정 요청 라이브, 골든셋 A 전체 라이브 재실행.
+- #125 화면 다듬기: pytest 전부 통과(패키징 포함), `browser_flow.py` PASS, `node --check` 통과, 스크린샷 전/후. 못 한 것: 980px 미만 반응형, 실기기 hover, 실서버 에이전트 턴 검토 문구 전환.
+- #127 작업대 2차 다듬기: `node --check` 통과, pytest 전부 통과, `browser_flow.py` PASS, 스크린샷 전/후. 못 한 것: 서버 `gum_filled` 실제 응답(폴백만 확인), 실서버 에이전트 턴 검토 상태 전환.
+- #128 시연 대본 리허설: pytest 591 passed·89skip·8xfail, `nat validate` exit0, 리허설 3회 PASS(치료 계획~승인). 못 한 것: 되돌리기 턴 라이브, 후속 질문 카드 null 원인 미조사.
+- #129 plan_id 8자 축소: 관련 시험 8파일 통과, 전체 593통과·89건너뜀·8xfail, `nat validate` 통과, A03×10 실측(reviewer 1회·id 정확 10/10). 못 한 것: 없음(별도 답변 누수 이슈는 범위 밖으로 명시).
+- #130 시작·환자·입력확인 다듬기: `node --check` 통과, pytest 전부 통과, `browser_flow.py` PASS, 스크린샷 전/후. 못 한 것: 실기기 드래그 앤 드롭(헤드리스만).
+- #131 gum_filled·E2E 기본케이스: pytest 599 passed(신규 test_gum_fill.py 6개 포함), `nat validate` exit0, E2E 라이브 1회 ALL PASS. 못 한 것: 화면에서 gum_filled 실제 렌더 스크린샷(별도 브랜치 몫).
+- #132 작업대 흐름 초기~단계: `node --check`·pytest 전부 통과, `browser_flow.py` PASS(4단계 전환 등), 스크린샷 다수, 프레임 로그 확인. 못 한 것: 실서버 replay 200 경로(가짜 route만), 스트리밍 8초 건너뛰기 행 자동검증 없음.
+- #133 목표배열 대칭곡선: pytest 600 passed·89skip·8xfail, `--slow` 전체 통과(골든B 기존 xfail 유지), `browser_flow.py` PASS, 전/후 비교(충돌 수 감소). 못 한 것: 앞니 밖 치아 고유 회전 측정(추정기 5종 실패).
+- #134 녹화 답 재생: pytest 608 passed·89skip·8xfail, `nat validate` exit0, 녹화 3케이스×3step 9/9 저장, 재생 TestClient 확인, wheel 자산 확인. 못 한 것: 화면 건너뛰기와 실서버 200 결합(머지 후 확인 필요).
+- #135 녹화재생 실서버 확인·3D 회전 재구현: 실서버 건너뛰기 3경로 200, 회전 인수 측정(오차 0.0mm), `node --check`·pytest·`browser_flow.py` PASS. 못 한 것: 터치 핀치 줌 미구현.
+- #136 회전 방향 반전: `node --check` 통과, `browser_flow.py` PASS. 못 한 것: 본문에 "없음"으로 명시.
+- #137 IPR 표시 파란선: 8000에서 스크린샷 확인(선 개수 일치), `node --check` 통과, `browser_flow.py` 단언 수정(실행 결과는 PR 코멘트). 못 한 것: 000131 스크린샷 미촬영.
+- #138 목표배열 접촉 폐쇄: pytest 608 passed·89skip·8xfail, 골든B 변화없음, `browser_flow.py` PASS, 간격 수치 개선 확인. 못 한 것: `--slow` 전체 재실행 결과 PR 코멘트로 미룸.
+- #139 답 다듬기(ReAct 라벨 등): pytest 619 passed·89skip·8xfail, `nat validate` exit0, 실NIM 라벨 없음 확인·후속카드 헤지 6/6, E2E 1회(기간상한 판정만 모델변동으로 실패), 잇몸 바닥 수치 확인. 못 한 것: #138 뒤 재녹화 미포함.
+- #140 IPR 메시 절단: 30치관 접촉폭 감소 검증, `test_ipr_cut.py` 등 10 passed, 빠른전체 618passed·89skip·8xfail, `browser_flow.py` PASS, `--slow` 687 passed·1 failed(동시실행 타임아웃, 단독 재실행 통과). 못 한 것: 화면에서 깎인 면 색 표시.
+- #141 잇몸 줄무늬 음영 제거: 전후 스크린샷 확인, `node --check` 통과. `browser_flow.py` 결과는 PR 코멘트로 명시(본문에 직접 없음). 못 한 것: 단계 이동 중 벽 복사본 육안 미확인.
+- #142 splitGumBase 보강: 오류 재현 후 수정 확인, `node --check` 통과. `browser_flow.py` 결과는 PR 코멘트. 못 한 것: 본문에 "없음"으로 명시. 알려진 한계에 #141의 "browser_flow PASS" 주장이 오독이었다고 정정 기록.
+- #143 IPR 접촉면별 처방: 빠른전체 통과, `--slow` 715 passed, 처방대로 반영 확인(수치 비교). 못 한 것: 실NIM으로 처방문장→ipr_surfaces 해석 미확인. `browser_flow.py` 결과는 PR 코멘트.
+- #144 2상 스테이징 순서조정: 전/후 비교(충돌 수 0으로 감소), `--slow` 720 passed·17skip·8xfail, 코어 6모듈+`test_staging_sequence.py` 3건 통과, `browser_flow.py` 단독 PASS. 못 한 것: 화면의 phase_boundary 표시(다음 라운드).
+- #146 에이전트 단계 흐름(서버): pytest 664 passed·90skip·8xfail, `nat validate` exit0, wheel 83자산 통과, 실NIM E2E 3턴 흐름 확인(시간 기록), 재녹화 13/15. 못 한 것: E2E 검토·내보내기 단계 429폭주로 타임아웃, 000001 compare·000131 cap 녹화 누락(429).
+- #147 빠진 녹화 채움: 재생·패키징 시험 12건 통과, 실NIM으로 15/15 채움. 못 한 것: 본문에 "없음"으로 명시.
+- #148 에이전트 단계 흐름(화면): 실서버 000097 한바퀴 확인(모든 API 200, 오류0), `node --check`·pytest·`browser_flow.py` PASS. 못 한 것: 실NIM으로 setup/target 턴 끝까지(서버 E2E로만 확인, 화면은 재생경로로만).
+- #149 browser_flow 처방 우회 제거: `browser_flow.py` PASS(FDI→Universal 변환 단언). 못 한 것: 본문에 "없음"으로 명시.
+- #150 샘플 3건 검증 기록 문서: 규칙계획 3샘플 위반없음, 실NIM으로 000131·000001 셋업~단계 확인(위반0·검토passed), `browser_flow.py` 통과·재생 확인. 못 한 것: 000097 NIM 실호출(별도 PR 기록으로 대신), Docker 빌드·실행·반복실행.
+- #151 골든셋B xfail 제외: `test_golden_b.py` 전체 통과 확인. 검증 상세 기록 최소(1줄).
+- #154 QA 고침 7건: pytest 전체 667통과·90건너뜀·8xfail·0실패, `test_golden_a_checks.py` 통과, `node --test`·`node --check` 3/3, 골든셋A 저장트레이스 재판정(A02 통과 전환), 브라우저 실측 각 항목별 확인. 못 한 것: 실제 NIM 호출(키 없음), B 문구를 실제 위반 케이스로 재확인 안 함.
+- #156 탭 제목 변경: 본문에 검증 기록 없음.
+- #158 PII 거절 기록·한글조합 엔터 수정: 관련 pytest 50개 통과, `browser_flow.py` PASS, 실제 nat serve+NIM+브라우저로 4개 시나리오 확인(curl로 이벤트 확인 포함). 못 한 것: 실제 한글 입력기 입력(흉내만), pii_context 화면 미확인, 전체 pytest는 CI에 맡김.
+- #159 README FDI 정정: 옛/새 CLI 예시 실행 비교, 링크 16개 확인. 못 한 것: 본문에 "없음"으로 명시(문서 한 파일).
+- #160 루트 README 소개 추가: 링크 5개 확인, CI layout 규칙 확인. 못 한 것: 본문에 "없음"으로 명시.
+- #161 셋업 연출·IPR 커서: pytest 통과(rebase 후 재실행), `browser_flow.py` 단독 통과(부하로 재시도 후 통과), 8004 별도 서버로 스크린샷 6장 확인(NIM 호출 안 함, 건너뛰기→재생만). 못 한 것: 실제 NIM 셋업 턴 미확인(429 회피), 연출 전용 자동 단언 없음, webm 녹화 미첨부.
+- #162 규칙탭 위반묶음·조건탭 검증: `pytest -n 2` 667통과·90건너뜀·8xfail·0실패(rebase전), `browser_flow.py` 1회 PASS(rebase후), `node --check` 통과, 8006 브라우저 실측 다수 시나리오. 못 한 것: NIM 실제 에이전트 턴에서 폼 잠금 미확인, browser_flow 1회만·한 뷰포트만, pytest는 rebase 전 실행.
+- #163 시작화면 정리·상세 애니메이션·치경부 막기: `pytest -n 2` 통과(신규 test_mesh_crowns 포함), `browser_flow.py` 마지막 1회 PASS, 애니메이션 프레임 추적 확인, 성능 측정(+70ms). 못 한 것: 구멍 막힘 스크린샷 확보 실패(헤드리스에서 차이 재현 안 됨 — "실제 화면에서 증상이 사라졌는지는 GPU 브라우저로 사람이 확인해야 한다"고 명시).
+- #166 처방칩 문구·추론 트레이스: `pytest -n 2` 667 passed·90skip·8xfail, `browser_flow.py` 단독 PASS(부하로 1회 실패했으나 무관 판단), 8003 서버로 재생 경로 확인(NIM 호출 없음, 오류0). 못 한 것: NIM 실호출 턴 미확인(429 회피), 새 칩 문장 실제 모델 미검증, 비교 턴 결과 줄 미구현.
+- #167 재생 숫자 덮어쓰기 버그 수정: `test_recorded_replay.py` 10개 통과, 녹화 6개 재생 비교(main과 일치 확인), 키 없이 브라우저로 세 샘플 끝까지(콘솔오류 없음). 못 한 것: 전체 테스트 로컬 미실행(CI로 확인), 녹화 내용 자체는 수정 안 함(재녹화 필요 항목 나열).
+- #168 3D 뷰어(배율·탭·회전·단계숨김): pytest 669 passed·90skip·8xfail·0failed, `node --test` 3/3, `browser_flow.py` 단독 PASS(재시도 후), 8002 별도서버 NIM호출 0회로 회전·배율 수치 실측(표로 기록), 스크린샷 3장. 못 한 것: 수정 전 스크린샷 없음, 창크기 재맞춤은 1600→1280 1회만, 최종 코드는 눈으로 재확인 안 하고 pytest·browser_flow로만 확인.
+- #169 연출 레퍼런스 조사 문서: 코드 변경 없음. 본문에 검증 기록 없음(리서치 문서).
+- #170 CI layout HANDOFF.md 허용: 본문에 검증 기록 없음.
