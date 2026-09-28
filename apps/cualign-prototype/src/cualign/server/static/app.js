@@ -343,8 +343,8 @@ function buildTeeth(mesh) {
 }
 
 // The mesh response carries the crowns an IPR cuts (#22, #140): `teeth_cut` {tooth: {v, f}} for the cut teeth only and
-// `ipr_cut` {tooth: {mm, faces}} with the indices of the faces on the cut planes; `plan_id` (mesh?plan_id=) or
-// `target_id` (mesh?target_id=, server round 15) says whose. Each cut tooth gets a crown geometry without those faces
+// `ipr_cut` {tooth: {mm, faces}} with the indices of the faces on the cut planes; `plan_id` (/plans/{id}/cut, or the
+// opening mesh) or `target_id` (/targets/{id}/cut) says whose. Each cut tooth gets a crown geometry without those faces
 // and a second one of only them (shared positions), so the planes shade in their own colour with no z-fighting.
 // The set is kept under its key; a response with no cuts (an extraction plan) is an empty set.
 function setCut(view, key) {
@@ -369,11 +369,11 @@ function cutKeyNow() {
   const t = state.targetId ? "target:" + state.targetId : null, p = state.plan ? "plan:" + state.plan.plan_id : null;
   return state.step === "stages" ? p ?? t : t ?? p;
 }
-// the target turn's cut dentition (#22): GET /mesh?target_id= → {teeth_cut, ipr_cut, plan_id: null, target_id}. A server
-// without it answers with the plan's cut (target_id missing) — then the target shows the scan's crowns
+// the target turn's cut dentition (#22, #146): GET /targets/{id}/cut → {teeth_cut, ipr_cut, plan_id: null, target_id} — the cut
+// crowns alone, not the whole mesh again. A response for another target (or none) leaves the scan's crowns
 async function loadTargetCut(targetId) {
   try {
-    const view = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/mesh?target_id=${encodeURIComponent(targetId)}`);
+    const view = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(targetId)}/cut`);
     if (view.target_id !== targetId || !state.teeth) return;
     setCut(view, "target:" + targetId);
     if (cutKeyNow() === "target:" + targetId) applyStage(state.stage);   // the target is already on screen: swap its crowns in
@@ -981,7 +981,9 @@ async function route(hash) {
       // a plan in the address opens once the case is on screen, if this case has it
       if (plan && state.activeCase === id && !state.streaming && plan !== state.plan?.plan_id
           && plan in state.planRows) await loadPlan(plan);
-      if (state.activeCase === id) setStep(step ?? "initial");   // back/forward and reload keep the step
+      // back/forward and reload keep the step; a case opened with no step in the address lands where the server's flow left it (#146)
+      const land = step ?? state.restoredStep ?? "initial"; state.restoredStep = null;
+      if (state.activeCase === id) setStep(land);
     } else if (key === "patients") { await loadPatients(); showScreen("patients"); }
     else if (key === "patient" && id) await openPatient(id);
     else if (key === "check" && id) {
@@ -1426,7 +1428,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   await refreshPlans(null, false);   // the case's earlier plans as cards only (#20): nothing is computed or shown at open
   renderCaseCard(caseId, info);
   renderScanPane(info);
-  await restoreProgress(info.state);   // the case's current step state, when the server keeps it (#20 decision 1)
+  await restoreProgress(info.flow ?? info.state);   // how far the step flow went, as the server keeps it (#146: flow {step, constraints, target_id, plan_id})
   state.activeCase = caseId;
   $("caseGate").hidden = true;
   endCheck();
@@ -1457,8 +1459,11 @@ async function activateCase(caseId, { greet = true } = {}) {
 // The server may send the case's current step state with /activate (#20 decision 1): `state: {setup: constraints|null,
 // target_id: str|null, plan_id: str|null}`. Each field opens the strip that far; without it the case opens at 초기.
 async function restoreProgress(st) {
+  state.restoredStep = null;
   if (!st) return;
-  if (st.setup) { state.setup = st.setup; fillConstraints(st.setup); setProgress("setup", true); }
+  state.restoredStep = STEPS.includes(st.step) ? st.step : null;   // where the case stands: the router lands there when the address names no step
+  const setup = st.constraints ?? st.setup;
+  if (setup) { state.setup = setup; fillConstraints(setup); setProgress("setup", true); }
   if (st.target_id) {
     try {
       state.target = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(st.target_id)}`);
@@ -1570,7 +1575,7 @@ async function loadPlan(planId) {
   $("planNotice").textContent = "계획 불러오는 중 — 다운로드 잠김";
   try {
     const [plan, cut] = await Promise.all([api("/api/plans/" + encodeURIComponent(planId)),
-      state.cutSets["plan:" + planId] ? null : api(`/api/cases/${encodeURIComponent(caseId)}/mesh?plan_id=${encodeURIComponent(planId)}`)]);   // #22
+      state.cutSets["plan:" + planId] ? null : api(`/api/plans/${encodeURIComponent(planId)}/cut`)]);   // #22, #146: the cut crowns alone
     if (version !== state.selectionVersion || caseId !== state.meshCase) return;
     if (plan.case_id !== caseId) throw new Error("선택 케이스와 계획이 다릅니다.");
     stopPlay();

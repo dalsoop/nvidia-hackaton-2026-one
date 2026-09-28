@@ -60,6 +60,26 @@ store_module.OUT_DIR = api.OUT_DIR = OUT
 app = FastAPI()
 
 
+@app.get("/api/cases/{case_id}/targets/{target_id}")
+async def fake_target(case_id: str, target_id: str):
+    """The target state in the plan's shape with one stage (the final one) — for the tests' t-fake, which the server's
+    own route (#146) does not have; registered before the server's routes so it answers first."""
+    pid = next((pid for pid in reversed(list(store_module.STORE.plans)) if store_module.STORE._record(pid)["case_id"] == case_id), None)
+    if pid is None:
+        pid = api.rule_based_plan(case_id)["chosen"]["plan_id"]
+    plan = store_module.STORE.plan_json(pid)
+    return {**plan, "target_id": target_id, "plan_id": None, "stages": plan["stages"][-1:], "rotations": (plan.get("rotations") or [])[-1:],
+            "violations": []}
+
+
+@app.get("/api/cases/{case_id}/targets/{target_id}/cut")
+async def fake_target_cut(case_id: str, target_id: str):
+    """The t-fake target's cut crowns (#22): the case's latest plan's cut with plan_id None and the target_id."""
+    cid, case = store_module.STORE.load_case(case_id)
+    pid = next((pid for pid in reversed(list(store_module.STORE.plans)) if store_module.STORE._record(pid)["case_id"] == cid), None)
+    return {**api.ipr_cut_view(cid, case, pid), "plan_id": None, "target_id": target_id}
+
+
 @app.get("/api/cases/{case_id}/mesh")
 async def fake_mesh(case_id: str, plan_id: str | None = None, target_id: str | None = None):
     """The mesh route with `target_id` (server round 15, not on main yet): the target's cut dentition — shaped here as the
@@ -97,9 +117,9 @@ async def fake_chat(request: Request):
     constraints it read, target → step_done with a target id, stages → the real tools, so plan_selected comes from
     the middleware. The reviewer fails only on the 앞니 IPR turn."""
     body = json.loads(await request.body())
-    step = body.get("step")
-    text = next((m["content"] for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
     run = CURRENT_RUN.get()
+    step = body.get("step") or (run.step if run else None)   # the middleware (#146) reads the top-level step into the run
+    text = next((m["content"] for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
     async def generate():
         if step == "setup":
             yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
@@ -128,17 +148,6 @@ async def fake_chat(request: Request):
             # An unrelated ID in text must not control selection.
             yield 'data: {"value":"단계를 만들었습니다. 이전 후보 plan_id: p999는 선택하지 않습니다."}\n\n'
     return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/api/cases/{case_id}/targets/{target_id}")
-async def fake_target(case_id: str, target_id: str):
-    """#20 contract, shaped here until the server ships it: the target state in the plan's shape with one stage (the final one)."""
-    pid = next((pid for pid in reversed(list(store_module.STORE.plans)) if store_module.STORE._record(pid)["case_id"] == case_id), None)
-    if pid is None:
-        pid = api.rule_based_plan(case_id)["chosen"]["plan_id"]
-    plan = store_module.STORE.plan_json(pid)
-    return {**plan, "target_id": target_id, "plan_id": None, "stages": plan["stages"][-1:], "rotations": (plan.get("rotations") or [])[-1:],
-            "violations": []}
 
 
 async def main():
@@ -613,11 +622,11 @@ async def main():
             await page.unroute("**/api/cases/poseidon-000131/replay")
             await page.unroute("**/chat/stream")
 
-            # The server may keep the case's step state and send it with /activate (#20 decision 1, shaped here until it
-            # does): setup → the strip opens to 셋업 with the conditions, target_id → to 목표, plan_id → to 단계
+            # The server keeps how far the step flow went and sends it with /activate as `flow` (#146): constraints → the strip
+            # opens to 셋업 with the conditions, target_id → to 목표, plan_id → to 단계 (shaped here with the tests' t-fake target)
             async def activate_with_state(route):
                 r = await route.fetch(); body = await r.json()
-                body["state"] = {"setup": {"extraction": [5, 12], "lock": [], "ipr_exclude": [], "ipr_limit_mm": 0.2, "stage_cap": None, "order": "simultaneous"}, "target_id": "t-fake", "plan_id": None}
+                body["flow"] = {"step": "target", "constraints": {"extraction": [5, 12], "lock": [], "ipr_exclude": [], "ipr_limit_mm": 0.2, "stage_cap": None, "order": "simultaneous"}, "target_id": "t-fake", "plan_id": None}
                 await route.fulfill(json=body)
             await page.route("**/api/cases/poseidon-000097/activate", activate_with_state)
             await page.goto(url + "/ui/#case=poseidon-000097&step=target")
