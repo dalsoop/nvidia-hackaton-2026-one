@@ -1069,10 +1069,9 @@ async def main():
               const r = document.querySelector('#viewCanvas').getBoundingClientRect();
               return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; }""", "3")   # the mesial arrow's head
             await drag(hx, hy, 40, 0)
-            moved = await page.evaluate(pose, "3")
-            assert max(abs(a - b) for a, b in zip(moved, p0)) >= 0.05, (moved, p0)
-            await page.keyboard.press("Control+z")
-            assert await page.evaluate(pose, "3") == p0
+            await page.wait_for_function("([id, p]) => window.__cualign.state.target.stages[0][id].some((x, k) => Math.abs(x - p[k]) >= 0.05)", arg=["3", p0], timeout=5000)
+            await page.keyboard.press("Control+z")                                      # drawn on the next frame (redraw)
+            await page.wait_for_function("([id, p]) => JSON.stringify(window.__cualign.state.target.stages[0][id]) === JSON.stringify(p)", arg=["3", p0], timeout=5000)
             await page.keyboard.press("Escape")                                         # back where it was: nothing to store
             await page.wait_for_function("!document.body.classList.contains('manual-on')", timeout=10000)
             assert not saves and await page.evaluate("window.__cualign.state.targetId") == tid
