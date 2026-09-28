@@ -594,12 +594,33 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .vg .stages button { width: 30px; height: 26px; font: inherit; font-size: 12px; font-weight: 700; border-radius: var(--radius); background: var(--panel); color: var(--red-text); border: 1px solid var(--red); cursor: pointer; }
 .vg.warn .stages button { color: var(--amber-text); border-color: var(--amber); }
 .vg .stages button.cur { background: var(--green); color: #000; border-color: var(--green); }
+.vg .when { font-size: 12px; color: var(--muted); }
+.vg .vi { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.vg .vi .go { all: unset; cursor: pointer; font-size: 13px; color: var(--text); }
+.vg .vi .go:hover, .vg .vi .go:focus-visible { text-decoration: underline; }
+.vg .vi .go:disabled { cursor: default; text-decoration: none; }
+/* the verdict above the cards: one big line, the reason under it */
+.rule-verdict { margin: 16px 20px 0; padding: 12px; border-radius: var(--radius); display: flex; flex-direction: column; gap: 4px; background: var(--pass-surface); }
+.rule-verdict b { font-size: 16px; color: var(--pass-text); }
+.rule-verdict span { font-size: 12px; color: var(--muted); }
+.rule-verdict span:empty { display: none; }
+.rule-verdict.fail { background: var(--red-surface); border: 1px solid var(--red); }
+.rule-verdict.fail b { color: var(--red-text); }
+.rule-verdict:has(b:empty) { display: none; }
 /* conditions: the prescription, the form, whether it still matches the plan on screen, and the run button */
 .pane .rx { padding: 0 20px 16px; }
 .pane .rx p { margin: 0; font-size: 14px; line-height: 1.6; }
 .pane .rx p:empty { display: none; }
 .constraints label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.constraints label:nth-child(-n+3) { grid-column: 1 / -1; }
+.constraints label:nth-child(-n+6), .constraints label:last-child { grid-column: 1 / -1; }   /* 장수 상한 · 기간 pair up */
+.constraints label.check > span { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.constraints label.check input { width: 16px; height: 16px; margin: 0; padding: 0; }
+.constraints .hint { font-size: 11px; color: var(--faint); line-height: 1.4; }
+.constraints .err { font-size: 11px; color: var(--red-text); }
+.constraints [aria-invalid=true] { border-color: var(--red); }
+.cond-diff { margin: 0 0 8px; font-size: 12px; color: var(--amber-text); }
+.cond-diff:empty { display: none; }
+.pane-foot .btn + .btn { margin-top: 8px; }
 .cond-state { margin: 0; padding: 0 20px; font-size: 12px; color: var(--pass-text); }
 .cond-state.changed { color: var(--amber-text); }
 .cond-state:empty { display: none; }
