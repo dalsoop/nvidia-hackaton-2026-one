@@ -53,7 +53,7 @@ const state = {
   lastAssistantText: "",
   trace: null,           // inline tool-call trace for the turn in progress
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
-  caseList: [], clSelected: null,   // 케이스 목록 (#109): 샘플 카드 + 환자 표, 선택한 것 아래 상세 (③-b)
+  caseList: [], clSelected: null, clPreset: false,   // 케이스 목록 (#109): 샘플 카드 + 환자 표, 선택한 것 아래 상세 (③-b)
   checkCase: null,       // case id shown on the input-check screen
   checkRevision: null,   // scan revision shown there; the confirmation names it
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
@@ -1594,7 +1594,7 @@ async function openCase(caseId, { greet = true, restart = false } = {}) {
   state.followup = null;
   state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
   stopPlay(); scanFx.cancel(); manualEdit.drop();
-  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
+  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
   state.oldPlans = new Set(before.plans.map((p) => p.plan_id));
@@ -2963,7 +2963,9 @@ for (const id of ["sampleCards", "clRows"]) {
   $(id).addEventListener("click", (e) => {
     const el = e.target.closest(".case-card, .case-row");
     if (!el || e.target.closest("#clDetail")) return;
-    state.clSelected = state.clSelected === el.dataset.id ? null : el.dataset.id;
+    // the detail the page opened on the server's active case: the first press on that card keeps it open, not folds it
+    state.clSelected = state.clSelected === el.dataset.id && !state.clPreset ? null : el.dataset.id;
+    state.clPreset = false;
     renderCaseList();
   });
   $(id).addEventListener("dblclick", (e) => { const el = e.target.closest(".case-card, .case-row"); if (el) openFromList(state.caseList.find((c) => c.case_id === el.dataset.id)); });
@@ -3538,7 +3540,7 @@ manualEdit = createManual({ THREE, scene, camera, canvas, ghost, state, $, fdi, 
     catch (e) { addMsg("error", `케이스 로드 실패: ${e.message}`); }
   }
   // The page opens in the start state; "내 스캔 올리기" leads to the patient flow (patient → scan → plan).
-  if (active) { state.clSelected = active; renderCaseList(); }   // the list opens on the case the server has active
+  if (active) { state.clSelected = active; state.clPreset = true; renderCaseList(); }   // the list opens on the case the server has active
   // a reload or a shared address opens the same screen; otherwise this is the start state
   if (location.hash && location.hash !== "#start") {
     routing = true;
