@@ -62,6 +62,7 @@
 | `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
 | `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결, 과부하 실패 뒤 «다시 보내기»(같은 글·조건을 새 요청으로) |
+| `src/cualign/server/static/scan-reveal.js` | 셋업 턴 시작 시 연출: 치아 번호 순회(17→27, 0.1초)·발치 치아 들림/페이드·「발치」 표식·IPR 도구 커서, 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
 | `guardrails/config.yml` | 검사 모델(과부하 재요청 횟수 포함)과 적용할 레일의 설정, content-safety 모델에 보내는 맞춤 정책 본문 |
 | `guardrails/prompts.yml` | 범위·출력 검사에 쓰는 판정 프롬프트 |

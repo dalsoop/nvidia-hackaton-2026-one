@@ -406,12 +406,29 @@ async def main():
             assert await page.locator("#caseName").inner_text() == case_name_before
             assert await page.locator("#stlLink").get_attribute("href") is None   # approval was revoked above
 
+            # The 조건 tab's form: a new 장수 상한 shows what changes in one line, and 다시 계산 (the rule plan, no model —
+            # the same path as 에이전트 없이 계산) adds a plan card and puts that plan on screen.
+            await page.locator("#tabCond").click()
+            assert await page.locator("#condRecalc").is_disabled()      # the form still matches the plan on screen
+            cards_before = await page.locator("#plans .plan-row").count()
+            await page.locator("#cCap").fill("40")
+            assert "장수 상한" in await page.locator("#condDiff").inner_text() and "→ 40" in await page.locator("#condDiff").inner_text()
+            await page.locator("#condRecalc").click()
+            await page.wait_for_function(f"(p) => {plan_on_screen} !== p && !document.body.classList.contains('streaming')", arg=child, timeout=300000)
+            recalc = await on_screen()
+            assert await page.evaluate("window.__cualign.state.plan.constraints.stage_cap") == 40
+            assert await page.locator("#plans .plan-row").count() >= cards_before + 1      # one card per strategy the rule plan tried
+            assert await page.locator(f'#plans .plan-row.current[data-plan="{recalc}"] .viewing').is_visible()
+            assert "조건을 바꿔 규칙으로 다시 계산했습니다 — 계획 " in await page.locator(".msg.system").last.inner_text() \
+                or "허용 전략 전부 규칙 위반" in await page.locator(".msg.system").last.inner_text()
+
             # Going home and opening a different (real) sample card: the case opens as its scan (#20), never with the
             # previous case's plan, the strip back at 초기.
             await page.locator("#homeBtn").click()
             await page.wait_for_function("document.body.classList.contains('start')")
             await page.locator('#sampleCards .case-card[data-id="poseidon-000001"]').click()      # card → detail under it
-            assert await page.locator("#clDetail").is_visible() and await page.locator("#dArch circle").count() == 14 and await page.locator("#dArch line.ipr").count() == 9   # 000001: IPR on the 9 contacts between 15…25
+            await page.locator("#clDetail").wait_for(state="visible", timeout=2000)   # it grows from 0 height (open animation)
+            assert await page.locator("#dArch circle").count() == 14 and await page.locator("#dArch line.ipr").count() == 9   # 000001: IPR on the 9 contacts between 15…25
             assert await page.locator('#sampleCards > #clDetail.in-cards').count() == 1      # under the card row
             assert await page.locator("#intro").is_visible()   # the intro panel is back on the left (③)
             await page.locator("#dOpen").click()

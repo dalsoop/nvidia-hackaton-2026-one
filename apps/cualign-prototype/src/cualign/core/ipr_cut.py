@@ -68,6 +68,15 @@ def _fill_loops(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     return out
 
 
+def closed_json(t: dict) -> dict:
+    """A crown as the viewer gets it ({v, f}) with its open cervical margin fanned shut, so a crown whose side is bared
+    (a neighbour extracted or moved away) does not show a hole. For the view only: the core measures the crowns as
+    they came. The new faces come after the old ones, so face indices into `f` stay valid."""
+    mesh = trimesh.Trimesh(np.asarray(t["v"], float), np.asarray(t["f"]), process=False)
+    out = _fill_loops(mesh)
+    return t if out is mesh else {"v": np.round(out.vertices, 3).tolist(), "f": out.faces.tolist()}
+
+
 def _slice(mesh: trimesh.Trimesh, n: np.ndarray, c: float) -> trimesh.Trimesh:
     """The part of the mesh with x.n <= c; crossing triangles are clipped on the plane (new vertices shared along
     edges so the section is a chain of boundary edges). trimesh's slice_mesh_plane needs shapely, which is not a

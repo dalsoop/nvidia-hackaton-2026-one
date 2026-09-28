@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { createManual } from "./manual.js";
+import { createScanFx } from "./scan-reveal.js";
 
 const $ = (id) => document.getElementById(id);
 // 직접 이동 (manual.js): created once the screen's functions exist (end of file); until then nothing is being edited
@@ -132,6 +133,12 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
 const group = new THREE.Group(); scene.add(group);
+// the scan reveal on the setup turn and the IPR tool cursor (scan-reveal.js); the prescription it plays is the form's
+// (Universal; the form's IPR contacts are FDI)
+const prescribed = (c) => ({ extraction: c?.extraction ?? [], ipr_surfaces: (c?.ipr_surfaces ?? []).map(([a, b, mm]) => [universal(a), universal(b), mm]) });
+const scanFx = createScanFx({ THREE, CSS2DObject, group, state, fdi, notice: $("planNotice"),
+  refresh: () => { applyStage(state.stage); renderSetupMarks(); },
+  stageContacts: (p) => contactsOnScreen(surfacesOf(p.target, p.info), new Set((p.target?.removed ?? []).map(String))) });
 const raycaster = new THREE.Raycaster();
 
 function resize() {
@@ -147,7 +154,7 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
 (function loop() {
-  controls.update(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  controls.update(); scanFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
   requestAnimationFrame(loop);
 })();
 
@@ -296,7 +303,7 @@ function fixGumBaseNormals(geo) {
   geo.attributes.normal.needsUpdate = true;
 }
 function buildTeeth(mesh) {
-  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels();
+  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels(); scanFx.cancel();
   state.violLabels = []; state.selected.clear(); renderSelection();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
@@ -471,8 +478,14 @@ function renderSetupMarks() {
   const put = (el, pos) => { const o = new CSS2DObject(el); o.position.copy(pos); group.add(o); state.setupMarks.push(o); };
   for (const [a, b, mm] of contactsOnScreen(src.surfaces, removed)) {
     const el = document.createElement("div"); el.className = "ipr-mark"; el.title = `IPR 접촉면 ${fdi(a)}-${fdi(b)} ${mm} mm`;
+    el.dataset.contact = `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;   // the scan reveal lights them in turn
     const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
     put(el, p);
+  }
+  for (const id of removed) {   // 발치 where the extracted crown was
+    if (!state.teeth[id]) continue;
+    const el = document.createElement("div"); el.className = "extract-mark"; el.textContent = "발치"; el.dataset.extract = id;
+    put(el, state.center[id].clone().setZ(state.center[id].z + 2));
   }
   if (src.expansion > 0 && order.length >= 2) {
     for (const [id, arrow] of [[order[0], "←"], [order[order.length - 1], "→"]]) {
@@ -593,6 +606,7 @@ function applyStage(k) {
   tip.textContent = k === 0 ? "치료 전" : `단계 ${k}` + (!boundary ? "" : k === boundary ? " · 뒤따라 이동 시작" : k > boundary ? " · 뒤따라 이동" : " · 먼저 이동");
   tip.style.left = n ? `calc(8px + ${(k / n) * 100}% - ${(k / n) * 16}px)` : "8px";   // the thumb's centre: 8px inset each side
   markStage(k);
+  scanFx.stageReached(k);
 }
 
 // ---- hover tooltip: tooth number · cumulative move · violations at this stage (number only on hover, as in 5/5 SW)
@@ -765,22 +779,47 @@ function parseSurfaces(raw) {   // 「12-11 0.4, 11-21 0.4」 → [[12, 11, 0.4]
 const normSurfaces = (s, fromFdi = false) => (s ?? []).map(([a, b, mm]) => { if (fromFdi) { a = universal(a); b = universal(b); } return [Math.min(a, b), Math.max(a, b), +mm]; }).sort((x, y) => x[0] - y[0]);
 // the contacts a target/plan strips: target.ipr_surfaces (info.ipr_surfaces on older plans), Universal
 const surfacesOf = (t, info) => t?.ipr_surfaces ?? info?.ipr_surfaces ?? [];
-function readConstraints() {
-  const teeth = (id) => {
+// one reader per form field; each throws its own sentence, which the 조건 tab shows under that field
+const FIELD_READ = {
+  cExtract: () => {
+    const ids = FIELD_READ.teeth("cExtract");
+    if ($("cAllowExt").checked && !ids.length) throw new Error("발치를 허용했으면 발치 치아를 적어 주세요 (FDI).");
+    return ids;
+  },
+  cLock: () => FIELD_READ.teeth("cLock"),
+  cExclude: () => FIELD_READ.teeth("cExclude"),
+  cSurf: () => parseSurfaces($("cSurf").value),
+  cIpr: () => {
+    const ipr = Number($("cIpr").value);
+    if ($("cIpr").value === "" || !Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("면당 IPR은 0~0.25 mm입니다.");
+    return ipr;
+  },
+  cCap: () => {
+    const cap = $("cCap").value === "" ? null : Number($("cCap").value);
+    if (cap !== null && (!Number.isInteger(cap) || cap < 1)) throw new Error("장수 상한은 1 이상의 정수입니다.");
+    return cap;
+  },
+  teeth: (id) => {
     const raw = $(id).value.trim();
     const values = raw ? raw.split(/[ ,]+/).map(Number) : [];
     if (values.some(v => !Number.isInteger(v) || !isFdiTooth(v))) throw new Error("치아 번호는 FDI로 입력하세요 (11~17, 21~27).");
     return [...new Set(values.map(universal))].sort((a,b) => a-b);
-  };
-  const ipr = Number($("cIpr").value), cap = $("cCap").value === "" ? null : Number($("cCap").value);
-  if (!Number.isFinite(ipr) || ipr < 0 || ipr > 0.25) throw new Error("IPR은 면당 0~0.25mm입니다.");
-  if (cap !== null && (!Number.isInteger(cap) || cap < 1)) throw new Error("단계 상한은 양의 정수입니다.");
-  // extraction: the prescribed teeth (#56); the app never picks them, an empty field is non-extraction
+  },
+};
+function fieldErrors() {
+  const errs = {};
+  for (const id of ["cExtract", "cLock", "cSurf", "cExclude", "cIpr", "cCap"]) try { FIELD_READ[id](); } catch (e) { errs[id] = e.message; }
+  return errs;
+}
+function readConstraints() {
+  const teeth = (id) => FIELD_READ[id]();
+  const ipr = FIELD_READ.cIpr(), cap = FIELD_READ.cCap();
+  // extraction: the prescribed teeth (#56); the app never picks them, 발치 허용 off empties the field (non-extraction)
   const out = { extraction: teeth("cExtract"), lock: teeth("cLock"), ipr_exclude: teeth("cExclude"),
     ipr_limit_mm: ipr, stage_cap: cap, clear_stage_cap: cap === null, order: $("cOrder").value };
   // IPR per contact (#57), FDI in the patch — this field only. Sent when there is one or one is being cleared; a server
   // before core #143 rejects the key (ConstraintPatch forbids extras), so an untouched empty field sends nothing
-  const surf = parseSurfaces($("cSurf").value);
+  const surf = FIELD_READ.cSurf();
   if (surf.length || state.plan?.constraints?.ipr_surfaces?.length || state.setup?.ipr_surfaces?.length) out.ipr_surfaces = surf;
   return out;
 }
@@ -789,6 +828,7 @@ const capOfMonths = (m) => Math.round((m * 30.4) / 7);
 const monthsOfCap = (cap) => Math.round(((cap * 7) / 30.4) * 10) / 10;
 function fillConstraints(c) {
   $("cExtract").value = (c.extraction || []).map(fdi).sort((a,b) => a-b).join(", ");
+  $("cAllowExt").checked = (c.extraction || []).length > 0; $("cExtract").disabled = !$("cAllowExt").checked;
   $("cLock").value = (c.lock || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cSurf").value = surfacesKo(c.ipr_surfaces);
   $("cExclude").value = (c.ipr_exclude || []).map(fdi).sort((a,b) => a-b).join(", ");
@@ -828,11 +868,38 @@ function renderPlanFail() {
 function renderCondState() {
   const p = state.plan, n = planNo(p?.plan_id);
   $("condFor").textContent = p ? `계획 ${n}의 조건 · 고치면 셋업부터 다시` : state.setup ? "에이전트가 읽은 조건 · 고치면 셋업부터 다시" : "계획을 만들 조건";
-  const dirty = constraintsDirty(), el = $("condState");
-  el.textContent = !p ? "" : dirty ? "조건이 바뀜 · 「이 조건으로 셋업 다시」" : "보고 있는 계획의 조건과 같음";
+  const dirty = constraintsDirty(), el = $("condState"), busy = state.streaming || state.loading;
+  // a field that does not read: its sentence in red under it, the field outlined
+  const errs = fieldErrors();
+  for (const id of ["cExtract", "cLock", "cSurf", "cExclude", "cIpr", "cCap"]) {
+    const box = $(id).parentElement.querySelector(".err");
+    box.textContent = errs[id] ?? ""; box.hidden = !errs[id];
+    $(id).setAttribute("aria-invalid", String(!!errs[id]));
+  }
+  el.textContent = !p ? "" : dirty ? "조건이 바뀜 · 「다시 계산」으로 새 계획" : "보고 있는 계획의 조건과 같음";
   el.classList.toggle("changed", dirty);
+  const diff = p && !Object.keys(errs).length ? condDiff(p.constraints) : "";
+  $("condDiff").textContent = diff;
+  $("condRecalc").hidden = !p;   // 다시 계산 changes a plan on screen; before one exists the retry bar's 에이전트 없이 계산 does
+  $("condRecalc").disabled = busy || !diff;
   $("condApply").hidden = stepIndex(state.progress) < 1;   // a hand-edited condition re-runs the setup turn (#20)
-  $("condApply").disabled = state.streaming || state.loading;
+  $("condApply").disabled = busy;
+}
+// what the form changes against the plan on screen, in one line: 「발치 14·24 → 비발치, 장수 상한 없음 → 32」
+function condDiff(base) {
+  const c = readConstraints(), out = [];
+  const teeth = (ids) => fdiList([...(ids ?? [])].sort((a, b) => fdi(a) - fdi(b)));
+  const ext = (ids) => ids?.length ? "발치 " + teeth(ids) : "비발치";
+  if (teeth(c.extraction) !== teeth(base.extraction)) out.push(`${ext(base.extraction)} → ${ext(c.extraction)}`);
+  for (const [k, name] of [["lock", "고정"], ["ipr_exclude", "IPR 제외"]])
+    if (teeth(c[k]) !== teeth(base[k])) out.push(`${name} ${teeth(base[k]) || "없음"} → ${teeth(c[k]) || "없음"}`);
+  const surf = (s) => surfacesKo(normSurfaces(s)) || "없음", cs = c.ipr_surfaces && normSurfaces(c.ipr_surfaces, true);   // the form's are FDI
+  if (cs && surf(cs) !== surf(base.ipr_surfaces)) out.push(`IPR 처방 ${surf(base.ipr_surfaces)} → ${surf(cs)}`);
+  if (Math.abs(c.ipr_limit_mm - (base.ipr_limit_mm ?? 0.25)) > 1e-6) out.push(`면당 IPR ${base.ipr_limit_mm ?? 0.25} → ${c.ipr_limit_mm} mm`);
+  if ((c.stage_cap ?? null) !== (base.stage_cap ?? null)) out.push(`장수 상한 ${base.stage_cap ?? "없음"} → ${c.stage_cap ?? "없음"}`);
+  const order = (v) => [...$("cOrder").options].find((o) => o.value === v)?.textContent ?? v;
+  if (c.order !== (base.order ?? "simultaneous")) out.push(`이동 순서 ${order(base.order ?? "simultaneous")} → ${order(c.order)}`);
+  return out.join(", ");
 }
 function constraintsDirty() {
   if (!state.plan) return false;
@@ -1262,6 +1329,7 @@ function renderCaseList() {
   const samples = rows.filter((c) => c.kind === "sample"), patients = rows.filter((c) => c.kind !== "sample");
   // the detail is one element that lives under the pressed card or row: take it out before the containers are rebuilt
   const detail = $("clDetail");
+  const was = !detail.hidden && detail.classList.contains("open") ? { id: detail.dataset.at, kind: detail.dataset.kind } : null;
   document.querySelector(".start-body").append(detail);
   const statusOf = (c) => CASE_STATUS[c.status] ?? [c.status_ko ?? c.status, "faint"];
   // sample cards (#46 → ③, #13 polish): full-width occlusal thumbnail, title, plain-words finding, the short facts as
@@ -1298,18 +1366,39 @@ function renderCaseList() {
     r.querySelector(".c-plan").textContent = c.plan ? `${STRATEGY_KO[c.plan.strategy] ?? c.plan.strategy} · ${c.plan.n_stages}장` : "—";
     box.appendChild(r);
   }
-  if (!patients.length) box.innerHTML = '<p class="empty">등록된 환자가 없습니다. 「새 환자」로 스캔 파일을 업로드하세요.</p>';
+  if (!patients.length) box.innerHTML = '<p class="empty">아직 등록한 환자가 없습니다. 위 샘플 케이스로 시작하거나 「새 환자」를 누르세요.</p>';
   // the detail opens right under what was pressed: one element, moved
   const sel = rows.find((c) => c.case_id === state.clSelected) ?? null;
-  detail.hidden = !sel;
+  // a sample: after the card row (the three cards stay on one line, the detail spans under them); a patient: after its row
+  const anchorOf = (kind, id) => kind === "sample" ? $("sampleCards").lastElementChild : document.querySelector(`#clRows .case-row[data-id="${CSS.escape(id)}"]`);
   if (sel) {
-    // a sample: after the card row (the three cards stay on one line, the detail spans under them); a patient: after its row
-    const anchor = sel.kind === "sample" ? $("sampleCards").lastElementChild : document.querySelector(`#clRows .case-row[data-id="${CSS.escape(sel.case_id)}"]`);
-    anchor?.after(detail);
+    anchorOf(sel.kind, sel.case_id)?.after(detail);
     detail.classList.toggle("in-cards", sel.kind === "sample");
     renderCaseDetail(sel);
+    // another sample card: same place, the content changes in place; anything else opens from folded
+    foldDetail(detail, true, !!was && (was.id === sel.case_id || (was.kind === "sample" && sel.kind === "sample")));
+    detail.dataset.at = sel.case_id; detail.dataset.kind = sel.kind;
+  } else {
+    // folding: back under what it was open under, then run the closing
+    const anchor = was && anchorOf(was.kind, was.id);
+    if (anchor) anchor.after(detail);
+    foldDetail(detail, false, !!anchor);
   }
 }
+// The detail's open/closed state as a transition: set the old state, make the browser take it (one forced layout, same
+// frame), then the new one. Reattaching the element drops its old style, so the old state is set again on purpose.
+const REDUCE_MOTION = matchMedia("(prefers-reduced-motion: reduce)");
+function foldDetail(detail, open, wasOpen) {
+  detail.hidden = false;
+  detail.classList.toggle("open", wasOpen);
+  if (open !== wasOpen && !REDUCE_MOTION.matches) void detail.offsetHeight;
+  detail.classList.toggle("open", open);
+  if (!open && (!wasOpen || REDUCE_MOTION.matches)) detail.hidden = true;
+}
+$("clDetail").addEventListener("transitionend", (e) => {
+  const d = e.currentTarget;
+  if (e.target === d && e.propertyName === "grid-template-rows" && !d.classList.contains("open")) d.hidden = true;
+});
 
 function renderCaseDetail(c) {
   const cons = state.cases.find((x) => x.case_id === c.case_id)?.constraints ?? null;
@@ -1419,7 +1508,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.messages = [];
   state.followup = null;
   state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
-  stopPlay();
+  stopPlay(); scanFx.cancel();
   if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
@@ -1703,7 +1792,11 @@ function renderStagePane(plan) {
   }
 }
 const RULE_KO = { collision: "충돌", move_limit: "장당 이동 한계", stage_cap: "장수 상한", space_deficit: "공간 부족",
-  extraction_mismatch: "발치 처방 불일치", extraction_space_open: "발치 공간 미폐쇄", ipr_unprescribed: "처방에 없는 IPR" };
+  extraction_mismatch: "발치 처방 불일치", extraction_space_open: "발치 공간 미폐쇄", ipr_unprescribed: "처방에 없는 IPR",
+  // the kinds main had no word for, in v2's vocabulary (sidebar.js)
+  rotation_limit: "회전 한도 초과", locked_tooth: "고정 치아 이동", extraction_forbidden: "비발치 규칙 위반",
+  ipr_limit: "IPR 한도 초과", ipr_excluded: "IPR 제외 치아 절제" };
+const REVIEW_KO = { passed: "검토 통과", failed: "검토 실패", running: "검토 중" };   // not_requested · skipped: 검토 전
 function renderRulesPane(plan) {
   const cards = $("ruleCards"), groups = $("violGroups");
   cards.innerHTML = ""; groups.innerHTML = "";
@@ -1713,8 +1806,19 @@ function renderRulesPane(plan) {
   const toFdi = (s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)
     .replace(/\[(\d{1,2}(?:,\s*\d{1,2})*)\]/g, (m, list) => { const ids = list.split(/,\s*/).map(Number); return ids.every((u) => u >= 1 && u <= 16) ? fdiList(ids) : m; });
   $("ruleNotes").textContent = plan ? (plan.target?.notes ?? []).map(toFdi).join(" · ") : "";
+  const verdict = $("ruleVerdict");
+  verdict.querySelector("b").textContent = ""; verdict.querySelector("span").textContent = "";
   if (!plan) return;
   const viol = plan.violations ?? [], by = (t) => viol.filter((v) => v.type === t);
+  // at a glance: 규칙 통과 · 검토 통과 big, or the violation count; after a rule plan where every allowed strategy
+  // failed, which plan this is (the least wrong one) and what was tried
+  const allFailed = state.allFailed?.plan_id === plan.plan_id ? state.allFailed : null;
+  verdict.classList.toggle("fail", viol.length > 0);
+  verdict.querySelector("b").textContent = allFailed ? "허용 전략 전부 규칙 위반"
+    : viol.length ? `규칙 위반 ${viol.length}건` : `규칙 통과 · ${REVIEW_KO[plan.review?.status] ?? "검토 전"}`;
+  verdict.querySelector("span").textContent = allFailed
+    ? `시도한 전략 ${allFailed.tried.map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — 가장 덜 틀린 ${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
+    : viol.length ? "아래 위반 항목을 누르면 그 단계로 가서 치아를 강조합니다." : "검사한 규칙";
   const coll = by("collision"), mv = by("move_limit"), cap = by("stage_cap"), sp = by("space_deficit");
   const maxOf = (arr, key) => arr.length ? Math.max(...arr.map((v) => +v[key] || 0)) : 0;
   const rules = [
@@ -1742,28 +1846,61 @@ function renderRulesPane(plan) {
     d.querySelector(".detail").textContent = detail;
     cards.append(d);
   }
-  // violations with a stage, grouped by the teeth involved: count, the amount's course, the stages to jump to
-  const staged = viol.filter((v) => v.stage != null);
-  if (!staged.length) { groups.innerHTML = '<p class="empty">단계별 위반 없음</p>'; return; }
-  const map = new Map();
-  for (const v of staged) {
-    const key = v.type + ":" + (v.teeth ?? []).join(",");
-    (map.get(key) ?? map.set(key, []).get(key)).push(v);
+  // violations grouped by kind (충돌, 장당 이동 한계 …); each kind names its 발생 단계, then one item per tooth or pair.
+  // An item jumps the slider to its first stage and selects its teeth in the 3D; a stage button jumps to that stage
+  if (!viol.length) { groups.innerHTML = '<p class="empty">위반 없음</p>'; return; }
+  const byType = new Map();
+  for (const v of viol) {
+    const items = byType.get(v.type) ?? byType.set(v.type, new Map()).get(v.type);
+    const key = [...(v.teeth ?? [])].sort((a, b) => a - b).join(",");
+    (items.get(key) ?? items.set(key, []).get(key)).push(v);
   }
-  for (const list of map.values()) {
-    const v0 = list[0], amount = v0.type === "collision" ? "overlap_mm3" : "mm", unit = v0.type === "collision" ? "mm³" : "mm";
-    const vals = list.map((v) => +v[amount]).filter(Number.isFinite), stages = [...new Set(list.map((v) => v.stage))].sort((a, b) => a - b);
-    const g = document.createElement("div"); g.className = "vg" + (v0.type === "collision" ? "" : " warn");
-    g.innerHTML = `<div class="t"><b></b><span></span></div><div class="trend"></div><div class="stages"></div>`;
-    g.querySelector("b").textContent = `${fdiList(v0.teeth) || "전체"} ${RULE_KO[v0.type] ?? v0.type}`;
-    g.querySelector(".t span").textContent = `${list.length}건`;
-    const course = vals.length > 2 ? [vals[0], Math.max(...vals), vals.at(-1)] : vals;
-    g.querySelector(".trend").textContent = vals.length
-      ? `${v0.type === "collision" ? "겹침" : "이동"} ${course.join(" → ")} ${unit}` + (v0.baseline != null ? ` · 기준 ${v0.baseline}` : v0.limit != null ? ` · 한계 ${v0.limit}` : "") : "";
-    const box = g.querySelector(".stages");
-    for (const k of stages) { const b = document.createElement("button"); b.type = "button"; b.dataset.stage = k; b.textContent = k; b.className = k === state.stage ? "cur" : ""; box.append(b); }
+  const span = (ks) => !ks.length ? "" : ks.length > 2 && ks.at(-1) - ks[0] === ks.length - 1 ? `${ks[0]}–${ks.at(-1)}` : ks.join(", ");
+  for (const [type, items] of byType) {
+    const all = [...items.values()].flat(), stages = [...new Set(all.filter((v) => v.stage != null).map((v) => v.stage))].sort((a, b) => a - b);
+    const g = document.createElement("div"); g.className = "vg" + (type === "collision" ? "" : " warn"); g.dataset.type = type;
+    g.innerHTML = `<div class="t"><b></b><span></span></div><div class="when"></div>`;
+    g.querySelector("b").textContent = RULE_KO[type] ?? type;
+    g.querySelector(".t span").textContent = `${all.length}건`;
+    g.querySelector(".when").textContent = stages.length ? `발생 단계: ${span(stages)}` : "발생 단계: 계획 전체";
+    for (const list of items.values()) {
+      const v0 = list[0], teeth = [...(v0.teeth ?? [])].sort((a, b) => fdi(a) - fdi(b));
+      const ks = [...new Set(list.filter((v) => v.stage != null).map((v) => v.stage))].sort((a, b) => a - b);
+      const it = document.createElement("div"); it.className = "vi";
+      it.innerHTML = `<button class="go" type="button"></button><div class="trend"></div><div class="stages"></div>`;
+      const go = it.querySelector(".go");
+      go.textContent = (teeth.length ? `치아 ${fdiList(teeth)}` : "계획 전체") + (ks.length ? ` · 단계 ${span(ks)}` : "");
+      go.dataset.teeth = teeth.join(",");
+      if (ks.length) go.dataset.stage = ks[0]; else go.disabled = go.hidden = !teeth.length;   // 공간 부족 · 장수 상한: the amount alone
+      go.title = ks.length ? `단계 ${ks[0]}로 이동하고 ${teeth.length ? "치아를 선택" : ""}` : teeth.length ? "치아 선택" : "";
+      it.querySelector(".trend").textContent = violAmount(v0.type, list);
+      for (const k of ks) {
+        const b = document.createElement("button"); b.type = "button"; b.dataset.stage = k; b.dataset.teeth = go.dataset.teeth;
+        b.textContent = k; b.title = `단계 ${k}로 이동`; b.className = k === state.stage ? "cur" : ""; it.querySelector(".stages").append(b);
+      }
+      g.append(it);
+    }
     groups.append(g);
   }
+}
+// an item's amount in words: the course over its stages for a collision / a move, the one number otherwise
+function violAmount(type, list) {
+  const v0 = list[0];
+  if (type === "collision" || type === "move_limit" || type === "rotation_limit") {
+    const key = type === "collision" ? "overlap_mm3" : type === "rotation_limit" ? "deg" : "mm";
+    const unit = type === "collision" ? "mm³" : type === "rotation_limit" ? "°" : "mm";
+    const vals = list.map((v) => +v[key]).filter(Number.isFinite);
+    if (!vals.length) return "";
+    const course = vals.length > 2 ? [vals[0], Math.max(...vals), vals.at(-1)] : vals;
+    return `${type === "collision" ? "겹침" : type === "rotation_limit" ? "회전" : "이동"} ${course.join(" → ")} ${unit}`
+      + (v0.baseline != null ? ` · 기준 ${v0.baseline}` : v0.limit != null ? ` · 한계 ${v0.limit}` : "");
+  }
+  if (type === "space_deficit") return `${v0.mm} mm 부족 (허용 ${v0.limit})`;
+  if (type === "stage_cap") return `${v0.n}장 > 상한 ${v0.limit}`;
+  if (type === "extraction_mismatch") return `처방 ${fdiList(v0.prescribed) || "없음"} · 뺀 치아 ${fdiList(v0.removed) || "없음"}`;
+  if (type === "extraction_space_open") return `닫지 못한 공간 ${v0.mm} mm`;
+  if (type === "ipr_unprescribed") return surfacesKo(v0.surfaces).replace(/, /g, " · ");
+  return v0.mm != null ? `${v0.mm} mm` + (v0.limit != null ? ` · 한도 ${v0.limit}` : "") : "";
 }
 function renderCondPane(plan) {
   const sample = sampleOf(state.meshCase);
@@ -2017,7 +2154,7 @@ function addNextChips(after) {
     if (b.dataset.action === "manualScan") { if (state.step !== "setup") setStep("setup"); manualEdit.open(); return; }
     if (manualEdit.active) { toast("직접 이동을 적용하거나 취소한 뒤 진행해 주세요."); return; }
     if (b.dataset.action === "manualStages") { stageManualTarget(); return; }
-    if (b.dataset.action === "cond") { showTab("cond"); $("cExtract").focus(); return; }
+    if (b.dataset.action === "cond") { showTab("cond"); $("cAllowExt").focus(); return; }   // the form's first field (발치 치아 may be locked)
     if (b.dataset.action === "export") { $("exportBtn").disabled ? addMsg("system", "내보내기: " + $("exportWhy").textContent) : $("exportBtn").click(); return; }
     send(b.dataset.message, null, { step: b.dataset.step || undefined });
   });
@@ -2054,11 +2191,12 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   $("retryBar").hidden = true;
   $("planNotice").textContent = turnStep === "setup" ? "처방을 조건으로 옮기는 중" : turnStep === "target" ? "목표 배열 만드는 중"
     : state.plan ? "재계획 중 · 현재 3D는 이전 계획입니다." : "단계 계획 만드는 중";
+  if (turnStep === "setup") scanFx.start(caseId, prescribed(constraints));   // the scan is read and the prescription applied on the 3D
   $("chatInput").value = ""; autosize();
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
   state.lastRequest = { text, constraints, step: turnStep };
-  addMsg("user", text);
+  const userBubble = addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
   // a sample case may skip the agent (#15): after 8 s of streaming a 건너뛰기 sits under the answer; a failed turn offers it too
@@ -2068,12 +2206,14 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   let skipRow = null;
   const skipTimer = sample ? setTimeout(() => { if (state.requestId === requestId) skipRow = addSkipRow(bubble, requestId); }, 8000) : null;
   $("retryFallback").hidden = sample; $("skipBtn").hidden = !sample;
-  let answer = "", selected = null, streamError = false, overload = null, stepDone = null;
+  let answer = "", selected = null, streamError = false, overload = null, stepDone = null, refusedPii = null;
   const handle = ({type, data: obj}) => {
     if (type === "plan_selected") {
       if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
     } else if (type === "step_done") {
       if (!obj.request_id || obj.request_id === state.requestId) stepDone = obj;   // setup: constraints · target: target_id + summary · stages: nothing more
+    } else if (type === "turn_refused") {
+      if (obj.request_id === state.requestId && obj.kind === "pii") refusedPii = { text: obj.text ?? "" };
     } else if (type === "plan_context") {
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
@@ -2100,6 +2240,19 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       if (done) break;
     }
     if (state.requestId !== requestId || state.meshCase !== caseId) return;
+    if (refusedPii) {
+      // The server refused a personal identifier in this message (#157). It checks every message of the chat this
+      // screen resends each turn, so the message leaves the chat (and goes back to the box to be edited), or every
+      // later turn would be refused too. The refusal is shown but not kept in the chat either.
+      // The box and the bubble get the sentence with the identifiers taken out (the server's, it holds none of them).
+      const i = state.messages.findLastIndex((m) => m.role === "user" && m.content === text);
+      if (i >= 0) state.messages.splice(i, 1);
+      userBubble.textContent = refusedPii.text || "(개인정보를 지운 메시지)";
+      $("chatInput").value = refusedPii.text; autosize();
+      $("planNotice").textContent = "";
+      addNextChips(bubble);
+      return;
+    }
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
     if (stepDone && !streamError) await landStep(stepDone);
@@ -2132,7 +2285,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
-    clearTimeout(skipTimer); skipRow?.remove();
+    clearTimeout(skipTimer); skipRow?.remove(); scanFx.release();
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
 }
@@ -2143,7 +2296,8 @@ async function landStep(done) {
     state.setup = done.constraints; state.target = null; state.targetId = null;
     fillConstraints(done.constraints);
     setProgress("setup", true);
-    state.setupRed = true;
+    scanFx.landed(done.constraints);
+    state.setupRed = !scanFx.busy();   // the scan reveal already lifted the extracted crowns away
     setStep("setup");
     setTimeout(() => { state.setupRed = false; if (state.step === "setup") applyStage(0); }, 1200);
   } else if (done.step === "target" && done.target_id) {
@@ -2179,6 +2333,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
   $("retryBar").hidden = true;
   // a recorded answer makes its own targets; a hand-edited target is staged as it is instead
   if (isManualTarget() && state.progress === "target" && !["setup", "target"].includes(state.turnStep)) { bubble.remove(); return stageManualTarget(); }
+  if (state.turnStep === "setup") { try { scanFx.start(caseId, prescribed(readConstraints())); } catch { /* the form does not parse: no reveal */ } }
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
@@ -2208,7 +2363,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     bubble.remove();
     addMsg("error", "녹화된 답을 불러오지 못했습니다 (" + e.message + ").");
     adoptCurrentPlan();
-  }
+  } finally { scanFx.release(); }
 }
 function adoptCurrentPlan() {
   $("retryBar").hidden = true;
@@ -2227,14 +2382,15 @@ $("skipBtn").addEventListener("click", () => {
 
 // ------------------------------------------------------------------ fallback / upload
 
-async function runFallback() {
+// fromCond: the 조건 tab's 다시 계산 — the same rule plan, announced as a condition change once it lands
+async function runFallback({ fromCond = false } = {}) {
   const caseId = state.meshCase;
   if (!caseId || state.streaming || state.loading) return;
   if (isManualTarget() && state.progress === "target") return stageManualTarget();   // /api/plan would make new targets
   let constraints;
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   setStreaming(true); updateActions();
-  addMsg("system", "에이전트 없이 계산 — 화면의 조건으로 계산합니다. 검토는 하지 않습니다.");
+  if (!fromCond) addMsg("system", "에이전트 없이 계산 — 화면의 조건으로 계산합니다. 검토는 하지 않습니다.");
   $("planNotice").textContent = "조건을 반영해 새 계획 계산 중";
   state.trace = newTrace();
   try {
@@ -2242,8 +2398,14 @@ async function runFallback() {
       body: JSON.stringify({ case_id: caseId, parent_plan_id: state.plan?.plan_id ?? null, ...constraints }) });
     for (const t of res.tried ?? []) addStep("fallback: " + t.strategy, t, "fallback");
     const selected = res.chosen || res.best_failed, prevPlanId = state.plan?.plan_id ?? null;
-    if (selected) { await refreshPlans(selected.plan_id); setStep("stages"); addDecision(prevPlanId, selected.plan_id); addNextChips($("transcript").lastElementChild); }
-    if (!res.chosen) addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다.");
+    // every allowed strategy broke a rule: the 규칙 tab says so over the least-wrong plan's violations
+    state.allFailed = !res.chosen && selected ? { plan_id: selected.plan_id, tried: (res.tried ?? []).map((t) => t.strategy) } : null;
+    if (selected) {
+      await refreshPlans(selected.plan_id); setStep("stages");
+      if (fromCond) addMsg("system", `조건을 바꿔 규칙으로 다시 계산했습니다 — 계획 ${planNo(selected.plan_id)}`);
+      addDecision(prevPlanId, selected.plan_id); addNextChips($("transcript").lastElementChild);
+    }
+    if (!res.chosen) { addMsg("system", "허용 전략 전부 규칙 위반 — 의사 승인이 제한됩니다."); if (selected) { renderRulesPane(state.plan); showTab("rules"); } }
   } catch (e) {
     addMsg("error", "계산 실패: " + e.message);
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 — 이전 결과를 유지합니다." : "";
@@ -2303,7 +2465,11 @@ $("homeBtn").addEventListener("click", (e) => {
   state.clSelected = null;
   showStart().then(() => { $("screenStart").scrollTop = 0; }).catch((err) => addMsg("error", err.message));
 });
-$("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
+// Enter while an IME (Hangul) is still composing only ends the composition: sending then would clear the box, and
+// the composed last syllable would land in the empty box after it (keyCode 229 for browsers without isComposing).
+$("chatInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send($("chatInput").value); }
+});
 $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });
@@ -2513,16 +2679,38 @@ $("condApply").addEventListener("click", () => {
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
   send("조건을 이렇게 바꿔서 다시 셋업해줘.", constraints, { step: "setup" });
 });
-// a row of the stage table or a stage button of a violation group moves the 3D to that stage
-for (const id of ["stageGrid", "violGroups"]) $(id).addEventListener("click", (e) => {
+// a row of the stage table moves the 3D to that stage
+$("stageGrid").addEventListener("click", (e) => {
   const k = e.target.closest("[data-stage]")?.dataset.stage;
   if (k == null || !state.plan) return;
   stopPlay(); applyStage(+k);
+});
+// a violation item (or one of its stage buttons): playback stops, the slider goes to the stage, its teeth are selected
+$("violGroups").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-teeth]");
+  if (!b || b.disabled || !state.plan) return;
+  stopPlay();
+  if (state.step !== "stages") setStep("stages");
+  const ids = b.dataset.teeth.split(",").filter(Boolean);
+  if (ids.length) {
+    state.selected.clear(); for (const id of ids) state.selected.add(id);
+    state.pickedOnce = true; $("pickedLegend").hidden = false;
+    renderSelection();
+  }
+  applyStage(b.dataset.stage != null ? +b.dataset.stage : state.stage);   // after the selection: it paints the highlight with the stage's marks
 });
 $("stageSlider").addEventListener("input", (e) => { stopPlay(); applyStage(+e.target.value); });
 $("playBtn").addEventListener("click", togglePlay);
 $("retryFallback").addEventListener("click", () => { $("retryBar").hidden = true; runFallback(); });
 $("planFailRetry").addEventListener("click", () => { showTab("cond"); runFallback(); });
+$("condRecalc").addEventListener("click", () => runFallback({ fromCond: true }));
+// 발치 허용 off = non-extraction: the teeth field empties and locks; on opens it for the prescribed teeth
+$("cAllowExt").addEventListener("change", () => {
+  const on = $("cAllowExt").checked;
+  $("cExtract").disabled = !on;
+  if (on) $("cExtract").focus(); else $("cExtract").value = "";
+  updateActions();
+});
 // a popover that fades and slides in and out (#20): hidden toggles display, .in drives the transition
 function showPop(pop, on) {
   if (on) { pop.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => pop.classList.add("in"))); }
