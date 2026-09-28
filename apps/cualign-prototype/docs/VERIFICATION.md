@@ -392,5 +392,5 @@ moderate 확장+IPR 안을 «검토 다시 요청» 경로로 여러 번 검토�
 ### 처음부터 수동 배치 (같은 날 추가)
 - `uv run pytest -q -p no:warnings` 통과. `tests/test_manual_move.py`에 출발 목표(발치·고정·처방 IPR 반영)와 출발 → 편집 → 단계 API 시험 2개 추가(모두 8개).
 - 설치된 Chrome과 실제 서버, 모델 없이: poseidon-000097 녹화된 셋업 → 직접 이동 → 취소하면 셋업으로 복귀(목표 없음) → 다시 열어 13번 근심 0.40mm → 적용 → 에이전트 없이 단계 계산(수동 배치 2단계, 13-12 충돌 1건). 콘솔 오류 없음.
-- 실행하지 않음: 치료 전 위치에서 시작한 목표의 실제 NIM 단계 턴.
+- NVIDIA NIM 실호출: `uv run --frozen python tests/nim_manual_live_check.py http://127.0.0.1:8000 poseidon-000097 --from-scan` — 녹화된 셋업(모델 없음) → 치료 전 위치 출발 목표 → 21번 협측 +0.5mm → 실제 NIM 단계 턴 1회(27.6초). 도구 `plan_stages → select_plan → reviewer`, `propose_target` 없음, 전략 manual 유지, 7개 판정 모두 PASS. 수동 배치 3단계, 규칙 통과, 검토 통과.
 

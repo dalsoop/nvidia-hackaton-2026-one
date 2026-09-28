@@ -5,8 +5,10 @@ one crown moved by hand (POST …/manual, 21 buccal +0.5 mm), then one /chat/str
 「단계 만들기」. Passes when the selected plan was staged from that very target (step_done's target_id, the plan's target info with
 source manual and this parent, `manual` on the plan row, the crown's last stage where it was put) and the agent made no new target (no propose_target call).
 Costs real NVIDIA usage: one stages turn with the reviewer and the Guardrails rails. Never prints the key.
-Writes the trace to out/nim-live/manual-stages.json.
-Run: uv run --frozen python tests/nim_manual_live_check.py [http://127.0.0.1:8000] [poseidon-000097]
+With --from-scan the edit starts from the scan instead (처음부터 수동 배치: the recorded setup turn only, then POST
+…/targets/scan); the plan's strategy must then stay "manual".
+Writes the trace to out/nim-live/manual-stages.json (manual-stages-scan.json with --from-scan).
+Run: uv run --frozen python tests/nim_manual_live_check.py [http://127.0.0.1:8000] [poseidon-000097] [--from-scan]
 """
 import asyncio
 import json
@@ -25,14 +27,19 @@ MESSAGE = "직접 옮긴 이 목표 배열 그대로 단계를 만들어줘."   
 
 
 async def main():
-    url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
-    case = sys.argv[2] if len(sys.argv) > 2 else "poseidon-000097"
+    from_scan = "--from-scan" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--from-scan"]
+    url = args[0] if args else "http://127.0.0.1:8000"
+    case = args[1] if len(args) > 1 else "poseidon-000097"
     OUT.mkdir(parents=True, exist_ok=True)
     log = []
     async with httpx.AsyncClient(timeout=120) as client:
         (await client.post(f"{url}/api/cases/{case}/activate")).raise_for_status()
-        for step in ("setup", "target"):
+        for step in ("setup",) if from_scan else ("setup", "target"):
             r = await client.post(f"{url}/api/cases/{case}/replay", json={"step": step})
+            r.raise_for_status()
+        if from_scan:
+            r = await client.post(f"{url}/api/cases/{case}/targets/scan")
             r.raise_for_status()
         base_tid = r.json()["target_id"]
         base = (await client.get(f"{url}/api/cases/{case}/targets/{base_tid}")).json()
@@ -63,17 +70,20 @@ async def main():
                 "crown_where_put": max(abs(last[k] - moved[k]) for k in range(3)) < 1e-3,
                 "step_done_target": done.get("target_id") == manual_tid,
             })
-    result = {"case": case, "base_target": base_tid, "manual_target": manual_tid, "plan_id": pid, "elapsed_s": round(elapsed, 1),
+            if from_scan:
+                checks["strategy_manual"] = plan.get("strategy") == "manual"
+    result = {"case": case, "from_scan": from_scan, "base_target": base_tid, "manual_target": manual_tid, "plan_id": pid, "elapsed_s": round(elapsed, 1),
               "tools": tools, "checks": checks, "passed": all(checks.values()),
               "plan": {"strategy": plan.get("strategy"), "passed": plan.get("passed"), "review": plan.get("review"), "n_stages": len(plan["stages"]),
                        "target_source": (plan.get("target") or {}).get("source")} if plan else None,
               "answer": answer, "trace": log}
-    (OUT / "manual-stages.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    name = "manual-stages-scan.json" if from_scan else "manual-stages.json"
+    (OUT / name).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"{elapsed:.1f}s tools: {tools}")
     print("answer:", answer.strip()[:500])
     for k, v in checks.items():
         print(("PASS " if v else "FAIL ") + k)
-    print("PASSED" if result["passed"] else "FAILED", "->", OUT / "manual-stages.json")
+    print("PASSED" if result["passed"] else "FAILED", "->", OUT / name)
     return 0 if result["passed"] else 1
 
 

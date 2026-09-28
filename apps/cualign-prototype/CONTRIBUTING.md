@@ -50,7 +50,7 @@ Guardrails 원격 판정도 함께 실행된다. 결과는 out/nim-live/에 남�
 `tests/nim_review_live_check.py`는 같은 워크플로를 프로세스 안에서 띄워 미실행·실패 계획의 «검토 다시 요청»을
 실제 NIM 검토와 메모 출력 레일로 확인한다. 결과는 out/nim-live/review-recovery.json에 남는다.
 `tests/nim_manual_live_check.py`는 실행 중인 서버에서 샘플의 녹화된 셋업·목표 턴 뒤 치아 하나를 직접 이동하고,
-실제 NIM 단계 턴 한 번이 그 목표를 새로 만들지 않고 그대로 단계로 나누는지 확인한다. 결과는 out/nim-live/manual-stages.json에 남는다.
+실제 NIM 단계 턴 한 번이 그 목표를 새로 만들지 않고 그대로 단계로 나누는지 확인한다. 결과는 out/nim-live/manual-stages.json에 남는다. `--from-scan`은 셋업 뒤 「처음부터 수동 배치」에서 시작한다(manual-stages-scan.json).
 오프라인 검사에 섞지 말고 실행 결과를 VERIFICATION에 날짜와 함께 남긴다.
 
 ## PR에 남길 정보
