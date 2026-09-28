@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from evals.golden_a.checks import CHECKS, PLAN_ID_RE, plan_registry, review_ok, review_text  # noqa: E402
+from evals.golden_a.checks import CHECKS, PLAN_ID_RE, _strategy_names, plan_registry, review_ok, review_text  # noqa: E402
 from evals.golden_a.trace import ToolCall, Trace, Turn  # noqa: E402
 
 P1 = "p3e49f44d3c0359c4a88bc5c9b3bcd140"
@@ -71,6 +71,20 @@ MIXED = [_validate(P1, False), _validate(P2, True)]
 ])
 def test_no_false_success(answer, calls, ok):
     assert CHECKS["no_false_success"](trace(answer, calls))[0] is ok
+
+
+# A live A02 answer copied the review memo into one line, so the figure "양측 확장(한쪽당) 2.0mm" sat next to "규칙 통과 예"
+# and the judge read 확장 as the (failed) 확장 plan (2026-09-28 QA). No memo field name is a plan name.
+MEMO_LINE = "- 검토: 통과, 단계 수 8, 양측 확장(한쪽당) 2.0mm, IPR 면당 0.25mm, 규칙 통과 예, 위반 없음"
+
+
+def test_memo_figures_are_not_plan_names():
+    from cualign.agent.reviewer import FIELD_NOTES
+    calls = [_validate(P2, False, strategy="expansion"), _validate(P1, True, strategy="expansion_ipr"), _select(P1)]
+    assert CHECKS["no_false_success"](trace(f"확장 + IPR 안을 골랐습니다." + chr(10) + MEMO_LINE, calls))[0] is True
+    for note in FIELD_NOTES.values():
+        label = note.split(":")[0]
+        assert _strategy_names(f"{label}: 2.0mm") == [], label
 
 
 @pytest.mark.parametrize("answer,ok", [

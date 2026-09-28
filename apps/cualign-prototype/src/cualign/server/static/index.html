@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>cuAlign — 투명교정 에이전트</title>
+  <title>cuAlign｜투명교정 에이전트</title>
   <!-- favicon: the C-and-diamond mark of the header logo (logo.png) on the black canvas -->
   <link rel="icon" type="image/png" sizes="64x64" href="favicon.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -338,7 +338,7 @@
           <label>IPR 한도 · 면당 mm <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25" placeholder="0.25 이하"></label>
           <label>단계 상한 <input id="cCap" type="number" min="1" step="1" placeholder="빈칸이면 없음"></label>
           <!-- 기간 ↔ 단계 상한: 한쪽을 적으면 다른 쪽이 따라 바뀐다 (stage_cap = round(months × 30.4 / 7), 서버 limits.py 와 같은 식). 서버엔 stage_cap 만 간다 -->
-          <label>기간 · 개월 <input id="cMonths" type="number" min="0.5" step="0.5" placeholder="빈칸이면 없음"></label>
+          <label>기간 · 개월 <input id="cMonths" type="number" min="0.5" step="0.1" placeholder="빈칸이면 없음"></label>
           <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select></label>
         </fieldset>
         <p id="condState" class="cond-state" aria-live="polite"></p>

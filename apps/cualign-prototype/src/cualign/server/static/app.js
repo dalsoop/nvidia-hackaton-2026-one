@@ -1061,7 +1061,7 @@ function setSideWidth(px) {
     setChatWidth(document.querySelector(".chat").getBoundingClientRect().width + (e.key === "ArrowLeft" ? -16 : 16));
   });
 }
-const fmtDate = (iso) => (iso ?? "").slice(0, 16).replace("T", " ");
+const fmtDate = (iso) => iso ? new Date(iso).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "";   // server sends UTC (+00:00); show the viewer's local time
 
 // The patient list of the modal. `open` (a GET /api/patients/{id} payload) is shown expanded with its scans.
 async function loadPatients(open = null) {
@@ -1418,6 +1418,7 @@ async function activateCase(caseId, { greet = true } = {}) {
   state.requestId = null;
   state.messages = [];
   state.followup = null;
+  state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
   stopPlay();
   if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
@@ -1719,7 +1720,7 @@ function renderRulesPane(plan) {
   const rules = [
     ["충돌", "인접 치아 겹침이 치료 전 기준 이하", coll.length ? ["위반", "fail", `${coll.length}건 · 최대 ${maxOf(coll, "overlap_mm3")} mm³`] : ["통과", "pass", "겹침 기준 이하"]],
     ["장당 이동 한계", "장마다 이동량이 한계 이하", mv.length ? ["위반", "fail", `${mv.length}건 · 최대 ${maxOf(mv, "mm")} mm`] : ["통과", "pass", plan.info?.per_stage_mm != null ? `장당 ${plan.info.per_stage_mm} mm` : ""]],
-    ["장수 상한", "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
+    ["장수 상한", cap.length ? `장당 이동 한계로 ${cap[0].n}장이 필요 — 상한 안에 넣으려면 이동량(처방)을 줄여야 함` : "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
     ["공간 부족", "처방 안에서 확보할 공간", sp.length ? ["위반", "fail", `${sp[0].mm} mm 부족 (허용 ${sp[0].limit})`] : ["통과", "pass", `부족 ${plan.target?.space_deficit_mm ?? 0} mm`]],
   ];
   if (plan.constraints?.ipr_surfaces?.length) {   // IPR prescribed per contact (#57): only those contacts, only that much
@@ -2078,7 +2079,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     } else if (type === "plan_error" || type === "error" || obj.code) {
       streamError = true; addStep("error", obj, "fallback");
       // the server's own sentence, worth a 다시 보내기: NIM overload, or a final answer with no Korean in it (no_answer)
-      if ((obj.kind === "nim_overload" || obj.kind === "no_answer") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
+      if ((obj.kind === "nim_overload" || obj.kind === "no_answer" || obj.kind === "nim_auth") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
     } else if (type === "intermediate_data") {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
@@ -2123,10 +2124,12 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     if (answer) setAnswer(bubble, answer); else bubble.remove();
     $("planNotice").textContent = Object.keys(state.planRows).length ? "재계획 실패 · 현재 3D는 이전 계획입니다." : "";
     if (turnStep === "stages" && !Object.keys(state.planRows).length) { state.planError = overload?.message || e.message; renderPlanFail(); }
+    // the way out the bar really offers: a sample has 건너뛰기 (the recorded answer), a patient has 에이전트 없이 계산
+    const alt = sample ? "「건너뛰기」로 녹화된 답을 볼 수 있습니다." : "「에이전트 없이 계산」할 수 있습니다.";
+    const when = overload?.kind === "nim_overload" ? " 잠시 뒤 " : overload?.kind === "nim_auth" ? " 키를 고쳐 서버를 다시 시작한 뒤 " : " ";
     addMsg("error", overload
-      ? overload.message + (overload.kind === "no_answer" ? " 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다."
-                                                            : " 잠시 뒤 「다시 보내기」를 누르거나, 「에이전트 없이 계산」할 수 있습니다.")
-      : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, 「에이전트 없이 계산」할 수 있습니다.");
+      ? overload.message + when + "「다시 보내기」를 누르거나, " + alt
+      : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
     clearTimeout(skipTimer); skipRow?.remove();
