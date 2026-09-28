@@ -1,7 +1,7 @@
 # SkillSpector Security Report
 
 **Skill:** cualign-clinical-rules  
-**Source:** `C:\Users\yusun\projects\nvidia-hackaton-2026-one\apps\cualign-prototype\workspace\skills\cualign-clinical-rules`  
+**Source:** `workspace/skills/cualign-clinical-rules`  
 **Scanned:** 2026-09-28 12:24:16 UTC  
 
 ## Risk Assessment
