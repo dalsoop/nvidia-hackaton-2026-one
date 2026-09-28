@@ -4,6 +4,7 @@ import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { createManual } from "./manual.js";
 import { createScanFx } from "./scan-reveal.js";
 import { createValidateSweep } from "./validate-sweep.js";
+import { createStageGrow } from "./stage-grow.js";
 
 const $ = (id) => document.getElementById(id);
 // 직접 이동 (manual.js): created once the screen's functions exist (end of file); until then nothing is being edited
@@ -193,16 +194,22 @@ const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽",
 const FRAME_GAP = 1000 / (Number(new URLSearchParams(location.search).get("fps")) || Infinity);
 let lastFrame = -Infinity;
 (function loop() {
+<<<<<<< HEAD
   const t = performance.now();
   if (t - lastFrame >= FRAME_GAP - 1) {
     lastFrame = t;
     controls.update(); scanFx.tick(); sweepFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
   }
+=======
+  controls.update(); scanFx.tick(); sweepFx.tick(); window.__stageGrow?.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+>>>>>>> origin/stage-grow
   requestAnimationFrame(loop);
 })();
 
 const ghost = new THREE.Group(); scene.add(ghost);
 const GHOST_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false });
+// the stage tool's 「단계가 자라난다」 (stage-grow.js): ghost at the target, the cursor stepping the crowns, the table filling
+const stageGrow = createStageGrow({ THREE, CSS2DObject, group, ghost, state, applyStage: (k) => applyStage(k), setWorkNote: (on, text) => setWorkNote(on, text) });
 // Each gum vertex follows the four nearest crowns, weighted by distance (σ 7 mm), so the scanned gum moves with
 // the teeth instead of swallowing them. Translation only; crown rotation is small at the gum line.
 const GUM_K = 4, GUM_SIGMA = 7, GUM_SMOOTH = 3;   // #18: 3 / 5 mm tore the gum between crowns that part (the extraction sites)
@@ -2399,6 +2406,7 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null, { quie
   traceSummary(trace);
   if (fresh && isTool && !quiet) addReasons([reasonForTool(label, input)].filter(Boolean), trace);
   if (isTool && (fresh || wasRunning)) toolMoment(row.dataset.tool, tryJson(input) ?? {}, !done ? "start" : "end");
+  if (isTool && (fresh || wasRunning) && !String(id).startsWith("replay-")) stageGrow.tool(label, !done ? "start" : "end");   // stage-grow.js (the replay plays it itself)
 }
 // a turn that failed: its tool rows still running settle as an X with the server's sentence (nothing when it gave none)
 function failRows(trace, reason = "") {
@@ -2809,7 +2817,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
-      setStep("stages"); showPlanEnd();
+      setStep("stages"); if (!(await stageGrow.play())) showPlanEnd();   // the recorded stage turn grows, then lands at 0 (stage-grow.js)
       // the server recomputed the plans now (compare → stages · check), then the recorded pick and its recorded review
       const made = rec.step === "compare" ? "compare_strategies" : "plan_stages", pick = { plan_id: sel.plan_id };
       await playTools(trace, [{ name: made, reasons: [reasonForTool(made)] }, { name: "validate", input: pick },
