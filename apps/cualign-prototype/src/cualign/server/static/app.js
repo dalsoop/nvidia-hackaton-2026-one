@@ -188,9 +188,9 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
-// a headless test browser (webdriver) draws at 10 fps, ?fps=N sets any page's rate: the software WebGL of headless Chrome
-// took whole cores at 60. The effects run on elapsed time, so they end the same; a person's browser draws every frame.
-const FRAME_GAP = 1000 / (Number(new URLSearchParams(location.search).get("fps")) || (navigator.webdriver ? 10 : Infinity));
+// ?fps=N draws the 3D at most N times a second (a test browser on software WebGL, where every frame costs a core); without
+// it every frame is drawn. The effects run on elapsed time, so they end the same at any rate.
+const FRAME_GAP = 1000 / (Number(new URLSearchParams(location.search).get("fps")) || Infinity);
 let lastFrame = -Infinity;
 (function loop() {
   const t = performance.now();

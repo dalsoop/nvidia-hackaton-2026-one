@@ -180,7 +180,7 @@ async def fake_chat(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-# the 3D draws at 10 fps in a headless (webdriver) browser (app.js): a wait for "the next frame" is two of those, in ms
+# a wait for "the next frame" to be drawn, in ms: generous, so it holds under load and at a lowered ?fps= (app.js)
 FRAME = 250
 
 # one browser_flow at a time on this machine, whatever the worktree: two at once (each a server and a software-WebGL
@@ -236,8 +236,11 @@ async def main():
             raise AssertionError("test server did not start")
         async with async_playwright() as pw:
             executable = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE", r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-            browser = await pw.chromium.launch(executable_path=executable, headless=True,
-                args=["--enable-unsafe-swiftshader", "--use-angle=swiftshader"])
+            # the 3D on the machine's GPU (Direct3D 11 through ANGLE), not SwiftShader: software WebGL took whole cores. Playwright's
+            # own --enable-unsafe-swiftshader is dropped too, so a GPU that is not there fails the 3D steps instead of falling
+            # back to the CPU unseen.
+            browser = await pw.chromium.launch(executable_path=executable, headless=True, ignore_default_args=["--enable-unsafe-swiftshader"],
+                args=["--headless=new", "--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"])
             page = await browser.new_page(viewport={"width":1500,"height":1000})
             errors = []
             page.on("pageerror", lambda error: (errors.append(str(error)), print("PAGEERROR:", error, file=sys.stderr)))   # visible when a step times out
