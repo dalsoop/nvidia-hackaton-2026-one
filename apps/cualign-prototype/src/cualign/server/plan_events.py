@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from cualign.agent import steps
+from cualign.core import recorded
 from cualign.agent.context import CURRENT_RUN, PlanRun
 from cualign.core.constraints import ConstraintPatch, ExtractionTeethNeeded, reason_ko
 from cualign.core.fdi import label
@@ -89,6 +90,26 @@ def base_plan_ko(store, case_id: str, base_plan_id: str) -> str:
     return f"화면에 보이는 계획: {words}. 수정 요청은 이 계획을 기준으로 한다."
 
 
+def user_text(messages) -> str:
+    """The last user message's text (the turn's sentence), "" when there is none."""
+    for m in reversed(messages or []):
+        if isinstance(m, dict) and m.get("role") == "user":
+            c = m.get("content")
+            return c if isinstance(c, str) else " ".join(p.get("text", "") for p in c or [] if isinstance(p, dict))
+    return ""
+
+
+def resolve_step(data: dict, sent: str | None) -> str | None:
+    """The turn's step (step-intent): a chip's step as sent (`step_source: "chip"`, or a chip's sentence), a free
+    sentence's by its words (steps.turn_step) — the screen sends the step after its progress for a free sentence
+    too. A client that sends no step keeps the default (every tool)."""
+    source = data.pop("step_source", None)
+    if sent is None:
+        return None
+    text = user_text(data.get("messages"))
+    return steps.turn_step(text, sent, source == "chip" or recorded.chip(text))
+
+
 def event(name, payload):
     return ("\n\nevent: " + name + "\ndata: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode()
 
@@ -161,11 +182,18 @@ class PlanEventsASGI:
             if not isinstance(data, dict):
                 raise ValueError("expected JSON object")
             raw = data.pop("cualign", None)
-            step = data.pop("step", None)   # the turn's step is a top-level body field (the screen sends it beside `cualign`)
+            sent = data.pop("step", None)   # the turn's step is a top-level body field (the screen sends it beside `cualign`)
+            step = resolve_step(data, sent)
             # Non-UI clients may still use the ordinary NAT endpoint.
             ctx = ChatContext.model_validate({**raw, "step": step} if step else raw) if raw is not None                 else ChatContext(case_id=STORE.active_case or "moderate", **({"step": step} if step else {}))
             preload = getattr(getattr(scope.get("app"), "state", None), "cualign_preload", None)  # set by worker.add_routes
             run, system = open_run(ctx, preload=preload)
+            if sent is not None:
+                text = user_text(data.get("messages"))
+                STORE.turn_steps[run.case_id] = {"screen": recorded.replay_step(text, sent, as_sent=True),
+                                                 "turn": recorded.replay_step(text, run.step, as_sent=True)}
+                if step != sent:
+                    logger.info("cuAlign: turn step %s (the screen sent %s) for %r", step, sent, text[:60])
             data.setdefault("messages", []).insert(0, system)
             body = json.dumps(data).encode()
         except ExtractionTeethNeeded as e:     # the prescription is the dentist's: say what is missing (#56)
@@ -210,7 +238,7 @@ class PlanEventsASGI:
                 elif run.plan_ids and run.step != "target":
                     extra = event("plan_error", {**common, "message": "계획은 생성됐으나 최종 선택을 받지 못했습니다."})
                 extra += event("plan_context", {**common, "constraints": run.constraints.model_dump(mode="json"),
-                                                 "rails": run.rails})
+                                                 "rails": run.rails, "step": run.step})
                 done = step_done(run)
                 if done is not None:
                     extra += event("step_done", {**common, **done})

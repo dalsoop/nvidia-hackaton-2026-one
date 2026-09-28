@@ -77,6 +77,9 @@ class Store:
         # case_id -> how far the step flow went: {"step": setup|target|stages, "constraints": Constraints (the setup
         # conditions), "target_id", "plan_id"} (agent/steps.py); what activate returns as `flow` so a refresh restores it
         self.flow: dict[str, dict] = {}
+        # case_id -> the last chat turn's recording {"screen": the one its 건너뛰기 asks for, "turn": the one the server's
+        # step makes} (recorded.replay_step): a free sentence's step can differ from the step the screen sent (step-intent)
+        self.turn_steps: dict[str, dict] = {}
         self.active_case: str | None = None
         self.targets: dict[str, dict] = {}
         self.plans: dict[str, dict] = {}

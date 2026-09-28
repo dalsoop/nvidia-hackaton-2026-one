@@ -47,7 +47,7 @@
 |---|---|
 | `src/cualign/agent/register.py` | 조건 수정·계산·최종 계획 선택·승인된 출력 도구. `context_preload` 설정(케이스 요약·한도·스킬을 서버 문맥에 미리 실음, #48)과 그 값을 만드는 `case_view`·`limits_view`·`context_preload` |
 | `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·비교 여부·검토 예산 컨텍스트 |
-| `src/cualign/agent/steps.py` | 턴의 단계(`setup`·`target`·`stages`)별로 쓸 수 있는 도구를 서버가 제한하고, 목표 배열 요약을 만듦 |
+| `src/cualign/agent/steps.py` | 턴의 단계(`setup`·`target`·`stages`)별로 쓸 수 있는 도구를 서버가 제한하고, 목표 배열 요약을 만듦. 자유 문장은 어휘(`INTENT_WORDS`)로 단계를 정함(`turn_step`, 칩의 단계가 우선) |
 | `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`), 수치의 뜻을 알려주는 필드 설명(`FIELD_NOTES`) |
 | `src/cualign/agent/followup.py` | 매 턴 뒤 화면 칩이 될 «다음에 정할 것» 질문·선택지 JSON을 경량 모델에서 만드는 지시문·파서(`POST /api/followup`, #90·#102). 워크플로·레일 밖이며 실패는 `None` |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드. 스트림에서 플래너의 추론(`reasoning_content`·`<think>`)을 뽑아 턴의 추론 중계로 넘김 |
