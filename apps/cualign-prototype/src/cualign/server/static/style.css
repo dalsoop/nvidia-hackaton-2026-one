@@ -173,26 +173,27 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 
 /* one folded line per turn: the running tool while it works, the tools used when done (#90) */
 .trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
-.trace > summary { list-style: none; cursor: pointer; color: var(--muted); padding: 2px 4px; border-radius: var(--radius); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.trace > summary::-webkit-details-marker { display: none; }
-.trace > summary:hover { background: var(--hover); }
-.trace > summary .dot { color: var(--green); margin-right: 6px; }
-.trace.running > summary .dot { animation: blink 1s steps(2) infinite; }
+.trace .head { color: var(--muted); padding: 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trace .head:has(.text:empty) { display: none; }
+.trace .head .dot { color: var(--green); margin-right: 6px; }
+.trace.running .head .dot { animation: blink 1s steps(2) infinite; }
+.trace.recorded .head .dot { color: var(--faint); }
 .trace .rows { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; }
 .trace:not(.running) .rows:empty { display: none; }
-.step summary { list-style: none; cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 2px 4px; border-radius: var(--radius); color: var(--muted); white-space: nowrap; overflow: hidden; }
-.step summary::-webkit-details-marker { display: none; }
-.step summary:hover { background: var(--hover); }
+.trace .reason { padding: 2px 4px; color: var(--muted); }
+.trace .raw { padding-left: 12px; }
+.trace .raw > summary { cursor: pointer; color: var(--faint); padding: 2px 4px; border-radius: var(--radius); width: fit-content; }
+.trace .raw > summary:hover { background: var(--hover); }
+.step { display: flex; gap: 8px; align-items: baseline; padding: 2px 4px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .step .dot { color: var(--green); flex: none; }
 .step .dot::before { content: "\25CF"; }
 .step.llm .dot { color: var(--faint); }
 .step.fallback .dot { color: var(--amber); }
 .step.running .dot::before { content: "\25D0"; animation: blink 1s steps(2) infinite; }
 .step .name { color: var(--text); flex: none; }
-.step .args { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .step .arrow { color: var(--muted); flex: none; }
 .step .out { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.step pre { margin: 2px 0 4px 16px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 260px; overflow: auto; }
+.trace .log pre { margin: 2px 0 4px 4px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 260px; overflow: auto; }
 
 /* ---------- viewer ---------- */
 .canvas-wrap { position: relative; flex: 1; min-height: 320px; background: var(--bg); }
