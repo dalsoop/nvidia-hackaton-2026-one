@@ -380,6 +380,12 @@ body.checking .rail-tools, body.checking .view-actions { display: none; }
 .intro h1 { margin: 0 0 16px; font-size: 18px; font-weight: 700; line-height: 1.4; }
 .link-btn { font: inherit; font-size: 13px; background: none; border: 0; padding: 4px 0; color: var(--muted); cursor: pointer; }
 .link-btn:hover, .link-btn:focus-visible { color: var(--green); outline: none; }
+/* opening a case (#163 follow-up): over the 3D and the dimmed start pane at once, a faint arch and one line; fades out */
+.mesh-loading { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+                background: var(--bg); color: var(--muted); font-size: 13px; pointer-events: none; transition: opacity 0.2s ease; }
+.mesh-loading img { width: 180px; opacity: 0.22; }
+.mesh-loading.out { opacity: 0; }
+.mesh-loading[hidden] { display: none; }
 .start-pane { display: none; position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 24px; background: var(--bg); }
 .start-pane { padding: 0; }
 .start-pane .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
@@ -456,6 +462,7 @@ body.start .start-pane, body.start .intro { animation: rise 0.35s ease; }   /* #
   body:not(.start) .transcript, body:not(.start) .constraints, body:not(.start) .view-bar, body.start .start-pane, body.start .intro { animation: none; }
   .export-pop, .toast { transition: none; }
   .cl-detail, .cl-detail.open, .cl-detail .cl-dcard, .cl-detail.open .cl-dcard { transition: none; }
+  .mesh-loading { transition: none; }
 }
 body.start .case-head, body.start .plans, body.start .plan-notice, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar,

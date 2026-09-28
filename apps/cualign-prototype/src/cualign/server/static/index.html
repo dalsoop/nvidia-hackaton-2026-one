@@ -159,6 +159,8 @@
     <section class="viewer">
       <div id="canvasWrap" class="canvas-wrap">
         <canvas id="viewCanvas"></canvas>
+        <!-- opening a case: a faint arch and one line over the 3D until the case is on screen, then it fades out -->
+        <div id="meshLoading" class="mesh-loading" hidden><img src="intro-arch.png" alt="" /><span>스캔 불러오는 중 …</span></div>
         <!-- 시작 상태: 케이스를 열기 전에는 3D 자리에 샘플 케이스를 둔다 (#46, #90) -->
         <!-- 시작 상태 = 케이스 목록 (v2 설계 보드 02): 필터 · 표 · 오른쪽 상세. 상태는 서버가 계산한다 (/api/case-list) -->
         <!-- 시작 상태 (결정 ③-b, 2026-09-28): 왼쪽 소개 패널 + 위 샘플 카드 3장 + 아래 환자 표. 필터 없음.

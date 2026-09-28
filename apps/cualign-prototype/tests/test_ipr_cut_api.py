@@ -90,3 +90,17 @@ def test_mesh_crowns_are_closed_for_the_view_only(tmp_path, monkeypatch):
             n, k = len(raw[i]["v"]), len(raw[i]["f"])
             assert t["v"][:n] == raw[i]["v"] and len(t["f"]) > k and t["f"][:k] == raw[i]["f"]
         assert _boundary_loops(case.mesh[case.ids[0]])                                         # the core's crown is untouched
+
+
+def test_mesh_scan_part_is_cached_per_loaded_case(tmp_path, monkeypatch):
+    """The scan part of /mesh is JSON text made once per Case object (#163 follow-up): the same answer twice, and a
+    re-loaded scan (a new Case, as after a re-upload) gets its own."""
+    from cualign.core import Case, samples
+    with _client(tmp_path, monkeypatch) as client:
+        first = client.get("/api/cases/poseidon-000131/mesh")
+        assert first.headers["content-type"].startswith("application/json")
+        _, case = store.STORE.load_case("poseidon-000131")
+        assert case in api._MESH_JSON and client.get("/api/cases/poseidon-000131/mesh").text == first.text
+        store.STORE.cases["poseidon-000131"] = fresh = Case.from_dir(samples.get("poseidon-000131").folder)
+        assert fresh not in api._MESH_JSON
+        assert client.get("/api/cases/poseidon-000131/mesh").json()["teeth"] == first.json()["teeth"] and fresh in api._MESH_JSON
