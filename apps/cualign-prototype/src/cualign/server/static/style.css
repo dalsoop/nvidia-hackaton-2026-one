@@ -84,7 +84,7 @@ textarea { resize: vertical; }
 .splitter::after { content: ""; position: absolute; left: 2px; top: calc(50% - 6px); width: 2px; height: 2px; border-radius: 50%; background: var(--muted); box-shadow: 0 5px 0 var(--muted), 0 10px 0 var(--muted); }
 .splitter:hover::after, .splitter:focus-visible::after, .splitter.dragging::after { background: #000; box-shadow: 0 5px 0 #000, 0 10px 0 #000; }
 body.resizing { cursor: col-resize; user-select: none; }
-@media (max-width: 980px) { .layout { grid-template-columns: 1fr; } .layout > * { grid-column: auto; } .splitter { display: none; } .side { border-left: 0; border-top: 1px solid var(--line); } }
+/* narrower screens: see 「반응형」 at the end of this file */
 
 /* a reload on a case or check address: the layout waits for the router (index.html head script), no start screen flash */
 html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; }
@@ -746,3 +746,53 @@ body.manual-on #selChips, body.manual-on .pick-hint { display: none !important; 
 .mv-reset:disabled { opacity: 0.25; cursor: default; }
 .move-note { padding: 8px 16px 16px; }
 #clRows .empty { font-size: 12px; }   /* the empty list reads like the hint under the samples */
+
+/* ---------- no 3D (WebGL off, or three.js not loaded): a card over the 3D area only; app.js viewer init opens it ---------- */
+.no3d { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); z-index: 3; width: min(440px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; color: var(--muted); }
+.no3d b { color: var(--text); font-size: 14px; word-break: keep-all; }
+.no3d[hidden] { display: none; }
+body.no-3d .labels, body.no-3d .view-rail, body.no-3d .legend, body.no-3d .tip, body.no-3d .pick-hint { display: none; }
+
+/* ---------- 반응형 (from #145 v2): 1920·1440 as above, untouched ----------
+   ≤1280 the sidebar is a drawer · ≤1024 the chat panel too · ≤768 one column, the page scrolls.
+   A drawer floats over the 3D (the 3D keeps its size) and opens from the splitter at its edge, which becomes the handle
+   (drawers.js: click · Enter to open/close, a press on the 3D or Esc closes). Last in the file so it wins over the
+   body.start / .checking / .focus3d column rules above. */
+@media (max-width: 1280px) and (min-width: 769px) {
+  .layout { position: relative; overflow: hidden; grid-template-columns: 64px var(--chat-w, 380px) 6px minmax(0, 1fr) 6px; }
+  .layout > .side { grid-column: auto; position: absolute; top: 0; bottom: 0; right: 6px; z-index: 6; width: min(var(--side-w, 400px), calc(100% - 76px));
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.5); transform: translateX(calc(100% + 6px)); visibility: hidden; transition: transform 0.2s ease, visibility 0.2s; }
+  body.side-open .layout > .side { transform: none; visibility: visible; }
+  .layout > .side-splitter { cursor: pointer; }
+  body.side-open .side-splitter { background: var(--green); }
+  body.side-open .side-splitter::after { background: #000; box-shadow: 0 5px 0 #000, 0 10px 0 #000; }
+}
+@media (max-width: 1024px) and (min-width: 769px) {
+  .layout, body.checking .layout { grid-template-columns: 64px 6px minmax(0, 1fr) 6px; }
+  body.start .layout, body.focus3d .layout { grid-template-columns: 64px 0 minmax(0, 1fr) 0; }
+  body.start .splitter { display: none; }
+  .layout > .splitter { grid-column: 2; } .layout > .viewer { grid-column: 3; } .layout > .side-splitter { grid-column: 4; }
+  .layout > .chat { grid-column: auto; position: absolute; top: 0; bottom: 0; left: 70px; z-index: 6; width: min(var(--chat-w, 380px), calc(100% - 140px)); border-right: 1px solid var(--line);
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.5); transform: translateX(calc(-100% - 70px)); visibility: hidden; transition: transform 0.2s ease, visibility 0.2s; }
+  body.chat-open .layout > .chat { transform: none; visibility: visible; }
+  .layout > .splitter:not(.side-splitter) { cursor: pointer; }
+  body.chat-open .splitter:not(.side-splitter) { background: var(--green); }
+  body.chat-open .splitter:not(.side-splitter)::after { background: #000; box-shadow: 0 5px 0 #000, 0 10px 0 #000; }
+}
+@media (max-width: 768px) {
+  html, body { height: auto; }
+  body { min-height: 100vh; }
+  .layout { display: flex; flex-direction: column; }
+  .layout > * { grid-column: auto; }
+  .splitter { display: none; }
+  .rail { position: sticky; top: 0; z-index: 6; flex-direction: row; justify-content: center; padding: 4px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .chat { overflow: visible; }
+  .viewer { flex: none; height: 60vh; min-height: 360px; }
+  .side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  /* the start screen: the case list is the page, not a box inside the 3D */
+  body.start .viewer { height: auto; }
+  body.start .start-pane { position: relative; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .layout > .side, .layout > .chat { transition: none; }
+}

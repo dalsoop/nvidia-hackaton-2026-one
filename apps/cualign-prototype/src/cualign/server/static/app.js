@@ -1,7 +1,6 @@
 // cuAlign web UI — patient → scan upload → input check on the 3D → chat (NAT /chat/stream, inline tool trace) → three.js stage viewer → plan panel.
-import * as THREE from "three";
+import { THREE, CSS2DRenderer, CSS2DObject, threeError } from "./three-load.js";   // the CDN import, with a stand-in when it fails
 import { PlanStream, matchesSelection } from "./plan-stream.js";
-import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { createManual } from "./manual.js";
 import { createScanFx } from "./scan-reveal.js";
 
@@ -72,7 +71,21 @@ const state = {
 
 // ------------------------------------------------------------------ three.js
 const canvas = $("viewCanvas");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+// No WebGL (turned off, a blocked GPU) or no three.js (the CDN out of reach): the 3D area shows the #no3d card and the
+// renderer draws nothing, so the chat, the stage table, rules, conditions, approval and export keep working.
+const renderer = (() => {
+  try {
+    if (!threeError) {
+      const probe = document.createElement("canvas"), gl = probe.getContext("webgl2") || probe.getContext("webgl");
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      if (gl) return new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    }
+  } catch (e) { console.warn("3D off:", e); }
+  document.body.classList.add("no-3d");
+  $("no3d").hidden = false;
+  if (threeError) $("no3dHint").textContent = "3D 라이브러리(three.js)를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요.";
+  return { setPixelRatio() {}, setSize() {}, render() {} };
+})();
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const labelRenderer = new CSS2DRenderer({ element: $("labels") });
 const scene = new THREE.Scene();
