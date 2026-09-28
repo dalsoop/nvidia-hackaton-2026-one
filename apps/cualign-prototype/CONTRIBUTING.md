@@ -38,10 +38,11 @@ uv run python scripts/check_wheel.py dist/cualign-0.1.0-py3-none-any.whl
 
 ## 문서 파일 이름
 
-`docs/` 의 일반 문서는 소문자 kebab-case(`code-map.md`, `known-issues.md`)로 짓는다. 도구가 이름으로 찾는 관례 파일만 대문자로 둔다:
-`README.md`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`, `SKILL.md`, OpenClaw 워크스페이스 파일(`SOUL.md`, `IDENTITY.md`,
-`USER.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`). 명문화된 공식 규약은 아니고 NemoClaw 저장소가 실제로 쓰는 방식이다(#81).
-macOS 파일 시스템은 대소문자만 다른 이름 변경을 알아보지 못하므로 임시 이름을 거쳐 `git mv` 를 두 번 한다.
+`docs/` 아래 문서(스크립트가 만드는 기록 포함)는 소문자 kebab-case(`code-map.md`, `known-issues.md`)로 짓는다. 대문자는 도구나
+관례가 이름으로 찾는 파일에만 쓴다. 예: `README.md`(언어판 `README.ko.md` 포함), `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`,
+`SKILL.md`, OpenClaw 워크스페이스 파일(`SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`, `MEMORY.md`), 자체 형식을 따르는
+앱 루트의 `DESIGN.md`, 형상 자산과 함께 패키징되는 `ATTRIBUTION.md`. 명문화된 공식 규약은 아니고 NemoClaw 저장소가 실제로 쓰는
+방식이다(#81). macOS 파일 시스템은 대소문자만 다른 이름 변경을 알아보지 못하므로 임시 이름을 거쳐 `git mv` 를 두 번 한다.
 
 ## 화면·이벤트 회귀 검사
 
