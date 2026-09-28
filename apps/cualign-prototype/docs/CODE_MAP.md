@@ -24,6 +24,7 @@
 | `src/cualign/core/samples/poseidon-*/` | 샘플 스캔(치아별 STL·잇몸·`SOURCE.txt`). `scripts/import_poseidon.py`로 만들었고 패키지에 포함 |
 | `src/cualign/core/samples/ATTRIBUTION.md` | 샘플 스캔의 출처·라이선스(CC-BY-4.0)·변경 내용. 자산과 함께 보존 |
 | `src/cualign/core/store.py` | 케이스·계획·부모·검토·승인 스냅샷 저장, 출력 시 승인 검사 |
+| `src/cualign/core/recorded.py` | 샘플 케이스의 녹화된 에이전트 답(`samples/recorded/<case>/<step>.json`) 읽기·검사. 재생은 규칙 엔진으로 계획을 다시 계산하고 답의 단계 수·개월을 그 값으로 맞춤 |
 | `src/cualign/core/skills.py` | `workspace/skills/<이름>/SKILL.md`를 읽어 `load_skill` 도구로 에이전트에 전달 |
 | `src/cualign/core/constraints.py` | 공통 조건 모델·명시적 패치·치아/한도 검증. 발치는 처방된 치아 목록(`extraction`, #56); `allow_extraction`은 계산값 |
 | `src/cualign/core/service.py` | API·에이전트 공통 조건 보존 계산 경로 |
@@ -31,10 +32,13 @@
 | `src/cualign/core/patients.py` | 가명 환자·환자별 스캔 저장(로컬 `out/patients`), 재사용하지 않는 ID, 스캔 revision·확인 기록, 케이스 ID `P0001-S1` → 스캔 폴더 |
 | `src/cualign/core/intake.py` | 업로드한 치아별 스캔을 코어 좌표계로 정렬(잇몸·치관 경계 기준, 원본은 `original/`), 좌우 번호 점검·뒤집기 |
 | `src/cualign/core/gum.py` | 3D 표시용 잇몸 생성. 검증·출력 대상은 아님 |
+| `src/cualign/core/gum_fill.py` | 뷰어용으로 스캔 잇몸의 치아 자리 홈을 덮은 잇몸(`/api/cases/{id}/gum`) |
 | `src/cualign/core/print_model.py` | 단계별 프린트용 상악 모형: 스캔 잇몸 변형·높이 지도 합성·닫힌 메시 검사 |
 | `src/cualign/core/templates/2.stl`~`15.stl` | 합성 치아와 뷰어에 쓰는 크라운 형상 14개 |
 | `src/cualign/core/templates/ATTRIBUTION.md` | 위 형상 자산의 출처·라이선스 표기. 자산과 함께 보존 |
 | `src/cualign/core/segmentation.py` | 외부 분리 모델 호출·라벨을 치아별 메시로 변환하는 선택적 어댑터 |
+| `src/cualign/core/ipr_cut.py` | 처방된 접촉면만큼 치관 메시를 평면으로 깎은 치열(원본 스캔은 그대로). 목표·단계·충돌 검사·내보내기가 이 치열을 씀 |
+| `src/cualign/core/fdi.py` | 화면 경계의 치아 번호 변환(코드·파일은 Universal, 의사는 FDI) |
 
 ### 에이전트·서버·UI
 
@@ -42,6 +46,7 @@
 |---|---|
 | `src/cualign/agent/register.py` | 조건 수정·계산·최종 계획 선택·승인된 출력 도구. `context_preload` 설정(케이스 요약·한도·스킬을 서버 문맥에 미리 실음, #48)과 그 값을 만드는 `case_view`·`limits_view`·`context_preload` |
 | `src/cualign/agent/context.py` | 요청별 케이스·조건·부모·후보·비교 여부·검토 예산 컨텍스트 |
+| `src/cualign/agent/steps.py` | 턴의 단계(`setup`·`target`·`stages`)별로 쓸 수 있는 도구를 서버가 제한하고, 목표 배열 요약을 만듦 |
 | `src/cualign/agent/reviewer.py` | 읽기 전용 검토, 시도/시간 상한, 실패 상태 저장, 의사 요청 재검토(`manual`), 저장 전 메모 출력 검사(`MEMO_CHECK`), 수치의 뜻을 알려주는 필드 설명(`FIELD_NOTES`) |
 | `src/cualign/agent/followup.py` | 매 턴 뒤 화면 칩이 될 «다음에 정할 것» 질문·선택지 JSON을 경량 모델에서 만드는 지시문·파서(`POST /api/followup`, #90·#102). 워크플로·레일 밖이며 실패는 `None` |
 | `src/cualign/agent/react_patch.py` | 특정 NAT 응답 파싱 실패를 처리하는 호환 가드 |
@@ -54,16 +59,19 @@
 | `src/cualign/server/static/manual.js` | 직접 이동 화면: 3D 화살표·회전 고리, 「이동」 탭 숫자 표, 편집 막대(되돌리기·초기화·적용), 서버 검사 표시 |
 | `src/cualign/server/static/plan-stream.js` | 분할된 UTF-8/SSE·NAT 오류 조립과 이벤트 식별 |
 | `src/cualign/server/api.py` | 환자·스캔 업로드·입력 확인(`/check`)·계획 조회·규칙 폴백·검토 재요청·파일 다운로드 |
+| `src/cualign/server/export_jobs.py` | 승인 순간부터 내보내기 ZIP(단계 STL·프린트 모형)을 백그라운드로 만들고 계획별로 보관 |
 | `src/cualign/server/mcp_server.py` | NemoClaw용 MCP 서버(`/mcp`): 토큰 확인, `cualign_plan`은 서버 안에서 `/chat/stream`으로 요청해 UI와 같은 경로를 탐, 승인 도구는 승인하지 않고 내보내기 도구는 의사 승인을 요구 |
 | `src/cualign/server/rails.py` | 대화 입력 범위 검사와 출력 검사(NeMo Guardrails 호출) |
 | `src/cualign/server/rail_patterns.py` | 정규식 레일 목록(처방·확정 문구, 식별정보). import 없는 데이터. NeMo Guardrails 기능이 아닌 하네스 검사라 `core/`가 아니라 여기 둠(#79) |
 | `src/cualign/server/rails_middleware.py` | 위 검사를 NAT 워크플로 미들웨어로 걸고, 그 전에 정규식 목록(요청의 식별정보·답의 처방 문구)을 보고, 답을 출력 판정까지 쥐었다가 거절문으로 바꾸고, 턴별 레일 상태를 남기고, 에이전트 예외를 종류만 남긴 오류로 바꿈. 검토 메모에도 같은 출력 검사를 제공. 레일이 꺼져 있어도, 선택한 계획이 규칙 검증에 실패했는데 답의 첫머리가 위반이 없다고 하면 그 구절을 실제 규칙 상태로 바꿈(비교 턴 제외, #91) |
 | `src/cualign/keys.py` | NVIDIA 키 사용 가능 여부. OpenShell provider placeholder(`openshell:resolve:env:`)도 키로 인정해 샌드박스에서 Guardrails가 꺼지지 않게 함 |
 | `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
+| `src/cualign/winjob.py` | Windows 에서 `serve` 가 끝나면 `nat serve` 도 끝나게 함(kill-on-close 잡, 띄운 `uv.exe`·셸 감시). 프로세스 목록에 python 이 둘씩 보이는 이유(venv 런처) |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
-| `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결, 과부하 실패 뒤 «다시 보내기»(같은 글·조건을 새 요청으로) |
+| `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결, 과부하 실패 뒤 «다시 보내기»(같은 글·조건을 새 요청으로), 대화 흐름의 도구 줄·추론 문장(원문·인자·소요 시간은 「자세히」) |
 | `src/cualign/server/static/scan-reveal.js` | 셋업 턴 시작 시 연출: 치아 번호 순회(17→27, 0.1초)·발치 치아 들림/페이드·「발치」 표식·IPR 도구 커서, 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
 | `src/cualign/server/static/style.css` | 현재 PoC의 레이아웃·색·표시 스타일 |
+| `src/cualign/server/static/icons/`, `samples/`, `*.png` | 3D 시점 아이콘, 시작 화면 샘플 미리보기, 로고·파비콘 |
 | `guardrails/config.yml` | 검사 모델(과부하 재요청 횟수 포함)과 적용할 레일의 설정, content-safety 모델에 보내는 맞춤 정책 본문 |
 | `guardrails/prompts.yml` | 범위·출력 검사에 쓰는 판정 프롬프트 |
 | `guardrails/policy/` | NVIDIA 카탈로그 스킬 `nemotron-policy-generator` 로 만든 정책 원문·분류 json·프롬프트와 출처(README) |
@@ -87,6 +95,7 @@
 | `tests/test_rails_middleware.py`, `tests/rails_fakes.py` | 가짜 레일·가짜 모델로 전 경로 차단·오류 기록·멈춤 스위치·정규식 레일·출력 보류·진행 표시·예외 문구·검토 건너뛴 턴·메모 레일·과부하 안내 이벤트 검사 |
 | `tests/test_rail_patterns.py` | 정규식 목록이 걸려야 할 문장·넘겨야 할 문장·스킬 본문 검사 |
 | `tests/test_skill_tool.py` | Skill 이름 검증·도구 등록(검토 에이전트 제외)·지시문 연결 검사 |
+| `tests/test_winjob.py` | Windows 전용: `serve` 대역을 죽이거나 띄운 프로세스가 사라지면 그 자식(`nat serve` 대역)도 끝나는지 실제 프로세스로 검사 |
 | `tests/test_keys.py`, `tests/test_sandbox_compat.py` | 키 판정(placeholder 포함)·프록시 호환 가드 검사 |
 | `tests/test_react_patch.py` | 파서 호환 가드 검증 |
 | `tests/test_react_history.py` | 앞선 호출을 기억해야 넘어가는 가짜 모델로 NAT 실제 그래프를 돌려 같은 도구 반복이 없는지 검사 |

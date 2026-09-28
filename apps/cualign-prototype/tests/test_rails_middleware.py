@@ -456,11 +456,14 @@ def test_telemetry_switched_off(store, tmp_path, monkeypatch):
     started = []
     monkeypatch.setattr(cli.os, "execv", lambda *a: started.append("execv"))
     monkeypatch.setattr(cli.subprocess, "call", lambda *a, **k: started.append("call") or 0)
+    from cualign import winjob   # the pytest process itself is not put in a job nor tied to its launcher
+    monkeypatch.setattr(winjob, "kill_children_with_this_process", lambda: started.append("job") or True)
+    monkeypatch.setattr(winjob, "launcher_pid", lambda: None)
     with pytest.raises(SystemExit):
         cli.cmd_serve(argparse.Namespace(host="127.0.0.1", port=8000))
     assert os.environ["NAT_TELEMETRY_ENABLED"] == "0"
     # Windows waits on nat serve instead of os.execv, which would return at once (#83)
-    assert started[0] == ("call" if os.name == "nt" else "execv")
+    assert started == (["job", "call"] if os.name == "nt" else ["execv"])
 
 
 def test_skipped_review_runs_on_server_with_memo_rail(store, tmp_path, monkeypatch):
