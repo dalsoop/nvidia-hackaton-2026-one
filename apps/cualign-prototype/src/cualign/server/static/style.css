@@ -217,11 +217,8 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .legend .red { background: var(--red); }
 .legend .amber { background: var(--amber); }
 .legend .blue { background: var(--blue); }
-.legend .ipr { background: var(--ipr); }
-.legend .ipr-face { background: var(--ipr-face); }
 
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.ipr-label { font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 .view-head { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none; z-index: 4; }
 /* floating toolbar over the 3D (#90): only the decision (내보내기) at the top right; views and tools are on the rail */
 .view-bar { display: flex; gap: 12px; align-items: center; pointer-events: auto; margin-left: auto; }
@@ -540,7 +537,7 @@ body.start .intro { animation: fx-in var(--fx-in) var(--fx-ease) var(--fx-step) 
   .cl-detail, .cl-detail.open, .cl-detail .cl-dcard, .cl-detail.open .cl-dcard { transition: none; }
   .mesh-loading { transition: none; }
 }
-body.start .case-head, body.start .plans, body.start .plan-notice, body.start .transcript, body.start .retry-bar,
+body.start .case-head, body.start .plan-fail, body.start .plan-notice, body.start .transcript, body.start .retry-bar,
 body.start .view-head, body.start .legend, body.start .stage-bar,
 body.start .sel-chips, body.start .view-rail { display: none; }
 /* before a case is open, and during the input check, the sidebar has nothing to say: the 3D takes its column */
@@ -567,7 +564,7 @@ body.start .flow { display: none; }
 .canvas-wrap:has(#checkBar:not([hidden])) .view-head { top: 62px; }
 /* the slider, the legend and the mm labels belong to the stages (the target keeps the labels) */
 body:not(.step-stages) .stage-bar { display: none; }
-body.step-initial .legend, body.step-setup .legend, body.step-initial .ipr-label, body.step-setup .ipr-label, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }
+body.step-initial .legend, body.step-setup .legend, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }
 /* the tabs open with the progress (#20): 조건 from the setup, 단계 표·규칙 from the stages */
 body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-tab[data-tab="stages"], body:not(.prog-target) .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
 .scan-facts { margin: 0; padding: 0 20px; display: grid; grid-template-columns: 56px 1fr; row-gap: 10px; font-size: 13px; }
@@ -611,6 +608,7 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
   width: calc(100% / 5); left: calc(100% / 5 * var(--tab-i, 0)); transition: left 160ms var(--fx-ease, cubic-bezier(0.33, 1, 0.68, 1)); }
 @media (prefers-reduced-motion: reduce) { .pane.fade-in { animation: none; } .side-tabs::after { transition: none; } }
 .ipr-mark, .fx-ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
+.ipr-mark .ipr-mm { position: absolute; left: 13px; top: -4px; font: 700 11px/1 var(--font); color: #000000; background: var(--ipr); border-radius: var(--radius); padding: 2px 4px; white-space: nowrap; }
 .exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
 /* scan reveal (scan-reveal.js): the extraction mark in 셋업, the IPR tool cursor, the app's marks waiting their turn */
 .extract-mark { font: 700 11px/1 var(--font); color: #fff; background: var(--red); border-radius: var(--radius); padding: 2px 5px; white-space: nowrap; }
@@ -618,22 +616,35 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .ipr-tool i { display: block; line-height: 0; }
 .fx-wait { visibility: hidden; }
 
-/* ---------- plans (#111): cards on the agent panel top, one per plan of this case ---------- */
-.plans { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-.plans[hidden] { display: none; }
-.plans-head { display: flex; align-items: baseline; gap: 8px; }
-.plans-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+/* ---------- the plan picker (#111): over the right panel's tabs, the plan on screen in one line; ▾ opens the list ---------- */
+.plan-pick { position: relative; flex: none; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.plan-pick[hidden] { display: none; }
+.plan-pick.fade-in { animation: fx-pick-in var(--fx-in, 180ms) var(--fx-ease, cubic-bezier(0.33, 1, 0.68, 1)); }
+@keyframes fx-pick-in { from { opacity: 0; } }
+.plan-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.plan-line:has(.plan-more:not([hidden])) { cursor: pointer; }
+.plan-cur { flex: 1; min-width: 0; }
+.plan-cur .none { font-size: 12px; color: var(--muted); }
+.plan-more { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--radius); background: none; color: var(--muted); font-size: 14px; cursor: pointer; }
+.plan-more:hover, .plan-more[aria-expanded="true"] { color: var(--text); background: var(--panel-2); }
+.plan-more[hidden] { display: none; }
+.plan-menu { position: absolute; left: 8px; right: 8px; top: calc(100% - 2px); z-index: 7; display: flex; flex-direction: column; gap: 8px; padding: 8px;
+  max-height: 60vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  animation: fx-menu-in 120ms var(--fx-ease, cubic-bezier(0.33, 1, 0.68, 1)); transform-origin: top; }
+.plan-menu[hidden] { display: none; }
+@keyframes fx-menu-in { from { opacity: 0; transform: scaleY(0.92); } }
+@media (prefers-reduced-motion: reduce) { .plan-pick.fade-in, .plan-menu { animation: none; } }
+.plan-menu .plan-row { cursor: pointer; }
+.plan-menu .plan-row:not(.current):hover { border-color: var(--line-strong); }
 .plan-list { display: flex; flex-direction: column; gap: 8px; }
-/* many plans: the list scrolls; the conversation keeps its room */
-#planList { max-height: 32vh; overflow-y: auto; padding-right: 2px; }
-.case-head, .plans { flex: none; }
+.case-head, .plan-fail { flex: none; }
+.chat > .plan-fail { margin: 12px 16px 0; }
 .plan-row { min-height: 46px; padding: 4px 4px 4px 10px; display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; }
 .plan-row.current { background: #0d1a00; border-color: var(--green); }
+.plan-cur .plan-row { min-height: 36px; padding: 2px 8px; }
+.plan-cur .plan-row .pill { margin-left: auto; }
 .plan-row .n { font-size: 13px; font-weight: 700; white-space: nowrap; }
 .plan-row .what { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.plan-row .sp { flex: 1; }
-.plan-row .btn { height: 36px; padding: 0 12px; font-size: 13px; }
-.plan-row .viewing { padding: 2px 6px; background: var(--green); color: #000; border-radius: var(--radius); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .pill { padding: 1px 5px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; font-weight: 700; white-space: nowrap; background: var(--panel-2); color: var(--muted); }
 .pill.fail { border-color: var(--red); background: var(--red-surface); color: var(--red-text); }
 .pill.pass { background: var(--pass-surface); color: var(--pass-text); }
@@ -671,7 +682,7 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .plan-tries[open] > summary { margin-bottom: 6px; }
 .plan-tries .plan-row { min-height: 40px; min-width: 0; background: var(--panel); }
 .plan-tries .plan-row .what { min-width: 0; }
-.plan-review { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.plan-review { margin: 12px 20px 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }   /* on the 규칙 tab, under the verdict */
 .plan-review > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; height: 28px; }
 .plan-review > summary::after { content: "\25BE"; color: var(--faint); }
 .plan-review[open] > summary::after { content: "\25B4"; }

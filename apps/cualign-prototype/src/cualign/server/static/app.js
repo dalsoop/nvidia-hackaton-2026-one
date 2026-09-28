@@ -4,6 +4,7 @@ import { PlanStream, matchesSelection } from "./plan-stream.js";
 import { createManual } from "./manual.js";
 import { createScanFx } from "./scan-reveal.js";
 import { createValidateSweep } from "./validate-sweep.js";
+import { createStageGrow } from "./stage-grow.js";
 
 const $ = (id) => document.getElementById(id);
 // 직접 이동 (manual.js): created once the screen's functions exist (end of file); until then nothing is being edited
@@ -51,9 +52,8 @@ const state = {
   requestId: null,
   lastAssistantText: "",
   trace: null,           // inline tool-call trace for the turn in progress
-  labels: [],            // CSS2DObject IPR labels
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
-  caseList: [], clSelected: null,   // 케이스 목록 (#109): 샘플 카드 + 환자 표, 선택한 것 아래 상세 (③-b)
+  caseList: [], clSelected: null, clPreset: false,   // 케이스 목록 (#109): 샘플 카드 + 환자 표, 선택한 것 아래 상세 (③-b)
   checkCase: null,       // case id shown on the input-check screen
   checkRevision: null,   // scan revision shown there; the confirmation names it
   gateVersion: 0,        // bumped on every patient/scan navigation: a late response for an earlier choice is dropped
@@ -189,13 +189,23 @@ new ResizeObserver(resize).observe($("canvasWrap"));
 
 // +x is the patient's left (tooth 15 side), +y anterior, +z occlusal (see setView).
 const VIEWS = { occlusal: "교합면", frontal: "정면", left: "환자 왼쪽", right: "환자 오른쪽" };
+// ?fps=N draws the 3D at most N times a second (a test browser on software WebGL, where every frame costs a core); without
+// it every frame is drawn. The effects run on elapsed time, so they end the same at any rate.
+const FRAME_GAP = 1000 / (Number(new URLSearchParams(location.search).get("fps")) || Infinity);
+let lastFrame = -Infinity;
 (function loop() {
-  controls.update(); scanFx.tick(); sweepFx.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  const t = performance.now();
+  if (t - lastFrame >= FRAME_GAP - 1) {
+    lastFrame = t;
+    controls.update(); scanFx.tick(); sweepFx.tick(); window.__stageGrow?.tick(); renderer.render(scene, camera); labelRenderer.render(scene, camera);
+  }
   requestAnimationFrame(loop);
 })();
 
 const ghost = new THREE.Group(); scene.add(ghost);
 const GHOST_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false });
+// the stage tool's 「단계가 자라난다」 (stage-grow.js): ghost at the target, the cursor stepping the crowns, the table filling
+const stageGrow = createStageGrow({ THREE, CSS2DObject, group, ghost, state, applyStage: (k) => applyStage(k), setWorkNote: (on, text) => setWorkNote(on, text) });
 // Each gum vertex follows the four nearest crowns, weighted by distance (σ 7 mm), so the scanned gum moves with
 // the teeth instead of swallowing them. Translation only; crown rotation is small at the gum line.
 const GUM_K = 4, GUM_SIGMA = 7, GUM_SMOOTH = 3;   // #18: 3 / 5 mm tore the gum between crowns that part (the extraction sites)
@@ -247,15 +257,18 @@ function deformGum(st, rot = {}, piv = {}, removed = new Set()) {
     let all = 0, present = 0;
     for (let j = 0; j < GUM_K; j++) { const g = skin.w[v * GUM_K + j]; all += g; if (moves[skin.ids[v * GUM_K + j]]) present += g; }
     const share = present > 1e-6 ? all / present : 0;
-    let dx = 0, dy = 0, dz = 0;
+    let dx = 0, dy = 0;
     for (let j = 0; j < GUM_K; j++) {
       const t = moves[skin.ids[v * GUM_K + j]], g = skin.w[v * GUM_K + j] * share;
       if (!t) continue;
       const rx = x - t.c[0], ry = y - t.c[1];
       dx += g * (t.cos * rx - t.sin * ry + t.c[0] + t.d[0] - x);
       dy += g * (t.sin * rx + t.cos * ry + t.c[1] + t.d[1] - y);
-      dz += g * t.d[2];
     }
+    // vertical: the nearest crown still there alone (a levelled crown's gum rose only 20–30 % of it when averaged with
+    // neighbours that stay, PR #197 ③a); the blend is for xy, and the smoothing passes below soften the seams
+    const near = skin.ids.subarray(v * GUM_K, v * GUM_K + GUM_K).find((i) => !removed.has(skin.toothIds[i]));
+    const dz = present > 1e-6 && near !== undefined ? all * (st[skin.toothIds[near]]?.[2] ?? 0) : 0;
     skin.disp[3 * v] = dx; skin.disp[3 * v + 1] = dy; skin.disp[3 * v + 2] = dz;
   }
   // two Laplacian passes over the displacement (not the surface): the seams between crown territories blend, the scan's detail stays
@@ -340,7 +353,7 @@ function fixGumBaseNormals(geo) {
 }
 function buildTeeth(mesh) {
   sweepFx.clear();
-  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels(); scanFx.cancel();
+  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; scanFx.cancel();
   state.violLabels = []; state.selected.clear(); state.ruleMarked.clear(); renderSelection();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
@@ -486,7 +499,6 @@ function setStep(step) {
   stopPlay();
   const n = viewPlan()?.stages?.length ?? 0;
   applyStage(step === "target" ? n : 0);   // 목표 = the last stage; the others start at the scan
-  buildIprLabels();
   renderSetupMarks();
   renderFlow();
   renderPlanList();
@@ -512,8 +524,9 @@ function setupSource() {
 function contactsOnScreen(surfaces, removed = new Set()) {
   return (surfaces ?? []).map(([a, b, mm]) => [String(a), String(b), +mm]).filter(([a, b]) => state.teeth[a] && state.teeth[b] && !removed.has(a) && !removed.has(b));
 }
-// 셋업 marks over the 3D: a yellow dot at each IPR contact (the same contacts the mm labels use), arrows on the
-// last crowns when the arch widens. Only in the 셋업 state.
+// 셋업 marks over the 3D: a yellow dot and its mm at each prescribed IPR contact (drawn even where the contact is open:
+// the core cuts from each crown's own contact surface; an amount too small to cut reads 여유), arrows on the last
+// crowns when the arch widens. Only in the 셋업 state: 목표·단계 show the cut crowns without marks.
 function renderSetupMarks() {
   for (const o of state.setupMarks ?? []) o.parent?.remove(o);
   state.setupMarks = [];
@@ -525,6 +538,7 @@ function renderSetupMarks() {
   for (const [a, b, mm] of contactsOnScreen(src.surfaces, removed)) {
     const el = document.createElement("div"); el.className = "ipr-mark"; el.title = `IPR 접촉면 ${fdi(a)}-${fdi(b)} ${mm} mm`;
     el.dataset.contact = `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;   // the scan reveal lights them in turn
+    const num = document.createElement("span"); num.className = "ipr-mm"; num.textContent = mm >= 0.005 ? mm.toFixed(2) : "여유"; el.append(num);
     const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
     put(el, p);
   }
@@ -542,33 +556,6 @@ function renderSetupMarks() {
   }
 }
 $("flow").addEventListener("click", (e) => { const s = e.target.closest("button:not([disabled])")?.dataset.step; if (s && state.meshCase) { if (s !== state.step) sweepFx.clear(); setStep(s); } });
-
-// ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
-function clearLabels() { for (const l of state.labels) l.parent?.remove(l); state.labels = []; }
-function buildIprLabels() {
-  clearLabels();
-  const v = viewPlan(), t = v?.target;
-  // the contacts the target strips, mm per contact (#57); no guessing from the even rule any more
-  for (const [a, b, mm] of contactsOnScreen(surfacesOf(t, v?.info), new Set((t?.removed ?? []).map(String)))) {
-    const el = document.createElement("div");
-    el.className = "ipr-label";
-    el.textContent = mm.toFixed(2);
-    const obj = new CSS2DObject(el);
-    obj.userData = { a, b };
-    group.add(obj);
-    state.labels.push(obj);
-  }
-  placeLabels();
-}
-function placeLabels() {
-  for (const l of state.labels) {
-    const { a, b } = l.userData;
-    const pa = state.center[a].clone().add(state.teeth[a].position);
-    const pb = state.center[b].clone().add(state.teeth[b].position);
-    l.position.copy(pa.add(pb).multiplyScalar(0.5));
-    l.position.z += 2;
-  }
-}
 
 function violationsAt(k) {
   const by = {};   // tooth -> Set(type)
@@ -600,6 +587,7 @@ function applyStage(k) {
     const cut = cutSet?.[id] && scanFx.cutShown(id) ? cutSet[id] : null;   // the setup reveal cuts a crown as its cursor passes
     m.geometry = cut ? cut.geo : m.userData.full;
     if (cut) m.userData.cutMesh.geometry = cut.faces;
+    m.userData.cutMesh.material = setup ? IPR_FACE_MAT : m.material;   // the planes blue in 셋업 only; after it the crown is just cut
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
@@ -620,7 +608,6 @@ function applyStage(k) {
     else m.material.color.copy(IVORY);
     m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   }
-  placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
   for (const l of state.violLabels) l.parent?.remove(l);
   state.violLabels = [];
@@ -878,9 +865,9 @@ function readConstraints() {
   if (surf.length || state.plan?.constraints?.ipr_surfaces?.length || state.setup?.ipr_surfaces?.length) out.ipr_surfaces = surf;
   return out;
 }
-// 기간(개월) ↔ 단계 상한: the same formula as the server's limits.py (30.4 days a month, 7 days an aligner)
-const capOfMonths = (m) => Math.round((m * 30.4) / 7);
-const monthsOfCap = (cap) => Math.round(((cap * 7) / 30.4) * 10) / 10;
+// 기간(개월) ↔ 단계 상한: the same formula as the server's limits.py (30.4 days a month, 14 days an aligner)
+const capOfMonths = (m) => Math.round((m * 30.4) / 14);
+const monthsOfCap = (cap) => Math.round(((cap * 14) / 30.4) * 10) / 10;
 function fillConstraints(c) {
   $("cExtract").value = (c.extraction || []).map(fdi).sort((a,b) => a-b).join(", ");
   $("cAllowExt").checked = (c.extraction || []).length > 0; $("cExtract").disabled = !$("cAllowExt").checked;
@@ -970,7 +957,6 @@ function updateActions() {
   const p = state.plan, busy = state.streaming || state.loading;
   const dirty = constraintsDirty(), allowed = p && !busy && !dirty;
   for (const id of ["sendBtn", "caseBtn"]) $(id).disabled = !!busy;
-  for (const b of document.querySelectorAll("#plans .plan-row .btn")) b.disabled = !!busy;
   renderCondState();
   $("constraints").disabled = !!busy;
   const exportable = allowed && p.passed && !p.input_stale && ["passed", "skipped"].includes(p.review.status);
@@ -1608,7 +1594,7 @@ async function openCase(caseId, { greet = true, restart = false } = {}) {
   state.followup = null;
   state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
   stopPlay(); scanFx.cancel(); manualEdit.drop();
-  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
+  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
   state.oldPlans = new Set(before.plans.map((p) => p.plan_id));
@@ -1696,7 +1682,7 @@ function resetPlanPanel() {
   stopPlay();
   state.plan = null;
   document.body.classList.remove("has-plan");
-  clearLabels(); applyStage(0);
+  applyStage(0);
   state.planRows = {}; state.planRowsCase = null;
   renderPlanList();
   $("viewCanvas").dataset.planId = "";
@@ -1795,7 +1781,7 @@ function reviewBadge(row, pl) {
   if (!land || row.approval || row.approved || row.input_stale) return null;
   pl.prepend(Object.assign(document.createElement("i"), { className: "pulse-dot " + (land.ok ? "ok" : "fail") }));
   if (!land.ok) { pl.classList.remove("pass", "ok"); pl.classList.add("fail"); }
-  if (!$("plans").hidden) land.t ??= performance.now();
+  if (!$("planPick").hidden) land.t ??= performance.now();
   const age = land.t == null ? 0 : performance.now() - land.t;
   return age < FLASH_MS ? { ok: land.ok, age } : null;
 }
@@ -1803,36 +1789,41 @@ function flashCard(el, flash) {
   if (flash) { el.classList.add(flash.ok ? "flash-ok" : "flash-fail"); el.style.animationDelay = `-${Math.round(flash.age)}ms`; }
   return el;
 }
-// The plan cards on the panel top (#111): one row per plan, the plan on screen marked 보는 중, the rest with 보기.
-// Plans that existed before the case was opened sit folded under 지난 계획 (#105).
+// The plan picker over the right panel's tabs: the plan on screen in one line (계획 N · strategy · stages · months ·
+// the rules/review/approval badge), with two plans or more a ▾ opening the list (the one on screen marked .current);
+// a row picked there goes on screen. Plans that existed before the case was opened sit folded under 지난 계획 (#105)
+// at the list's foot. Only on the stages step; the line fades in as the first plan lands.
 function renderPlanList() {
   const rows = Object.values(state.planRows), cur = state.plan?.plan_id;
   if (rows.length) state.planError = null;
   renderPlanFail();
-  $("plans").hidden = !(rows.length && state.step === "stages") && !state.planError;
+  const pick = $("planPick"), show = !!rows.length && state.step === "stages";
+  if (show && pick.hidden) { pick.classList.remove("fade-in"); void pick.offsetWidth; pick.classList.add("fade-in"); }
+  pick.hidden = !show;
+  if (!show) openPlanMenu(false);
+  $("planMore").hidden = rows.length < 2;
   const old = rows.filter((r) => state.oldPlans.has(r.plan_id)), now = rows.filter((r) => !state.oldPlans.has(r.plan_id));
-  const make = (row) => {
+  const make = (row, line = false) => {
     const div = document.createElement("div");
     const n = planNo(row.plan_id), months = row.months ?? row.info?.months, [pill, cls] = planPill(row);
     div.className = "plan-row" + (row.plan_id === cur ? " current" : "");
     div.dataset.plan = row.plan_id;
     div.title = row.plan_id + (row.parent_plan_id ? " ← " + row.parent_plan_id : " · 최초 계획");
-    div.innerHTML = `<span class="n"></span><span class="what"></span><span class="pill"></span><span class="sp"></span>` +
-      (row.plan_id === cur ? `<span class="viewing">보는 중</span>` : `<button class="btn ghost" type="button" data-act="view">보기</button>`);
+    div.innerHTML = `<span class="n"></span><span class="what"></span><span class="pill"></span>`;
     div.querySelector(".n").textContent = `계획 ${n}`;
     div.querySelector(".what").textContent = `${STRATEGY_KO[row.strategy] ?? row.strategy}` + (row.manual && row.strategy !== "manual" ? " · 수동 조정" : "") + ` · ${row.n_stages}장` + (months != null ? ` · 약 ${months}개월` : "");
     const pl = div.querySelector(".pill"); pl.textContent = pill; pl.classList.add(cls);
     const flash = reviewBadge(row, pl);
     // the other strategies one 다시 계산 tried sit folded in its chosen plan's card: alternatives of one request,
     // not a time line like 지난 계획 (the server keeps every plan, so their ids and numbers stay)
-    const alts = tries.get(row.plan_id) ?? [];
+    const alts = line ? [] : tries.get(row.plan_id) ?? [];
     if (alts.length) {
       const d = document.createElement("details"); d.className = "plan-tries";
       d.open = alts.some((r) => r.plan_id === cur) || state.openTries.has(row.plan_id);
       d.addEventListener("toggle", () => { if (d.open) state.openTries.add(row.plan_id); else state.openTries.delete(row.plan_id); });
       d.innerHTML = `<summary></summary><div class="plan-list"></div>`;
       d.querySelector("summary").textContent = `시도한 전략 ${row.rule_run.tried?.length ?? alts.length + 1}개 보기`;
-      d.querySelector(".plan-list").replaceChildren(...alts.map(make));
+      d.querySelector(".plan-list").replaceChildren(...alts.map((r) => make(r)));
       // card and fold in one frame, side by side in the DOM: a selector on the card (.plan-row.current .pill) never
       // reaches the rows in the fold
       const group = document.createElement("div"); group.className = "plan-group" + (row.plan_id === cur ? " current" : "");
@@ -1851,8 +1842,13 @@ function renderPlanList() {
   $("oldPlans").hidden = !shown(old).length;
   $("oldPlansN").textContent = shown(old).length;
   if (old.some((r) => r.plan_id === cur)) $("oldPlans").open = true;
-  $("oldPlanList").replaceChildren(...shown(old).map(make));
-  $("planList").replaceChildren(...shown(now).map(make));
+  $("planCur").replaceChildren(state.planRows[cur] ? make(state.planRows[cur], true) : Object.assign(document.createElement("span"), { className: "none", textContent: "계획을 고르세요" }));
+  $("oldPlanList").replaceChildren(...shown(old).map((r) => make(r)));
+  $("planList").replaceChildren(...shown(now).map((r) => make(r)));
+}
+function openPlanMenu(open) {
+  $("planMenu").hidden = !open;
+  $("planMore").setAttribute("aria-expanded", String(open));
 }
 
 async function loadPlan(planId) {
@@ -1873,7 +1869,7 @@ async function loadPlan(planId) {
     const slider = $("stageSlider");
     slider.max = plan.stages.length;
     slider.disabled = false;
-    buildIprLabels(); applyStage(0); renderResult(plan); renderStageMarks();
+    applyStage(0); renderResult(plan); renderStageMarks();
     document.body.classList.add("has-plan");
     setProgress("stages");   // a plan on screen means the stages are done (also on reload, #20)
     $("viewCanvas").dataset.planId = planId;
@@ -1901,9 +1897,13 @@ function renderResult(plan) {
   const memo = splitNote((review.message ?? "") + (review.error ? " (" + review.error + ")" : ""));
   $("reviewMemo").innerHTML = esc(memo.body.trim()) + (memo.note ? `<small class="note">${esc(memo.note)}</small>` : "");
   if (plan.approval) $("reviewMemo").prepend(Object.assign(document.createElement("div"), { textContent: "승인됨 · " + fmtDate(plan.approval.approved_at) }));
-  // the fold shows once a review result is in (passed · failed) or the plan is approved; an unreviewed plan has no fold
+  // the 규칙 tab's fold under the verdict: a memo, an approval (승인 취소) or a failed review (검토 다시 요청); open
+  // on a failed review or when every allowed strategy broke a rule, else folded; nothing of those, no line
   $("reviewLine").textContent = memo.body.trim() ? "검토 메모" : "검토";
-  $("planReview").hidden = !plan.approval && !["passed", "failed"].includes(review.status);
+  const fold = $("planReview"), failed = review.status === "failed" || !!plan.rule_run?.all_failed;
+  fold.hidden = !memo.body.trim() && !plan.approval && review.status !== "failed";
+  if (failed) fold.open = true; else if (fold.dataset.plan !== plan.plan_id) fold.open = false;   // another plan starts folded
+  fold.dataset.plan = plan.plan_id;
   renderSide(plan);
   renderLegend(plan);
 }
@@ -1911,8 +1911,7 @@ function renderResult(plan) {
 function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
-                 locked: (t.locked ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
-                 ipr_face: Object.keys(state.cutSets[cutKeyNow()] ?? {}).length > 0 };
+                 locked: (t.locked ?? []).length > 0 };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
 }
@@ -1930,7 +1929,7 @@ function renderStagePane(plan) {
   facts.innerHTML = ""; grid.innerHTML = "";
   if (!plan) { for (const el of document.querySelectorAll(".grid-legend [data-kind]")) el.hidden = true; return; }
   const n = plan.stages?.length ?? 0, t = plan.target ?? {}, info = plan.info ?? {};
-  // two lines (#13 polish): 「확장 · 9단계 · 약 2.1개월」 / 「총생 1.6 mm → 확보 2.1 mm」; the movement notes are on the 규칙 tab
+  // two lines (#13 polish): 「확장 · 9단계 · 약 4.1개월」 / 「총생 1.6 mm → 확보 2.1 mm」; the movement notes are on the 규칙 tab
   const l1 = document.createElement("span"); l1.className = "l1";
   l1.textContent = [STRATEGY_KO[plan.strategy] ?? plan.strategy, `${n}단계`, info.months != null ? `약 ${info.months}개월` : null].filter(Boolean).join(" · ");
   const l2 = document.createElement("span"); l2.className = "l2";
@@ -2419,6 +2418,7 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null, { quie
   traceSummary(trace);
   if (fresh && isTool && !quiet) addReasons([reasonForTool(label, input)].filter(Boolean), trace);
   if (isTool && (fresh || wasRunning)) toolMoment(row.dataset.tool, tryJson(input) ?? {}, !done ? "start" : "end");
+  if (isTool && (fresh || wasRunning) && !String(id).startsWith("replay-")) stageGrow.tool(label, !done ? "start" : "end");   // stage-grow.js (the replay plays it itself)
 }
 // a turn that failed: its tool rows still running settle as an X with the server's sentence (nothing when it gave none)
 function failRows(trace, reason = "") {
@@ -2499,7 +2499,7 @@ function nextChips() {
          { label: "에이전트 없이 단계 계산", action: "manualStages", hint: "모델 없이 이 목표 배열을 단계로 나누고 규칙을 검사합니다" },
          { label: "다시 조정", action: "manual" }]
       : [{ label: "단계 만들기", message: "이 목표로 단계를 만들어줘.", step: "stages" },
-         { label: "8개월 안에", message: "8개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
+         { label: "12개월 안에", message: "12개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
          ...(extraction ? [] : [{ label: "비발치안과 비교", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘.", step: "stages" }]),
          { label: "수동으로 조정", action: "manual", hint: "목표 배열의 치아를 3D에서 직접 옮깁니다" }];
     default: return [{ label: "승인하고 내보내기", action: "export" }, { label: "조건 바꾸기", action: "cond" }];
@@ -2829,7 +2829,7 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
-      setStep("stages"); showPlanEnd();
+      setStep("stages"); if (!(await stageGrow.play())) showPlanEnd();   // the recorded stage turn grows, then lands at 0 (stage-grow.js)
       // the server recomputed the plans now (compare → stages · check), then the recorded pick and its recorded review
       const made = rec.step === "compare" ? "compare_strategies" : "plan_stages", pick = { plan_id: sel.plan_id };
       await playTools(trace, [{ name: made, reasons: [reasonForTool(made)] }, { name: "validate", input: pick },
@@ -2963,7 +2963,9 @@ for (const id of ["sampleCards", "clRows"]) {
   $(id).addEventListener("click", (e) => {
     const el = e.target.closest(".case-card, .case-row");
     if (!el || e.target.closest("#clDetail")) return;
-    state.clSelected = state.clSelected === el.dataset.id ? null : el.dataset.id;
+    // the detail the page opened on the server's active case: the first press on that card keeps it open, not folds it
+    state.clSelected = state.clSelected === el.dataset.id && !state.clPreset ? null : el.dataset.id;
+    state.clPreset = false;
     renderCaseList();
   });
   $(id).addEventListener("dblclick", (e) => { const el = e.target.closest(".case-card, .case-row"); if (el) openFromList(state.caseList.find((c) => c.case_id === el.dataset.id)); });
@@ -3052,7 +3054,7 @@ $("deleteScanGo").addEventListener("click", async () => {
   if (!pid || !sid) return;
   try {
     await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}`, { method: "DELETE" });
-    if (state.meshCase === caseId) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
+    if (state.meshCase === caseId) { group.clear(); ghost.clear(); state.meshCase = null; }
     state.checkCase = null;
     await openPatient(pid);
   } catch (err) { addMsg("error", "스캔 삭제 실패: " + err.message); }
@@ -3132,11 +3134,14 @@ $("gateClose").addEventListener("click", async () => {
     try { await loadMesh(state.activeCase); await refreshPlans(); } catch (err) { addMsg("error", err.message); }
   }
 });
-// plan cards: 보기 puts that plan in the 3D and the sidebar (#111)
-$("plans").addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-act=view]"), id = btn?.closest(".plan-row")?.dataset.plan;
+// the plan picker: ▾ (or the line itself, with two plans or more) opens the list; a row picked there puts that plan in
+// the 3D and the sidebar (#111) and the list closes
+$("planPick").querySelector(".plan-line").addEventListener("click", () => { if (!$("planMore").hidden) openPlanMenu($("planMenu").hidden); });
+$("planMenu").addEventListener("click", (e) => {
+  const id = e.target.closest(".plan-row")?.dataset.plan;
   if (!id || state.streaming || state.loading) return;
-  loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
+  openPlanMenu(false);
+  if (id !== state.plan?.plan_id) loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
 });
 // sidebar tabs: a tab picked by hand holds while the step stays (the turn in progress); the next step takes the panel again
 for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => {
@@ -3535,7 +3540,7 @@ manualEdit = createManual({ THREE, scene, camera, canvas, ghost, state, $, fdi, 
     catch (e) { addMsg("error", `케이스 로드 실패: ${e.message}`); }
   }
   // The page opens in the start state; "내 스캔 올리기" leads to the patient flow (patient → scan → plan).
-  if (active) { state.clSelected = active; renderCaseList(); }   // the list opens on the case the server has active
+  if (active) { state.clSelected = active; state.clPreset = true; renderCaseList(); }   // the list opens on the case the server has active
   // a reload or a shared address opens the same screen; otherwise this is the start state
   if (location.hash && location.hash !== "#start") {
     routing = true;

@@ -5,7 +5,7 @@ Script (what the presenter does on screen), one server, one case:
   2. 샘플 케이스     POST /api/cases/{id}/activate   the case opens as the scan only: no plan, conditions = the prescription
   3. 에이전트 계획    three turns, one step each (the step flow): setup -> target -> stages; each stops where its step says
      (was: one turn)   /chat/stream  the card's «에이전트에게 계획 맡기기» sentence, the sample's constraints
-  4. 기간 상한       /chat/stream  «8개월 안에 끝나게 다시 짜줘.» on the selected plan
+  4. 기간 상한       /chat/stream  «12개월 안에 끝나게 다시 짜줘.» on the selected plan
   5. 비교            /chat/stream  «확장안이랑 IPR안 둘 다 만들어서 비교해줘.» on the selected plan
   6. 검토            the reviewer ran inside each turn (plan_selected.review); POST /api/plans/{id}/review if it did not
   7. 후속 질문 카드  POST /api/followup on the conversation so far (a card or null, never an error)
@@ -139,14 +139,14 @@ async def main(case_id):
             selected = rec["plan_selected"] or shown
             # 4. 기간 상한
             ctx = {"request_id": "e2e-4", "case_id": case_id, "base_plan_id": selected, "constraints": {}}
-            messages, ev, rec = await turn(client, url, messages, "8개월 안에 끝나게 다시 짜줘.", ctx, log)
+            messages, ev, rec = await turn(client, url, messages, "12개월 안에 끝나게 다시 짜줘.", ctx, log)
             rec["set_constraints_args"] = tool_args(ev, "set_constraints")
             cap_ok = False
             if rec["plan_selected"]:
                 d = (await client.get(url + f"/api/plans/{rec['plan_selected']}", timeout=30)).json()
                 rec["stage_cap"], rec["n_stages"], rec["passed"] = d["constraints"]["stage_cap"], d["info"]["n_stages"], d["passed"]
-                cap_ok = d["constraints"]["stage_cap"] == round(8 * 30.4 / 7) and d["parent_plan_id"] == selected
-            rec["pass"] = cap_ok and rec["korean"] and "35단계" in rec["answer"] and not rec["universal_numbers"] and not rec["internal_terms"]
+                cap_ok = d["constraints"]["stage_cap"] == round(8 * 30.4 / 14) and d["parent_plan_id"] == selected
+            rec["pass"] = cap_ok and rec["korean"] and "17단계" in rec["answer"] and not rec["universal_numbers"] and not rec["internal_terms"]
             steps["4_stage_cap"] = rec
             selected = rec["plan_selected"] or selected
             # 5. 비교

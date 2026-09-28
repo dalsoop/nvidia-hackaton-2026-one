@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 import socket
 import sys
+import tempfile
 import threading
 import time
 
@@ -192,6 +193,44 @@ async def fake_chat(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+# a wait for "the next frame" to be drawn, in ms: generous, so it holds under load and at a lowered ?fps= (app.js)
+FRAME = 250
+
+# one browser_flow at a time on this machine, whatever the worktree: two at once (each a server and a software-WebGL
+# Chrome) took the whole CPU and timed each other out. A live run touches its lock every minute, so one untouched for
+# 15 minutes is a run that died: it is taken over.
+LOCK = Path(tempfile.gettempdir()) / "cualign-browser-flow.lock"
+LOCK_STALE = 15 * 60
+
+
+def take_lock():
+    t0 = time.monotonic(); said = 0
+    while True:
+        try:
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, f"{os.getpid()} {Path.cwd()}".encode()); os.close(fd)
+            def beat():   # a live run keeps its lock fresh however long it takes
+                while True:
+                    try: os.utime(LOCK)
+                    except FileNotFoundError: return
+                    time.sleep(60)
+            threading.Thread(target=beat, daemon=True).start()
+            print(f"browser_flow 시작 ({int(time.monotonic() - t0)}초 기다림)", flush=True)
+            return
+        except FileExistsError:
+            try:
+                if time.time() - LOCK.stat().st_mtime > LOCK_STALE:
+                    LOCK.unlink(missing_ok=True); continue
+            except FileNotFoundError:
+                continue
+        waited = time.monotonic() - t0
+        if waited > LOCK_STALE:
+            raise SystemExit(f"another browser_flow still holds {LOCK} after {LOCK_STALE // 60} minutes")
+        if waited >= said:
+            print(f"다른 browser_flow 가 끝나기를 기다리는 중 … {int(waited)}초", flush=True); said += 10
+        time.sleep(1)
+
+
 async def main():
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -210,8 +249,11 @@ async def main():
             raise AssertionError("test server did not start")
         async with async_playwright() as pw:
             executable = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE", r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-            browser = await pw.chromium.launch(executable_path=executable, headless=True,
-                args=["--enable-unsafe-swiftshader", "--use-angle=swiftshader"])
+            # the 3D on the machine's GPU (Direct3D 11 through ANGLE), not SwiftShader: software WebGL took whole cores. Playwright's
+            # own --enable-unsafe-swiftshader is dropped too, so a GPU that is not there fails the 3D steps instead of falling
+            # back to the CPU unseen.
+            browser = await pw.chromium.launch(executable_path=executable, headless=True, ignore_default_args=["--enable-unsafe-swiftshader"],
+                args=["--headless=new", "--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"])
             page = await browser.new_page(viewport={"width":1500,"height":1000})
             errors = []
             page.on("pageerror", lambda error: (errors.append(str(error)), print("PAGEERROR:", error, file=sys.stderr)))   # visible when a step times out
@@ -221,12 +263,16 @@ async def main():
             await page.wait_for_function("!document.body.classList.contains('start')")
 
             # Rule-based plan from the sidebar's 조건 tab (no model). The plan on screen is the canvas's data-plan-id;
-            # the cards on the panel top mark it 보는 중 (#111). Helpers read the test hook, not the removed result card.
+            # the right panel's plan picker shows it in one line (#111). Helpers read the test hook, not the removed result card.
             plan_on_screen = "(window.__cualign.state.plan?.plan_id ?? '')"
             async def on_screen():
                 return await page.evaluate(plan_on_screen)
             async def approval():
                 return await page.evaluate("window.__cualign.state.plan?.approval ?? null")
+            async def pick_plan(pid):   # the picker: ▾ opens the list, the row picked goes on screen and the list closes
+                if await page.locator("#planMenu").is_hidden():
+                    await page.locator("#planMore").click()
+                await page.locator(f'#planMenu .plan-row[data-plan="{pid}"]').click()
             # The agent drives the steps (#20). The case opens as the scan: no plan, the strip at 초기 with the rest closed,
             # the 스캔 tab with the facts, and the agent's first word with the sample's prescription as one chip.
             assert not document_has_plan(await page.evaluate("document.body.className"))
@@ -307,7 +353,7 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.progress === 'initial' && !window.__cualign.state.setup", timeout=30000)
             assert await page.evaluate("location.hash") == "#case=poseidon-000097" and await page.evaluate("window.__cualign.state.plan") is None
             assert await page.locator("#tabScan").get_attribute("aria-selected") == "true" and await page.locator("#flow button[data-step=\"setup\"]").is_disabled()
-            assert await page.locator(".trace").count() == 0 and await page.locator(".ipr-label, .extract-mark").count() == 0
+            assert await page.locator(".trace").count() == 0 and await page.locator(".ipr-mark, .extract-mark").count() == 0
             assert await next_chip("이 케이스의 처방 넣기").count() == 1 and await page.locator(".restart-link").count() == 0
             assert await page.locator(".msg.system", has_text="조건이 처방과 다릅니다").count() == 0      # empty conditions on purpose, no warning
             assert await page.evaluate(scan_rx) == [[], False]      # the 스캔 tab clean again: the marks came with the setup, they go with it
@@ -328,7 +374,7 @@ async def main():
             assert "&step=" not in await page.evaluate("location.hash")
             await page.locator('#flow button[data-step="target"]').click()
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.stage === 1")
-            assert await next_chip("단계 만들기").count() == 1 and await next_chip("8개월 안에").count() == 1
+            assert await next_chip("단계 만들기").count() == 1 and await next_chip("12개월 안에").count() == 1
             assert await next_chip("비발치안과 비교").count() == 0      # an extraction prescription: no comparison chip
             # turn 3 (stages): the real tools make the plan; plan_selected lands it on 단계 with the slider
             await next_chip("단계 만들기").click()
@@ -385,7 +431,7 @@ async def main():
             for _ in range(8):
                 await page.mouse.move(960, 300); await page.mouse.down(); await page.mouse.move(960, 300 + px / 8, steps=15)
                 await page.wait_for_timeout(120); await page.mouse.up()      # a still pointer at release: no inertia
-                await page.wait_for_timeout(120)
+                await page.wait_for_timeout(FRAME)
             end = await page.evaluate(cam)
             assert math.dist(start["p"], end["p"]) < 8 and abs(start["d"] - end["d"]) < 1e-3, (start, end)
             await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1260, 500, steps=10); await page.wait_for_timeout(120); await page.mouse.up()
@@ -396,10 +442,10 @@ async def main():
                 return best.id; }"""
             screen_x = "(id) => { const { camera, state } = window.__cualign; return state.center[id].clone().add(state.teeth[id].position).project(camera).x; }"
             for view in ["occlusal", "frontal", "left", "right"]:
-                await page.locator(f'.view-rail [data-view="{view}"]').click(); await page.wait_for_timeout(120)   # project() reads the last frame's camera
+                await page.locator(f'.view-rail [data-view="{view}"]').click(); await page.wait_for_timeout(FRAME)   # project() reads the last frame's camera
                 tooth = await page.evaluate(near); x0 = await page.evaluate(screen_x, tooth)
                 await page.mouse.move(960, 500); await page.mouse.down(); await page.mouse.move(1000, 500, steps=5); await page.wait_for_timeout(120); await page.mouse.up()
-                await page.wait_for_timeout(60)
+                await page.wait_for_timeout(FRAME)
                 assert await page.evaluate(screen_x, tooth) > x0, view
             await page.mouse.dblclick(960, 500)
             await page.wait_for_function("document.querySelector('.view-rail [data-view=\"occlusal\"]').getAttribute('aria-pressed') === 'true'")
@@ -407,11 +453,11 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('step-stages') && document.body.classList.contains('has-plan')", timeout=120000)
             assert await on_screen() == parent
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == parent
-            assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"] .viewing').is_visible()
+            assert await page.locator(f'#planCur .plan-row.current[data-plan="{parent}"]').is_visible()
             assert await page.locator("#stlLink").get_attribute("href") is None
             parent_detail = store_module.STORE.plan_json(parent)
             assert parent_detail["passed"] and parent_detail["review"]["status"] == "passed"      # the server reviewed what the agent did not
-            assert "규칙 통과 · 검토 완료" in await page.locator("#plans .plan-row.current .pill").inner_text()
+            assert "규칙 통과 · 검토 완료" in await page.locator("#planCur .plan-row.current .pill").inner_text()
             assert int(await page.locator("#stageSlider").get_attribute("max")) == parent_detail["info"]["n_stages"]
             await page.locator("#stageSlider").fill(str(parent_detail["info"]["n_stages"]))
             await page.locator("#stageSlider").dispatch_event("input")
@@ -443,13 +489,14 @@ async def main():
             assert any(t.startswith("STL 만드는 중") for t in await page.evaluate("window.__exportTexts"))
             n_stages = store_module.STORE.plan_json(parent)["info"]["n_stages"]
             assert (await page.locator("#stlLink span").inner_text()).startswith(f"STL 내려받기 ({n_stages}단계 · ")
-            assert await page.locator('#plans .plan-row.current .pill').inner_text() == "승인됨"
+            assert await page.locator('#planCur .plan-row.current .pill').inner_text() == "승인됨"
             assert parent in await page.locator("#stlLink").get_attribute("href")
             assert (await page.locator("#exportBtn").text_content()) == "STL 내려받기"
             assert (await page.locator('#rail button[data-go="export"] span').inner_text()) == "STL 받기"
             await (await download.value).save_as(OUT / "approved-stages.zip")
 
-            # Revoke the approval (the 검토 fold under the plan cards) and confirm export gates again.
+            # Revoke the approval (the 검토 fold on the 규칙 tab) and confirm export gates again.
+            await page.locator("#tabRules").click()
             await page.locator("#planReview").evaluate("(el) => { el.open = true; }")
             await page.locator("#revokeBtn").click()
             await page.wait_for_function("!window.__cualign.state.plan?.approval")
@@ -484,15 +531,19 @@ async def main():
             await page.screenshot(path=str(OUT / "revision.png"))
 
             # The decision bar for this revision lets the dentist undo it; revert, then pick the child plan again
-            # with the 보기 button of its card (#111) so the rest of the script continues from it.
+            # from the plan picker's list (#111) so the rest of the script continues from it.
             await page.locator(".decision").last.locator('[data-act="revert"]').click()
             await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=parent)
-            assert await page.locator(f'#plans .plan-row.current[data-plan="{parent}"]').count() == 1
-            await page.locator(f'#plans .plan-row[data-plan="{child}"] button[data-act="view"]').click()
+            assert await page.locator(f'#planCur .plan-row.current[data-plan="{parent}"]').count() == 1
+            # two plans: the picker shows ▾; the list's other row puts it on screen and the 단계 표 head follows
+            assert await page.locator("#planMore").is_visible() and await page.locator("#planMenu").is_hidden()
+            facts_before = await page.locator("#stageFacts").inner_text()
+            await pick_plan(child)
             await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child)
             assert await page.locator("#viewCanvas").get_attribute("data-plan-id") == child
-            assert await page.locator(f'#plans .plan-row.current[data-plan="{child}"] .viewing').is_visible()
-            assert await page.locator(f'#plans .plan-row[data-plan="{parent}"] button[data-act="view"]').is_visible()
+            assert await page.locator(f'#planCur .plan-row.current[data-plan="{child}"]').is_visible()
+            assert await page.locator(f'#planMenu .plan-row[data-plan="{parent}"]').count() == 1 and await page.locator("#planMenu").is_hidden()
+            assert await page.locator("#stageFacts").inner_text() != facts_before, facts_before
             # the sidebar follows the card: its 규칙 tab names the plan on screen
             await page.locator("#tabRules").click()
             assert (await page.locator("#rulesFor").inner_text()).startswith("계획 ")
@@ -507,15 +558,15 @@ async def main():
             selected = await on_screen()
             assert selected != "p999" and selected != child
             assert await page.evaluate("window.__cualign.state.plan.parent_plan_id") == child
-            assert "검토 실패" in await page.locator("#plans .plan-row.current .pill").inner_text()
+            assert "검토 실패" in await page.locator("#planCur .plan-row.current .pill").inner_text()
             assert await page.locator("#cLock").input_value() == "13"
             assert await page.locator("#cExclude").input_value() == "11, 12, 21, 22"      # Universal 7,8,9,10 in FDI (#113)
             assert await page.locator("#exportBtn").is_disabled()
             assert await page.locator("#stlLink").get_attribute("href") is None
             # a comparison turn adds one card per plan it made (an extraction prescription makes one, #56); the selected one is
             # 보는 중. Both lists count: the reload in the flow walk above folded the preview into 지난 계획
-            assert await page.locator("#plans .plan-row").count() >= 3
-            assert await page.locator(f'#plans .plan-row.current[data-plan="{selected}"] .viewing').is_visible()
+            assert await page.locator("#planMenu .plan-row").count() >= 3
+            assert await page.locator(f'#planCur .plan-row.current[data-plan="{selected}"]').is_visible()
             assert await page.locator(".msg.error").last.is_visible()
             decision2 = page.locator(".decision").last
             assert await decision2.is_visible()
@@ -523,12 +574,14 @@ async def main():
             assert await decision2.locator('[data-act="keep"]').count() == 0
             await page.screenshot(path=str(OUT / "review-failure.png"))
 
-            # The dentist asks for the failed review again on the same plan.
+            # The dentist asks for the failed review again on the same plan: the 규칙 tab's fold is open on a failed review.
+            await page.locator("#tabRules").click()
+            assert await page.locator("#planReview").evaluate("(el) => el.open")
             assert await page.locator("#reviewBtn").is_visible()
             await page.locator("#reviewBtn").click()
             await page.wait_for_function("window.__cualign.state.plan?.review?.status === 'passed' && !document.querySelector('#sendBtn').disabled")
             assert await on_screen() == selected
-            assert "검토 완료" in await page.locator("#plans .plan-row.current .pill").inner_text()
+            assert "검토 완료" in await page.locator("#planCur .plan-row.current .pill").inner_text()
             assert await page.locator("#reviewBtn").is_hidden()
             if store_module.STORE.plan_json(selected)["passed"]:
                 assert await page.locator("#exportBtn").is_enabled()
@@ -545,7 +598,7 @@ async def main():
                 await route.fulfill(json=parent_payload)
             await page.route("**/api/plans/" + parent, delayed_parent)
             # the cards' buttons are disabled while a load runs, so the second choice goes through the test hook
-            await page.locator(f'#plans .plan-row[data-plan="{parent}"] button[data-act="view"]').click()
+            await pick_plan(parent)
             await pending.wait()
             await page.evaluate("(p) => { window.__cualign.loadPlan(p).catch(() => {}); }", child)
             await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child)
@@ -560,7 +613,7 @@ async def main():
             await page.reload()
             await page.wait_for_function("!document.body.classList.contains('start')")
             await page.wait_for_function(f"(p) => {plan_on_screen} === p", arg=child, timeout=120000)
-            assert await page.locator(f'#plans .plan-row.current[data-plan="{child}"]').count() == 1
+            assert await page.locator(f'#planCur .plan-row.current[data-plan="{child}"]').count() == 1
             assert await page.locator("#caseName").inner_text() == case_name_before
             assert await page.locator("#stlLink").get_attribute("href") is None   # approval was revoked above
 
@@ -568,15 +621,15 @@ async def main():
             # the same path as 에이전트 없이 계산) adds a plan card and puts that plan on screen.
             await page.locator("#tabCond").click()
             assert await page.locator("#condRecalc").is_disabled()      # the form still matches the plan on screen
-            cards_before = await page.locator("#plans .plan-row").count()
+            cards_before = await page.locator("#planMenu .plan-row").count()
             await page.locator("#cCap").fill("40")
             assert "장수 상한" in await page.locator("#condDiff").inner_text() and "→ 40" in await page.locator("#condDiff").inner_text()
             await page.locator("#condRecalc").click()
             await page.wait_for_function(f"(p) => {plan_on_screen} !== p && !document.body.classList.contains('streaming')", arg=child, timeout=300000)
             recalc = await on_screen()
             assert await page.evaluate("window.__cualign.state.plan.constraints.stage_cap") == 40
-            assert await page.locator("#plans .plan-row").count() >= cards_before + 1      # one card per strategy the rule plan tried
-            assert await page.locator(f'#plans .plan-row.current[data-plan="{recalc}"] .viewing').is_visible()
+            assert await page.locator("#planMenu .plan-row").count() >= cards_before + 1      # one card per strategy the rule plan tried
+            assert await page.locator(f'#planCur .plan-row.current[data-plan="{recalc}"]').is_visible()
             assert "조건을 바꿔 규칙으로 다시 계산했습니다 — 계획 " in await page.locator(".msg.system").last.inner_text() \
                 or "허용 전략 전부 규칙 위반" in await page.locator(".msg.system").last.inner_text()
 
@@ -675,7 +728,7 @@ async def main():
             page.on("request", lambda r: sent.append(r.post_data_json) if r.url.endswith("/api/plan") and r.method == "POST" else None)
             await page.locator("#planFailRetry").click()
             await page.wait_for_function("document.querySelector('#planFail').hidden && document.body.classList.contains('has-plan')", timeout=120000)
-            assert await page.locator("#planList .plan-row").count() >= 1
+            assert await page.locator("#planMenu #planList .plan-row").count() >= 1
             assert sent and sent[-1]["ipr_surfaces"] == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]], sent
             plan131 = await on_screen()
             assert await page.evaluate("window.__cualign.state.plan.strategy") in ("ipr", "expansion_ipr")
@@ -696,7 +749,7 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('has-plan') && document.body.classList.contains('step-stages') && !document.querySelector('#sendBtn').disabled", timeout=120000)
             # IPR faces (#22): an IPR plan of this case cuts crowns (000131 prescribes IPR on the anterior; the fallback's
             # chosen plan is 확장, so pick one of the case's plans the server cuts). In the stages the cut teeth carry the cut
-            # geometry with their planes blue and the legend says IPR 면; 초기 shows the scan's crowns again
+            # geometry, their planes in the crown's own colour (blue only in 셋업); 초기 shows the scan's crowns again
             ipr_plan = await page.evaluate(FIND_CUT_PLAN)
             assert ipr_plan, "no plan of 000131 with teeth_cut"
             await page.evaluate(f"window.__cualign.loadPlan('{ipr_plan}')")
@@ -704,8 +757,7 @@ async def main():
             cut_set = f"window.__cualign.state.cutSets['plan:{ipr_plan}']"
             cut_ids = await page.evaluate(f"Object.keys({cut_set} ?? {{}})")
             assert cut_ids and await page.evaluate("window.__cualign.cutKeyNow()") == f"plan:{ipr_plan}", cut_ids
-            assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => window.__cualign.state.teeth[id].geometry === c.geo && window.__cualign.state.teeth[id].userData.cutMesh.visible && c.faces.index.count > 0)")
-            assert await page.locator('.legend [data-key="ipr_face"]').is_visible()
+            assert await page.evaluate(f"Object.entries({cut_set}).every(([id, c]) => {{ const m = window.__cualign.state.teeth[id]; return m.geometry === c.geo && m.userData.cutMesh.visible && m.userData.cutMesh.material === m.material && c.faces.index.count > 0; }})")
             await page.locator('#flow button[data-step="initial"]').click()
             assert await page.evaluate("Object.values(window.__cualign.state.teeth).every((m) => m.geometry === m.userData.full && !m.userData.cutMesh.visible)")
             await page.locator('#flow button[data-step="stages"]').click()
@@ -757,7 +809,7 @@ async def main():
             await page.locator("#skipBtn").click()
             await page.wait_for_selector(".msg.system:has-text('건너뛰었습니다')")      # the retry bar hides before the 404 comes back
             assert await page.locator("body").evaluate("b => b.classList.contains('step-stages')") and await page.evaluate("document.querySelector('#retryBar').hidden")
-            assert "건너뜀" in await page.locator("#plans .plan-row.current .pill").inner_text()
+            assert "건너뜀" in await page.locator("#planCur .plan-row.current .pill").inner_text()
             assert await page.locator(".msg.system", has_text="건너뛰었습니다").count() == 1
             await page.unroute("**/api/cases/poseidon-000131/replay")
             # the five recorded steps (#20 contract; the route is shaped here until the server knows these names): each
@@ -785,7 +837,12 @@ async def main():
             # the per-contact prescription (#57): the 조건 tab shows it in FDI, the 3D marks exactly those three contacts,
             # and the patch carries it back in FDI
             assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"
-            assert await page.locator(".ipr-mark").count() == 3
+            await page.wait_for_function("document.querySelectorAll('.ipr-mark').length === 3", timeout=5000)   # a CSS2D mark enters the page on the next drawn frame
+            # IPR marks by step (ipr-view-check): 셋업 has the dot and its mm per prescribed contact and the cut planes blue;
+            # 목표 has neither (the crowns stay cut, the planes in the crown's colour)
+            blue = "Object.values(window.__cualign.state.teeth).filter((m) => m.userData.cutMesh.visible && m.userData.cutMesh.material !== m.material).length"
+            await page.wait_for_function(f"{blue} > 0", timeout=30000)
+            assert await page.locator(".ipr-mark .ipr-mm").all_inner_texts() == ["0.40"] * 3
             assert await page.evaluate("window.__cualign.readConstraints().ipr_surfaces") == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]]
             # the recorded setup tells the same lines a live setup does, in the same order, from the recording's values
             # (the lines follow the landing, which may still be fetching after the recorded bubble shows)
@@ -800,10 +857,11 @@ async def main():
                 "확장 + IPR 전략으로 목표 배열을 만듭니다.", "확보 4.4 mm 로 총생 4.2 mm 를 해결했습니다."]
             assert await page.locator("body").evaluate("b => b.classList.contains('step-target')") and await page.evaluate("window.__cualign.state.targetId") == "t-fake"
             assert await next_chip("비발치안과 비교").count() == 1      # 000131 is a non-extraction case
+            assert await page.locator(".ipr-mark, .ipr-mm").count() == 0 and await page.evaluate(blue) == 0
             await next_chip("단계 만들기").click()
             await skip_turn(3)
             await page.wait_for_function(f"document.body.classList.contains('step-stages') && {plan_on_screen} === '{before_skip}' && !window.__cualign.state.loading", timeout=60000)   # the plan (and its cut, #22) load after the recorded bubble
-            await page.locator("#chatInput").fill("8개월 안에 끝나게 다시 짜줘."); await page.locator("#sendBtn").click()
+            await page.locator("#chatInput").fill("12개월 안에 끝나게 다시 짜줘."); await page.locator("#sendBtn").click()
             await skip_turn(4)
             await page.locator("#chatInput").fill("확장안이랑 IPR안 둘 다 만들어서 비교해줘."); await page.locator("#sendBtn").click()
             await skip_turn(5)
@@ -829,6 +887,21 @@ async def main():
             await page.wait_for_function("'target:t-fake' in window.__cualign.state.cutSets", timeout=60000)
             await page.unroute("**/api/cases/poseidon-000097/activate")
 
+            # 단계가 자라난다 (stage-grow.js): the stage tool's start event lays the target as a ghost and the chip says
+            # 단계 나누는 중; the landing lifts the ghost and leaves the slider at 0 (here the replay's landing, with no plan)
+            async def stage_tool_start(route):
+                ev = {"id": "sg1", "name": "cualign__plan_stages", "payload": '**Function Input:**\n```json\n{"strategy": "extraction"}\n```'}
+                await route.fulfill(status=200, headers={"Content-Type": "text/event-stream"}, body="intermediate_data: " + json.dumps(ev) + "\n\n")
+            await page.route("**/chat/stream", stage_tool_start)
+            await page.locator("#chatInput").fill("단계를 만들어 줘"); await page.locator("#sendBtn").click()
+            await page.wait_for_function("window.__stageGrow.running", timeout=10000)
+            await page.wait_for_timeout(500)
+            assert await page.evaluate("window.__stageGrow.ghostShown") and "단계 나누는 중" in await page.locator("#workNote").inner_text()
+            await page.wait_for_function("!window.__stageGrow.running", timeout=10000)   # the turn ended with no plan: put back
+            await page.unroute("**/chat/stream")
+            assert await page.evaluate("window.__stageGrow.play()") is True
+            assert not await page.evaluate("window.__stageGrow.ghostShown") and await page.locator("#stageSlider").input_value() == "0"
+
             # No WebGL (Chromium --disable-3d-apis): the 3D area shows the card and the rest works — the case opens,
             # the steps reach a plan, ▶ plays the stages, and the export popover approves it
             no3d = await pw.chromium.launch(executable_path=executable, headless=True, args=["--disable-3d-apis"])
@@ -848,6 +921,7 @@ async def main():
                 await page.locator("#playBtn").click()
                 assert await page.locator("#playBtn").get_attribute("aria-pressed") == "false"
                 if await page.evaluate("!!window.__cualign.state.plan?.approval"):      # approved above: revoke, so this run approves it itself
+                    await page.locator("#tabRules").click()
                     await page.locator("#planReview").evaluate("(el) => { el.open = true; }")
                     await page.locator("#revokeBtn").click()
                     await page.wait_for_function("!window.__cualign.state.plan?.approval")
@@ -930,4 +1004,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    take_lock()
+    try:
+        asyncio.run(main())
+    finally:
+        LOCK.unlink(missing_ok=True)

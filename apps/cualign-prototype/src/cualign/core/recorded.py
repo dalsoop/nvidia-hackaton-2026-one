@@ -19,13 +19,13 @@ STEPS = ("setup", "target", "stages", "cap", "compare")
 ALIASES = {"plan": "stages"}   # the name before the step flow (.report/12-replay.md)
 # setup = the sample card sentence (the prescription); the rest as the screen's chips send them (app.js nextChips)
 REQUESTS = {"target": "이 조건으로 목표 배열을 만들어줘.", "stages": "이 목표로 단계를 만들어줘.",
-            "cap": "8개월 안에 끝나게 단계를 만들어줘.", "compare": "확장안이랑 IPR안 둘 다 만들어서 비교해줘."}
+            "cap": "12개월 안에 끝나게 단계를 만들어줘.", "compare": "확장안이랑 IPR안 둘 다 만들어서 비교해줘."}
 TURN_STEP = {"setup": "setup", "target": "target", "stages": "stages", "cap": "stages", "compare": "stages"}   # the turn's step field
 FIELDS = ("step", "request", "constraints", "answer_md", "review", "recorded_at", "model")
 NO_RECORDING = "녹화된 답이 없습니다"
 STRATEGY_KO = {"expansion_ipr": "확장 + IPR", "expansion": "확장", "ipr": "IPR", "extraction": "발치"}   # longest first
 STEP_KO = {"setup": "셋업", "target": "목표 배열", "stages": "단계", "cap": "기간 상한", "compare": "비교"}
-# "20단계(약 4.6개월)" in an answer line; the 조건 line's "단계 상한 35단계(약 8.1개월)" is the dentist's cap, left alone
+# "20단계(약 9.2개월)" in an answer line; the 조건 line's "단계 상한 26단계(약 12.0개월)" is the dentist's cap, left alone
 STAGES_RE = re.compile(r"(?<!상한 )(?<!\d)(\d+)단계\(약 ([\d.]+)개월\)")
 
 

@@ -4,23 +4,23 @@ status: prd
 sources:
   - "PRD §6 조건 확인·유지: 이미 받은 조건을 반복 질문하지 않는다"
   - "static/app.js activateCase: 인사말이 발치 허용·기간 상한을 묻는다"
-  - "configs/workflow.yml: stage_cap = round(months*30.4/7)"
+  - "configs/workflow.yml: stage_cap = round(months*30.4/14)"
   - "E2 (arXiv 2601.12974) 조건 누락/완비 짝 실험 → A03 과 짝"
 turns:
   - "발치는 안 되고, 기간은 12개월 안이요."
 paired_with: A03
 expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
   refuses_extraction: true
-  stage_cap: 52
+  stage_cap: 26
   lock: []
 checks:
   - {id: A02-no-reask, type: no_ask_about, turn: 0, severity: S1}
   - {id: A02-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
   - {id: A02-extraction-off, type: constraint_equals, turn: 0, name: [plan_stages, validate], field: allow_extraction, value: false, severity: S1}
-  - {id: A02-cap, type: constraint_equals, turn: 0, name: [plan_stages, validate], field: stage_cap, value: 52, severity: S1}
+  - {id: A02-cap, type: constraint_equals, turn: 0, name: [plan_stages, validate], field: stage_cap, value: 26, severity: S1}
   - {id: A02-states-constraints, type: states_constraints, turn: 0, severity: S1}
   - {id: A02-weeks, type: stage_unit, turn: all, severity: S1}
   - {id: A02-reviewer, type: tool_count, turn: 0, name: reviewer, min: 1, severity: S1}
   - {id: A02-plan, type: answer_mentions_plans, turn: 0, min: 1, severity: S1}
   - {id: A02-disclaimer, type: disclaimer, turn: 0, severity: S1}
-notes: 인사말이 이미 물었으므로 첫 사용자 턴이 답이다. 12개월 → 52단계, 발치 허용 아니요.
+notes: 인사말이 이미 물었으므로 첫 사용자 턴이 답이다. 12개월 → 26단계, 발치 허용 아니요.
