@@ -587,10 +587,12 @@ def test_states_constraints(answer, cons, ok):
 
 
 def test_runner_mirrors_the_ui_request():
-    """The golden runner sends what static/app.js sends; if the UI greeting or form wording drifts, this fails."""
+    """The golden runner sends what the screen sends; if the UI greeting or form wording drifts, this fails. The screen is
+    app.js and its modules (send in turns.js, the form in state.js / conditions.js), so this reads them all as one text."""
     from evals.golden_a.runner import form_patch, ui_greeting
     from cualign.core.constraints import ConstraintPatch, Constraints
-    app = (Path(__file__).resolve().parents[1] / "src/cualign/server/static/app.js").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "src/cualign/server/static"
+    app = "\n".join(p.read_text(encoding="utf-8") for p in sorted(static.glob("*.js")))
     # the case line and the agent's first word, joined into the one assistant message the model sees (#90, #20)
     fixed = ("계획을 시작하려면 제약을 알려 주세요.", "처방을 적어 주세요.")
     assert "를 불러왔습니다. ` +" in app and all(f in app for f in fixed) and 'content: text + " " + ask' in app
