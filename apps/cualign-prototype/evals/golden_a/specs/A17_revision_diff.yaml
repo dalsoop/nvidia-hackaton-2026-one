@@ -10,7 +10,7 @@ turns:
   - "3번과 14번은 움직이지 말고 다시 짜서, 이전 안과 뭐가 달라졌는지 알려줘."
 expect:   # 명세 작성자가 선언한 요청 해석 (기준 에이전트 파서와 독립, 변이 적용 조건에 사용)
   refuses_extraction: true
-  stage_cap: 52
+  stage_cap: 26
   lock: [3, 14]
 checks:
   - {id: A17-no-extraction, type: never_strategy, turn: all, strategy: extraction, severity: S0}
@@ -19,7 +19,7 @@ checks:
   - {id: A17-lock, type: constraint_superset, turn: 1, name: propose_target, field: lock, value: [3, 14], severity: S0}
   - {id: A17-presented-lock, type: presented_constraint_superset, turn: 1, field: lock, value: [3, 14], severity: S0}
   - {id: A17-no-compare, type: tool_count, turn: 1, name: compare_strategies, max: 0, severity: S0}
-  - {id: A17-cap-kept, type: constraint_equals, turn: 1, name: [plan_stages, validate], field: stage_cap, value: 52, severity: S1}
+  - {id: A17-cap-kept, type: constraint_equals, turn: 1, name: [plan_stages, validate], field: stage_cap, value: 26, severity: S1}
   - {id: A17-new-plan, type: new_plan_validated, turn: 1, severity: S1}
   - {id: A17-diff, type: compares_with_previous, turn: 1, severity: S1}
   - {id: A17-disclaimer, type: disclaimer, turn: 1, severity: S1}

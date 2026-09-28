@@ -358,8 +358,8 @@
           <label>IPR 제외 치아 <input id="cExclude" placeholder="예: 11, 12, 21, 22"><small class="hint">지정한 치아의 접촉면은 치간 삭제에서 뺍니다.</small><small class="err" hidden></small></label>
           <label>면당 IPR 한도 · mm <input id="cIpr" type="number" min="0" max="0.25" step="0.01" value="0.25" placeholder="0.25 이하"><small class="hint">치아 한 면당 최대 치간 삭제량 (0.25 mm 이하)</small><small class="err" hidden></small></label>
           <label>장수 상한 <input id="cCap" type="number" min="1" step="1" placeholder="빈칸이면 없음"><small class="hint">빈칸이면 상한 없이 필요한 만큼 단계를 만듭니다.</small><small class="err" hidden></small></label>
-          <!-- 기간 ↔ 단계 상한: 한쪽을 적으면 다른 쪽이 따라 바뀐다 (stage_cap = round(months × 30.4 / 7), 서버 limits.py 와 같은 식). 서버엔 stage_cap 만 간다 -->
-          <label>기간 · 개월 <input id="cMonths" type="number" min="0.5" step="0.1" placeholder="빈칸이면 없음"><small class="hint">적으면 장수 상한이 따라 바뀝니다 (한 장 7일).</small></label>
+          <!-- 기간 ↔ 단계 상한: 한쪽을 적으면 다른 쪽이 따라 바뀐다 (stage_cap = round(months × 30.4 / 14), 서버 limits.py 와 같은 식). 서버엔 stage_cap 만 간다 -->
+          <label>기간 · 개월 <input id="cMonths" type="number" min="0.5" step="0.1" placeholder="빈칸이면 없음"><small class="hint">적으면 장수 상한이 따라 바뀝니다 (한 장 14일).</small></label>
           <label>이동 순서 <select id="cOrder"><option value="simultaneous">동시</option><option value="anterior_first">앞니 먼저</option><option value="sequential">순차</option></select><small class="hint">치아들이 움직이기 시작하는 순서입니다.</small></label>
         </fieldset>
         <p id="condState" class="cond-state" aria-live="polite"></p>

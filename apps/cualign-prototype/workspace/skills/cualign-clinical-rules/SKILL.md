@@ -18,7 +18,7 @@ description: Validate and stage clear-aligner (투명교정) treatment plans aga
 |---|---|---|
 | Linear movement per aligner | 0.25 mm | hard limit for `plan_stages` |
 | Angular / rotational movement per aligner | 1° / 2° | rotation (2°) enforced for incisor derotation; angulation/torque not supported |
-| Wear period per aligner | 7 days | months = n_stages * 7 / 30.4 |
+| Wear period per aligner | 14 days | months = n_stages * 14 / 30.4 |
 | IPR per surface | user limit 0..0.25 mm | PoC space calculation cap; not a patient-specific clinical recommendation |
 | Unilateral arch expansion | max 2 mm | stage the expansion if over 1 mm |
 | Extraction threshold | space deficit over 8 mm | consider only if the user allows extraction |
@@ -28,9 +28,9 @@ description: Validate and stage clear-aligner (투명교정) treatment plans aga
 1. Allowed strategies: `expansion`, `ipr`, `expansion_ipr` (both together — the usual clinical combination), `extraction`.
 2. Extraction is the dentist's prescription (#56). If the request forbids extraction ("발치 없이", "발치는 절대 안 돼"), set extraction=[] and never call `propose_target` with `extraction`. If it names the teeth ("14번과 24번 발치" — the dentist speaks FDI), set extraction to them converted to Universal ([5, 12]; only premolars FDI 14, 15, 24, 25 = Universal 5, 4, 12, 13 are supported) and plan the extraction strategy only. If extraction is wanted without teeth, ask which teeth — never pick them. Comparison does not change this constraint.
 3. Default order when nothing is specified: `expansion` → `ipr` → `expansion_ipr` (extraction only when prescribed, and then alone). Each strategy gains a different amount of space; if the gain does not cover the crowding, `plan_stages` reports `space_deficit` and you move to the next strategy.
-4. Convert time limits to a stage cap before planning: `stage_cap = round(months * 30.4 / 7)`. "12개월" → 52, "10개월" → 43, "8개월" → 34.
+4. Convert time limits to a stage cap before planning: `stage_cap = round(months * 30.4 / 14)`. "12개월" → 26, "10개월" → 22, "8개월" → 17.
 5. After `plan_stages` reports a failure, switch to the next allowed strategy and rerun `propose_target → plan_stages`. `plan_stages` already validates; `validate` only re-checks an existing plan. Stop when `passed` is true or all allowed strategies are exhausted.
-6. When every allowed strategy fails, report the plan with the fewest violations and state plainly which constraint would have to be relaxed (e.g. "발치 없이는 8개월이 안 됩니다. 10개월이면 IPR 42장으로 됩니다"). Do not soften this.
+6. When every allowed strategy fails, report the plan with the fewest violations and state plainly which constraint would have to be relaxed (e.g. "발치 없이는 8개월이 안 됩니다. 20개월이면 IPR 42장으로 됩니다"). Do not soften this.
 
 ## Tool sequence (NeMo Agent Toolkit function group `cualign`)
 

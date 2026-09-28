@@ -20,7 +20,7 @@ PLAN_ANSWER = ("**발치 전략으로 99단계(약 9.9개월) 계획을 만들�
                "- 조건: 발치 치아 14, 24번 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 없음 · 이동 순서 동시\n"
                "- 검토: 통과, 단계당 이동량 0.245mm\n\n이 계획은 초안입니다. 최종 판단은 의사가 합니다.")
 CAP_ANSWER = ("**발치 전략으로 99단계(약 9.9개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.\n\n"
-              "- 조건: 발치 치아 14, 24번 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 35단계(약 8.1개월) · 이동 순서 동시\n"
+              "- 조건: 발치 치아 14, 24번 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 17단계(약 7.8개월) · 이동 순서 동시\n"
               "- 검토: 통과\n\n이 계획은 초안입니다. 최종 판단은 의사가 합니다.")
 
 
@@ -53,34 +53,34 @@ def test_recording_schema_is_checked(tmp_path, monkeypatch):
 
 
 def test_numbers_follow_the_recomputed_plans():
-    plans = {"extraction": {"n_stages": 20, "months": 4.6}, "expansion": {"n_stages": 9, "months": 2.1}}
+    plans = {"extraction": {"n_stages": 20, "months": 9.2}, "expansion": {"n_stages": 9, "months": 4.1}}
     out = recorded.substitute(PLAN_ANSWER, plans, plans["extraction"])
-    assert out.startswith("**발치 전략으로 20단계(약 4.6개월) 계획을 만들었습니다.**")
+    assert out.startswith("**발치 전략으로 20단계(약 9.2개월) 계획을 만들었습니다.**")
     out = recorded.substitute(CAP_ANSWER, plans, plans["extraction"])
-    assert "20단계(약 4.6개월) 계획" in out and "단계 상한 35단계(약 8.1개월)" in out   # the dentist's cap is not a plan figure
+    assert "20단계(약 9.2개월) 계획" in out and "단계 상한 17단계(약 7.8개월)" in out   # the dentist's cap is not a plan figure
     compare = "**확장 전략: 99단계(약 9.9개월) · 통과**\n**발치 전략: 99단계(약 9.9개월) · 통과**\n- 비발치 조건은 그대로입니다."
     out = recorded.substitute(compare, plans, plans["extraction"])
-    assert out.splitlines()[0] == "**확장 전략: 9단계(약 2.1개월) · 통과**" and out.splitlines()[1] == "**발치 전략: 20단계(약 4.6개월) · 통과**"
+    assert out.splitlines()[0] == "**확장 전략: 9단계(약 4.1개월) · 통과**" and out.splitlines()[1] == "**발치 전략: 20단계(약 9.2개월) · 통과**"
     assert recorded.strategy_in("비발치로 12단계") is None and recorded.strategy_in("확장 + IPR 전략") == "expansion_ipr"
     # a strategy that was not recomputed keeps its recorded figures, and the chosen plan is the bold summary's (000131:
     # the model wrote 확장 for 확장 + IPR; the IPR plan's 9 made 「확장 전략: 10단계」 read as a tie with IPR's 9)
-    rec131 = ("확장 전략: 10단계(약 2.3개월) · 통과\nIPR 전략: 9단계(약 2.1개월) · 통과\nIPR 전략을 선택했습니다.\n\n"
-              "**IPR 전략으로 9단계(약 2.1개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.")
-    plans = {"expansion_ipr": {"n_stages": 10, "months": 2.3}, "ipr": {"n_stages": 8, "months": 1.8}}
+    rec131 = ("확장 전략: 10단계(약 4.6개월) · 통과\nIPR 전략: 9단계(약 4.1개월) · 통과\nIPR 전략을 선택했습니다.\n\n"
+              "**IPR 전략으로 9단계(약 4.1개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.")
+    plans = {"expansion_ipr": {"n_stages": 10, "months": 4.6}, "ipr": {"n_stages": 8, "months": 3.7}}
     out = recorded.substitute(rec131, plans, plans["ipr"]).splitlines()
-    assert out[0] == "확장 전략: 10단계(약 2.3개월) · 통과" and out[1] == "IPR 전략: 8단계(약 1.8개월) · 통과"
-    assert out[4].startswith("**IPR 전략으로 8단계(약 1.8개월) 계획을")
+    assert out[0] == "확장 전략: 10단계(약 4.6개월) · 통과" and out[1] == "IPR 전략: 8단계(약 3.7개월) · 통과"
+    assert out[4].startswith("**IPR 전략으로 8단계(약 3.7개월) 계획을")
     assert recorded.selected_strategy(rec131) == "ipr" and recorded.selected_strategy(compare) == "expansion"
     assert recorded.selected_strategy(PLAN_ANSWER) == "extraction" and recorded.selected_strategy("") is None
     # the summary sentence without bold, after 「선택된 안:」 (a comparison recorded in this form on 2026-09-28)
-    plain = "확장: 10단계(약 2.3개월) · 통과\nIPR: 9단계(약 2.1개월) · 통과\n선택된 안: IPR 전략으로 9단계(약 2.1개월) 계획을 만들었습니다."
+    plain = "확장: 10단계(약 4.6개월) · 통과\nIPR: 9단계(약 4.1개월) · 통과\n선택된 안: IPR 전략으로 9단계(약 4.1개월) 계획을 만들었습니다."
     assert recorded.selected_strategy(plain) == "ipr"
 
 
 def test_replay_matches_plans_and_activate_and_tells_the_next_turn(client):
     cid = "poseidon-000097"
     _record(cid, "stages", PLAN_ANSWER, {"extraction": [5, 12]})
-    _record(cid, "cap", CAP_ANSWER, {"stage_cap": 35})
+    _record(cid, "cap", CAP_ANSWER, {"stage_cap": 17})
     opened = client.post(f"/api/cases/{cid}/activate").json()
     client.post("/api/plan", json={"case_id": cid})                          # the fallback's plan stands in for the screen's plan
     shown = client.get(f"/api/plans?case_id={cid}").json()["plans"][0]
@@ -107,8 +107,8 @@ def test_replay_matches_plans_and_activate_and_tells_the_next_turn(client):
     r = client.post(f"/api/cases/{cid}/replay", json={"step": "cap", "base_plan_id": sel["plan_id"]})
     assert r.status_code == 200
     cap = client.get(f"/api/plans/{r.json()['plan_selected']['plan_id']}").json()
-    assert cap["constraints"]["stage_cap"] == 35 and cap["parent_plan_id"] == sel["plan_id"] and cap["constraints"]["extraction"] == [5, 12]
-    assert "단계 상한 35단계(약 8.1개월)" in r.json()["answer_md"]
+    assert cap["constraints"]["stage_cap"] == 17 and cap["parent_plan_id"] == sel["plan_id"] and cap["constraints"]["extraction"] == [5, 12]
+    assert "단계 상한 17단계(약 7.8개월)" in r.json()["answer_md"]
     assert opened["case_id"] == cid
 
 
@@ -147,7 +147,7 @@ def test_shipped_recordings_are_valid(case_id):
 
 def test_reopening_a_case_starts_from_the_prescription_and_names_the_active_plan(client):
     """Answer-polish (8): a replayed (or planned) stage cap stayed at the case level, so opening the case again showed
-    «조건이 처방과 다릅니다» and a 35-stage cap on the 조건 tab. Rule: the case keeps the prescription only (extraction,
+    «조건이 처방과 다릅니다» and a 17-stage cap on the 조건 tab. Rule: the case keeps the prescription only (extraction,
     lock, IPR exclusions, IPR limit); a stage cap and the move order belong to the plan they were made for and reach the
     next turn through base_plan_id. Opening reports the prescription as `constraints` and the newest plan's own
     conditions as `active_plan`, and makes no new plan."""
@@ -155,18 +155,18 @@ def test_reopening_a_case_starts_from_the_prescription_and_names_the_active_plan
     cid = "poseidon-000097"
     prescription = SAMPLES[cid].initial_constraints().model_dump(mode="json")
     _record(cid, "stages", PLAN_ANSWER, {"extraction": [5, 12]})
-    _record(cid, "cap", CAP_ANSWER, {"stage_cap": 35})
+    _record(cid, "cap", CAP_ANSWER, {"stage_cap": 17})
     client.post(f"/api/cases/{cid}/activate")
     n_plans = len(client.get(f"/api/plans?case_id={cid}").json()["plans"])
     plan = client.post(f"/api/cases/{cid}/replay", json={"step": "stages"}).json()["plan_selected"]["plan_id"]
     cap = client.post(f"/api/cases/{cid}/replay", json={"step": "cap", "base_plan_id": plan}).json()["plan_selected"]["plan_id"]
-    assert client.get(f"/api/plans/{cap}").json()["constraints"]["stage_cap"] == 35     # the cap is on the plan
+    assert client.get(f"/api/plans/{cap}").json()["constraints"]["stage_cap"] == 17     # the cap is on the plan
     opened = client.post(f"/api/cases/{cid}/activate").json()
     assert opened["constraints"] == prescription                                        # the case shows its prescription: no warning
     assert opened["active_plan"] == {"plan_id": cap, "constraints": client.get(f"/api/plans/{cap}").json()["constraints"]}
     assert len(client.get(f"/api/plans?case_id={cid}").json()["plans"]) == n_plans + 2  # no twin preview
     # the next turn from the capped plan still carries the cap; a turn from the case does not
-    assert api.STORE.constraints_for(cid, cap).stage_cap == 35 and api.STORE.constraints_for(cid).stage_cap is None
+    assert api.STORE.constraints_for(cid, cap).stage_cap == 17 and api.STORE.constraints_for(cid).stage_cap is None
     # a rule plan under a cap (POST /api/plan) leaves the same trace, and opening clears it the same way
     r = client.post("/api/plan", json={"case_id": cid, "stage_cap": 30, "parent_plan_id": cap})
     assert r.status_code == 200 and api.STORE.constraints_for(cid).stage_cap == 30

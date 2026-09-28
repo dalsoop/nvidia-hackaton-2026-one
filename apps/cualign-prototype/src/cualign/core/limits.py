@@ -11,7 +11,7 @@ MAX_ROTATION_PER_ALIGNER = 2.0  # deg about the crown's vertical axis (staged an
 IPR_PER_SURFACE = 0.25          # mm
 MAX_EXPANSION_PER_SIDE = 2.0    # mm
 EXTRACTION_THRESHOLD_MM = 8.0   # mm of space deficit
-WEAR_DAYS = 7                   # days per aligner
+WEAR_DAYS = 14                  # days per aligner
 DAYS_PER_MONTH = 30.4
 
 STRATEGIES = ("expansion", "ipr", "expansion_ipr", "extraction")
@@ -24,7 +24,7 @@ ANTERIOR = {6, 7, 8, 9, 10, 11}   # canine to canine
 
 
 def stage_cap_from_months(months: float) -> int:
-    """'12개월' -> 52 aligners. Same formula the SKILL.md teaches the agent."""
+    """'12개월' -> 26 aligners. Same formula the SKILL.md teaches the agent."""
     return int(round(months * DAYS_PER_MONTH / WEAR_DAYS))
 
 
