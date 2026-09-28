@@ -3,18 +3,16 @@
 ## 이어서 할 일
 > 2026-09-28 세션 종료 시 기록
 
-- #90 통합 이슈를 닫는다 — 오늘 갈래(#120~#149)가 전부 main. 보류 3건(스캔 경계 잇몸 트림, mesh 응답에서 원본 `gum` 제거, 앞니 밖 고유 회전 측정기 중단)을 닫기 댓글에 옮긴다.
-- #75(규칙 폴백 버튼 자리)·#72(샘플 처방 계획 검증)를 확인해 닫는다 — 각각 #127·#148, #57(#143)로 해소.
-- Orca 워크트리 4개(core-target·screen-v2·server-policy·screen-start)를 거둔다 — 브랜치 전부 머지됨. `~/projects/nvidia-hackaton-2026-one-wt/` 아래 5개(fdi·case-list·case-list-api·fast-tests·screen-flow-2)는 이전 세션 것이라 브랜치 머지 여부를 `git branch --merged main` 으로 보고 거둔다.
-- PR #145(`/ui/v2`, dalsoop 다른 세션)와 #148 새 흐름 UI 의 겹침을 그 세션에서 판정한다.
-- 429 가 잦아들면 `tests/nim_record_samples.py poseidon-000097 --only cap` 한 번 — 「상한 안이라 그대로」 문장이 든 답으로 교체(현재 녹화도 계획·조건은 정확).
+- 제출물 논의부터 시작한다 — 다음 세션은 제출 양식·스크린샷·문서 이야기(사용자 예고). 화면 장면 목록은 `apps/cualign-prototype/docs/demo/README.md`.
+- 시연 전 8000 을 깨끗이 띄우려면 `apps/cualign-prototype/out/` 을 비우고 main 체크아웃에서 `uv run --frozen python -m cualign.cli serve --port 8000` (E2E 중 만든 케이스 5건이 목록에 남아 있다).
+- 계산 코어 후속(제출 뒤): 우클릭 IPR 의 면별 양을 플래너가 계획에 반영(지금은 셋업 절삭 표시·서버 조건까지만, PR #194 「못 한 것」).
 
 ### 현재 상태 / 주의점
-- 커밋: main `f21b730`(#149) push 됨. 미커밋 잔여 없음. 오늘 머지 PR: #120 #123 #124 #125 #127 #128 #130 #131~#144 #146~#149.
-- 열린 PR: #94(seo077, OpenShell 문서) · #145(dalsoop `/ui/v2`) — 이 세션 갈래 아님.
-- 시연 기준 000097 「심한 덧니」: 27단계·약 6.2개월(순서 조정 스테이징 #144, 사용자가 단계 증가 수용), 녹화 5 step 전부 있음(#147). 시연 흐름: 케이스 열기(스캔만) → 「이 케이스의 처방 넣기」 칩 → 셋업 → 목표 → 단계 → 8개월 안에/비교 → 승인·내보내기, 각 턴 8초 뒤 「건너뛰기」.
-- 계약 정본은 세션 보고에 있다: `orca/workspaces/…/server-policy/.report/15-step-flow.md`(step·step_done·targets·replay·export-status·PLANNER_VERSION), `core-target/apps/cualign-prototype/.report/8-ipr-cut.md`(mesh `teeth_cut`·`ipr_cut`), `12-ipr-surfaces.md`(`ipr_surfaces` FDI 입력·Universal 저장), `14-two-phase.md`(`phase_boundary`·`delays`). 워크트리를 거두기 전에 필요한 것은 `apps/cualign-prototype/docs/` 로 옮긴다.
-- 저장 계획(`apps/cualign-prototype/out/plans`)은 계산 코어 지문이 다르면 샘플은 자동 폐기(#146). 8000 데모 서버는 main 체크아웃에서 `uv run --frozen python -m cualign.cli serve --port 8000`.
-- `tests/browser_flow.py` 는 다른 무거운 실행과 겹치면 30초 대기가 초과된다 — 단독 실행. 실행은 `uv run --frozen --with playwright --with pytest python tests/browser_flow.py`(pytest 없으면 import 오류).
-- NIM 키를 여러 세션이 동시에 쓰면 429 폭주로 후속 카드 null·검토 timeout — 시연 전엔 다른 세션의 NIM 호출을 멈춘다.
+- 커밋: main `bee3b6b` push 됨, main CI 통과. 열린 PR 은 #145(`/ui/v2`, 예선 후) 하나. 미커밋 잔여 1: `apps/cualign-prototype/workspace/skills/skillspector-report-static.md`(생성 보고서가 재스캔됨 — 커밋하지 않음).
+- 오늘 들어간 것: #164~#218 — 직접 이동, 추론 스트림(37초 침묵 해소), 모듈화(app.js → 모듈 12개, 각 600줄 이하), 한 장 14일 환산·「12개월 안에」 칩, 통합 묶음 PR 방식(#203·#214). 병렬 세션 운영 규칙은 `apps/cualign-prototype/docs/parallel-work.md`.
+- 시연 흐름(000097): 처방 칩 → 셋업(스캔 연출) → 목표(치열궁 연출) → 단계(자라나는 연출, 착지는 마지막 단계) → 「12개월 안에」는 27 > 26 으로 best_failed 장면(의도) → 비교 → 승인·내보내기. 「건너뛰기」는 에이전트를 실제로 끊고 녹화 답을 10 ms 안에 표시.
+- 실 NIM 검증은 사용자 E2E(000097 완료, 000001 일부)뿐. 세션 검증은 가짜 스트림. 「모델이 계획 대신 추론문만 돌려보냄」 오류가 간헐적으로 남(녹화 답으로 대체됨).
+- NVIDIA 양식(SOUL/AGENTS/TOOLS/USER/HEARTBEAT/skills)은 `apps/cualign-prototype/workspace/` 에 있음(#89). `memory/` 폴더 대신 `MEMORY.md` 파일 — 심사 기준이 폴더면 빈 `memory/` 추가.
+- 헤드리스 브라우저 검증은 GPU(d3d11)로 돈다(#196). SwiftShader 로 돌리면 CPU 100%.
+- Orca 워크트리·세션은 전부 거뒀다. 8000 은 main 체크아웃에서 실행 중(세션 종료 시 프로세스는 남음).
 - 문서 위생 검사기(`scripts/doc_drift_check.py`)·`ROADMAP.md` 없음 — 해당 없음.
