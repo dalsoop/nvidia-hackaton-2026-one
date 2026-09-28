@@ -726,13 +726,10 @@ async def main():
                 await page.wait_for_function("!document.body.classList.contains('start') && window.__cualign.state.activeCase === 'poseidon-000097' && !window.__cualign.state.loading", timeout=120000)
                 assert await page.locator("#no3d").is_visible() and "3D 를 그릴 수 없습니다" in await page.locator("#no3d").inner_text()
                 assert await page.locator("body").evaluate("b => b.classList.contains('no-3d')")
-                if not document_has_plan(await page.evaluate("document.body.className")):      # the server may keep the case's flow from above (#146)
-                    for chip, done in (("이 케이스의 처방 넣기", "step-setup"), ("목표 배열 만들기", "step-target"), ("단계 만들기", "has-plan")):
-                        await page.locator(".next:not(.done) button", has_text=chip).click()
-                        await page.wait_for_function(f"document.body.classList.contains('{done}') && !document.querySelector('#sendBtn').disabled", timeout=120000)
-                if not await page.locator('#flow button[data-step="stages"]').evaluate("b => b.classList.contains('on')"):
-                    await page.locator('#flow button[data-step="stages"]').click()
-                await page.wait_for_function("document.body.classList.contains('step-stages') && document.body.classList.contains('has-plan') && !window.__cualign.state.loading", timeout=120000)
+                # the plan approved above (passed, reviewed); the case's saved flow may point at a later, unexportable one
+                await page.goto(url + f"/ui/#case=poseidon-000097&plan={parent}&step=stages")
+                await page.wait_for_function(f"document.body.classList.contains('step-stages') && document.body.classList.contains('has-plan') && {plan_on_screen} === '{parent}' && !window.__cualign.state.loading", timeout=120000)
+                assert await page.locator("#no3d").is_visible()
                 await page.locator("#playBtn").click()
                 await page.wait_for_function("window.__cualign.state.stage >= 2", timeout=10000)
                 await page.locator("#playBtn").click()
