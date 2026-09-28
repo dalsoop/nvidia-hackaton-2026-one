@@ -31,12 +31,17 @@ def main() -> int:
     env["SKILLSPECTOR_PROVIDER"] = "nv_build"
     env["SKILLSPECTOR_MODEL"] = args.model
     skill = str(ROOT / "workspace" / "skills" / "cualign-clinical-rules")
-    runs = [("static", ["--no-llm", "--output", str(ROOT / "workspace" / "skills" / "skillspector-report-static.md")]),
-            ("semantic", ["--output", str(ROOT / "workspace" / "skills" / "skillspector-report.md")])]
+    runs = [("static", ROOT / "workspace" / "skills" / "skillspector-report-static.md", ["--no-llm"]),
+            ("semantic", ROOT / "workspace" / "skills" / "skillspector-report.md", [])]
     rc = 0
-    for tag, extra in runs:
-        cmd = [args.skillspector, "scan", skill, "--format", "markdown", *extra]
+    for tag, report, extra in runs:
+        cmd = [args.skillspector, "scan", skill, "--format", "markdown", "--output", str(report), *extra]
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, cwd=ROOT)
+        if report.exists():  # 보고서의 Source 줄에 기기 절대경로가 박힌다 — 앱 기준 상대경로로 바꾼다
+            b = report.read_bytes()
+            for prefix in (str(ROOT).encode() + b"\\", str(ROOT).encode() + b"/"):
+                b = b.replace(prefix, b"")
+            report.write_bytes(b.replace(rb"workspace\skills\cualign-clinical-rules", b"workspace/skills/cualign-clinical-rules"))
         out = (p.stdout + p.stderr)
         for k in ("NVIDIA_INFERENCE_KEY", "NVIDIA_API_KEY"):
             if env.get(k):
