@@ -454,7 +454,10 @@ def test_telemetry_switched_off(store, tmp_path, monkeypatch):
     monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
     started = []
-    monkeypatch.setattr(cli.os, "execv", lambda *a: started.append("execv"))
+    def execv(*a):   # the real os.execv never returns: this process becomes nat serve
+        started.append("execv")
+        raise SystemExit(0)
+    monkeypatch.setattr(cli.os, "execv", execv)
     monkeypatch.setattr(cli.subprocess, "call", lambda *a, **k: started.append("call") or 0)
     from cualign import winjob   # the pytest process itself is not put in a job nor tied to its launcher
     monkeypatch.setattr(winjob, "kill_children_with_this_process", lambda: started.append("job") or True)
