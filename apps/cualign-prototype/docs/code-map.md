@@ -70,7 +70,18 @@
 | `src/cualign/sandbox_compat.py` | 샌드박스 프록시 변수가 있을 때만 aiohttp 세션이 프록시를 따르게 함(NIM 비동기 클라이언트) |
 | `src/cualign/winjob.py` | Windows 에서 `serve` 가 끝나면 `nat serve` 도 끝나게 함(kill-on-close 잡, 띄운 `uv.exe`·셸 감시). 프로세스 목록에 python 이 둘씩 보이는 이유(venv 런처) |
 | `src/cualign/server/static/index.html` | 케이스 선택, 대화, 3D 뷰어, 결과 영역의 화면 구조 |
-| `src/cualign/server/static/app.js` | 대화 스트림, 계획 선택, 3D 단계 표시, 업로드·다운로드 연결, 과부하 실패 뒤 «다시 보내기»(같은 글·조건을 새 요청으로), 대화 흐름의 도구 줄·추론 문장(원문·인자·소요 시간은 「자세히」) |
+| `src/cualign/server/static/app.js` | 진입점: 아래 모듈을 한 파일 시절 순서로 import(최상위 실행 순서 = 옛 app.js 순서), 뒤 모듈 함수를 앞 모듈에 넘기는 `wire`, 주소 라우팅(`route`·`setHash`·popstate), 직접 이동 생성(`setManualEdit`), `init`, `window.__cualign` |
+| `src/cualign/server/static/state.js` | `state` 객체, FDI ↔ Universal, `api()`, 조건 폼 필드 읽기(`FIELD_READ`), IPR 접촉면 도우미, 라벨 표(`STRATEGY_KO`·`RULE_KO`·`REVIEW_KO`). 아무것도 import 하지 않음 |
+| `src/cualign/server/static/viewer.js` | three.js 장면·카메라·조명·컨트롤·렌더 루프, 잇몸 변형, 치관·IPR 절삭 치관, 시점 버튼, 설계 흐름 단계 띠(`setStep`), `applyStage` |
+| `src/cualign/server/static/pick.js` | 3D 포인터: 호버 툴팁, 클릭으로 치아 고르기, 단계 슬라이더 표식, 새 계획 유지/되돌리기, 3D 포커스 |
+| `src/cualign/server/static/conditions.js` | 조건 폼 읽기·채우기·계획과 비교, 동작 버튼 상태(`updateActions`), 승인·검토 |
+| `src/cualign/server/static/start.js` | 시작 화면·환자 흐름: 화면 전환, 열 너비 조절, 환자·스캔 업로드·입력 확인, 케이스 목록·상세 |
+| `src/cualign/server/static/plans.js` | 레일, 케이스 열기(`activateCase`·`openCase`·`restoreProgress`·`loadMesh`), 계획 목록·`loadPlan` |
+| `src/cualign/server/static/chat.js` | 대화 기록: 메시지·마크다운, 검토 질문, 추론 줄, 도구 줄(원문·인자·소요 시간은 「자세히」) |
+| `src/cualign/server/static/turns.js` | 에이전트 턴: 다음 단계 칩, `send` 와 스트림(과부하 실패 뒤 «다시 보내기»), 단계 착지, 녹화 재생, 규칙 폴백, 단계 재생 |
+| `src/cualign/server/static/controls.js` | 대화 입력·머리·3D 조작의 이벤트 리스너(옛 app.js 「wiring」 절) |
+| `src/cualign/server/static/panes.js` | 화면의 계획: 결과·범례, 단계·규칙·조건 탭, 탭 전환, 스캔 탭 치아 도표 |
+| `src/cualign/server/static/export.js` | 내보내기 팝오버, 토스트, STL 빌드 폴링·다운로드 |
 | `src/cualign/server/static/validate-sweep.js` | 규칙 검증 도구 연출: 도구 시작에 치아를 치열 순서로 60ms씩 왕복해 옅게 밝힘(도구 이벤트에 치아가 없어 연출), 끝에 계획의 실제 `violations` — 없으면 전체 초록 한 번, 있으면 위반 치아 붉게. 선택 강조의 발광(emissive)을 매 프레임 덮어쓰고 재질은 새로 만들지 않음. `app.js` 의 `toolMoment` 가 훅 |
 | `src/cualign/server/static/scan-reveal.js` | 셋업 턴 연출: 대화창에 에이전트의 첫 줄(추론·도구 줄·답, 없으면 8초 뒤)이 붙는 순간 `startNumbers` 치아 번호 순회(17→27, 0.1초), 「처방을 읽었습니다」 줄이 붙는 순간 `applyPrescription` 발치 치아가 화면 위쪽으로 들리며 0.6초에 페이드(끝나면 `extracted` → 셋업 착지)·「발치」 표식·IPR 도구 커서(커서가 지난 치관부터 절삭, `cutShown`), 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
 | `src/cualign/server/static/scan-reveal.js` | 셋업 턴 연출: 전송 즉시 `startNumbers` 치아 번호 순회(17→27, 0.1초), 대화창에 「처방을 읽었습니다」 줄이 붙는 순간 `applyPrescription` 발치 치아 들림/페이드·「발치」 표식·IPR 도구 커서(커서가 지난 치관부터 절삭, `cutShown`), 단계 재생이 처음 1단계에 닿을 때 IPR 커서 한 번. `app.js` 는 훅만 부름, `?nofx=1` 로 끔 |
