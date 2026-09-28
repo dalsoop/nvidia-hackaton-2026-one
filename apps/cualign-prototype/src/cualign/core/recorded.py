@@ -71,14 +71,23 @@ def strategy_in(text: str) -> str | None:
     return None
 
 
+def selected_strategy(answer_md: str) -> str | None:
+    """The strategy of the plan the answer settled on: its bold summary line ("**IPR 전략으로 9단계…**"), else its first
+    line. A comparison opens with one line per plan, so its first line names a compared plan, not the chosen one."""
+    lines = answer_md.strip().splitlines()
+    head = next((ln for ln in lines if ln.lstrip().startswith("**")), lines[0] if lines else "")
+    return strategy_in(head)
+
+
 def substitute(answer_md: str, plans: dict[str, dict], selected: dict | None) -> str:
     """`answer_md` with every "N단계(약 M개월)" rewritten from the recomputed plans: a line that names a strategy takes
-    that strategy's plan, any other line the selected plan. `plans` maps strategy -> plan summary (n_stages, months)."""
+    that strategy's plan, any other line the selected plan. `plans` maps strategy -> plan summary (n_stages, months).
+    A line naming a strategy that was not recomputed keeps its recorded figures: the selected plan's would make it false
+    (000131: the recorded 「확장 전략: 10단계」 took the IPR plan's 9 and the comparison read as a tie)."""
     out = []
     for line in answer_md.splitlines():
         key = strategy_in(line)
-        plan = plans.get(key) if key else None
-        plan = plan or selected
+        plan = plans.get(key) if key else selected
         if plan is None:
             out.append(line)
             continue

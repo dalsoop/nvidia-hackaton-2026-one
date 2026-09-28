@@ -635,7 +635,7 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             raise HTTPException(400, reason_ko(e))
         STORE.case_constraints[cid] = constraints
         by_strategy = {STORE._record(pid)["strategy"]: _summary(pid) for pid in ids}
-        wanted = recorded.strategy_in(rec["answer_md"].splitlines()[0]) if rec["answer_md"].strip() else None
+        wanted = recorded.selected_strategy(rec["answer_md"])
         selected = by_strategy.get(wanted) or next((p for p in by_strategy.values() if p["passed"]), None) \
             or min(by_strategy.values(), key=lambda p: p["violations"])
         STORE.set_review(selected["plan_id"], dict(rec["review"]))
