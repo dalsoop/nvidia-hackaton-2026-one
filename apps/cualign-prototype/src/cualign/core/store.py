@@ -236,6 +236,15 @@ class Store:
                 f.unlink(missing_ok=True)
         return gone
 
+    def discard(self, plan_ids, target_ids=()) -> None:
+        """Drop what a cancelled agent turn made (server/plan_events.cancel): it was never offered, and left in place
+        its plans would show up in the case's plan list after the 건너뛰기 that cut it."""
+        for tid in list(target_ids):
+            self.targets.pop(tid, None)
+        for pid in list(plan_ids):
+            if self.plans.pop(pid, None) is not None:
+                (OUT_DIR / "plans" / f"{pid}.json").unlink(missing_ok=True)
+
     def put_target(self, case_id: str, target: dict, info: dict, constraints: Constraints | None = None) -> str:
         tid = _new_id("t", self.targets)
         st = patients.input_state(case_id)
