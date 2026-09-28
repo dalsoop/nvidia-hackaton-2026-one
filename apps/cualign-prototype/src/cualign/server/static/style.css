@@ -484,10 +484,38 @@ body.start .flow { display: none; }
 body:not(.step-stages) .stage-bar { display: none; }
 body.step-initial .legend, body.step-setup .legend, body.step-initial .ipr-label, body.step-setup .ipr-label, body.step-initial .coll-label, body.step-setup .coll-label { display: none; }
 /* the tabs open with the progress (#20): 조건 from the setup, 단계 표·규칙 from the stages */
-body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-tab[data-tab="stages"], body:not(.prog-stages) .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
+body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-tab[data-tab="stages"], body:not(.prog-target) .side-tab[data-tab="rules"] { opacity: 0.35; pointer-events: none; }
 .scan-facts { margin: 0; padding: 0 20px; display: grid; grid-template-columns: 56px 1fr; row-gap: 10px; font-size: 13px; }
 .scan-facts dt { color: var(--muted); }
 .scan-facts dd { margin: 0; }
+/* 스캔 탭 치아 차트: the upper arch flat, FDI numbers; the colours are the 3D's */
+.tooth-chart { padding: 12px 20px 4px; }
+.tooth-chart svg { display: block; width: 100%; max-width: 360px; height: auto; margin: 0 auto; }
+.tooth-chart .tooth rect { fill: var(--panel-2); stroke: var(--line-strong); stroke-width: 0.4; transition: fill 120ms, stroke 120ms, opacity 120ms; }
+.tooth-chart .tooth text { font-size: 3.1px; font-weight: 700; fill: var(--text); text-anchor: middle; pointer-events: none; }
+.tooth-chart .tooth:not(.missing) { cursor: pointer; }
+.tooth-chart .tooth:not(.missing):hover rect { stroke: var(--green); }
+.tooth-chart .tooth.sel rect { fill: var(--green); stroke: var(--green); }
+.tooth-chart .tooth.sel text { fill: #000000; }
+.tooth-chart .tooth.missing rect { fill: none; stroke: var(--faint); stroke-dasharray: 1 0.8; }
+.tooth-chart .tooth.missing text { fill: var(--faint); font-weight: 400; }
+.tooth-chart .tooth.ext rect { fill: var(--red-surface); stroke: var(--red); stroke-dasharray: 1.2 0.8; }
+.tooth-chart .tooth.ext .x { stroke: var(--red); stroke-width: 0.5; stroke-linecap: round; opacity: 0.8; }
+.tooth-chart .tooth.ext text { fill: var(--red-text); }
+.tooth-chart .tooth.pending { opacity: 0; }
+.tooth-chart .ipr circle { fill: var(--ipr); stroke: #000000; stroke-width: 0.3; }
+.tooth-chart .ipr text { font-size: 2.6px; fill: var(--ipr); text-anchor: middle; }
+.tooth-chart .center { font-size: 3.4px; fill: var(--muted); text-anchor: middle; }
+.tooth-chart .center.sub { font-size: 2.8px; fill: var(--faint); }
+.chart-legend { display: flex; justify-content: center; gap: 14px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend i { width: 10px; height: 8px; border-radius: 2px; }
+.chart-legend i.ext { border: 1px dashed var(--red); background: var(--red-surface); }
+.chart-legend i.missing { border: 1px dashed var(--faint); }
+.chart-legend i.ipr { width: 7px; height: 7px; border-radius: 50%; background: var(--ipr); }
+.pane.fade-in { animation: pane-in 120ms ease-out; }
+@keyframes pane-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pane.fade-in { animation: none; } }
 .ipr-mark, .fx-ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
 .exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
 /* scan reveal (scan-reveal.js): the extraction mark in 셋업, the IPR tool cursor, the app's marks waiting their turn */

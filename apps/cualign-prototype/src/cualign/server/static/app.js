@@ -61,6 +61,7 @@ const state = {
   newPlans: 0,           // plans added by the last refreshPlans: more than one means the turn compared strategies
   oldPlans: new Set(),   // plans that already existed when the case was opened: folded as 지난 계획 (#105, #111)
   tab: "stages",         // the open sidebar tab: stages | rules | cond (#111)
+  tabPin: null,          // {caseId, step} when the dentist picked a tab by hand: the step flow leaves it until the next step
   planError: null,       // the server's sentence when a case has no plan and the calculation failed (#112)
   stageTouched: false,   // the dentist moved the stage (slider, ends, play, a stage row or violation) since the turn began: the new plan does not jump to its end
 };
@@ -440,10 +441,7 @@ function setStep(step) {
   renderSetupMarks();
   renderFlow();
   renderPlanList();
-  // the right panel follows the step: the scan's facts, then the conditions, from the stages on the table and rules
-  if (step === "initial") showTab("scan");
-  else if (step === "setup" || step === "target") showTab("cond");
-  else if (state.tab === "cond" || state.tab === "scan") showTab("stages");
+  followStep(step);   // the right panel follows the step
   if (state.activeCase) setHash(caseHash());
 }
 function renderFlow() {
@@ -639,6 +637,7 @@ function toothAt(e) {
 }
 function renderSelection() {
   for (const [id, m] of Object.entries(state.teeth)) m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
+  markChartSelection();
   const box = $("selChips");
   box.innerHTML = "";
   box.hidden = !state.selected.size;
@@ -1720,9 +1719,11 @@ function renderLegend(plan) {
 // ---- the sidebar's three panes read the plan on screen; null empties them
 function renderSide(plan) {
   renderStagePane(plan);
-  renderRulesPane(plan);
+  renderRulesPane(rulesPlan(plan));
   renderCondPane(plan);
 }
+// 목표 checks the target the target turn made (space, prescribed IPR); the stage rules wait for the plan
+const rulesPlan = (plan) => (state.step === "target" && state.target ? state.target : plan);
 function renderStagePane(plan) {
   const facts = $("stageFacts"), grid = $("stageGrid");
   facts.innerHTML = ""; grid.innerHTML = "";
@@ -1792,7 +1793,9 @@ const REVIEW_KO = { passed: "검토 통과", failed: "검토 실패", running: "
 function renderRulesPane(plan) {
   const cards = $("ruleCards"), groups = $("violGroups");
   cards.innerHTML = ""; groups.innerHTML = "";
-  $("rulesFor").textContent = plan ? `계획 ${planNo(plan.plan_id)} · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · ${plan.stages?.length ?? 0}장` : "";
+  const pre = !!plan && !plan.plan_id;   // a target (GET /targets): no stages yet, nothing validated
+  $("rulesFor").textContent = !plan ? "" : pre ? `목표 배열 · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · 단계 계획 전`
+    : `계획 ${planNo(plan.plan_id)} · ${STRATEGY_KO[plan.strategy] ?? plan.strategy} · ${plan.stages?.length ?? 0}장`;
   // the planner's movement notes (from the 단계 표 head, #13 polish); they name Universal ids: 「치아 13 회전 …」 → FDI
   // …and a Universal list like [5, 12] → 14·24 until the server writes FDI itself (temporary, #14)
   const toFdi = (s) => s.replace(/치아 (\d+)/g, (_, u) => `치아 ${fdi(u)}`)
@@ -1805,15 +1808,22 @@ function renderRulesPane(plan) {
   // at a glance: 규칙 통과 · 검토 통과 big, or the violation count; after a rule plan where every allowed strategy
   // failed, which plan this is (the least wrong one) and what was tried
   const allFailed = state.allFailed?.plan_id === plan.plan_id ? state.allFailed : null;
-  verdict.classList.toggle("fail", viol.length > 0);
-  verdict.querySelector("b").textContent = allFailed ? "허용 전략 전부 규칙 위반"
+  verdict.classList.toggle("fail", viol.length > 0 || (pre && +(plan.target?.space_deficit_mm ?? 0) > 0));
+  if (pre) { verdict.querySelector("b").textContent = "목표 배열 점검"; verdict.querySelector("span").textContent = "공간만 봅니다 · 단계 규칙은 단계를 만든 뒤 검증"; }
+  else verdict.querySelector("b").textContent = allFailed ? "허용 전략 전부 규칙 위반"
     : viol.length ? `규칙 위반 ${viol.length}건` : `규칙 통과 · ${REVIEW_KO[plan.review?.status] ?? "검토 전"}`;
-  verdict.querySelector("span").textContent = allFailed
-    ? `시도한 전략 ${allFailed.tried.map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — 가장 덜 틀린 ${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
+  if (!pre) verdict.querySelector("span").textContent = allFailed
+    ?`시도한 전략 ${allFailed.tried.map((s) => STRATEGY_KO[s] ?? s).join(" · ")} — 가장 덜 틀린 ${STRATEGY_KO[plan.strategy] ?? plan.strategy} 계획의 위반을 아래에 보입니다. 조건을 바꿔 다시 계산하세요.`
     : viol.length ? "아래 위반 항목을 누르면 그 단계로 가서 치아를 강조합니다." : "검사한 규칙";
   const coll = by("collision"), mv = by("move_limit"), cap = by("stage_cap"), sp = by("space_deficit");
   const maxOf = (arr, key) => arr.length ? Math.max(...arr.map((v) => +v[key] || 0)) : 0;
-  const rules = [
+  const later = ["", "", "단계 계획 후 검증"], deficit = +(plan.target?.space_deficit_mm ?? 0);
+  const rules = pre ? [
+    ["충돌", "인접 치아 겹침이 치료 전 기준 이하", later],
+    ["장당 이동 한계", "장마다 이동량이 한계 이하", later],
+    ["장수 상한", "조건에 정한 최대 장수", later],
+    ["공간 부족", "처방 안에서 확보할 공간", deficit > 0 ? ["부족", "fail", `${deficit} mm 부족`] : ["통과", "pass", "부족 0 mm"]],
+  ] : [
     ["충돌", "인접 치아 겹침이 치료 전 기준 이하", coll.length ? ["위반", "fail", `${coll.length}건 · 최대 ${maxOf(coll, "overlap_mm3")} mm³`] : ["통과", "pass", "겹침 기준 이하"]],
     ["장당 이동 한계", "장마다 이동량이 한계 이하", mv.length ? ["위반", "fail", `${mv.length}건 · 최대 ${maxOf(mv, "mm")} mm`] : ["통과", "pass", plan.info?.per_stage_mm != null ? `장당 ${plan.info.per_stage_mm} mm` : ""]],
     ["장수 상한", cap.length ? `장당 이동 한계로 ${cap[0].n}장이 필요 — 상한 안에 넣으려면 이동량(처방)을 줄여야 함` : "조건에 정한 최대 장수", plan.constraints?.stage_cap == null ? ["", "", "상한 없음"] : cap.length ? ["위반", "fail", `${cap[0].n}장 > 상한 ${cap[0].limit}`] : ["통과", "pass", `${plan.stages?.length ?? 0}장 ≤ 상한 ${plan.constraints.stage_cap}`]],
@@ -1840,7 +1850,7 @@ function renderRulesPane(plan) {
   }
   // violations grouped by kind (충돌, 장당 이동 한계 …); each kind names its 발생 단계, then one item per tooth or pair.
   // An item jumps the slider to its first stage and selects its teeth in the 3D; a stage button jumps to that stage
-  if (!viol.length) { groups.innerHTML = '<p class="empty">위반 없음</p>'; return; }
+  if (!viol.length) { groups.innerHTML = `<p class="empty">${pre ? "단계를 만든 뒤 확인" : "위반 없음"}</p>`; return; }
   const byType = new Map();
   for (const v of viol) {
     const items = byType.get(v.type) ?? byType.set(v.type, new Map()).get(v.type);
@@ -2679,25 +2689,170 @@ $("plans").addEventListener("click", (e) => {
   if (!id || state.streaming || state.loading) return;
   loadPlan(id).catch((err) => addMsg("error", `계획 로드 실패: ${err.message}`));
 });
-// sidebar tabs
-for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
+// sidebar tabs: a tab picked by hand holds while the step stays (the turn in progress); the next step takes the panel again
+for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("click", () => {
+  state.tabPin = { caseId: state.meshCase, step: state.step };
+  showTab(b.dataset.tab);
+});
+const PANES = { scan: "paneScan", stages: "paneStages", rules: "paneRules", cond: "paneCond" };
 function showTab(name) {
   state.tab = name;
   for (const b of document.querySelectorAll(".side-tab")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
-  $("paneScan").hidden = name !== "scan"; $("paneStages").hidden = name !== "stages"; $("paneRules").hidden = name !== "rules"; $("paneCond").hidden = name !== "cond";
+  for (const [tab, id] of Object.entries(PANES)) {
+    const pane = $(id), was = pane.hidden;
+    pane.hidden = tab !== name;
+    if (was && !pane.hidden) { pane.classList.remove("fade-in"); void pane.offsetWidth; pane.classList.add("fade-in"); }   // a 120 ms fade, nothing moves
+  }
 }
-// the scan as it came (#20): tooth count, crowding, what is missing between 17 and 27
+// The one place the right panel follows the step (setStep: step_done, 건너뛰기's recorded answer, the strip's buttons):
+// 초기 → 스캔, 셋업 → 조건, 목표 → 규칙, 단계 → 단계 표. The scan tab and the rules re-read the step's state first.
+const STEP_TAB = { initial: "scan", setup: "cond", target: "rules", stages: "stages" };
+function followStep(step) {
+  renderScanPane(state.caseInfo);
+  renderRulesPane(rulesPlan(state.plan));
+  const pin = state.tabPin;
+  if (pin && pin.caseId === state.meshCase && pin.step === step) return;
+  state.tabPin = null;
+  showTab(STEP_TAB[step] ?? "scan");
+}
+// the scan as it came (#20): the tooth chart, then the prescription, crowding, the space the target makes, what is
+// missing and where the scan is from. A patient's own scan has no prescription: the chart and the scan's facts.
 function renderScanPane(info) {
-  const rows = [];
+  renderToothChart(info);
+  const sample = sampleOf(state.meshCase), rows = [];
   if (info) {
     const present = new Set(Object.keys(state.teeth).map((id) => fdi(id)));
     const missing = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27].filter((n) => !present.has(n));
-    rows.push(["치아", `${info.n_teeth ?? Object.keys(state.teeth).length}개`], ["총생", info.crowding_mm != null ? `${info.crowding_mm} mm` : "—"],
-              ["결손", missing.length ? missing.join(", ") + "번" : "없음"]);
+    const t = stepIndex(state.progress) >= stepIndex("target") ? state.target?.target ?? state.plan?.target : null;
+    if (sample?.prescription) rows.push(["처방", sample.prescription]);
+    rows.push(["치아", `${info.n_teeth ?? Object.keys(state.teeth).length}개`], ["총생", info.crowding_mm != null ? `${info.crowding_mm} mm` : "—"]);
+    if (t?.space_gain_mm != null) rows.push(["확보", `${t.space_gain_mm} mm` + (t.space_deficit_mm > 0 ? ` · 부족 ${t.space_deficit_mm} mm` : "")]);
+    rows.push(["결손", missing.length ? missing.join(", ") + "번" : "없음"]);
+    const row = state.cases.find((c) => c.case_id === state.meshCase);
+    rows.push(["출처", sample ? "공개 데이터셋 Poseidon3D" : row?.patient ? `업로드한 스캔 · ${row.patient.alias} ${row.patient.scan_id}` : "업로드한 스캔"]);
   }
   $("scanFacts").replaceChildren(...rows.flatMap(([k, v]) => { const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v; return [dt, dd]; }));
-  $("scanFor").textContent = info ? (sampleOf(state.meshCase)?.prescription ? "처방 · " + sampleOf(state.meshCase).prescription : "처방은 대화로") : "";
+  $("scanFor").textContent = info ? sample?.title ?? "처방은 대화로" : "";
 }
+
+// ---- the tooth chart on the 스캔 tab: the upper arch laid flat, one crown per FDI number (the state keeps Universal).
+// The crowns sit along a half-ellipse by their usual mesiodistal width (mm), so the chart reads like the start screen's
+// arch mark, the patient's right on the left as dental charts go. States: 있음 · 결손 (an empty outline) · 발치 처방
+// (red dashes and an X) · IPR contact (a yellow dot + mm inside the arch); the selected crowns are green like the 3D,
+// and a click on the chart selects in the 3D too.
+const CROWN = { 1: [8.5, 7], 2: [6.5, 6], 3: [7.5, 8], 4: [7, 9], 5: [6.5, 9], 6: [10, 11], 7: [9, 11], 8: [8.5, 10] };   // unit digit → [width, depth] mm
+const SVGNS = "http://www.w3.org/2000/svg";
+function chartLayout(fdis) {
+  const A = 33, B = 44, GAP = 0.5, pts = [[0, 0, 0]];   // x, y, arc length from the midline along x = A sin t, y = B (1 − cos t)
+  for (let i = 1, s = 0; i <= 600; i++) {
+    const t = (i / 600) * 2.2, x = A * Math.sin(t), y = B * (1 - Math.cos(t)), [px, py] = pts[i - 1];
+    s += Math.hypot(x - px, y - py); pts.push([x, y, s]);
+  }
+  const at = (s) => {
+    let i = pts.findIndex((p) => p[2] >= s);
+    if (i < 1) i = i === 0 ? 1 : pts.length - 1;
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    return { x: x1, y: y1, a: Math.atan2(y1 - y0, x1 - x0) };
+  };
+  const out = {};
+  for (const quad of [1, 2]) {   // 1 = the patient's right (drawn on the left), 2 = the patient's left
+    const side = quad === 1 ? -1 : 1;
+    let s = GAP / 2;
+    for (let unit = 1; unit <= 8; unit++) {
+      const n = quad * 10 + unit, [w, d] = CROWN[unit];
+      s += w / 2;
+      if (fdis.has(n)) { const p = at(s); out[n] = { x: side * p.x, y: p.y, deg: (side === 1 ? p.a : Math.PI - p.a) * 180 / Math.PI, w, d }; }
+      s += w / 2 + GAP;
+    }
+  }
+  return out;
+}
+// what the chart marks: the target's (or the plan's) once the flow is past 셋업, else the setup the agent read, else a
+// sample's prescription as the case opened; a patient's scan marks nothing until its setup
+function chartMarks() {
+  const t = stepIndex(state.progress) >= stepIndex("target") ? state.target?.target ?? state.plan?.target : null;
+  if (t) return { removed: t.removed ?? [], surfaces: surfacesOf(t, state.target?.target === t ? state.target.info : state.plan?.info) };
+  if (state.setup) return { removed: state.setup.extraction ?? [], surfaces: state.setup.ipr_surfaces ?? [] };
+  const c = sampleOf(state.meshCase) ? state.caseInfo?.constraints : null;
+  return { removed: c?.extraction ?? [], surfaces: c?.ipr_surfaces ?? [] };
+}
+function renderToothChart(info) {
+  const box = $("toothChart");
+  box.replaceChildren();
+  box.hidden = !info || !Object.keys(state.teeth).length;
+  if (box.hidden) return;
+  const present = new Set(Object.keys(state.teeth).map((id) => fdi(id)));
+  const shown = new Set([17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, ...present]);   // 18·28 only when scanned
+  const lay = chartLayout(shown), marks = chartMarks(), removed = new Set(marks.removed.map((u) => fdi(u)));
+  const svg = document.createElementNS(SVGNS, "svg");
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    parent.append(e); return e;
+  };
+  const xs = Object.values(lay).map((p) => p.x), ys = Object.values(lay).map((p) => p.y);
+  const x0 = Math.min(...xs) - 8, y0 = Math.min(...ys) - 7, cy = (Math.min(...ys) + Math.max(...ys)) / 2 + 4;
+  svg.setAttribute("viewBox", `${x0.toFixed(1)} ${y0.toFixed(1)} ${(Math.max(...xs) + 8 - x0).toFixed(1)} ${(Math.max(...ys) + 8 - y0).toFixed(1)}`);
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "상악 치아 차트");
+  const used = new Set();
+  for (const n of [...shown].sort((a, b) => a - b)) {
+    const p = lay[n], u = String(universal(n)), has = present.has(n);
+    const kind = !has ? "missing" : removed.has(n) ? "ext" : "ok";
+    if (kind !== "ok") used.add(kind);
+    const g = el("g", { class: `tooth ${kind}`, "data-id": u, "data-fdi": n }, svg);
+    const body = el("g", { transform: `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)}) rotate(${p.deg.toFixed(1)})` }, g);
+    el("rect", { x: -p.w / 2 + 0.3, y: -p.d / 2, width: p.w - 0.6, height: p.d, rx: Math.min(p.w, p.d) * 0.38 }, body);
+    if (kind === "ext") el("path", { class: "x", d: `M${-p.w / 4} ${-p.d / 4}L${p.w / 4} ${p.d / 4}M${p.w / 4} ${-p.d / 4}L${-p.w / 4} ${p.d / 4}` }, body);
+    el("text", { x: p.x.toFixed(2), y: (p.y + 1.1).toFixed(2) }, g).textContent = n;
+    el("title", {}, g).textContent = `${n}번` + (kind === "missing" ? " · 결손" : kind === "ext" ? " · 발치 처방" : "");
+    if (has) g.classList.toggle("sel", state.selected.has(u));
+  }
+  // IPR: a dot at the contact, the mm just inside the arch
+  for (const [a, b, mm] of marks.surfaces ?? []) {
+    const pa = lay[fdi(a)], pb = lay[fdi(b)];
+    if (!pa || !pb) continue;
+    used.add("ipr");
+    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2, ang = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+    let nx = -Math.sin(ang), ny = Math.cos(ang);
+    if (nx * -mx + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }   // the normal that points into the arch
+    const k = el("g", { class: "ipr" }, svg);
+    el("circle", { cx: mx.toFixed(2), cy: my.toFixed(2), r: 1.3 }, k);
+    el("text", { x: (mx + nx * 6.2).toFixed(2), y: (my + ny * 6.2 + 0.9).toFixed(2) }, k).textContent = String(+mm);
+    el("title", {}, k).textContent = `IPR ${fdi(a)}-${fdi(b)} ${+mm} mm`;
+  }
+  el("text", { class: "center", x: 0, y: cy.toFixed(1) }, svg).textContent = "상악";
+  el("text", { class: "center sub", x: 0, y: (cy + 5).toFixed(1) }, svg).textContent = `${present.size}개`;
+  box.append(svg);
+  const legend = document.createElement("div"); legend.className = "chart-legend";
+  for (const [key, label] of [["ext", "발치 처방"], ["missing", "결손"], ["ipr", "IPR (mm)"]]) {
+    if (!used.has(key)) continue;
+    const s = document.createElement("span"); s.innerHTML = `<i class="${key}"></i>`; s.append(label); legend.append(s);
+  }
+  if (legend.childElementCount) box.append(legend);
+}
+// the chart's green follows the 3D selection (renderSelection calls this) without drawing the chart again
+function markChartSelection() {
+  for (const g of $("toothChart").querySelectorAll("g.tooth:not(.missing)")) g.classList.toggle("sel", state.selected.has(g.dataset.id));
+}
+// a crown clicked on the chart is picked like one clicked in the 3D
+$("toothChart").addEventListener("click", (e) => {
+  const id = e.target.closest("g.tooth:not(.missing)")?.dataset.id;
+  if (!id || !state.teeth[id]) return;
+  if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+  state.pickedOnce = true; $("pickedLegend").hidden = false; $("pickHint").hidden = true;
+  renderSelection();
+});
+// Scan reveal hook: the 3D's scan-recognition sequence (molars → incisors, 0.1 s apart) can fill the chart in the same
+// order — window.dispatchEvent(new CustomEvent("cualign:scan-reveal", {detail: {ids: [Universal…], ms: 100}})).
+// With no ids the chart fills from the molars to the incisors.
+window.addEventListener("cualign:scan-reveal", (e) => {
+  const chart = $("toothChart"), teeth = [...chart.querySelectorAll("g.tooth:not(.missing)")], ms = e.detail?.ms ?? 100;
+  const order = e.detail?.ids?.map(String) ?? [...new Set(teeth.map((g) => g.dataset.fdi % 10))].sort((a, b) => b - a)
+    .flatMap((unit) => teeth.filter((g) => g.dataset.fdi % 10 === unit).map((g) => g.dataset.id));
+  for (const g of teeth) g.classList.add("pending");
+  order.forEach((id, i) => setTimeout(() => chart.querySelector(`g.tooth[data-id="${id}"]`)?.classList.remove("pending"), i * ms));
+  setTimeout(() => { for (const g of chart.querySelectorAll("g.tooth.pending")) g.classList.remove("pending"); }, order.length * ms + 50);
+});
 $("condApply").addEventListener("click", () => {
   let constraints;
   try { constraints = readConstraints(); } catch (e) { addMsg("error", e.message); return; }
