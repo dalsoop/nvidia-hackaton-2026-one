@@ -124,6 +124,7 @@ async def fake_chat(request: Request):
         if step == "setup":
             # as the real setup turn streams (2026-09-28, 000001): no tool event — the form already carries the
             # prescription, the agent answers directly — only the answer and step_done; the screen writes 조건 설정
+            run.constraints = run.constraints.patched({"extraction": [5, 12]})   # the conditions the answer states (a case started over has none)
             yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
             yield 'data: {"value":"처방을 조건으로 옮겼습니다. 발치 14·24, IPR 면당 0.25 mm."}\n\n'
             return
@@ -240,7 +241,8 @@ async def main():
             assert await page.locator(".msg.system", has_text="조건이 처방과 다릅니다").count() == 0      # empty conditions on purpose, no warning
             await next_chip("이 케이스의 처방 넣기").click()
             await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
-            assert await page.locator("#cExtract").input_value() == "14, 24" and await next_chip("목표 배열 만들기").count() == 1
+            again = (await page.locator("#cExtract").input_value(), await page.locator(".next:not(.done) button").all_inner_texts())
+            assert again[0] == "14, 24" and "목표 배열 만들기" in again[1], again
             # turn 2 (target): step_done{target_id} → GET /targets → the 3D shows the target state (one stage); 초기 ↔ 목표 look back
             await next_chip("목표 배열 만들기").click()
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.targetId === 't-fake' && !document.querySelector('#sendBtn').disabled", timeout=60000)
