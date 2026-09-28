@@ -196,6 +196,13 @@ async def main():
             assert await page.locator('#flow button[data-step="setup"]').is_disabled() and await page.locator('#flow button[data-step="stages"]').is_disabled()
             assert await page.locator("#tabScan").get_attribute("aria-selected") == "true"
             assert "치아" in await page.locator("#scanFacts").inner_text() and "총생" in await page.locator("#scanFacts").inner_text()
+            # the tooth chart: 14 crowns by FDI, the sample's extraction 14·24 marked; a click on it selects in the 3D too
+            assert await page.locator("#toothChart g.tooth").count() == 14
+            assert sorted([await g.get_attribute("data-fdi") for g in await page.locator("#toothChart g.tooth.ext").all()]) == ["14", "24"]
+            await page.locator('#toothChart g.tooth[data-fdi="11"]').click()
+            assert await page.evaluate("[...window.__cualign.state.selected]") == ["8"] and await page.locator("#toothChart g.tooth.sel").count() == 1
+            await page.locator('#toothChart g.tooth[data-fdi="11"]').click()
+            assert await page.evaluate("window.__cualign.state.selected.size") == 0
             assert await page.locator("#tabCond").evaluate("b => getComputedStyle(b).pointerEvents") == "none"
             assert "처방을 적어 주세요" in await page.locator(".msg.assistant").last.inner_text()
             next_chip = lambda label: page.locator(".next:not(.done) button", has_text=label)
@@ -225,6 +232,8 @@ async def main():
             await next_chip("목표 배열 만들기").click()
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.targetId === 't-fake' && !document.querySelector('#sendBtn').disabled", timeout=60000)
             assert await page.evaluate("window.__cualign.state.stage") == 1 and not document_has_plan(await page.evaluate("document.body.className"))
+            assert await page.locator("#tabRules").get_attribute("aria-selected") == "true"      # 목표 → 규칙, the target's checks
+            assert "단계 계획 전" in await page.locator("#rulesFor").inner_text()
             assert await page.locator('#flow button[data-step="stages"]').is_disabled()
             assert "확보 15.8 mm 로 총생 7.9 mm 를 해결했습니다." in await page.locator(".trace").last.locator(".reason").all_inner_texts()
             await page.locator('#flow button[data-step="initial"]').click()
@@ -244,15 +253,23 @@ async def main():
             assert await next_chip("승인하고 내보내기").count() == 1
             reasons = await page.locator(".trace").last.locator(".reason").all_inner_texts()
             assert "단계(약 " in reasons[0] and reasons[1].startswith("규칙 검증 — 위반 "), reasons
+            assert await page.locator("#tabStages").get_attribute("aria-selected") == "true"     # 단계 → 단계 표
             # the strip is open end to end now: the step in the address, a reload and the strip's buttons keep it
             await page.locator('#flow button[data-step="initial"]').click()
             await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.stage === 0")
             assert not await page.locator(".stage-bar").is_visible()
+            assert await page.locator("#tabScan").get_attribute("aria-selected") == "true"
             await page.locator('#flow button[data-step="setup"]').click()
             await page.wait_for_function("document.body.classList.contains('step-setup')")
             assert (await page.evaluate("location.hash")).endswith("&step=setup")
+            assert await page.locator("#tabCond").get_attribute("aria-selected") == "true"
+            # a tab picked by hand holds while the step stays; the next step takes the panel again
+            await page.locator("#tabScan").click()
+            await page.locator('#flow button[data-step="setup"]').click()
+            assert await page.locator("#tabScan").get_attribute("aria-selected") == "true"
             await page.locator('#flow button[data-step="target"]').click()
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.stage === 1")
+            assert await page.locator("#tabRules").get_attribute("aria-selected") == "true"
             await page.locator('#flow button[data-step="stages"]').click()
             await page.wait_for_function("document.body.classList.contains('step-stages') && window.__cualign.state.stage === 0")
             assert await page.locator(".stage-bar").is_visible()
