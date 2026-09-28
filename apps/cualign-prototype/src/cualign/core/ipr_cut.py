@@ -68,13 +68,119 @@ def _fill_loops(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     return out
 
 
-def closed_json(t: dict) -> dict:
-    """A crown as the viewer gets it ({v, f}) with its open cervical margin fanned shut, so a crown whose side is bared
-    (a neighbour extracted or moved away) does not show a hole. For the view only: the core measures the crowns as
-    they came. The new faces come after the old ones, so face indices into `f` stay valid."""
+# The view's closing of a scanned crown (#163, redone): a flat fan read as a dark cut face and its normals folded against
+# the crown wall. The margin is continued instead as a short root stub — rings pushed ROOT_STUB_MM along the tooth axis,
+# tapering, closed by a subdivided dome — so the wall runs on and the shading with it. A margin that is split in two or
+# too short gets a dome cap smoothed in place. _fill_loops (the IPR cut's closing, core geometry) is not this.
+ROOT_STUB_MM = 2.5
+STUB_RINGS = ((0.6, 0.95), (1.3, 0.90), (1.9, 0.85))      # (depth mm, radial scale) of the tapered rings
+STUB_DOME = ((35, 0.35), (65, 0.35))                       # dome rings: angle° from the last ring, and that ring's share
+MIN_STUB_LOOP = (12, 8.0)                                  # fewer vertices or a shorter perimeter (mm) -> dome fallback
+ROOT_DIR = np.array([0.0, 0.0, -1.0])                      # opposite the occlusal normal (upper arch: roots are -z)
+
+
+def _loop_closed(loop: np.ndarray, boundary: set) -> bool:
+    return len(loop) >= 3 and (int(loop[-1]), int(loop[0])) in boundary
+
+
+def _tooth_axis(V: np.ndarray, P: np.ndarray) -> np.ndarray:
+    """Crown centre -> margin centre; the fixed root direction when that leans more than 60° from it (a crown whose
+    margin sits to the side, e.g. a tipped molar)."""
+    ax = P.mean(0) - V.mean(0)
+    n = np.linalg.norm(ax)
+    if n < 1e-6 or ax @ ROOT_DIR / n < 0.5:
+        return ROOT_DIR.copy()
+    return ax / n
+
+
+def _rings(P: np.ndarray, axis: np.ndarray, rings) -> np.ndarray:
+    """Rings below the margin P (n,3): each (depth below the margin's deepest point, radial scale). The margin is
+    scalloped (it rises between the teeth); that rise fades out ring by ring, so every ring lies below its own margin
+    point and the last is level. The margin is averaged with its neighbours once first, so the stub starts smooth
+    under a jagged scan edge. Returns the ring points (k*n, 3) and the level of the deepest margin point (along axis,
+    from the margin's centre)."""
+    Q = (np.roll(P, 1, 0) + P + np.roll(P, -1, 0)) / 3
+    c = Q.mean(0)
+    r = Q - c
+    a = r @ axis
+    rad = r - np.outer(a, axis)
+    top = a.max()
+    out = [c + axis * (top + d) + rad * s + np.outer((a - top) * (1 - (i + 1) / len(rings)), axis)
+           for i, (d, s) in enumerate(rings)]
+    return np.vstack(out), c + axis * top
+
+
+def _band_faces(loop: np.ndarray, first: int, n_rings: int, apex: int) -> np.ndarray:
+    """Faces from the margin (loop, directed as its edges run in their faces) through n_rings new rings of len(loop)
+    points starting at index `first`, then a fan to the apex. Edge a->b of the margin gets (b, a, a'), (b, a', b'): the
+    new faces wind against the old ones, so the closed shell keeps one orientation."""
+    n = len(loop)
+    rows = [np.asarray(loop)] + [first + k * n + np.arange(n) for k in range(n_rings)]
+    F = []
+    for top, low in zip(rows, rows[1:]):
+        a, b, a2, b2 = top, np.roll(top, -1), low, np.roll(low, -1)
+        F += [np.c_[b, a, a2], np.c_[b, a2, b2]]
+    last = rows[-1]
+    F.append(np.c_[np.roll(last, -1), last, np.full(n, apex)])
+    return np.vstack(F)
+
+
+def _laplace(V: np.ndarray, F: np.ndarray, free: np.ndarray, times: int = 3) -> None:
+    """Average each free vertex with its neighbours in F, `times` times (the margin, not free, stays put)."""
+    nb: dict[int, set] = {int(i): set() for i in free}
+    for f in F:
+        for i in f:
+            if int(i) in nb:
+                nb[int(i)].update(int(j) for j in f if j != i)
+    for _ in range(times):
+        V[free] = np.array([V[list(nb[int(i)])].mean(0) for i in free])
+
+
+def closed_json(t: dict) -> tuple[dict, str]:
+    """A crown as the viewer gets it ({v, f}) with its open cervical margin closed, so a crown whose side is bared (a
+    neighbour extracted or moved away) shows no hole, and no flat dark cut either: one margin loop gets a root stub
+    ("stub"), a split or short margin a smoothed dome ("dome"); a crown with no open edge comes back as it is
+    ("closed"). The margin's own vertices are shared by the new faces (the normals run across the seam), and the new
+    vertices and faces come after the old ones, so indices into `v` and `f` stay valid. For the view only: the core
+    measures the crowns as they came."""
     mesh = trimesh.Trimesh(np.asarray(t["v"], float), np.asarray(t["f"]), process=False)
-    out = _fill_loops(mesh)
-    return t if out is mesh else {"v": np.round(out.vertices, 3).tolist(), "f": out.faces.tolist()}
+    loops = [lp for lp in _boundary_loops(mesh) if len(lp) >= 3]
+    if not loops:
+        return t, "closed"
+    V0 = np.asarray(mesh.vertices, float)
+    _, inv, cnt = np.unique(mesh.edges_sorted, axis=0, return_inverse=True, return_counts=True)
+    boundary = {(int(a), int(b)) for a, b in np.asarray(mesh.edges)[cnt[inv.ravel()] == 1]}
+    per = [np.linalg.norm(np.diff(V0[np.r_[lp, lp[:1]]], axis=0), axis=1).sum() for lp in loops]
+    stub = (len(loops) == 1 and len(loops[0]) >= MIN_STUB_LOOP[0] and per[0] >= MIN_STUB_LOOP[1]
+            and _loop_closed(loops[0], boundary))
+    V, F, free = [V0], [np.asarray(mesh.faces)], []
+    n = len(V0)
+    for lp in loops:
+        P = V0[lp]
+        axis = _tooth_axis(V0, P)
+        if stub:
+            d, s = STUB_RINGS[-1]
+            h = ROOT_STUB_MM - d
+            rings = list(STUB_RINGS) + [(d + h * np.sin(np.radians(g)), s * np.cos(np.radians(g))) for g, _ in STUB_DOME]
+            apex_depth = ROOT_STUB_MM
+        else:
+            # a low dome over the margin: height a quarter of its mean radius, three rings in, smoothed after
+            R = np.linalg.norm((P - P.mean(0)) - np.outer((P - P.mean(0)) @ axis, axis), axis=1).mean()
+            h = 0.25 * R
+            rings = [(h * np.sqrt(1 - s * s), s) for s in (0.75, 0.5, 0.25)]
+            apex_depth = h
+        ring_pts, level = _rings(P, axis, rings)
+        apex = level + axis * apex_depth
+        first = n
+        V += [ring_pts, apex[None]]
+        n += len(ring_pts) + 1
+        F.append(_band_faces(lp, first, len(rings), n - 1))
+        if not stub:
+            free.append(np.arange(first, n))
+    V, F = np.vstack(V), np.vstack(F)
+    if free:
+        _laplace(V, F[len(mesh.faces):], np.concatenate(free))
+    return {"v": np.round(V, 3).tolist(), "f": F.tolist()}, ("stub" if stub else "dome")
 
 
 def _slice(mesh: trimesh.Trimesh, n: np.ndarray, c: float) -> trimesh.Trimesh:

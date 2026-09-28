@@ -151,6 +151,9 @@ canvas.style.touchAction = "none";
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 0.9));
 const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(30, 40, 120); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-50, -30, 60); scene.add(fill);
+// a weak light from behind and the root side: the hemisphere's ground colour falls on every face turned back (−y), so a
+// canine's distal side bared by an extraction read as a dark slab. It reaches no occlusal (+z) face: the tops keep their shade.
+const under = new THREE.DirectionalLight(0xffffff, 0.5); under.position.set(0, -60, -80); scene.add(under);
 const group = new THREE.Group(); scene.add(group);
 // the scan reveal on the setup turn and the IPR tool cursor (scan-reveal.js); the prescription it plays is the form's
 // (Universal; the form's IPR contacts are FDI)
