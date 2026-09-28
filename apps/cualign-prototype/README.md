@@ -1,119 +1,142 @@
-# cuAlign — 투명교정 스테이징 에이전트
+English · [한국어](README.ko.md)
 
-의사가 자연어로 전달한 조건을 바탕으로 치아 이동 계획 초안을 만들고, 계산 도구로 검증한 뒤 다시 계획하는 에이전트입니다.
-대화로 조건을 조정하고, 3D 단계 결과를 비교·검토할 수 있습니다.
+# cuAlign: a clear-aligner staging agent
 
-**초안 전용이며 최종 판단은 의사가 합니다.** 현재 출력은 단계별 치아 STL과(잇몸 스캔이 있으면) 단계별 프린트용 상악 모형 STL이며, 착용 가능한 투명교정 장치가 아닙니다.
+cuAlign takes a dentist's treatment conditions in plain language and drafts a tooth-movement plan for clear aligners. A calculation core checks each draft against geometric rules, and when a draft breaks a rule the agent tries another permitted strategy or asks the dentist a question. You adjust the conditions in a chat and compare the staged results in 3D.
 
-## 먼저 읽기
+> **Status.** This is a research prototype built for the NVIDIA hackathon, not a finished service and not a medical device. Every plan it produces is a draft, and the dentist makes the final decision. The output is per-stage tooth STL files and, when a gingiva scan is present, per-stage upper-arch models for 3D printing. None of it is a wearable aligner.
 
-처음 합류했다면 [개발 시작 안내](docs/DEVELOPMENT.md)에서 읽는 순서·실행 확인·작업 후보를 볼 수 있습니다.
-이 저장소는 개발 기반 PoC이며 완성된 서비스가 아닙니다. 네 기능의 구현·검증 범위는 [작업 기록](docs/ROADMAP.md), 실호출 미검증 항목은 [알려진 문제](docs/KNOWN_ISSUES.md)를 봅니다.
+## Documentation
 
-| 문서 | 무엇을 알 수 있나요? |
+- Usage docs (English): <https://cualign.external.kr/docs/>
+- Plain-text summary for LLMs: <https://cualign.external.kr/llms.txt>
+
+The design documents in this repository are written in Korean.
+
+| Document | What it covers |
 |---|---|
-| [아이디어 소개](docs/OVERVIEW.md) | 스테이징이 무엇인지, 왜 이 문제를 에이전트로 푸는지 |
-| [PRD](docs/PRD.md) | 사용자·문제·제품 목표·예선 범위·수용 기준 |
-| [TRD](docs/TRD.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
-| [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
-| [NVIDIA 활용](docs/NVIDIA_STACK.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |
-| [에이전트 워크스페이스](workspace/README.md) | 에이전트 정의(SOUL·AGENTS 등)의 한 곳 모음, 파일별 독자와 독자 과제, OpenClaw 샌드박스 설치법 |
-| [재현 검증](docs/VERIFICATION.md) | 현재 통과한 검사와 아직 확인하지 않은 항목 |
-| [개발 시작 안내](docs/DEVELOPMENT.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
-| [알려진 문제](docs/KNOWN_ISSUES.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |
-| [UI·형상 참고](docs/DESIGN_REFERENCES.md) | 화면·형상 선택에 사용한 관찰과 공개 출처 |
+| [Overview](docs/OVERVIEW.md) (Korean) | What staging is and why an agent handles it |
+| [PRD](docs/PRD.md) (Korean) | Users, problem, goals, qualifier scope, acceptance criteria |
+| [TRD](docs/TRD.md) (Korean) | Architecture, calculation method, data contracts, current limits |
+| [Code map](docs/CODE_MAP.md) (Korean) | What each file does and where to make a change |
+| [NVIDIA stack](docs/NVIDIA_STACK.md) (Korean) | Roles of NAT, NIM, Guardrails, OpenShell and Skills, and how far each was verified |
+| [Agent workspace](workspace/README.md) | Agent definitions (SOUL, AGENTS and the rest) in one place, and how to install them in an OpenClaw sandbox |
+| [Verification](docs/VERIFICATION.md) (Korean) | Checks that passed and items not yet confirmed |
+| [Development guide](docs/DEVELOPMENT.md) (Korean) | Reading order, candidate tasks, done criteria, open team decisions |
+| [Roadmap](docs/ROADMAP.md) (Korean) | Implementation and verification scope of the four features |
+| [Known issues](docs/KNOWN_ISSUES.md) (Korean) | Reviewer errors, how to reproduce them, and what to watch for on handover |
+| [UI and shape references](docs/DESIGN_REFERENCES.md) (Korean) | Observations and public sources behind the UI and geometry choices |
 
-## 예선에서 보여줄 것
+## What the demo shows
 
-샘플 케이스(실제 상악 스캔과 치과의사 처방) 선택 또는 분리된 치아 파일 입력 → 대화로 처방 확인 → 목표·단계 계획 → 규칙 검증·재시도 → 비교·수정 → 계획 파일 내보내기.
+Pick a sample case (a real upper-arch scan with a dentist's prescription) or load separated tooth files. Confirm the prescription in the chat. The agent sets a target arrangement and a stage plan, runs the rule checks, and retries when a check fails. You compare and edit the result, then export the plan files.
 
-핵심 시나리오는 조건을 만족하는 초안, 허용안 전부 실패, 전략 비교, 부족한 조건 되묻기, 수정 후 재계획입니다.
-전체 제품 목표에는 장치 형상 출력까지 포함하지만, 예선 필수 범위는 스테이징입니다.
-한 덩어리 스캔의 자동 분리와 직접 3D 조작은 선택적 확장입니다.
+The core scenarios are a draft that meets the conditions, a case where every permitted strategy fails, a strategy comparison, a follow-up question when the conditions are incomplete, and a replan after an edit. The full product goal includes aligner shape output, but the qualifier round only requires staging. Automatic segmentation of a single-mesh scan and direct 3D manipulation are optional extensions.
 
-## 로컬 실행
+## Requirements
 
-Python 3.12와 uv를 사용합니다. 아래 명령은 **앱 폴더 apps/cualign-prototype/**에서 실행합니다.
-현재 CLI는 레포 안의 설정·벤치마크도 사용하므로 독립 wheel 설치만으로 전체 서비스 실행을 지원하지 않습니다.
+- Python 3.12 and [uv](https://docs.astral.sh/uv/)
+- An NVIDIA API key from build.nvidia.com, only for the agent chat. Planning, tests and the rule-based CLI run without one.
+- Network access for the chat (NIM calls) and for the web UI, which loads three.js from a CDN
 
-키 없이 계산과 구성을 확인할 수 있습니다.
+## Install and run
+
+Run every command below from the app folder, `apps/cualign-prototype/`. The CLI reads configuration and benchmark files from the repository, so installing the wheel by itself does not give you a working service.
+
+These commands need no API key:
 
 ```sh
 uv sync --frozen --extra dev
-uv run pytest -q -p no:warnings          # 병렬(-n auto). 1분 넘는 slow 시험은 빠짐: 약 1분
-uv run pytest -q -p no:warnings --slow   # slow 시험까지 전부 (CI 와 같음): 약 3분
+uv run pytest -q -p no:warnings          # parallel, skips tests marked slow
+uv run pytest -q -p no:warnings --slow   # everything, same as CI
 uv run nat validate --config_file configs/workflow.yml
 uv run cualign plan "발치 없이 12개월 안에, 앞니 먼저" --case moderate
 ```
 
-발치는 치아 번호(FDI)로 처방합니다: `uv run cualign plan "14번과 24번 발치로" --case moderate`(소구치 14·15·24·25만).
-번호 없이 "발치 허용"만 적으면 계획하지 않고 번호를 묻습니다. 앱은 발치 치아를 고르지 않습니다.
-`cualign plan`은 제한된 문구를 해석하는 규칙 기반 실행입니다. NIM 에이전트의 대화·도구 선택과 같은 모드가 아닙니다.
-검사 결과는 날짜별로, 실행 환경·범위와 함께 [재현 검증](docs/VERIFICATION.md)에 있습니다.
+The last command asks for a plan with no extractions, finished within 12 months, front teeth first. `cualign plan` is a rule-based run that parses a limited set of **Korean** phrases. It is not the same mode as the NIM agent, which chooses tools in conversation. An English request runs, but its conditions are not read, so the CLI plans with defaults. The built-in synthetic cases are `aligned`, `mild`, `moderate`, `severe` and `extraction`.
 
-### 대화·3D UI
+Extractions are prescribed by FDI tooth number, and only premolars 14, 15, 24 and 25 can be named:
+
+```sh
+uv run cualign plan "14번과 24번 발치로" --case moderate   # extract 14 and 24
+```
+
+If the request says extractions are allowed but gives no tooth numbers, the CLI does not plan and asks for the numbers instead. The app never chooses which teeth to extract.
+
+Plans are saved as JSON under `CUALIGN_OUT` (default `./out`). `uv run cualign bench` runs the rule benchmark and overwrites `bench/results.md`.
+
+### Chat and 3D UI
 
 ```sh
 cp .env.example .env
-# .env의 NVIDIA_API_KEY에 본인의 키를 설정합니다. 실제 키는 커밋하지 않습니다.
+# Put your own key in NVIDIA_API_KEY in .env. Never commit a real key.
 uv run cualign serve --host 127.0.0.1
 ```
 
-브라우저에서 <http://localhost:8000/ui/>를 엽니다.
-에이전트 대화는 NVIDIA API 키와 네트워크가 필요합니다. 화면은 three.js를 외부 CDN에서 가져옵니다.
-현재 서버에는 사용자 인증과 사용자별 데이터 격리가 없으므로 로컬 시연 환경을 기준으로 합니다.
+Open <http://localhost:8000/ui/> in a browser. The server has no user authentication and no per-user data isolation, so treat it as a local demo.
 
-### Docker 실행
+### Docker
 
-Docker 엔진이 실행 중인 환경에서 이 앱 폴더의 추적 파일만 빌드에 전달합니다.
+With a running Docker engine, this builds from the app folder's tracked files only:
 
 ```sh
 git archive HEAD:apps/cualign-prototype | docker build -t cualign:local -
 docker run --rm -p 127.0.0.1:8000:8000 --env-file .env cualign:local
 ```
 
-이 빌드는 미커밋 변경을 포함하지 않습니다. 키 없는 UI·규칙 폴백만 볼 때는 `--env-file .env`를 생략할 수 있습니다.
-키를 Dockerfile이나 이미지에 넣지 않습니다. 기본 실행 결과는 컨테이너 안에 남으며, 위 `--rm` 실행을 종료하면 사라지므로 필요한 파일은 먼저 다운로드합니다.
-확인한 플랫폼은 Linux arm64이며 다른 플랫폼의 결과는 [검증 기록](docs/VERIFICATION.md)과 구별합니다.
+The build leaves out uncommitted changes. To see only the UI and the keyless rule fallback, drop `--env-file .env`. Do not put the key in the Dockerfile or the image. Results stay inside the container and disappear when the `--rm` container stops, so download what you need first. The Docker build was verified on Linux arm64 only.
 
-## 어떻게 동작하나요?
+## How it works
 
-NAT의 계획 에이전트가 조건을 해석해 계산 도구를 호출합니다. 계산 코어가 목표 배열·중간 단계·규칙 위반을 반환하면
-에이전트는 다른 허용 전략을 시도하거나 의사에게 질문합니다. 읽기 전용 검토 에이전트는 최대 2회/40초 안에 검토 메모 또는 실패 상태를 반환합니다.
-웹 UI는 최종 계획 이벤트로 3D·카드·파일을 연결하고 부모 계획·조건·검토·승인 상태를 표시합니다.
-조건 수정은 새 계획을 만들며, 승인한 계획만 치아 STL을 내보냅니다. 잇몸 스캔(`gingiva.stl`)이 있으면 ZIP의 `print_models/`에 단계별 프린트용 모형도 넣습니다.
-규칙 위반·검토 실패 상태는 승인할 수 없습니다. 키 없는 규칙 폴백은 검토 미실행을 표시하고 의사가 승인할 수 있습니다.
-화면에서 조건을 바꾸면 재계획 후 다시 승인해야 합니다. CLI의 --export는 미승인 출력을 거부합니다.
+A planning agent built on the NeMo Agent Toolkit (NAT) reads the conditions and calls calculation tools. The core returns a target arrangement, intermediate stages and any rule violations. The agent then tries another permitted strategy or asks the dentist. A read-only reviewer returns a review note or a failure state within at most 2 attempts and 40 seconds.
 
-| 구성 | 역할 |
+The web UI links the final plan event to the 3D view, cards and files, and shows the parent plan, conditions, review and approval state. Editing conditions creates a new plan, and only an approved plan exports tooth STL files. If a gingiva scan (`gingiva.stl`) is present, the ZIP also carries per-stage print models under `print_models/`.
+
+A plan with rule violations or a failed review cannot be approved. The keyless rule fallback marks the review as not run, and the dentist can still approve it. Changing conditions in the UI forces a replan and a fresh approval. `cualign plan --export` refuses unapproved output.
+
+### NVIDIA stack
+
+| Component | Role in cuAlign |
 |---|---|
-| `src/cualign/core/` | 목표 배열·단계 생성, 기하 규칙 검사, 저장·출력 |
-| `src/cualign/agent/`, `configs/workflow.yml` | NAT 도구와 계획·검토 에이전트, Nemotron/NIM 연결 |
-| `src/cualign/server/` | API, 대화 검사 미들웨어, 정적 웹 UI |
-| `guardrails/` | NeMo Guardrails 검사 설정과 프롬프트, NVIDIA 카탈로그 스킬로 만든 안전 정책(`policy/`) |
-| `openshell/` | 샌드박스 정책 실험 |
-| `workspace/` | 에이전트 정의(OpenClaw 워크스페이스 규약: SOUL·AGENTS·IDENTITY·USER·TOOLS·HEARTBEAT·MEMORY)와 Skill, 과거 검사 보고서. [workspace/README.md](workspace/README.md) |
-| `tests/`, `bench/`, `scripts/`, `docs/demo/` | 자동 검사·규칙 벤치마크·실호출 스크립트·기존 실행 기록 |
+| NeMo Agent Toolkit | Planning agent, read-only reviewer, calculation tools, chat server and plan events (`configs/workflow.yml`, `src/cualign/agent/`) |
+| Nemotron on NIM | Chat and tool selection. The config uses `nvidia/nemotron-3-super-120b-a12b` and `nvidia/nemotron-3.5-lightning-30b-a3b` |
+| NeMo Guardrails | Input and output checks on every agent call (`guardrails/`) |
+| OpenShell | Runs the cuAlign server in a sandbox with restricted writes and network (`openshell/`) |
+| NemoClaw | Calls cuAlign as an MCP server (`/mcp`) from an OpenClaw sandbox (`nemoclaw/`). Only offline tests pass so far |
+| Agent Skill | Clinical-rules skill the planning agent reads before planning (`workspace/skills/cualign-clinical-rules/`) |
+| NVIDIA skill catalog | `nemotron-policy-generator` generated the safety policy in `guardrails/policy/` offline |
 
-## 현재 구현의 경계
+Offline tests check configuration and registration. They do not prove that remote model calls succeed. [NVIDIA_STACK.md](docs/NVIDIA_STACK.md) (Korean) lists the verification level of each component.
 
-- 상악 치아의 평행 이동, 앞니(FDI 12·11·21·22) 회전 보정, 이웃보다 1mm 넘게 높거나 낮은 치아의 수직 보정을 다루는 기하 PoC입니다.
-  송곳니·소구치·대구치의 회전(외곽선으로 측정되지 않음)과 토크·하악·교합·조직 반응은 지원하지 않습니다.
-- 기간은 단계 수와 고정 착용 주기의 환산값이며 실제 치료 기간을 예측하지 않습니다.
-- IPR은 계산상 공간을 조정하며 원본 메시를 절삭하지 않습니다. 충돌 검사도 모든 치아 쌍의 충돌 0을 보장하지 않습니다.
-- 규칙 통과는 임상적 적합성이나 의사 승인이 아닙니다. 화면에서 명시적으로 승인한 계획만 내보낼 수 있으며 수정안은 다시 승인해야 합니다.
-- Guardrails는 에이전트를 부르는 모든 경로에서 대화 입력 검사와 출력 검사를 제공합니다. 답은 출력 판정까지 내보내지 않고, 막히면 거절문으로 바꿉니다. `/full`·`/atif` 경로의 원 단계는 거르지 않으며 검사 오류 시 ERROR 로그를 남기고 진행할 수 있습니다. `CUALIGN_RAILS_FAIL_CLOSED=1`이면 오류 턴을 거절합니다. 레일이 켜져 있으면 주민등록번호·휴대전화·이메일 꼴이 든 요청은 모델 전에 거절하고, 처방·확정 문구 목록에 걸린 답은 출력 레일 모델 없이 거절문으로 바꿉니다. 이름·차트 번호와 목록 밖 문장은 잡지 않습니다.
-- 스캔 분리 모델 추론, 서버 전체의 OpenShell 격리, 장치 셸 생성은 검증 완료 기능이 아닙니다.
+## Repository layout
 
-## 데이터·실행 근거
+| Path | Contents |
+|---|---|
+| `src/cualign/core/` | Target arrangement and stage generation, geometric rule checks, storage and export |
+| `src/cualign/agent/`, `configs/workflow.yml` | NAT tools, planning and review agents, Nemotron/NIM wiring |
+| `src/cualign/server/` | API, chat-check middleware, static web UI |
+| `guardrails/` | NeMo Guardrails config and prompts, plus the safety policy (`policy/`) built with an NVIDIA catalog skill |
+| `openshell/` | Sandbox policy experiments |
+| `nemoclaw/` | NemoClaw integration |
+| `workspace/` | Agent definitions following the OpenClaw workspace convention (SOUL, AGENTS, IDENTITY, USER, TOOLS, HEARTBEAT, MEMORY), the Skill, and past scan reports. See [workspace/README.md](workspace/README.md) |
+| `tests/`, `bench/`, `scripts/`, `docs/demo/` | Automated tests, rule benchmark, live-call scripts, earlier run logs |
 
-첫 화면의 샘플 케이스 3건은 공개 데이터셋 Poseidon3D(Kubik & Spanel 2024, CC-BY-4.0)의 실제 상악 스캔이고, 함께 보이는
-처방은 치과의사가 이 스캔을 보고 정한 것입니다([출처·변경 내용](src/cualign/core/samples/ATTRIBUTION.md),
-판정 기록 `evals/real_scans/dentist_labels.yaml`). 테스트·에이전트 평가·CLI는 공개 치아 크라운 형상을 합성 배치한 케이스
-(`moderate` 등)를 씁니다. 형상 자산의 출처와 CC-BY 4.0 표기는 [ATTRIBUTION](src/cualign/core/templates/ATTRIBUTION.md)에
-있습니다. 식별 가능한 환자 데이터·스캔은 커밋하지 않습니다.
+## Known limits
 
-[모델 비교](docs/model-swap.md), [실호출 기록](docs/demo/), [규칙 벤치마크](bench/results.md)는
-기록 당시 코드·모델·설정의 결과입니다. 최신 전체 재실행이나 임상 성과를 뜻하지 않습니다.
+- The geometry covers upper-arch teeth only: translation, rotation correction of the front teeth (FDI 12, 11, 21, 22), and vertical correction of teeth more than 1 mm above or below their neighbours. Rotation of canines, premolars and molars (outlines do not measure it), torque, the lower arch, occlusion and tissue response are not supported.
+- Duration is the stage count times a fixed wear interval. It does not predict real treatment time.
+- IPR is cut from the crown meshes with one flat plane per contact, half from each tooth, in a derived copy of the case (`src/cualign/core/ipr_cut.py`). The target, the stages, the collision check and the exported STLs use the cut crowns, and the original scan stays as it is. The collision check does not guarantee zero collisions for every tooth pair.
+- Passing the rules is not clinical suitability and not dentist approval. Only a plan explicitly approved in the UI can be exported, and an edited plan needs approval again.
+- Guardrails check chat input and output on every path that calls the agent. An answer is held until the output check finishes and is replaced by a refusal if blocked. Raw steps on the `/full` and `/atif` paths are not filtered, and a check error is logged at ERROR and the turn continues. With `CUALIGN_RAILS_FAIL_CLOSED=1`, a turn with a check error is refused instead. When the rails are on, requests containing a Korean resident registration number, mobile number or email pattern are refused before reaching the model, and answers matching the list of prescription or confirmation phrases are replaced with a refusal without calling the output rail model. Names, chart numbers and sentences outside that list are not caught.
+- Scan segmentation inference, OpenShell isolation of the whole server, and aligner shell generation are not verified features.
+- The reviewer can hit upstream 503 errors from NIM. It stops within its limits and blocks approval. See [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) (Korean).
 
-외부 형상 자산의 조건은 위 출처 문서를 따릅니다.
+## Data, licenses and evidence
+
+The three sample cases on the start screen are real upper-arch scans from the public Poseidon3D dataset (Kubik and Spanel, Bioengineering 11(10):1014, 2024, CC-BY-4.0). The prescriptions shown with them are a dentist's reading of those scans, recorded in `evals/real_scans/dentist_labels.yaml`, and are not part of the dataset. Sources and changes are in [samples/ATTRIBUTION.md](src/cualign/core/samples/ATTRIBUTION.md).
+
+Tests, agent evaluations and the CLI use synthetic cases (`moderate` and the others) that place public tooth-crown shapes. Those shapes come from "Dental arches" by Lydran96 on Sketchfab, licensed CC-BY-4.0. See [templates/ATTRIBUTION.md](src/cualign/core/templates/ATTRIBUTION.md). No identifiable patient data or scans are committed.
+
+The [model comparison](docs/model-swap.md) (Korean), [live-call logs](docs/demo/) and [rule benchmark](bench/results.md) record the code, models and settings at the time they were run. They are not a fresh full rerun and not clinical outcomes.
+
+External shape assets follow the terms in the attribution files above.
