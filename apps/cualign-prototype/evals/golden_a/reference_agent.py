@@ -293,7 +293,7 @@ class ReferenceAgent:
         if self.st["needs_teeth"]:        # extraction asked for without teeth: the app does not choose them (#56)
             self.st["needs_teeth"] = False
             return ("발치안을 만들려면 발치할 치아 번호가 필요합니다. 앱은 발치할 치아를 고르지 않습니다. "
-                    "어느 치아를 발치할까요? (예: 5번과 12번) " + DISCLAIMER)
+                    "어느 치아를 발치할까요? (예: 5번과 12번)")   # the question itself, as workspace/AGENTS.md asks (A06)
         # No interview: the UI greeting already asked, and what the dentist did not say is the displayed form.
         compare = _compare_request(text)
         T = self.tools
