@@ -6,6 +6,7 @@ import asyncio
 import json
 import math
 import os
+import re
 from pathlib import Path
 import socket
 import sys
@@ -111,6 +112,13 @@ def sse(name, obj):
     return f"event: {name}\ndata: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
+def nat_step(kind, tool, args, sid):
+    """A tool row's NAT event as the server sends it (worker.py ToolStepsOnly): a start with the arguments, an end with
+    the same id whose output is only 완료."""
+    body = "**Function Input:**\n```json\n" + json.dumps(args) + "\n```" + ("\n\n**Function Output:**\n완료" if kind == "End" else "")
+    return "intermediate_data: " + json.dumps({"id": sid, "name": f"Function {kind}: cualign__{tool}", "payload": body}, ensure_ascii=False) + "\n\n"
+
+
 @app.post("/chat/stream")
 async def fake_chat(request: Request):
     """The agent by step (#20 contract; the middleware already read the cualign block): setup → step_done with the
@@ -141,16 +149,30 @@ async def fake_chat(request: Request):
             tools = await group.get_all_functions()
             def tool(name):
                 return next(fn for key, fn in tools.items() if key.split("__")[-1] == name)
-            # Exercise actual NAT tool functions, but no external LLM.
+            # Exercise actual NAT tool functions, but no external LLM. Each call streams its start and end rows as NAT
+            # does, a moment apart so the screen shows them running (the tool line's seconds, the 3D chip's words, the
+            # rule check's sweep).
+            yield nat_step("Start", "set_constraints", {"ipr_exclude": [7, 8, 9, 10]}, "s1"); await asyncio.sleep(0.3)
             await tool("set_constraints").ainvoke(ConstraintPatch(ipr_exclude=[7,8,9,10]))
+            yield nat_step("End", "set_constraints", {"ipr_exclude": [7, 8, 9, 10]}, "s1")
+            yield nat_step("Start", "compare_strategies", {}, "s2"); await asyncio.sleep(0.3)
             result = await tool("compare_strategies").ainvoke(register.CompareInput())
+            yield nat_step("End", "compare_strategies", {}, "s2")
             selected = next((p for p in result["plans"] if p["passed"]), result["plans"][0])
-            await tool("select_plan").ainvoke(register.PlanIdInput(plan_id=selected["plan_id"]))
+            pick = {"plan_id": selected["plan_id"]}
+            yield nat_step("Start", "validate", pick, "s3"); await asyncio.sleep(1.2)
+            await tool("validate").ainvoke(register.PlanIdInput(**pick))
+            yield nat_step("End", "validate", pick, "s3")
+            yield nat_step("Start", "select_plan", pick, "s4")
+            await tool("select_plan").ainvoke(register.PlanIdInput(**pick))
+            yield nat_step("End", "select_plan", pick, "s4")
             if "앞니 빼고" in text:
                 class Empty:
                     async def ainvoke(self, messages):
                         return ""
+                yield nat_step("Start", "reviewer", pick, "s5"); await asyncio.sleep(0.3)
                 await review_plan(selected["plan_id"], Empty())
+                yield nat_step("End", "reviewer", pick, "s5")
             yield sse("step_done", {"request_id": run.request_id, "step": "stages"})
             # An unrelated ID in text must not control selection.
             yield 'data: {"value":"단계를 만들었습니다. 이전 후보 plan_id: p999는 선택하지 않습니다."}\n\n'
@@ -227,9 +249,10 @@ async def main():
             assert (await page.locator(".trace").last.locator(".thinking").inner_text()).startswith("모델 추론 2줄")
             assert await page.locator("#cExtract").input_value() == "14, 24"
             assert await page.locator("#tabCond").get_attribute("aria-selected") == "true"
-            # no dimming over the 3D during a turn (only a chip under it), and the chip is off once the turn is over
+            # no dimming over the 3D during a turn (only a chip under it); the chip's dot settles as a check and it goes 0.6 s later
             assert await page.evaluate("getComputedStyle(document.getElementById('viewCanvas')).opacity") == "1"
-            assert not await page.locator("#workNote").evaluate("e => e.classList.contains('on')")
+            assert await page.locator("#workNote").get_attribute("data-state") == "ok" and await page.locator("#workNote .pulse-dot.ok").count() == 1
+            await page.wait_for_function("!document.getElementById('workNote').classList.contains('on')", timeout=2000)
             # the reasoning in sentences: the tool row and its line show without a click, the raw call only under 자세히
             trace = page.locator(".trace").last
             assert (await trace.locator(".head").inner_text()).endswith("도구 1회 · 조건 설정")
@@ -277,14 +300,23 @@ async def main():
             assert await next_chip("비발치안과 비교").count() == 0      # an extraction prescription: no comparison chip
             # turn 3 (stages): the real tools make the plan; plan_selected lands it on 단계 with the slider
             await next_chip("단계 만들기").click()
+            # a tool line runs with its seconds counting (「0.4s」), then settles as 「완료 · 0.4s」 with a check
+            running = page.locator(".trace").last.locator(".step.tool.running .time")
+            await running.first.wait_for(timeout=60000)
+            assert re.fullmatch(r"\d+\.\ds", await running.first.inner_text()), await running.first.inner_text()
             await page.wait_for_function(f"{plan_on_screen}.startsWith('p') && document.body.classList.contains('step-stages') && !document.querySelector('#sendBtn').disabled"
                 f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}", timeout=120000)
             parent = await on_screen()
             # the selected plan opens at its last stage, the target reached
             assert await page.evaluate("window.__cualign.state.stage === window.__cualign.state.plan.stages.length && window.__cualign.state.stage > 0")
             assert await next_chip("승인하고 내보내기").count() == 1
+            tool_rows = page.locator(".trace").last.locator(".step.tool")
+            assert await tool_rows.count() == 4 and await tool_rows.locator(".pulse-dot.ok").count() == 4
+            times = await tool_rows.locator(".time").all_inner_texts()
+            assert all(re.fullmatch(r"완료 · \d+\.\ds", t) for t in times), times
             reasons = await page.locator(".trace").last.locator(".reason").all_inner_texts()
-            assert "단계(약 " in reasons[0] and reasons[1].startswith("규칙 검증 — 위반 "), reasons
+            k = next(i for i, r in enumerate(reasons) if "단계(약 " in r)      # after the tools' own lines
+            assert reasons[k + 1].startswith("규칙 검증 — 위반 "), reasons
             assert await page.locator("#tabStages").get_attribute("aria-selected") == "true"     # 단계 → 단계 표
             # the strip is open end to end now: the step in the address, a reload and the strip's buttons keep it
             await page.locator('#flow button[data-step="initial"]').click()

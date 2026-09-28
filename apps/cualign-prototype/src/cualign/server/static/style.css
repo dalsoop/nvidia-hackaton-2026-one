@@ -175,9 +175,9 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .trace { align-self: stretch; padding: 0 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .trace .head { color: var(--muted); padding: 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trace .head:has(.text:empty) { display: none; }
-.trace .head .dot { color: var(--green); margin-right: 6px; }
-.trace.running .head .dot { animation: blink 1s steps(2) infinite; }
-.trace.recorded .head .dot { color: var(--faint); }
+.trace .head .pulse-dot { margin-right: 6px; vertical-align: 1px; }
+.trace:not(.running) .head .pulse-dot { animation: none; }   /* breathes while any tool row runs */
+.trace.recorded .head .pulse-dot { background: var(--faint); }
 .trace .rows { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; }
 .trace:not(.running) .rows:empty { display: none; }
 .trace .reason { padding: 2px 4px; color: var(--muted); }
@@ -195,6 +195,10 @@ html.booting.h-case .layout, html.booting.h-check .layout { visibility: hidden; 
 .step .name { color: var(--text); flex: none; }
 .step .arrow { color: var(--muted); flex: none; }
 .step .out { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+/* a tool row: the pulse dot while it runs (a check / an X once it ends), its seconds at the right end */
+.step > .pulse-dot { align-self: center; }
+.step .time { margin-left: auto; padding-left: 8px; flex: none; color: var(--faint); }
+.step.failed .time { color: var(--red-text); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .trace .log pre { margin: 2px 0 4px 4px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 260px; overflow: auto; }
 .trace .log .think-log { margin: 2px 0 4px 4px; padding: 8px; border: 1px dashed var(--line); border-radius: var(--radius); white-space: pre-wrap; color: var(--muted); max-height: 260px; overflow: auto; }
 
@@ -276,7 +280,6 @@ body.focus3d .chat, body.focus3d .splitter, body.focus3d .side { display: none; 
    brightness and its controls, the running step is the transcript's to tell. It fades out when the turn is over. */
 .work-note { display: flex; position: absolute; left: 50%; bottom: 16px; transform: translate(-50%, 4px); z-index: 4; pointer-events: none; align-items: center; gap: 8px; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 0.3s, transform 0.3s, visibility 0s 0.3s; }
 .work-note.on { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity 0.3s, transform 0.3s; }
-.work-note i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 1s steps(2) infinite; }
 body.step-stages.has-plan .work-note { bottom: 76px; }
 .pick-hint { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 4; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 12px; color: var(--muted); white-space: nowrap; pointer-events: none; }
 .pick-hint[hidden] { display: none; }
@@ -591,6 +594,14 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .plan-row .pill.fail { color: var(--red-text); }
 .plan-row .pill.ok { color: var(--pass-text); }
 .plan-row .pill.warn { color: var(--amber-text); }
+/* the review badge: a pulse dot while the review runs; as it lands the dot settles (check / X) and the card's frame
+   lights once, green or red (300 ms) */
+.plan-row .pill .pulse-dot { margin-right: 5px; vertical-align: 0; }
+.plan-row.flash-ok, .plan-group.flash-ok { animation: card-flash-ok 0.3s ease-out; }
+.plan-row.flash-fail, .plan-group.flash-fail { animation: card-flash-fail 0.3s ease-out; }
+@keyframes card-flash-ok { 0% { border-color: var(--green); box-shadow: 0 0 0 1px var(--green), 0 0 16px 2px rgba(118,185,0,0.7); } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes card-flash-fail { 0% { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 0 16px 2px rgba(229,32,32,0.7); } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .plan-row.flash-ok, .plan-group.flash-ok, .plan-row.flash-fail, .plan-group.flash-fail { animation: none; } }
 .plan-review[hidden] { display: none; }
 .old-plans > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
 .old-plans > summary::before { content: "\25B8"; margin-right: 6px; }
