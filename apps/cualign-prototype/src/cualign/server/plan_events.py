@@ -194,7 +194,8 @@ class PlanEventsASGI:
                 elif run.refused:
                     # the rails replaced the answer, so its plan is not offered (it stays stored); the kind tells the
                     # screen whether the refused message must leave the chat it resends (a personal identifier, #157)
-                    extra = event("turn_refused", {**common, "kind": run.refused_kind or "rails"})
+                    extra = event("turn_refused", {**common, "kind": run.refused_kind or "rails",
+                                                   **({"text": run.redacted} if run.refused_kind == "pii" else {})})
                 elif run.selected_plan_id:
                     by_server = await review_skipped(scope, run.selected_plan_id)
                     plan = STORE.plan_json(run.selected_plan_id)

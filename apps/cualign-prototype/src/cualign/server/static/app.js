@@ -2040,7 +2040,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   if (resend && state.messages.at(-1)?.role === "user" && state.messages.at(-1).content === text) state.messages.pop();
   state.messages.push({ role: "user", content: text });
   state.lastRequest = { text, constraints, step: turnStep };
-  addMsg("user", text);
+  const userBubble = addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
   // a sample case may skip the agent (#15): after 8 s of streaming a 건너뛰기 sits under the answer; a failed turn offers it too
@@ -2050,14 +2050,14 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   let skipRow = null;
   const skipTimer = sample ? setTimeout(() => { if (state.requestId === requestId) skipRow = addSkipRow(bubble, requestId); }, 8000) : null;
   $("retryFallback").hidden = sample; $("skipBtn").hidden = !sample;
-  let answer = "", selected = null, streamError = false, overload = null, stepDone = null, refusedPii = false;
+  let answer = "", selected = null, streamError = false, overload = null, stepDone = null, refusedPii = null;
   const handle = ({type, data: obj}) => {
     if (type === "plan_selected") {
       if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
     } else if (type === "step_done") {
       if (!obj.request_id || obj.request_id === state.requestId) stepDone = obj;   // setup: constraints · target: target_id + summary · stages: nothing more
     } else if (type === "turn_refused") {
-      if (obj.request_id === state.requestId && obj.kind === "pii") refusedPii = true;
+      if (obj.request_id === state.requestId && obj.kind === "pii") refusedPii = { text: obj.text ?? "" };
     } else if (type === "plan_context") {
       if (obj.request_id === state.requestId && obj.case_id === state.meshCase) fillConstraints(obj.constraints);
     } else if (type === "plan_error" || type === "error" || obj.code) {
@@ -2088,9 +2088,11 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       // The server refused a personal identifier in this message (#157). It checks every message of the chat this
       // screen resends each turn, so the message leaves the chat (and goes back to the box to be edited), or every
       // later turn would be refused too. The refusal is shown but not kept in the chat either.
+      // The box and the bubble get the sentence with the identifiers taken out (the server's, it holds none of them).
       const i = state.messages.findLastIndex((m) => m.role === "user" && m.content === text);
       if (i >= 0) state.messages.splice(i, 1);
-      $("chatInput").value = text; autosize();
+      userBubble.textContent = refusedPii.text || "(개인정보를 지운 메시지)";
+      $("chatInput").value = refusedPii.text; autosize();
       $("planNotice").textContent = "";
       addNextChips(bubble);
       return;
@@ -2272,7 +2274,11 @@ $("homeBtn").addEventListener("click", (e) => {
   state.clSelected = null;
   showStart().then(() => { $("screenStart").scrollTop = 0; }).catch((err) => addMsg("error", err.message));
 });
-$("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("chatInput").value); } });
+// Enter while an IME (Hangul) is still composing only ends the composition: sending then would clear the box, and
+// the composed last syllable would land in the empty box after it (keyCode 229 for browsers without isComposing).
+$("chatInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send($("chatInput").value); }
+});
 $("resendBtn").addEventListener("click", () => {
   const last = state.lastRequest;
   if (last) send(last.text, last.constraints, { resend: true });

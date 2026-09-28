@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 REFUSAL = ("요청이 cuAlign 의 범위를 벗어납니다. 진단·처방 같은 임상 판단은 의사가 합니다. 이 도구는 얼라이너 단계 계획 초안을 "
            "계산하고 조건별 안을 비교해 드릴 수 있습니다. 최종 판단은 의사가 합니다.")
 # A personal identifier says so: the scope refusal above told the dentist nothing they could fix (#157).
-PII_REFUSAL = "전화번호·주민등록번호·이메일 같은 개인정보가 들어 있어 보내지 않았습니다. 그 부분을 지우고 다시 보내 주세요."
+PII_REFUSAL = "전화번호·주민등록번호·이메일 같은 개인정보가 들어 있어 보내지 않았습니다. 개인정보를 빼고 다시 보내 주세요."
 # The user side of the output check for a review memo, which has no user message of its own.
 MEMO_REQUEST = "이 계획의 검토 메모를 써줘."
 # Worst state wins within a turn: a blocked check is not hidden by a later error, nor an error by a pass.
@@ -111,6 +111,14 @@ def matches(patterns: tuple[str, ...], text: str) -> bool:
     """NFKC only for the check, so fullwidth digits match; the text itself is not changed."""
     text = unicodedata.normalize("NFKC", text)
     return any(re.search(p, text) for p in patterns)
+
+
+def redact(patterns: tuple[str, ...], text: str) -> str:
+    """The text with every match taken out (NFKC, as the check sees it), spaces closed up."""
+    text = unicodedata.normalize("NFKC", text)
+    for p in patterns:
+        text = re.sub(p, "", text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
 def _content(m: Any) -> str:
@@ -320,6 +328,9 @@ class RailsMiddleware(FunctionMiddleware):
             # In the last message, the screen takes that message back out of the chat it resends every turn (#157);
             # left there, every later turn would carry it and be refused too.
             kind = "pii" if matches(PII, user) else "pii_context"
+            run = CURRENT_RUN.get()
+            if run is not None and kind == "pii":
+                run.redacted = redact(PII, user)   # what goes back to the box: the dentist need not find the number
             return user, _record("input", "blocked"), _refuse(kind, PII_REFUSAL)
         if not user:
             logger.error("cuAlign rails: no non-empty user message to check")

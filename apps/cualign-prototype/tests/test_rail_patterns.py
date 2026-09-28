@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from cualign.server.rail_patterns import PII, PRESCRIPTIVE
-from cualign.server.rails_middleware import REFUSAL, matches
+from cualign.server.rails_middleware import REFUSAL, matches, redact
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,3 +95,11 @@ PII_MISSES = [
 def test_pii_patterns():
     assert [t for t in PII_HITS if not matches(PII, t)] == []
     assert [t for t in PII_MISSES if matches(PII, t)] == []
+
+
+def test_redact_takes_out_every_identifier_and_keeps_the_rest():
+    """A refused message goes back to the box without its identifiers (#157)."""
+    got = redact(PII, "보호자 010-1234-5678, 주민번호 900101-1234567, 메일 kim@example.com 입니다. 비발치로 해 주세요.")
+    assert not matches(PII, got)
+    assert got == "보호자 , 주민번호 , 메일 입니다. 비발치로 해 주세요."
+    assert redact(PII, "８개월 안에 끝내 주세요") == "8개월 안에 끝내 주세요"   # NFKC, as the check reads it

@@ -337,7 +337,9 @@ def test_pii_blocked_before_model(store, tmp_path, monkeypatch):
         with serve(tmp_path, monkeypatch, llm, "cualign.server.rails:Rails", rail_models_to(rail_llm.base_url)) as client:
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE}], cualign={"case_id": "moderate"})
             assert PII_REFUSAL in body and MARK not in body
-            assert sse_event(body, "turn_refused")["kind"] == "pii"   # the screen takes this message back (#157)
+            refused = sse_event(body, "turn_refused")
+            assert refused["kind"] == "pii"   # the screen takes this message back (#157)
+            assert refused["text"] == "moderate 케이스 계획 짜줘. 보호자 연락처"   # ... without the number
             assert "0000-0000" not in body  # nothing of the refused request comes back, not even as a progress step
             assert rail_llm.requests == [] and llm.requests == []
             body = ask(client, "/chat/stream", [{"role": "user", "content": PHONE.split(" 보호자")[0]}],
