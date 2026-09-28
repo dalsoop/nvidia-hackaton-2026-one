@@ -153,6 +153,24 @@ def test_stages_turn_takes_the_target_the_previous_turn_made(tmp_path, monkeypat
     assert _context(llm)["step"] == "stages"
 
 
+def test_restart_forgets_the_flow_and_the_conditions_but_keeps_the_plans(store):
+    """「처음부터」: after a setup (and a plan), POST /restart drops Store.flow and the case's conditions back to
+    Constraints() — not the prescription — and answers like /activate; the plans stay for 지난 계획."""
+    app = FastAPI()
+    api.add_api_routes(app)
+    client = TestClient(app)
+    cid = "moderate"
+    pid = api.rule_based_plan(cid, extraction=[5, 12])["chosen"]["plan_id"]
+    store.set_flow(cid, "setup", constraints=store.constraints_for(cid), target_id=None, plan_id=None)
+    assert client.post(f"/api/cases/{cid}/activate").json()["flow"]["step"] == "setup"
+    opened = client.post(f"/api/cases/{cid}/restart").json()
+    assert opened["case_id"] == cid and opened["flow"] is None and cid not in store.flow
+    assert opened["constraints"] == Constraints().prescription().model_dump(mode="json")
+    assert not store.constraints_for(cid).extraction and pid in store.plans and pid in store.plan_ids_for(cid)
+    assert client.post(f"/api/cases/{cid}/activate").json()["flow"] is None      # opening it again stays at 초기
+    assert client.post("/api/cases/nope/restart").status_code == 404
+
+
 def test_a_bad_step_is_400():
     from cualign.server.plan_events import ChatContext
     with pytest.raises(ValueError):

@@ -1549,7 +1549,7 @@ function meshLoading(on) {
   el.classList.add("out");
   el.fade = setTimeout(() => { el.hidden = true; }, REDUCE_MOTION.matches ? 0 : 220);
 }
-async function openCase(caseId, { greet = true } = {}) {
+async function openCase(caseId, { greet = true, restart = false } = {}) {
   ++state.selectionVersion;
   state.requestId = null;
   state.messages = [];
@@ -1560,7 +1560,8 @@ async function openCase(caseId, { greet = true } = {}) {
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
   state.oldPlans = new Set(before.plans.map((p) => p.plan_id));
-  const info = await api(`/api/cases/${encodeURIComponent(caseId)}/activate`, { method: "POST" });
+  // 「처음부터」 (restart): the server forgets the case's step flow and conditions first, then answers like /activate
+  const info = await api(`/api/cases/${encodeURIComponent(caseId)}/${restart ? "restart" : "activate"}`, { method: "POST" });
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   state.planError = info.plan_error ?? null;   // the case opened but no plan could be made: the server's sentence
   state.setup = null; state.target = null; state.targetId = null; state.setupRed = false; state.caseInfo = info;
@@ -1583,21 +1584,41 @@ async function openCase(caseId, { greet = true } = {}) {
     const sample = sampleOf(caseId);
     const asPrescribed = sample && sameConstraints(info.constraints, sample.constraints);
     const text = `케이스 ${caseId} (상악 ${info.n_teeth}개 치아, 총생 ${info.crowding_mm} mm) 를 불러왔습니다. ` + (sample
-      ? (asPrescribed
+      ? (restart   // 처음부터: the conditions are empty until the prescription chip's setup turn fills them
+        ? `처음부터 다시 시작했습니다. 의사 처방(${sample.prescription})은 아직 계획 조건에 넣지 않았습니다.`
+        : asPrescribed
         ? `의사 처방(${sample.prescription})을 계획 조건에 넣어 두었습니다.` + (sample.note ? ` ${sample.note}` : "")
         : `이 케이스에서 전에 바꾼 계획 조건이 남아 있습니다. 처방(${sample.prescription})과 다르니 조건 칸을 확인해 주세요.`)
       : `계획을 시작하려면 제약을 알려 주세요.`);
     // no bubble: the case card on the panel top already says it; only a changed prescription is worth a line
-    if (sample && !asPrescribed) addMsg("system", "조건이 처방과 다릅니다 · 오른쪽 「조건」 탭을 확인해 주세요.");
+    if (sample && !asPrescribed && !restart) addMsg("system", "조건이 처방과 다릅니다 · 오른쪽 「조건」 탭을 확인해 주세요.");
     // the agent's first word (#20): the prescription; a sample offers its own as one chip that sends it. A case the
     // server restored further along says where it stands, and the chips continue from there.
     const ask = state.progress === "initial" ? "처방을 적어 주세요."
       : `이 케이스는 ${{ setup: "셋업", target: "목표 배열", stages: "단계" }[state.progress]}까지 되어 있습니다. 이어서 진행하세요.`;
     state.messages.push({ role: "assistant", content: text + " " + ask });
-    addNextChips(addMsg("assistant", ask));
+    const bubble = addMsg("assistant", ask);
+    if (state.progress !== "initial") {   // the restored case can start over from the prescription chip (the demo again)
+      const again = document.createElement("button");
+      again.type = "button"; again.className = "link-btn restart-link"; again.textContent = "처음부터 다시";
+      again.addEventListener("click", restartCase);
+      bubble.append(again);
+    }
+    addNextChips(bubble);
   }
 }
 
+
+// 「처음부터」 (case header, and 「처음부터 다시」 beside the restored case's line): one click, no confirmation (it is
+// clicked mid-demo). The case opens again from 초기 — no conversation, no plan on screen, the scan without cuts or marks,
+// the prescription chip back; its plans stay, folded as 지난 계획. The address keeps only #case=….
+// Opening a case from the start screen still restores where it stood; only this click starts over.
+async function restartCase() {
+  const id = state.activeCase;
+  if (!id || state.streaming || state.loading) return;
+  try { await activateCase(id, { restart: true }); } catch (e) { addMsg("error", "처음부터 다시 열지 못했습니다 (" + e.message + ")."); }
+}
+$("restartBtn").addEventListener("click", restartCase);
 
 // The server may send the case's current step state with /activate (#20 decision 1): `state: {setup: constraints|null,
 // target_id: str|null, plan_id: str|null}`. Each field opens the strip that far; without it the case opens at 초기.

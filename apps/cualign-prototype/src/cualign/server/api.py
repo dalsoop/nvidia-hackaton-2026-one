@@ -349,6 +349,17 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             out["active_plan"] = {"plan_id": ids[-1], "constraints": _constraint_dump(STORE._record(ids[-1]))}
         return out
 
+    @app.post("/api/cases/{case_id}/restart")
+    async def restart_case(case_id: str):
+        """「처음부터」 on the case header: the step flow and the case's conditions start over (plans and targets stay).
+        Answers like /activate, so the screen draws the case again from 초기."""
+        try:
+            cid, _ = STORE.load_case(case_id)
+        except (KeyError, FileNotFoundError) as e:
+            raise HTTPException(404, str(e))
+        STORE.restart_case(cid)
+        return await activate_case(cid)
+
     @app.get("/api/plans/{plan_id}/cut")
     async def plan_cut(plan_id: str):
         """The IPR-cut crowns of this plan alone: {plan_id, teeth_cut, ipr_cut} (what mesh?plan_id= adds, without the
