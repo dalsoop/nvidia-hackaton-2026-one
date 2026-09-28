@@ -122,6 +122,10 @@ async def fake_chat(request: Request):
     text = next((m["content"] for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
     async def generate():
         if step == "setup":
+            # one tool call as NAT streams it (start, then the end with the output the worker replaced by 완료)
+            args = '**Input:**\n```json\n{"extraction": [5, 12]}\n```'
+            yield "intermediate_data: " + json.dumps({"id": "s1", "name": "Function Start: cualign__set_constraints", "payload": args}) + "\n\n"
+            yield "intermediate_data: " + json.dumps({"id": "s1", "name": "Function End: cualign__set_constraints", "payload": args + "\n\n**Output:**\n완료"}) + "\n\n"
             yield sse("step_done", {"request_id": run.request_id, "step": "setup", "constraints": run.constraints.model_dump(mode="json")})
             yield 'data: {"value":"처방을 조건으로 옮겼습니다. 발치 14·24, IPR 면당 0.25 mm."}\n\n'
             return
@@ -202,6 +206,16 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
             assert await page.locator("#cExtract").input_value() == "14, 24"
             assert await page.locator("#tabCond").get_attribute("aria-selected") == "true"
+            # the reasoning in sentences: the tool row and its line show without a click, the raw call only under 자세히
+            trace = page.locator(".trace").last
+            assert (await trace.locator(".head").inner_text()).endswith("도구 1회 · 조건 설정")
+            assert await trace.locator(".step").is_visible() and "조건 설정" in await trace.locator(".step").inner_text()
+            reasons = await trace.locator(".reason").all_inner_texts()
+            assert reasons[0] == "처방을 읽고 계획 조건으로 옮깁니다." and reasons[1].startswith("처방을 읽었습니다 — 발치 치아 14, 24번, 고정 치아 없음"), reasons
+            assert reasons[2] == "총생 7.9 mm 만큼 공간이 필요합니다.", reasons
+            assert not await trace.locator(".raw pre").is_visible() and "extraction" not in await trace.inner_text()
+            await trace.locator(".raw > summary", has_text="자세히").click()
+            assert await trace.locator(".raw pre").is_visible() and "extraction" in await trace.locator(".raw pre").inner_text()
             removed_crown = "() => { const s = window.__cualign.state; return s.teeth[String(s.setup.extraction[0])].visible; }"
             await page.wait_for_function(f"!({removed_crown})()", timeout=5000)      # red for a moment, then gone (#20)
             assert (await page.evaluate("location.hash")).endswith("&step=setup")
@@ -212,6 +226,7 @@ async def main():
             await page.wait_for_function("document.body.classList.contains('step-target') && window.__cualign.state.targetId === 't-fake' && !document.querySelector('#sendBtn').disabled", timeout=60000)
             assert await page.evaluate("window.__cualign.state.stage") == 1 and not document_has_plan(await page.evaluate("document.body.className"))
             assert await page.locator('#flow button[data-step="stages"]').is_disabled()
+            assert "확보 15.8 mm 로 총생 7.9 mm 를 해결했습니다." in await page.locator(".trace").last.locator(".reason").all_inner_texts()
             await page.locator('#flow button[data-step="initial"]').click()
             await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.stage === 0")
             assert "&step=" not in await page.evaluate("location.hash")
@@ -225,6 +240,8 @@ async def main():
                 f" && document.querySelector('#viewCanvas').dataset.planId === {plan_on_screen}", timeout=120000)
             parent = await on_screen()
             assert await next_chip("승인하고 내보내기").count() == 1
+            reasons = await page.locator(".trace").last.locator(".reason").all_inner_texts()
+            assert "단계(약 " in reasons[0] and reasons[1].startswith("규칙 검증 — 위반 "), reasons
             # the strip is open end to end now: the step in the address, a reload and the strip's buttons keep it
             await page.locator('#flow button[data-step="initial"]').click()
             await page.wait_for_function("document.body.classList.contains('step-initial') && window.__cualign.state.stage === 0")
@@ -627,8 +644,17 @@ async def main():
             assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"
             assert await page.locator(".ipr-mark").count() == 3
             assert await page.evaluate("window.__cualign.readConstraints().ipr_surfaces") == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]]
+            # the recorded setup tells the same lines a live setup does, in the same order, from the recording's values
+            # (the lines follow the landing, which may still be fetching after the recorded bubble shows)
+            recorded_reasons = "n => [...document.querySelectorAll('.trace.recorded')].at(-1)?.querySelectorAll('.reason').length >= n"
+            await page.wait_for_function(recorded_reasons, arg=2, timeout=10000)
+            reasons = await page.locator(".trace.recorded").last.locator(".reason").all_inner_texts()
+            assert reasons[0] == "처방을 읽고 계획 조건으로 옮깁니다." and reasons[1].startswith("처방을 읽었습니다 — "), reasons
             await next_chip("목표 배열 만들기").click()
             await skip_turn(2)
+            await page.wait_for_function(recorded_reasons, arg=2, timeout=10000)
+            assert await page.locator(".trace.recorded").last.locator(".reason").all_inner_texts() == [
+                "확장 + IPR 전략으로 목표 배열을 만듭니다.", "확보 4.4 mm 로 총생 4.2 mm 를 해결했습니다."]
             assert await page.locator("body").evaluate("b => b.classList.contains('step-target')") and await page.evaluate("window.__cualign.state.targetId") == "t-fake"
             assert await next_chip("비발치안과 비교").count() == 1      # 000131 is a non-extraction case
             await next_chip("단계 만들기").click()

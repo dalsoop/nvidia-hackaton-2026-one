@@ -1992,13 +1992,62 @@ function addMsg(role, text = "") {
 }
 
 // Inline trace (Claude Code style): one row per tool/LLM event, keyed by NAT step id, rendered
-// inside the transcript right before the assistant bubble. Click a row to expand the raw payload.
-function newTrace() {
-  const box = document.createElement("details");
+// inside the transcript right before the assistant bubble. The summary line, the tool rows and the reasoning lines
+// are always shown; the raw payloads (arguments, output, time) sit under 자세히.
+function newTrace(before = null) {
+  const box = document.createElement("div");
   box.className = "trace";
-  box.innerHTML = '<summary><span class="dot">\u25CF</span><span class="text"></span></summary><div class="rows"></div>';
-  $("transcript").appendChild(box);
-  return { box, el: box.querySelector(".rows"), rows: new Map() };
+  box.innerHTML = '<div class="head"><span class="dot">\u25CF</span><span class="text"></span></div><div class="rows"></div>'
+    + '<details class="raw" hidden><summary>자세히</summary><div class="log"></div></details>';
+  before ? before.before(box) : $("transcript").appendChild(box);
+  return { box, el: box.querySelector(".rows"), log: box.querySelector(".log"), rows: new Map() };
+}
+// follow a new line only when the transcript is already at its bottom (the dentist may be reading above)
+function keepBottom(add) {
+  const t = $("transcript"), pinned = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
+  const out = add();
+  if (pinned) t.scrollTop = t.scrollHeight;
+  return out;
+}
+// The agent's reasoning as sentences: one deterministic Korean line per tool call from its name and arguments, and
+// one per result the turn hands back (step_done, the selected plan). No model writes them, and the replay builds the
+// same lines from the same values. Tooth numbers only as the server wrote them (FDI); no ids.
+function reasonForTool(name, input) {
+  const n = (name ?? "").replace(/^Function (Start|End): /, "").replace(/^cualign__/, "");
+  const strategy = STRATEGY_KO[(tryJson(input) ?? {}).strategy];
+  return { set_constraints: "처방을 읽고 계획 조건으로 옮깁니다.", load_skill: "임상 규칙을 읽습니다.",
+    propose_target: strategy ? `${strategy} 전략으로 목표 배열을 만듭니다.` : "목표 배열을 만듭니다.",
+    plan_stages: "목표 배열까지 단계로 나눕니다.", compare_strategies: "같은 조건으로 전략들을 비교합니다.",
+    validate: "규칙을 다시 검증합니다.", select_plan: "화면에 보일 계획을 고릅니다.", reviewer: "검토를 요청했습니다." }[n] ?? null;
+}
+function reasonsForSetup(done) {
+  const cond = done?.conditions_ko ? done.conditions_ko.split(" · ").join(", ") : condWords().join(", ");
+  const crowding = state.caseInfo?.crowding_mm;
+  return [`처방을 읽었습니다 — ${cond}.`, ...(crowding != null ? [`총생 ${crowding} mm 만큼 공간이 필요합니다.`] : [])];
+}
+function reasonsForTarget(s) {
+  if (s?.space_mm == null || s?.crowding_mm == null) return [];
+  return [s.space_deficit_mm > 0 ? `확보 ${s.space_mm} mm 로 총생 ${s.crowding_mm} mm 중 ${s.space_deficit_mm} mm 가 모자랍니다.`
+    : `확보 ${s.space_mm} mm 로 총생 ${s.crowding_mm} mm 를 해결했습니다.`];
+}
+function reasonsForPlan(plan) {
+  if (!plan?.info) return [];
+  const v = plan.violations ?? [], by = {};
+  for (const x of v) by[x.type] = (by[x.type] ?? 0) + 1;
+  const review = { passed: "통과", failed: "실패" }[plan.review?.status];
+  return [`${plan.info.n_stages}단계(약 ${plan.info.months}개월)로 나눴습니다` + (plan.info.per_stage_mm ? ` — 단계당 최대 ${plan.info.per_stage_mm} mm.` : "."),
+    v.length ? `규칙 검증 — 위반 ${v.length}건: ` + Object.entries(by).map(([k, n]) => `${RULE_KO[k] ?? k} ${n}건`).join(", ") + "."
+      : "규칙 검증 — 위반 0건.",
+    ...(review ? [`검토 → ${review}.`] : [])];
+}
+const stepReasons = (done) => done.step === "setup" ? reasonsForSetup(done) : done.step === "target" ? reasonsForTarget(done.summary) : [];
+function addReasons(lines, trace = state.trace) {
+  if (!trace || !lines?.length) return;
+  keepBottom(() => { for (const text of lines) {
+    const row = document.createElement("div");
+    row.className = "reason"; row.textContent = text;
+    trace.el.appendChild(row);
+  } });
 }
 // The folded line reads as progress while a tool runs and as the list of tools used when the turn is done.
 const RUN_KO = { "케이스 읽기": "케이스를 읽는 중", "케이스 목록": "케이스 목록을 읽는 중", "임상 한계 읽기": "임상 한계를 읽는 중",
@@ -2006,7 +2055,7 @@ const RUN_KO = { "케이스 읽기": "케이스를 읽는 중", "케이스 목�
   "규칙 검증": "규칙을 검증하는 중", "전략 비교": "전략을 비교하는 중", "계획 선택": "계획을 고르는 중", "STL 내보내기": "STL을 내보내는 중",
   "계획 읽기": "계획을 읽는 중", "임상 규칙 읽기": "임상 규칙을 읽는 중", "검토": "계획을 검토하는 중", "모델 추론": "생각하는 중" };
 function traceSummary(trace) {
-  const rows = [...trace.el.children];
+  const rows = [...trace.el.querySelectorAll(":scope > .step")];
   const running = rows.find((r) => r.classList.contains("running"));
   trace.box.classList.toggle("running", !!running);
   const names = [...new Set(rows.map((r) => r.querySelector(".name").textContent))].filter((n) => n !== "모델 추론");
@@ -2056,23 +2105,28 @@ function addStep(name, payload, cls = "", trace = state.trace, id = null) {
   const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 1);
   const { input, output } = isLlm || cls ? { input: "", output: text } : splitPayload(text);
   const label = (name ?? "step").replace(/^Function (Start|End): /, "");
-  let row = id && trace.rows.get(id);
+  let row = id && trace.rows.get(id), fresh = false;
   if (!row) {
-    row = document.createElement("details");
+    fresh = true;
+    row = document.createElement("div");
     row.className = `step ${isLlm ? "llm" : cls}`;
-    row.innerHTML = `<summary><span class="dot"></span><span class="name"></span><span class="args"></span><span class="arrow">→</span><span class="out"></span></summary><pre></pre>`;
-    trace.el.appendChild(row);
+    row.innerHTML = `<span class="dot"></span><span class="name"></span><span class="arrow">→</span><span class="out"></span>`;
+    row.t0 = performance.now();
+    row.raw = document.createElement("pre");
+    keepBottom(() => trace.el.appendChild(row));
+    trace.log.appendChild(row.raw); trace.log.parentElement.hidden = false;
     if (id) trace.rows.set(id, row);
   }
   row.querySelector(".name").textContent = isLlm ? "모델 추론" : toolKo(label);
-  row.querySelector(".args").textContent = isLlm ? ` (${label})` : (input ? `(${argsSummary(input)})` : "");
   const done = !!output;
-  row.querySelector(".arrow").style.visibility = done ? "visible" : "hidden";
-  row.querySelector(".out").textContent = done ? (isLlm ? output.replace(/\s+/g, " ").slice(0, 110) : outSummary(label, output)) : "";
+  row.querySelector(".arrow").style.visibility = done && !isLlm ? "visible" : "hidden";
+  row.querySelector(".out").textContent = done ? (isLlm ? "" : outSummary(label, output)) : "";
   row.classList.toggle("running", !done);
-  row.querySelector("pre").textContent = text ?? "";
+  // 자세히: the raw event, the arguments as the model chose them and the time the call took
+  row.raw.textContent = (isLlm ? `모델 추론 (${label})` : toolKo(label)) + (input ? ` (${argsSummary(input)})` : "")
+    + (done ? ` · ${((performance.now() - row.t0) / 1000).toFixed(1)}초` : "") + "\n" + (text ?? "");
   traceSummary(trace);
-  $("transcript").scrollTop = $("transcript").scrollHeight;
+  if (fresh && !isLlm && !cls) addReasons([reasonForTool(label, input)].filter(Boolean), trace);
 }
 
 // The agent's question card (#90): the question and two or three choices. A choice with a message is sent as the
@@ -2237,10 +2291,11 @@ async function send(text, constraints = null, { resend = false, step = null } = 
     }
     if (answer) state.messages.push({ role: "assistant", content: answer });
     state.lastAssistantText = answer;
-    if (stepDone && !streamError) await landStep(stepDone);
+    if (stepDone && !streamError) { await landStep(stepDone); addReasons(stepReasons(stepDone)); }
     if (selected && !streamError) {
       await refreshPlans(selected.plan_id);
       setStep("stages");
+      if (state.plan?.plan_id === selected.plan_id) addReasons(reasonsForPlan(state.plan));
       if (state.plan?.plan_id === selected.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
       addDecision(prevPlanId, selected.plan_id);
       if (!answer) bubble.textContent = "계획은 생성됐지만 모델의 최종 설명은 비어 있습니다.";
@@ -2314,12 +2369,18 @@ const stepOf = (text, step) => step === "stages" && /개월|기간/.test(text) ?
 async function replayOrAdopt(bubble, caseId, prevPlanId) {
   $("retryBar").hidden = true;
   if (state.turnStep === "setup") { try { scanFx.start(caseId, prescribed(readConstraints())); } catch { /* the form does not parse: no reveal */ } }
+  let trace = null;
   try {
     const r = await fetch(`/api/cases/${encodeURIComponent(caseId)}/replay`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ step: state.turnStep ?? "stages", base_plan_id: state.plan?.plan_id ?? null }) });
     if (r.status === 404) { bubble.remove(); adoptCurrentPlan(); return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     const rec = await r.json();
+    // the cut turn's trace goes; the recording's steps are told again from the recomputed values, as a live turn tells them
+    if (bubble.previousElementSibling?.classList.contains("trace")) bubble.previousElementSibling.remove();
+    trace = newTrace(bubble);
+    trace.box.classList.add("recorded");
+    trace.box.querySelector(".text").textContent = "녹화된 답 · 계산은 지금 다시 했습니다";
     setAnswer(bubble, rec.answer_md ?? "");
     bubble.classList.add("recorded");
     const tag = document.createElement("small"); tag.className = "recorded-tag"; tag.textContent = "녹화된 답 · " + (rec.recorded_at ?? "").slice(0, 10);
@@ -2328,19 +2389,26 @@ async function replayOrAdopt(bubble, caseId, prevPlanId) {
     state.messages.push({ role: "assistant", content: rec.answer_md ?? "" });
     addMsg("system", "에이전트 답을 건너뛰고 녹화된 답을 보였습니다.");
     // a recorded setup or target lands like the agent's step_done (#20); a plan like its plan_selected
-    if (rec.constraints) await landStep({ step: "setup", constraints: rec.constraints });
-    else if (rec.target_id) await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
+    if (rec.constraints) {
+      await landStep({ step: "setup", constraints: rec.constraints });
+      addReasons([reasonForTool("set_constraints"), ...reasonsForSetup(rec)], trace);
+    } else if (rec.target_id) {
+      await landStep({ step: "target", target_id: rec.target_id, summary: rec.summary });
+      addReasons([reasonForTool("propose_target", JSON.stringify({ strategy: rec.summary?.strategy })), ...reasonsForTarget(rec.summary)], trace);
+    }
     const sel = rec.plan_selected;   // null on a compare of an extraction case (the answer only asks back): the bubble alone, cards and 3D stay
     if (!sel?.plan_id) $("planNotice").textContent = "";
     if (sel?.plan_id) {
       await refreshPlans(sel.plan_id);
       setStep("stages");
+      addReasons([reasonForTool(rec.step === "compare" ? "compare_strategies" : "plan_stages"), reasonForTool("select_plan"),
+        reasonForTool("reviewer"), ...(state.plan?.plan_id === sel.plan_id ? reasonsForPlan(state.plan) : [])], trace);
       addDecision(prevPlanId, sel.plan_id);
       if (state.plan?.plan_id === sel.plan_id && state.plan.review?.status === "passed") addReviewQuestions(bubble, state.plan.review.message);
     }
     addNextChips(bubble);
   } catch (e) {
-    bubble.remove();
+    bubble.remove(); trace?.box.remove();
     addMsg("error", "녹화된 답을 불러오지 못했습니다 (" + e.message + ").");
     adoptCurrentPlan();
   } finally { scanFx.release(); }
