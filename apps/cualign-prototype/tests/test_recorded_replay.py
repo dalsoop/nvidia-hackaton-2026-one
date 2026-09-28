@@ -62,6 +62,16 @@ def test_numbers_follow_the_recomputed_plans():
     out = recorded.substitute(compare, plans, plans["extraction"])
     assert out.splitlines()[0] == "**확장 전략: 9단계(약 2.1개월) · 통과**" and out.splitlines()[1] == "**발치 전략: 20단계(약 4.6개월) · 통과**"
     assert recorded.strategy_in("비발치로 12단계") is None and recorded.strategy_in("확장 + IPR 전략") == "expansion_ipr"
+    # a strategy that was not recomputed keeps its recorded figures, and the chosen plan is the bold summary's (000131:
+    # the model wrote 확장 for 확장 + IPR; the IPR plan's 9 made 「확장 전략: 10단계」 read as a tie with IPR's 9)
+    rec131 = ("확장 전략: 10단계(약 2.3개월) · 통과\nIPR 전략: 9단계(약 2.1개월) · 통과\nIPR 전략을 선택했습니다.\n\n"
+              "**IPR 전략으로 9단계(약 2.1개월) 계획을 만들었습니다.** 규칙 위반은 없습니다.")
+    plans = {"expansion_ipr": {"n_stages": 10, "months": 2.3}, "ipr": {"n_stages": 8, "months": 1.8}}
+    out = recorded.substitute(rec131, plans, plans["ipr"]).splitlines()
+    assert out[0] == "확장 전략: 10단계(약 2.3개월) · 통과" and out[1] == "IPR 전략: 8단계(약 1.8개월) · 통과"
+    assert out[4].startswith("**IPR 전략으로 8단계(약 1.8개월) 계획을")
+    assert recorded.selected_strategy(rec131) == "ipr" and recorded.selected_strategy(compare) == "expansion"
+    assert recorded.selected_strategy(PLAN_ANSWER) == "extraction" and recorded.selected_strategy("") is None
 
 
 def test_replay_matches_plans_and_activate_and_tells_the_next_turn(client):
