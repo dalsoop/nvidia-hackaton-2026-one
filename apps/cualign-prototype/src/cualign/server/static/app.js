@@ -1492,8 +1492,22 @@ function sampleOf(caseId) {
   return state.cases.find((c) => c.case_id === caseId && c.kind === "sample") ?? null;
 }
 
-async function activateCase(caseId, { greet = true } = {}) {
+// Opening a case whose scan is not on screen yet shows the loading line over the 3D at once (the scan takes a moment
+// to arrive and draw); it fades out when the case is open, or on a failure.
+async function activateCase(caseId, opts) {
   if (state.streaming || state.loading) return;
+  const fresh = caseId !== state.meshCase;
+  if (fresh) meshLoading(true);
+  try { return await openCase(caseId, opts); } finally { if (fresh) meshLoading(false); }
+}
+function meshLoading(on) {
+  const el = $("meshLoading");
+  clearTimeout(el.fade);
+  if (on) { el.hidden = false; el.classList.remove("out"); return; }
+  el.classList.add("out");
+  el.fade = setTimeout(() => { el.hidden = true; }, REDUCE_MOTION.matches ? 0 : 220);
+}
+async function openCase(caseId, { greet = true } = {}) {
   ++state.selectionVersion;
   state.requestId = null;
   state.messages = [];
@@ -1580,12 +1594,31 @@ function resetPlanPanel() {
 
 async function loadMesh(caseId) {
   if (!caseId || caseId === state.meshCase) return;
-  const mesh = await api(`/api/cases/${encodeURIComponent(caseId)}/mesh`);
+  const pre = meshPrefetch.case === caseId ? meshPrefetch.promise : null;   // a sample card hovered on the start screen
+  meshPrefetch.drop();
+  const mesh = (pre && await pre) || await api(`/api/cases/${encodeURIComponent(caseId)}/mesh`);
   state.meshCase = caseId;
   state.plan = null;
   buildTeeth(mesh);
   applyStage(0);
 }
+// Hovering a sample card fetches its scan ahead (it also warms the server's copy): only the last hovered card, kept 30 s,
+// so a dozen hovers hold one scan, not a dozen. A failed prefetch is nothing: the opening fetches again.
+const meshPrefetch = {
+  case: null, promise: null, timer: 0,
+  start(caseId) {
+    if (this.case === caseId) return;
+    this.drop();
+    this.case = caseId;
+    this.promise = api(`/api/cases/${encodeURIComponent(caseId)}/mesh`).catch(() => null);
+    this.timer = setTimeout(() => this.drop(), 30000);
+  },
+  drop() { clearTimeout(this.timer); this.case = null; this.promise = null; },
+};
+$("sampleCards").addEventListener("pointerover", (e) => {
+  const id = e.target.closest(".case-card")?.dataset.id;
+  if (id && id !== state.meshCase) meshPrefetch.start(id);
+});
 
 
 const STRATEGY_ORDER = ["expansion", "ipr", "expansion_ipr", "extraction"];
@@ -2243,15 +2276,21 @@ async function send(text, constraints = null, { resend = false, step = null } = 
   const userBubble = addMsg("user", text);
   state.trace = newTrace();
   const bubble = addMsg("assistant", "");
-  // a sample case may skip the agent (#15): after 8 s of streaming a 건너뛰기 sits under the answer; a failed turn offers it too
+  // a sample case may skip the agent (#15): a waiting line under the answer counts the seconds; its 건너뛰기 shows after
+  // 5 s while nothing has come (a 429 sends not even a tool event), after 8 s once the turn is moving (a tool event or an
+  // answer token — a working turn is not nudged to be skipped), at once on the server's overload / key error. A failed
+  // turn offers it too.
   const sample = !!sampleOf(caseId), ac = new AbortController();
   state.abort = ac; state.skippedTurn = null;
   state.turnStep = stepOf(text, turnStep);   // which recorded answer 건너뛰기 would play for this turn
-  let skipRow = null;
-  const skipTimer = sample ? setTimeout(() => { if (state.requestId === requestId) skipRow = addSkipRow(bubble, requestId); }, 8000) : null;
+  let progressed = false;
+  const skipRow = addSkipRow(bubble, requestId);
+  const showSkip = () => { if (sample && state.requestId === requestId) skipRow.querySelector("button").hidden = false; };
+  const skipTimers = [setTimeout(() => { if (!progressed) showSkip(); }, 5000), setTimeout(showSkip, 8000)];
   $("retryFallback").hidden = sample; $("skipBtn").hidden = !sample;
   let answer = "", selected = null, streamError = false, overload = null, stepDone = null, refusedPii = null;
   const handle = ({type, data: obj}) => {
+    if ((type === "intermediate_data" && !/llm|thought|reason|nim_/i.test(obj.name ?? "")) || (type === "data" && obj.choices?.[0]?.delta?.content)) progressed = true;
     if (type === "plan_selected") {
       if (matchesSelection(obj, state.requestId, state.meshCase)) selected = obj;
     } else if (type === "step_done") {
@@ -2264,6 +2303,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       streamError = true; addStep("error", obj, "fallback");
       // the server's own sentence, worth a 다시 보내기: NIM overload, or a final answer with no Korean in it (no_answer)
       if ((obj.kind === "nim_overload" || obj.kind === "no_answer" || obj.kind === "nim_auth") && (obj.request_id ?? state.requestId) === state.requestId) overload = obj;
+      if (overload && overload.kind !== "no_answer") showSkip();   // 429 / 401·403: no reason to wait the stream out
     } else if (type === "intermediate_data") {
       addStep(obj.name ?? "step", obj.payload ?? "", "", state.trace, obj.id ?? null);
     } else if (type === "data") {
@@ -2330,7 +2370,7 @@ async function send(text, constraints = null, { resend = false, step = null } = 
       : "답을 받지 못했습니다 (" + e.message + "). 같은 요청을 다시 보내거나, " + alt);
     if (state.requestId === requestId) $("retryBar").hidden = false;
   } finally {
-    clearTimeout(skipTimer); skipRow?.remove(); scanFx.release();
+    skipTimers.forEach(clearTimeout); clearInterval(skipRow.tick); skipRow.remove(); scanFx.release();
     if (state.requestId === requestId) { setStreaming(false); updateActions(); }
   }
 }
@@ -2359,8 +2399,10 @@ async function landStep(done) {
 function addSkipRow(bubble, requestId) {
   const row = document.createElement("div");
   row.className = "skip-row";
-  row.innerHTML = '<span>에이전트가 답하는 중입니다.</span><button class="btn ghost small" type="button">건너뛰기</button>';
+  row.innerHTML = '<span>에이전트가 답하는 중입니다 · 0초</span><button class="btn ghost small" type="button" hidden>건너뛰기</button>';
   row.querySelector("button").addEventListener("click", () => skipTurn(requestId));
+  const t0 = Date.now();
+  row.tick = setInterval(() => { row.querySelector("span").textContent = `에이전트가 답하는 중입니다 · ${Math.floor((Date.now() - t0) / 1000)}초`; }, 1000);
   bubble.after(row);
   $("transcript").scrollTop = $("transcript").scrollHeight;
   return row;

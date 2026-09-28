@@ -1,13 +1,15 @@
 """Artifact API. Approval is checked on every export, including cached files."""
 from __future__ import annotations
 import asyncio
+import json
 import re
 import uuid
+import weakref
 
 import numpy as np
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -129,6 +131,21 @@ def closed_teeth_view(case_id: str, teeth: dict) -> dict:
         from cualign.core.ipr_cut import closed_json
         _TEETH_CLOSED[key] = {k: closed_json(t) for k, t in teeth.items()}
     return _TEETH_CLOSED[key]
+
+
+_MESH_JSON: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()   # Case -> the scan part of /mesh as JSON text
+
+
+def mesh_base_json(cid: str, case) -> str:
+    """The scan part of the mesh response (viewer_json with the crowns closed, gum_filled, gum_fill) as JSON text,
+    made once per loaded case: decimating the crowns again and FastAPI's encoding of the ~2.8 MB of nested lists took
+    ~0.7 s of every opening. Keyed by the Case object, so a re-uploaded scan (a new Case) gets its own."""
+    if case not in _MESH_JSON:
+        data = case.viewer_json()
+        data["teeth"] = closed_teeth_view(cid, data["teeth"])   # a bared side shows no hole (the IPR-cut crowns are closed already)
+        data.update(gum_filled_view(cid, case, data["gum"]))
+        _MESH_JSON[case] = json.dumps(data, separators=(",", ":"))
+    return _MESH_JSON[case]
 
 
 def ipr_cut_view(cid: str, case, plan_id: str | None = None, target_id: str | None = None) -> dict:
@@ -356,11 +373,9 @@ def add_api_routes(app: FastAPI, review=None, followup=None):
             cid, case = STORE.load_case(case_id)
         except (KeyError, FileNotFoundError) as e:
             raise HTTPException(404, str(e))
-        data = case.viewer_json()
-        data["teeth"] = closed_teeth_view(cid, data["teeth"])   # a bared side shows no hole (the IPR-cut crowns are closed already)
-        data.update(gum_filled_view(cid, case, data["gum"]))
-        data.update(ipr_cut_view(cid, case, plan_id, target_id))   # ?target_id= : the target turn's cut, before any plan
-        return data
+        # the scan part is cached text; only the plan's (or target's) cut is made per request, and spliced in
+        cut = json.dumps(ipr_cut_view(cid, case, plan_id, target_id), separators=(",", ":"))   # ?target_id= : the target turn's cut, before any plan
+        return Response(mesh_base_json(cid, case)[:-1] + "," + cut[1:], media_type="application/json")
 
     @app.get("/api/cases/{case_id}/gum")
     async def case_gum(case_id: str):
