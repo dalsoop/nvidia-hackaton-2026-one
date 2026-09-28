@@ -72,6 +72,9 @@ def test_numbers_follow_the_recomputed_plans():
     assert out[4].startswith("**IPR 전략으로 8단계(약 1.8개월) 계획을")
     assert recorded.selected_strategy(rec131) == "ipr" and recorded.selected_strategy(compare) == "expansion"
     assert recorded.selected_strategy(PLAN_ANSWER) == "extraction" and recorded.selected_strategy("") is None
+    # the summary sentence without bold, after 「선택된 안:」 (a comparison recorded in this form on 2026-09-28)
+    plain = "확장: 10단계(약 2.3개월) · 통과\nIPR: 9단계(약 2.1개월) · 통과\n선택된 안: IPR 전략으로 9단계(약 2.1개월) 계획을 만들었습니다."
+    assert recorded.selected_strategy(plain) == "ipr"
 
 
 def test_replay_matches_plans_and_activate_and_tells_the_next_turn(client):
