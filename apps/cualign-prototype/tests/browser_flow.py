@@ -110,6 +110,7 @@ app.add_middleware(plan_events.PlanEventsASGI)
 
 
 SETUP_TURNS = [0]   # the setup turns the fake agent answered
+STAGE_TOOL_S = [3.5]   # how long the slow stage turn's stage tool runs (a live NIM turn is 10–20 s with its reasoning)
 
 
 def sse(name, obj):
@@ -133,6 +134,22 @@ async def fake_chat(request: Request):
     step = body.get("step") or (run.step if run else None)   # the middleware (#146) reads the top-level step into the run
     text = next((m["content"] for m in reversed(body.get("messages", [])) if m.get("role") == "user"), "")
     async def generate():
+        if "단계 도구가 오래" in text:
+            # the stage turn as a live NIM run sends it (8000 log 19:05:01–02): plan_stages, then select_plan at once —
+            # the stage tool held STAGE_TOOL_S here, so the screen shows its round while the agent works
+            async with register.cualign(register.CuAlignToolConfig(), None) as group:
+                tools = await group.get_all_functions()
+                tool = lambda name: next(fn for key, fn in tools.items() if key.split("__")[-1] == name)
+                yield nat_step("Start", "plan_stages", {"target_id": "t-fake"}, "g1"); await asyncio.sleep(STAGE_TOOL_S[0])
+                result = await tool("compare_strategies").ainvoke(register.CompareInput())
+                yield nat_step("End", "plan_stages", {"target_id": "t-fake"}, "g1")
+                pick = {"plan_id": next((p for p in result["plans"] if p["passed"]), result["plans"][0])["plan_id"]}
+                yield nat_step("Start", "select_plan", pick, "g2")
+                await tool("select_plan").ainvoke(register.PlanIdInput(**pick))
+                yield nat_step("End", "select_plan", pick, "g2")
+                yield sse("step_done", {"request_id": run.request_id, "step": "stages"})
+                yield 'data: {"value":"단계를 만들었습니다."}\n\n'
+            return
         if step == "setup":
             # the two real setup turns of 2026-09-28, in their order, the waits shortened. The first as 000097's (8000 log
             # 17:22:41–17:23:28): nothing, then (since #189) the planner's reasoning, the set_constraints row, then the answer
@@ -888,7 +905,7 @@ async def main():
             await page.unroute("**/api/cases/poseidon-000097/activate")
 
             # 단계가 자라난다 (stage-grow.js): the stage tool's start event lays the target as a ghost and the chip says
-            # 단계 나누는 중; the landing lifts the ghost and leaves the slider at 0 (here the replay's landing, with no plan)
+            # 단계 나누는 중; a turn that ends with no plan puts it all back
             async def stage_tool_start(route):
                 ev = {"id": "sg1", "name": "cualign__plan_stages", "payload": '**Function Input:**\n```json\n{"strategy": "extraction"}\n```'}
                 await route.fulfill(status=200, headers={"Content-Type": "text/event-stream"}, body="intermediate_data: " + json.dumps(ev) + "\n\n")
@@ -899,8 +916,21 @@ async def main():
             assert await page.evaluate("window.__stageGrow.ghostShown") and "단계 나누는 중" in await page.locator("#workNote").inner_text()
             await page.wait_for_function("!window.__stageGrow.running", timeout=10000)   # the turn ended with no plan: put back
             await page.unroute("**/chat/stream")
+            # the round lasts while the agent works: select_plan follows the stage tool at once and does not land it
+            # (it did, 2 s in, leaving the scan), and it lands at the plan's last stage, the slider at its end
+            await page.locator("#chatInput").fill("단계 도구가 오래 도는 단계 만들기"); await page.locator("#sendBtn").click()
+            await page.wait_for_function("window.__stageGrow.running", timeout=10000)
+            await page.wait_for_timeout(2500)
+            assert await page.evaluate("window.__stageGrow.ghostShown") and await page.locator(".ipr-tool").count() == 1
+            await page.wait_for_function("!window.__stageGrow.running && window.__cualign.state.plan && !document.querySelector('#sendBtn').disabled", timeout=60000)
+            last = await page.evaluate("String(window.__cualign.state.plan.stages.length)")
+            assert await page.locator("#stageSlider").input_value() == last and "처음부터 재생" in await page.locator("#stageTip").inner_text()
+            # the replay's landing (▶ 건너뛰기 or its end) is the last stage too — from 치료 전, in a new turn (sendChat clears
+            # stageTouched, so the landing is not held where the dentist left the slider)
+            await page.locator("#firstBtn").click()
+            await page.evaluate("window.__cualign.state.stageTouched = false")
             assert await page.evaluate("window.__stageGrow.play()") is True
-            assert not await page.evaluate("window.__stageGrow.ghostShown") and await page.locator("#stageSlider").input_value() == "0"
+            assert not await page.evaluate("window.__stageGrow.ghostShown") and await page.locator("#stageSlider").input_value() == last
 
             # No WebGL (Chromium --disable-3d-apis): the 3D area shows the card and the rest works — the case opens,
             # the steps reach a plan, ▶ plays the stages, and the export popover approves it
