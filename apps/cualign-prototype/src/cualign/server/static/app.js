@@ -34,6 +34,7 @@ const state = {
   skippedPlans: new Set(),   // plans adopted with 건너뛰기: the card says 건너뜀 instead of a review state (#15)
   abort: null, skippedTurn: null,
   stlBusy: null,         // the plan id whose STL zip a download is waiting for (#119)
+  exportPopFor: null,    // "plan id|step" the open export confirm card is about; null when closed
   exportStatus: {},      // plan id -> GET /api/plans/{id}/export-status: {building, done, total, ready, stl?, error?}
   meshCase: null,        // case_id currently loaded in the viewer
   activeCase: null,      // case_id being planned (the input-check screen can show another scan in the viewer)
@@ -480,6 +481,7 @@ function setStep(step) {
   if (!STEPS.includes(step) || stepIndex(step) > stepIndex(state.progress)) step = state.progress;
   manualEdit.leave(step);   // an unapplied hand edit does not follow the view off the 목표 step
   state.step = step;
+  closeExportPop();   // the card was about the step it opened on
   for (const s of STEPS) document.body.classList.toggle("step-" + s, s === step);
   stopPlay();
   const n = viewPlan()?.stages?.length ?? 0;
@@ -983,7 +985,7 @@ function updateActions() {
   $("exportSkip").hidden = !["skipped", "not_requested"].includes(p?.review?.status);
   $("revokeBtn").hidden = !p?.approval;
   $("revokeBtn").disabled = !allowed;
-  if (!exportable && !$("exportPop").hidden) showPop($("exportPop"), false);
+  if (!exportable || state.exportPopFor && state.exportPopFor !== exportPopKey()) closeExportPop();
   // Recovery when the agent skipped the reviewer or the review failed: the dentist asks for it on this plan.
   $("reviewBtn").hidden = !p || !["not_requested", "failed"].includes(p.review.status);
   $("reviewBtn").disabled = !allowed;
@@ -3335,17 +3337,48 @@ function showPop(pop, on) {
   if (on) { pop.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => pop.classList.add("in"))); }
   else { pop.classList.remove("in"); setTimeout(() => { if (!pop.classList.contains("in")) pop.hidden = true; }, 160); }
 }
-$("exportBtn").addEventListener("click", () => {
-  if (state.plan?.approval) { $("stlLink").click(); return; }
-  const pop = $("exportPop");
-  showPop(pop, pop.hidden);
-  // the popover sits beside the rail item that opened it (the anchor button itself is hidden)
-  const r = document.querySelector('#rail button[data-go="export"]').getBoundingClientRect();
-  pop.style.top = `${Math.round(r.top)}px`; pop.style.left = `${Math.round(r.right + 8)}px`;
-});
-$("exportCancel").addEventListener("click", () => showPop($("exportPop"), false));
-$("exportGo").addEventListener("click", async () => {
+// The export confirm card, for approving and for downloading again: beside the rail item that opened it (the anchor button
+// itself is hidden), vertically centred on it with its caret. It closes on a press anywhere outside it, Esc, and when the
+// plan or the step on screen changes; focus goes to its main button and back to the rail item.
+const railExportBtn = () => document.querySelector('#rail button[data-go="export"]');
+const exportPopKey = () => state.plan?.plan_id + "|" + state.step;
+function openExportPop() {
+  const p = state.plan, again = !!p.approval, pop = $("exportPop");
+  $("exportTitle").textContent = again ? "다시 내려받기" : "승인하고 내려받기";
+  $("exportWhat").textContent = [$("caseName").textContent.split(" · 총생")[0], `계획 ${planNo(p.plan_id)}`, `${p.stages?.length ?? 0}단계`, "STL zip"].join(" · ");
+  $("exportAsk").textContent = again ? "의사 승인으로 확정된 계획입니다. 같은 zip 을 다시 받습니다." : "의사 승인으로 확정합니다. 조건·3D·검토 결과를 확인하셨나요?";
+  $("exportGo").textContent = again ? "다시 내려받기" : "확정하고 내려받기";
+  if (again) $("exportSkip").hidden = true;
+  state.exportPopFor = exportPopKey();
+  showPop(pop, true);
+  const r = railExportBtn().getBoundingClientRect(), mid = r.top + r.height / 2;
+  const top = Math.max(8, Math.min(innerHeight - pop.offsetHeight - 8, mid - pop.offsetHeight / 2));
+  pop.style.top = `${Math.round(top)}px`; pop.style.left = `${Math.round(r.right + 10)}px`;
+  pop.style.setProperty("--caret-y", `${Math.round(mid - top)}px`);
+  railExportBtn().setAttribute("aria-expanded", "true");
+  $("exportGo").focus({ preventScroll: true });
+}
+function closeExportPop() {
+  if (!state.exportPopFor) return;
+  state.exportPopFor = null;
   showPop($("exportPop"), false);
+  railExportBtn().setAttribute("aria-expanded", "false");
+  if (document.activeElement === document.body || $("exportPop").contains(document.activeElement)) railExportBtn().focus({ preventScroll: true });
+}
+$("exportBtn").addEventListener("click", () => { if (state.exportPopFor) closeExportPop(); else if (state.plan) openExportPop(); });
+// capture on window: the 3D canvas and drawers.js take their presses for themselves at the document. A press on the 3D
+// only closes the card (as drawers.js does): no tooth pick, no rotation
+let exportSwallowUp = false;
+window.addEventListener("pointerdown", (e) => {
+  if (!state.exportPopFor || e.target.closest?.('#exportPop, #rail button[data-go="export"]')) return;
+  closeExportPop();
+  if (e.target.closest?.("#viewCanvas")) { exportSwallowUp = true; e.stopImmediatePropagation(); }
+}, true);
+window.addEventListener("pointerup", (e) => { if (exportSwallowUp) { exportSwallowUp = false; e.stopImmediatePropagation(); } }, true);
+window.addEventListener("keydown", (e) => { if (state.exportPopFor && e.key === "Escape") closeExportPop(); }, true);
+$("exportCancel").addEventListener("click", closeExportPop);
+$("exportGo").addEventListener("click", async () => {
+  closeExportPop();
   if (!state.plan?.approval) await approveCurrent();
   if (state.plan?.approval && $("stlLink").hasAttribute("href")) $("stlLink").click();
 });

@@ -390,6 +390,14 @@ async def main():
             assert await page.locator("#exportBtn").is_enabled()
             assert await page.locator('#rail button[data-go="export"]').is_enabled()      # the rail item is the visible 내보내기
             await page.locator('#rail button[data-go="export"]').click()
+            await page.wait_for_selector("#exportPop.in")
+            assert await page.locator('#rail button[data-go="export"]').get_attribute("aria-expanded") == "true"
+            # the card hangs off the rail item and a press outside it (here the 3D, which takes its own presses) closes it
+            await page.locator("#viewCanvas").click(position={"x": 30, "y": 30})
+            await page.wait_for_selector("#exportPop", state="hidden")
+            assert await page.locator('#rail button[data-go="export"]').get_attribute("aria-expanded") == "false"
+            assert await page.evaluate("window.__cualign.state.selected.size") == 0      # that press only closed: no tooth picked
+            await page.locator('#rail button[data-go="export"]').click()
             await page.wait_for_selector("#exportPop:not([hidden])")
             # the link's place over the 3D records what it says while the zip builds (펄스 점: 만드는 중 → a check)
             await page.evaluate("""() => { window.__exportTexts = []; const s = document.querySelector('#stlLink span');
