@@ -163,6 +163,9 @@ const group = new THREE.Group(); scene.add(group);
 const scanFx = createScanFx({ THREE, CSS2DObject, group, state, fdi, notice: $("planNotice"),
   refresh: () => { applyStage(state.stage); renderSetupMarks(); }, recut: () => applyStage(state.stage),
   stageContacts: (p) => contactsOnScreen(surfacesOf(p.target, p.info), new Set((p.target?.removed ?? []).map(String))) });
+// the 스캔 tab's chart subscribes to scan-reveal ② (the prescription on the 3D): every applyPrescription marks it too
+const applyPrescription3d = scanFx.applyPrescription;
+scanFx.applyPrescription = (rx) => { applyPrescription3d(rx); markScanRx(rx); };
 const raycaster = new THREE.Raycaster();
 
 function resize() {
@@ -1584,6 +1587,7 @@ async function openCase(caseId, { greet = true, restart = false } = {}) {
   $("transcript").innerHTML = "";   // a conversation belongs to one patient scan
   state.planError = info.plan_error ?? null;   // the case opened but no plan could be made: the server's sentence
   state.setup = null; state.target = null; state.targetId = null; state.setupRed = false; state.caseInfo = info;
+  clearScanRx();   // the 스캔 tab starts clean: the prescription marks come with the setup
   state.progress = "initial"; for (const s of STEPS) document.body.classList.toggle("prog-" + s, s === "initial");
   await loadMesh(caseId);
   resetPlanPanel();
@@ -1646,7 +1650,7 @@ async function restoreProgress(st) {
   if (!st) return;
   state.restoredStep = STEPS.includes(st.step) ? st.step : null;   // where the case stands: the router lands there when the address names no step
   const setup = st.constraints ?? st.setup;
-  if (setup) { state.setup = setup; fillConstraints(setup); setProgress("setup", true); loadSetupCut(); }
+  if (setup) { state.setup = setup; state.scanRx = setup; fillConstraints(setup); setProgress("setup", true); loadSetupCut(); }
   if (st.target_id) {
     try {
       state.target = await api(`/api/cases/${encodeURIComponent(state.meshCase)}/targets/${encodeURIComponent(st.target_id)}`);
@@ -2501,6 +2505,7 @@ async function landStep(done) {
     setProgress("setup", true);
     loadSetupCut();   // the cut follows; the setup shows at once
     scanFx.landed(done.constraints);
+    markScanRx({ ...done.constraints, conditions_ko: done.conditions_ko ?? undefined });   // the chart with the 3D (at once without a reveal)
     state.setupRed = !scanFx.busy();   // the scan reveal already lifted the extracted crowns away
     setStep("setup");
     setTimeout(() => { state.setupRed = false; if (state.step === "setup") applyStage(0); }, 1200);
@@ -2925,7 +2930,8 @@ function renderScanPane(info) {
     const present = new Set(Object.keys(state.teeth).map((id) => fdi(id)));
     const missing = [17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27].filter((n) => !present.has(n));
     const t = stepIndex(state.progress) >= stepIndex("target") ? state.target?.target ?? state.plan?.target : null;
-    if (sample?.prescription) rows.push(["처방", sample.prescription]);
+    const rx = state.scanRx && (state.scanRx.conditions_ko ?? sample?.prescription);   // only once the setup read it
+    if (rx) rows.push(["처방", rx]);
     rows.push(["치아", `${info.n_teeth ?? Object.keys(state.teeth).length}개`], ["총생", info.crowding_mm != null ? `${info.crowding_mm} mm` : "—"]);
     if (t?.space_gain_mm != null) rows.push(["확보", `${t.space_gain_mm} mm` + (t.space_deficit_mm > 0 ? ` · 부족 ${t.space_deficit_mm} mm` : "")]);
     rows.push(["결손", missing.length ? missing.join(", ") + "번" : "없음"]);
@@ -2968,15 +2974,25 @@ function chartLayout(fdis) {
   }
   return out;
 }
-// what the chart marks: the target's (or the plan's) once the flow is past 셋업, else the setup the agent read, else a
-// sample's prescription as the case opened; a patient's scan marks nothing until its setup
+// what the chart marks: the target's (or the plan's) once the flow is past 셋업, else the prescription the setup read
+// (state.scanRx). A case just opened marks nothing, a sample's prescription included, until its setup lands.
 function chartMarks() {
   const t = stepIndex(state.progress) >= stepIndex("target") ? state.target?.target ?? state.plan?.target : null;
   if (t) return { removed: t.removed ?? [], surfaces: surfacesOf(t, state.target?.target === t ? state.target.info : state.plan?.info) };
-  if (state.setup) return { removed: state.setup.extraction ?? [], surfaces: state.setup.ipr_surfaces ?? [] };
-  const c = sampleOf(state.meshCase) ? state.caseInfo?.constraints : null;
-  return { removed: c?.extraction ?? [], surfaces: c?.ipr_surfaces ?? [] };
+  return { removed: state.scanRx?.extraction ?? [], surfaces: state.scanRx?.ipr_surfaces ?? [] };
 }
+// The setup's prescription goes on the chart as it goes on the 3D: scan-reveal ② starts once the scan numbers are
+// through, so the marks wait for that too (at once when no reveal runs). A case opened again meanwhile drops them.
+let scanRxGen = 0;
+function markScanRx(rx) {
+  const gen = scanRxGen;
+  scanFx.numbersDone().then(() => {
+    if (gen !== scanRxGen || !rx) return;
+    state.scanRx = { ...state.scanRx, ...rx };
+    renderScanPane(state.caseInfo);
+  });
+}
+function clearScanRx() { scanRxGen++; state.scanRx = null; }
 function renderToothChart(info) {
   const box = $("toothChart");
   box.replaceChildren();

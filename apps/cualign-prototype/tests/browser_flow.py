@@ -195,9 +195,11 @@ async def main():
             assert await page.locator('#flow button[data-step="setup"]').is_disabled() and await page.locator('#flow button[data-step="stages"]').is_disabled()
             assert await page.locator("#tabScan").get_attribute("aria-selected") == "true"
             assert "치아" in await page.locator("#scanFacts").inner_text() and "총생" in await page.locator("#scanFacts").inner_text()
-            # the tooth chart: 14 crowns by FDI, the sample's extraction 14·24 marked; a click on it selects in the 3D too
+            # the tooth chart: 14 crowns by FDI, clean until the setup reads the prescription (no 발치 처방 mark, no 처방 row);
+            # a click on it selects in the 3D too
+            scan_rx = "[[...document.querySelectorAll('#toothChart g.tooth.ext')].map(g => g.dataset.fdi).sort(), [...document.querySelectorAll('#scanFacts dt')].some(d => d.textContent === '처방')]"
             assert await page.locator("#toothChart g.tooth").count() == 14
-            assert sorted([await g.get_attribute("data-fdi") for g in await page.locator("#toothChart g.tooth.ext").all()]) == ["14", "24"]
+            assert await page.evaluate(scan_rx) == [[], False]
             await page.locator('#toothChart g.tooth[data-fdi="11"]').click()
             assert await page.evaluate("[...window.__cualign.state.selected]") == ["8"] and await page.locator("#toothChart g.tooth.sel").count() == 1
             await page.locator('#toothChart g.tooth[data-fdi="11"]').click()
@@ -227,6 +229,7 @@ async def main():
             assert await trace.locator(".raw pre").is_visible() and "extraction" in await trace.locator(".raw pre").inner_text()
             removed_crown = "() => { const s = window.__cualign.state; return s.teeth[String(s.setup.extraction[0])].visible; }"
             await page.wait_for_function(f"!({removed_crown})()", timeout=5000)      # red for a moment, then gone (#20)
+            await page.wait_for_function(f"JSON.stringify({scan_rx}) === JSON.stringify([['14', '24'], true])", timeout=10000)      # the 스캔 tab: 14·24 and 처방 with the 3D
             assert (await page.evaluate("location.hash")).endswith("&step=setup")
             assert await page.locator('#flow button[data-step="setup"]').is_enabled() and await page.locator('#flow button[data-step="target"]').is_disabled()
             assert await next_chip("목표 배열 만들기").count() == 1 and await next_chip("조건 바꾸기").count() == 1
@@ -239,6 +242,7 @@ async def main():
             assert await page.locator(".trace").count() == 0 and await page.locator(".ipr-label, .extract-mark").count() == 0
             assert await next_chip("이 케이스의 처방 넣기").count() == 1 and await page.locator(".restart-link").count() == 0
             assert await page.locator(".msg.system", has_text="조건이 처방과 다릅니다").count() == 0      # empty conditions on purpose, no warning
+            assert await page.evaluate(scan_rx) == [[], False]      # the 스캔 tab clean again: the marks came with the setup, they go with it
             await next_chip("이 케이스의 처방 넣기").click()
             await page.wait_for_function("document.body.classList.contains('step-setup') && !document.querySelector('#sendBtn').disabled", timeout=60000)
             again = (await page.locator("#cExtract").input_value(), await page.locator(".next:not(.done) button").all_inner_texts())
