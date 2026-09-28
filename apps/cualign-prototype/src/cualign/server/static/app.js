@@ -2499,7 +2499,7 @@ function nextChips() {
          { label: "에이전트 없이 단계 계산", action: "manualStages", hint: "모델 없이 이 목표 배열을 단계로 나누고 규칙을 검사합니다" },
          { label: "다시 조정", action: "manual" }]
       : [{ label: "단계 만들기", message: "이 목표로 단계를 만들어줘.", step: "stages" },
-         { label: "8개월 안에", message: "8개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
+         { label: "12개월 안에", message: "12개월 안에 끝나게 단계를 만들어줘.", step: "stages" },
          ...(extraction ? [] : [{ label: "비발치안과 비교", message: "확장안이랑 IPR안 둘 다 만들어서 비교해줘.", step: "stages" }]),
          { label: "수동으로 조정", action: "manual", hint: "목표 배열의 치아를 3D에서 직접 옮깁니다" }];
     default: return [{ label: "승인하고 내보내기", action: "export" }, { label: "조건 바꾸기", action: "cond" }];
