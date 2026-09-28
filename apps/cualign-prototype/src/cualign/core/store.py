@@ -271,6 +271,9 @@ class Store:
                 "input_revision": p.get("input_revision"),
                 "input_stale": self.input_stale(p["case_id"], p.get("input_revision")),
                 "previous_calculation": self.previous_calculation(pid),
+                # a rule plan's run (the strategies one POST /api/plan tried): only on those plans, so the approval
+                # fingerprint of every other plan, and of plan files written before it, stays what it was
+                **({"rule_run": dict(p["rule_run"])} if p.get("rule_run") else {}),
                 "stages": [{str(i): np.round(v, 4).tolist() for i, v in st.items()} for st in p["stages"]],
                 # degrees about each crown's vertical axis through its centroid (pivot), per stage
                 "rotations": [{str(i): round(float(y), 3) for i, y in getattr(st, "yaw", {}).items()} for st in p["stages"]],

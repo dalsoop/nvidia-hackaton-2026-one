@@ -85,3 +85,25 @@ def test_rule_plan_takes_the_forms_ipr_prescription_once(monkeypatch, tmp_path):
     tried = r.json()["tried"]
     assert tried and all(t["constraints"]["ipr_surfaces"] == [[7, 8, 0.4]] for t in tried)   # FDI 12|11 = Universal 7|8
     assert client.post("/api/cases/moderate/activate").json()["constraints"]["ipr_surfaces"] == [[7, 8, 0.4]]
+
+
+def test_an_all_failed_rule_plan_keeps_its_flag_and_group_after_a_reload(monkeypatch, tmp_path):
+    """#162 follow-up: every allowed strategy broke a rule → the plans of that run say so (rule_run.all_failed, what was
+    tried, the least-wrong plan) in GET /api/plans/{id} and the list, and still after a new process reads the files."""
+    client = _client(monkeypatch, tmp_path)
+    client.post("/api/cases/moderate/activate")
+    res = client.post("/api/plan", json={"case_id": "moderate", "extraction": [], "stage_cap": 1}).json()
+    assert res["chosen"] is None and res["best_failed"]
+    ids = [t["plan_id"] for t in res["tried"]]
+    run = client.get(f"/api/plans/{res['best_failed']['plan_id']}").json()["rule_run"]
+    assert run["all_failed"] is True and run["chosen_plan_id"] == res["best_failed"]["plan_id"]
+    assert run["tried"] == [t["strategy"] for t in res["tried"]] and run["group_id"]
+    listed = {p["plan_id"]: p for p in client.get("/api/plans?case_id=moderate").json()["plans"]}
+    assert all(listed[pid]["rule_run"] == run for pid in ids)             # one group: the same run on every plan it made
+    # a new process reads the plan files back: the flag is still there
+    monkeypatch.setattr(api, "STORE", store_mod.Store())
+    assert client.get(f"/api/plans/{run['chosen_plan_id']}").json()["rule_run"] == run
+    # a run with a passing plan is not all_failed, and is its own group
+    ok = client.post("/api/plan", json={"case_id": "moderate", "extraction": []}).json()
+    assert ok["chosen"] and ok["chosen"]["rule_run"]["all_failed"] is False
+    assert ok["chosen"]["rule_run"]["chosen_plan_id"] == ok["chosen"]["plan_id"] and ok["chosen"]["rule_run"]["group_id"] != run["group_id"]
