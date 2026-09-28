@@ -789,6 +789,21 @@ async def main():
             await page.wait_for_function("'target:t-fake' in window.__cualign.state.cutSets", timeout=60000)
             await page.unroute("**/api/cases/poseidon-000097/activate")
 
+            # 단계가 자라난다 (stage-grow.js): the stage tool's start event lays the target as a ghost and the chip says
+            # 단계 나누는 중; the landing lifts the ghost and leaves the slider at 0 (here the replay's landing, with no plan)
+            async def stage_tool_start(route):
+                ev = {"id": "sg1", "name": "cualign__plan_stages", "payload": '**Function Input:**\n```json\n{"strategy": "extraction"}\n```'}
+                await route.fulfill(status=200, headers={"Content-Type": "text/event-stream"}, body="intermediate_data: " + json.dumps(ev) + "\n\n")
+            await page.route("**/chat/stream", stage_tool_start)
+            await page.locator("#chatInput").fill("단계를 만들어 줘"); await page.locator("#sendBtn").click()
+            await page.wait_for_function("window.__stageGrow.running", timeout=10000)
+            await page.wait_for_timeout(500)
+            assert await page.evaluate("window.__stageGrow.ghostShown") and "단계 나누는 중" in await page.locator("#workNote").inner_text()
+            await page.wait_for_function("!window.__stageGrow.running", timeout=10000)   # the turn ended with no plan: put back
+            await page.unroute("**/chat/stream")
+            assert await page.evaluate("window.__stageGrow.play()") is True
+            assert not await page.evaluate("window.__stageGrow.ghostShown") and await page.locator("#stageSlider").input_value() == "0"
+
             # No WebGL (Chromium --disable-3d-apis): the 3D area shows the card and the rest works — the case opens,
             # the steps reach a plan, ▶ plays the stages, and the export popover approves it
             no3d = await pw.chromium.launch(executable_path=executable, headless=True, args=["--disable-3d-apis"])

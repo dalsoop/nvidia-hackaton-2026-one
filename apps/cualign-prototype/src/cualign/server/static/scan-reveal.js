@@ -13,7 +13,7 @@ const OFF = new URLSearchParams(location.search).has("nofx");
 const SCAN_GAP = 0.1, PULSE = 0.15, HOLD = 0.3, MIN_APPLY = 1.5;      // s
 const LIFT_MM = 3, FADE = 0.7, FADE_GAP = 0.3;
 const PULSE_HEX = 0x5a5a5a;
-const CURSOR_SVG = `<svg viewBox="0 0 32 32" width="44" height="44" aria-hidden="true">
+export const CURSOR_SVG = `<svg viewBox="0 0 32 32" width="44" height="44" aria-hidden="true">
   <circle cx="16" cy="16" r="11" fill="#2f8ae8" stroke="#0b1622" stroke-width="1.5"/>
   <circle cx="16" cy="16" r="11" fill="none" stroke="#e8f1fb" stroke-width="2" stroke-dasharray="1.6 2.2"/>
   <circle cx="16" cy="16" r="4.5" fill="#e8f1fb" stroke="#0b1622" stroke-width="1.2"/></svg>`;
