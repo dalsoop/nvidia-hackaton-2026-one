@@ -249,9 +249,10 @@ async def main():
             assert (await page.locator(".trace").last.locator(".thinking").inner_text()).startswith("모델 추론 2줄")
             assert await page.locator("#cExtract").input_value() == "14, 24"
             assert await page.locator("#tabCond").get_attribute("aria-selected") == "true"
-            # no dimming over the 3D during a turn (only a chip under it), and the chip is off once the turn is over
+            # no dimming over the 3D during a turn (only a chip under it); the chip's dot settles as a check and it goes 0.6 s later
             assert await page.evaluate("getComputedStyle(document.getElementById('viewCanvas')).opacity") == "1"
-            assert not await page.locator("#workNote").evaluate("e => e.classList.contains('on')")
+            assert await page.locator("#workNote").get_attribute("data-state") == "ok" and await page.locator("#workNote .pulse-dot.ok").count() == 1
+            await page.wait_for_function("!document.getElementById('workNote').classList.contains('on')", timeout=2000)
             # the reasoning in sentences: the tool row and its line show without a click, the raw call only under 자세히
             trace = page.locator(".trace").last
             assert (await trace.locator(".head").inner_text()).endswith("도구 1회 · 조건 설정")
