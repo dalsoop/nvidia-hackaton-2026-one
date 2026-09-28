@@ -50,7 +50,6 @@ const state = {
   requestId: null,
   lastAssistantText: "",
   trace: null,           // inline tool-call trace for the turn in progress
-  labels: [],            // CSS2DObject IPR labels
   patient: null,         // GET /api/patients/{id} payload of the patient on screen
   caseList: [], clSelected: null,   // 케이스 목록 (#109): 샘플 카드 + 환자 표, 선택한 것 아래 상세 (③-b)
   checkCase: null,       // case id shown on the input-check screen
@@ -339,7 +338,7 @@ function fixGumBaseNormals(geo) {
 }
 function buildTeeth(mesh) {
   sweepFx.clear();
-  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; clearLabels(); scanFx.cancel();
+  group.clear(); ghost.clear(); state.teeth = {}; state.center = {}; state.gum = null; scanFx.cancel();
   state.violLabels = []; state.selected.clear(); state.ruleMarked.clear(); renderSelection();
   for (const [id, t] of Object.entries(mesh.teeth)) {
     const geo = new THREE.BufferGeometry();
@@ -484,7 +483,6 @@ function setStep(step) {
   stopPlay();
   const n = viewPlan()?.stages?.length ?? 0;
   applyStage(step === "target" ? n : 0);   // 목표 = the last stage; the others start at the scan
-  buildIprLabels();
   renderSetupMarks();
   renderFlow();
   renderPlanList();
@@ -510,8 +508,9 @@ function setupSource() {
 function contactsOnScreen(surfaces, removed = new Set()) {
   return (surfaces ?? []).map(([a, b, mm]) => [String(a), String(b), +mm]).filter(([a, b]) => state.teeth[a] && state.teeth[b] && !removed.has(a) && !removed.has(b));
 }
-// 셋업 marks over the 3D: a yellow dot at each IPR contact (the same contacts the mm labels use), arrows on the
-// last crowns when the arch widens. Only in the 셋업 state.
+// 셋업 marks over the 3D: a yellow dot and its mm at each prescribed IPR contact (drawn even where the contact is open:
+// the core cuts from each crown's own contact surface; an amount too small to cut reads 여유), arrows on the last
+// crowns when the arch widens. Only in the 셋업 state: 목표·단계 show the cut crowns without marks.
 function renderSetupMarks() {
   for (const o of state.setupMarks ?? []) o.parent?.remove(o);
   state.setupMarks = [];
@@ -523,6 +522,7 @@ function renderSetupMarks() {
   for (const [a, b, mm] of contactsOnScreen(src.surfaces, removed)) {
     const el = document.createElement("div"); el.className = "ipr-mark"; el.title = `IPR 접촉면 ${fdi(a)}-${fdi(b)} ${mm} mm`;
     el.dataset.contact = `${Math.min(+a, +b)}-${Math.max(+a, +b)}`;   // the scan reveal lights them in turn
+    const num = document.createElement("span"); num.className = "ipr-mm"; num.textContent = mm >= 0.005 ? mm.toFixed(2) : "여유"; el.append(num);
     const p = state.center[a].clone().add(state.center[b]).multiplyScalar(0.5); p.z += 2;
     put(el, p);
   }
@@ -540,33 +540,6 @@ function renderSetupMarks() {
   }
 }
 $("flow").addEventListener("click", (e) => { const s = e.target.closest("button:not([disabled])")?.dataset.step; if (s && state.meshCase) { if (s !== state.step) sweepFx.clear(); setStep(s); } });
-
-// ---- IPR labels: one per contact along the arch, mm number at the contact point (3/5 clinical SW do this)
-function clearLabels() { for (const l of state.labels) l.parent?.remove(l); state.labels = []; }
-function buildIprLabels() {
-  clearLabels();
-  const v = viewPlan(), t = v?.target;
-  // the contacts the target strips, mm per contact (#57); no guessing from the even rule any more
-  for (const [a, b, mm] of contactsOnScreen(surfacesOf(t, v?.info), new Set((t?.removed ?? []).map(String)))) {
-    const el = document.createElement("div");
-    el.className = "ipr-label";
-    el.textContent = mm.toFixed(2);
-    const obj = new CSS2DObject(el);
-    obj.userData = { a, b };
-    group.add(obj);
-    state.labels.push(obj);
-  }
-  placeLabels();
-}
-function placeLabels() {
-  for (const l of state.labels) {
-    const { a, b } = l.userData;
-    const pa = state.center[a].clone().add(state.teeth[a].position);
-    const pb = state.center[b].clone().add(state.teeth[b].position);
-    l.position.copy(pa.add(pb).multiplyScalar(0.5));
-    l.position.z += 2;
-  }
-}
 
 function violationsAt(k) {
   const by = {};   // tooth -> Set(type)
@@ -598,6 +571,7 @@ function applyStage(k) {
     const cut = cutSet?.[id] && scanFx.cutShown(id) ? cutSet[id] : null;   // the setup reveal cuts a crown as its cursor passes
     m.geometry = cut ? cut.geo : m.userData.full;
     if (cut) m.userData.cutMesh.geometry = cut.faces;
+    m.userData.cutMesh.material = setup ? IPR_FACE_MAT : m.material;   // the planes blue in 셋업 only; after it the crown is just cut
     // turn about the crown's own vertical axis through its centroid c: v' = R(v - c) + c + d  =>  position = d + c - R c
     const a = ((rot[id] ?? 0) * Math.PI) / 180, c = plan?.pivots?.[id] ?? [0, 0, 0], t = d ?? [0, 0, 0];
     m.rotation.set(0, 0, a);
@@ -618,7 +592,6 @@ function applyStage(k) {
     else m.material.color.copy(IVORY);
     m.material.emissive.setHex(state.selected.has(id) ? 0x5a9400 : 0x000000);
   }
-  placeLabels();
   // overlap amount at the contact itself, not only in the table (#90)
   for (const l of state.violLabels) l.parent?.remove(l);
   state.violLabels = [];
@@ -1587,7 +1560,7 @@ async function openCase(caseId, { greet = true, restart = false } = {}) {
   state.followup = null;
   state.lastRequest = null; $("retryBar").hidden = true;   // 다시 보내기 replays the failed case's request, never into the case opened next
   stopPlay(); scanFx.cancel();
-  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
+  if (caseId !== state.meshCase) { group.clear(); ghost.clear(); state.meshCase = null; }
   // plans saved before this opening fold as 지난 계획; the preview this opening makes (#92) is not one of them
   const before = await api("/api/plans?case_id=" + encodeURIComponent(caseId));
   state.oldPlans = new Set(before.plans.map((p) => p.plan_id));
@@ -1673,7 +1646,7 @@ function resetPlanPanel() {
   stopPlay();
   state.plan = null;
   document.body.classList.remove("has-plan");
-  clearLabels(); applyStage(0);
+  applyStage(0);
   state.planRows = {}; state.planRowsCase = null;
   renderPlanList();
   $("viewCanvas").dataset.planId = "";
@@ -1850,7 +1823,7 @@ async function loadPlan(planId) {
     const slider = $("stageSlider");
     slider.max = plan.stages.length;
     slider.disabled = false;
-    buildIprLabels(); applyStage(0); renderResult(plan); renderStageMarks();
+    applyStage(0); renderResult(plan); renderStageMarks();
     document.body.classList.add("has-plan");
     setProgress("stages");   // a plan on screen means the stages are done (also on reload, #20)
     $("viewCanvas").dataset.planId = planId;
@@ -1888,8 +1861,7 @@ function renderResult(plan) {
 function renderLegend(plan) {
   const viol = plan?.violations ?? [], t = plan?.target ?? {};
   const show = { collision: viol.some((v) => v.type === "collision"), move_limit: viol.some((v) => v.type === "move_limit"),
-                 locked: (t.locked ?? []).length > 0, ipr: surfacesOf(t, plan?.info).length > 0,
-                 ipr_face: Object.keys(state.cutSets[cutKeyNow()] ?? {}).length > 0 };
+                 locked: (t.locked ?? []).length > 0 };
   for (const el of document.querySelectorAll(".legend [data-key]")) el.hidden = !show[el.dataset.key];
   $("pickedLegend").hidden = !state.pickedOnce;
 }
@@ -3008,7 +2980,7 @@ $("deleteScanGo").addEventListener("click", async () => {
   if (!pid || !sid) return;
   try {
     await api(`/api/patients/${encodeURIComponent(pid)}/scans/${encodeURIComponent(sid)}`, { method: "DELETE" });
-    if (state.meshCase === caseId) { group.clear(); ghost.clear(); clearLabels(); state.meshCase = null; }
+    if (state.meshCase === caseId) { group.clear(); ghost.clear(); state.meshCase = null; }
     state.checkCase = null;
     await openPatient(pid);
   } catch (err) { addMsg("error", "스캔 삭제 실패: " + err.message); }

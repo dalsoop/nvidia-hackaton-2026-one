@@ -304,16 +304,3 @@ class Case:
         return {"name": self.name, "arch": "upper", "ids": self.ids, "arch_order": order, "teeth": teeth,
                 "gum": {"v": np.round(g.vertices, 3).tolist(), "f": g.faces.tolist()}}
 
-    def cut_json(self, max_faces: int = 1500) -> dict:
-        """`teeth_cut` ({tooth: {v, f}} like `teeth`, the IPR-cut crowns only) and `ipr_cut` ({tooth: {"mm": width
-        taken off, "faces": indices into that tooth's f lying on the cut planes}}) for a case from ipr_cut.cut_ipr;
-        both empty for a case without cuts."""
-        from .ipr_cut import CAP_TOL_DECIMATED, cut_faces
-        teeth, cut = {}, {}
-        for i, e in (getattr(self, "ipr_cut", None) or {}).items():
-            m = self.mesh[i]
-            if len(m.faces) > max_faces:
-                m = m.simplify_quadric_decimation(face_count=max_faces)
-            teeth[str(i)] = {"v": np.round(m.vertices, 3).tolist(), "f": m.faces.tolist()}
-            cut[str(i)] = {"mm": e["mm"], "faces": cut_faces(m, e["planes"], tol=CAP_TOL_DECIMATED).tolist()}
-        return {"teeth_cut": teeth, "ipr_cut": cut}

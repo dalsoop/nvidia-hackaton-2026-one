@@ -90,16 +90,24 @@ def test_validate_and_exports_use_the_cut_crowns(tmp_path, moderate):
     assert m.is_watertight and len(cut_faces(m, cut.ipr_cut[8]["planes"], tol=1e-3)) > 0     # cut from the first stage
 
 
-def test_cut_json_lists_the_cut_crowns_with_their_cap_faces(moderate):
+def test_cut_view_lists_the_cut_crowns_with_their_cap_faces(moderate):
+    """The view's cut crowns (api.closed_cut_json) are the crowns /mesh shows sliced on the core's planes: every vertex of
+    the shown crown clear of the planes is still there (the root stub, not a flat fan at the margin), and the faces on the
+    planes are listed."""
+    from cualign.server.api import _CLOSED_CROWNS, closed_cut_json
     c = moderate
     _, info = planner.propose_target(c, "ipr")
     cut = planner.cut_case(c, info)
-    data = cut.cut_json(max_faces=1500)
+    data = closed_cut_json("moderate", c, cut)
     assert set(data["teeth_cut"]) == set(data["ipr_cut"]) == {str(i) for i in info["ipr_applied_teeth"]}
     for i, e in data["ipr_cut"].items():
         t = data["teeth_cut"][i]
-        assert len(t["f"]) <= 1500 and e["mm"] > 0 and 0 < len(e["faces"]) < len(t["f"]) and max(e["faces"]) < len(t["f"])
-    assert c.cut_json() == {"teeth_cut": {}, "ipr_cut": {}}
+        assert e["mm"] > 0 and 0 < len(e["faces"]) < len(t["f"]) and max(e["faces"]) < len(t["f"])
+        shown = np.asarray(_CLOSED_CROWNS[c][i]["v"], float)
+        clear = np.all([shown @ np.asarray(pl["n"]) < pl["c"] - 0.01 for pl in cut.ipr_cut[int(i)]["planes"]], axis=0)
+        kept = {tuple(v) for v in np.round(t["v"], 3)}
+        assert all(tuple(v) in kept for v in np.round(shown[clear], 3))
+    assert closed_cut_json("moderate", c, c) == {"teeth_cut": {}, "ipr_cut": {}}
 
 
 def test_extraction_plan_without_ipr_leaves_the_sample_meshes_alone():
