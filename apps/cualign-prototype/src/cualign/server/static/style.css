@@ -542,9 +542,18 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .chart-legend i.ext { border: 1px dashed var(--red); background: var(--red-surface); }
 .chart-legend i.missing { border: 1px dashed var(--faint); }
 .chart-legend i.ipr { width: 7px; height: 7px; border-radius: 50%; background: var(--ipr); }
-.pane.fade-in { animation: pane-in 120ms ease-out; }
-@keyframes pane-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .pane.fade-in { animation: none; } }
+/* A tab change (showTab): out 120 ms fade, then in 180 ms fade rising 6 px, the underline slides 160 ms — the screen
+   change's rule and easing (--fx-* where that rule is on the page, else the same values) */
+.side.tab-leaving { position: relative; }   /* only while one leaves: a lasting one moves the panel's pixels */
+.side.tab-leaving .pane.leaving[hidden] { display: flex; position: absolute; left: 0; right: 0; top: var(--pane-top, 57px); bottom: 0; pointer-events: none;
+  animation: pane-out var(--fx-out, 120ms) var(--fx-ease, cubic-bezier(0.33, 1, 0.68, 1)) forwards; }
+.pane.fade-in { animation: pane-in var(--fx-in, 180ms) var(--fx-ease, cubic-bezier(0.33, 1, 0.68, 1)) var(--fx-out, 120ms) backwards; }
+@keyframes pane-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes pane-out { to { opacity: 0; } }
+.side-tabs { position: relative; }
+.side-tabs::after { content: ""; position: absolute; bottom: 0; height: 2px; background: var(--green); pointer-events: none;
+  width: calc(100% / 5); left: calc(100% / 5 * var(--tab-i, 0)); transition: left 160ms var(--fx-ease, cubic-bezier(0.33, 1, 0.68, 1)); }
+@media (prefers-reduced-motion: reduce) { .pane.fade-in { animation: none; } .side-tabs::after { transition: none; } }
 .ipr-mark, .fx-ipr-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--ipr); border: 1px solid #000; }
 .exp-arrow { font: 700 20px/1 var(--font); color: var(--green); text-shadow: 0 0 3px #000; }
 /* scan reveal (scan-reveal.js): the extraction mark in 셋업, the IPR tool cursor, the app's marks waiting their turn */
@@ -615,7 +624,7 @@ body:not(.prog-setup) .side-tab[data-tab="cond"], body:not(.prog-stages) .side-t
 .side-tabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
 .side-tab { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
 .side-tab:hover { color: var(--text); }
-.side-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--green); }
+.side-tab[aria-selected="true"] { color: var(--text); }   /* its underline is .side-tabs::after, which slides */
 .pane { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .pane[hidden] { display: none; }
 .pane-head { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; flex: none; }

@@ -2901,13 +2901,28 @@ for (const b of document.querySelectorAll(".side-tab")) b.addEventListener("clic
   showTab(b.dataset.tab);
 });
 const PANES = { scan: "paneScan", stages: "paneStages", rules: "paneRules", cond: "paneCond", move: "paneMove" };
+// A tab change, by hand or by the step: the pane going out fades 120 ms (kept over the panel as .leaving under
+// #side.tab-leaving, already [hidden] for the code), the one coming in fades in 180 ms rising 6 px after it, the underline slides to the tab
+// (--tab-i). Reduced motion: at once.
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let paneLeaving = null;
 function showTab(name) {
   state.tab = name;
-  for (const b of document.querySelectorAll(".side-tab")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  const tabs = [...document.querySelectorAll(".side-tab")];
+  for (const b of tabs) b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  document.querySelector(".side-tabs").style.setProperty("--tab-i", String(Math.max(0, tabs.findIndex((b) => b.dataset.tab === name))));
+  if (paneLeaving) { clearTimeout(paneLeaving.timer); paneLeaving.pane.classList.remove("leaving"); $("side").classList.remove("tab-leaving"); paneLeaving = null; }
+  const out = Object.entries(PANES).find(([tab, id]) => tab !== name && !$(id).hidden)?.[1];
+  if (out && !reducedMotion.matches) {
+    const pane = $(out);
+    $("side").style.setProperty("--pane-top", pane.offsetTop + "px");
+    pane.classList.add("leaving"); $("side").classList.add("tab-leaving");
+    paneLeaving = { pane, timer: setTimeout(() => { pane.classList.remove("leaving"); $("side").classList.remove("tab-leaving"); paneLeaving = null; }, 120) };
+  }
   for (const [tab, id] of Object.entries(PANES)) {
     const pane = $(id), was = pane.hidden;
     pane.hidden = tab !== name;
-    if (was && !pane.hidden) { pane.classList.remove("fade-in"); void pane.offsetWidth; pane.classList.add("fade-in"); }   // a 120 ms fade, nothing moves
+    if (was && !pane.hidden) { pane.classList.remove("fade-in"); void pane.offsetWidth; pane.classList.add("fade-in"); }
   }
 }
 // The one place the right panel follows the step (setStep: step_done, 건너뛰기's recorded answer, the strip's buttons):
