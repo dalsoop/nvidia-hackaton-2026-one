@@ -72,7 +72,6 @@ export function createManual(ctx) {
     M.view.rotations = [{ ...M.draft.yaw }];
     state.target = M.view;
     applyStage(1);
-    ctx.ghost.visible = true;   // where the crowns started, faint, for the edit only (not 겹쳐 보기: its button and legend stay)
     const m = state.teeth[M.sel];
     if (m) m.material.emissive.setHex(0x5a9400);
     if (M.active && M.sel && M.draft.d[M.sel]) {
