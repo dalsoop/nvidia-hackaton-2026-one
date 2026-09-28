@@ -1,5 +1,6 @@
 """NAT planning tools over the shared, constraint-preserving calculation service."""
 from __future__ import annotations
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from pydantic import BaseModel, Field, model_validator
@@ -11,7 +12,7 @@ from nat.data_models.function import FunctionGroupBaseConfig
 from cualign import sandbox_compat
 from cualign.agent import nim_stream_patch, react_history_patch, react_patch, reviewer  # register the bounded reviewer
 from cualign.server import rails_middleware  # noqa: F401  register the Guardrails workflow middleware
-from cualign.agent.context import CURRENT_RUN
+from cualign.agent.context import CURRENT_RUN, track_task
 from cualign.agent import steps
 from cualign.core import limits as L, planner
 from cualign.core import skills as S
@@ -242,7 +243,8 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
         """확정된 비발치·고정·IPR·기간·순서를 모두 유지하면서 허용 전략을 비교한다."""
         cid, _ = current_case()
         run = CURRENT_RUN.get()
-        ids = service.compare(cid, constraints_for(cid), inp.allowed, run.base_plan_id if run else None)
+        ids = service.compare(cid, constraints_for(cid), inp.allowed, run.base_plan_id if run else None,
+                              stop=(lambda: run.cancelled) if run else None)
         if run:
             run.plan_ids.update(ids)
             run.target_ids.update(STORE.plans[pid]["target_id"] for pid in ids)
@@ -302,14 +304,35 @@ async def cualign(config: CuAlignToolConfig, _builder: Builder) -> AsyncGenerato
     yield group
 
 
+# The tools whose body is seconds of planner work (000001: a comparison ~9 s). On the event loop they held every other
+# request, 건너뛰기's /replay too, until they ended; in a worker thread the loop stays free and the turn can be cut.
+OFF_LOOP = {"propose_target", "plan_stages", "compare_strategies", "validate"}
+
+
 def step_gated(name, fn):
     """`fn` refused with steps.refusal when the current turn's step does not reach this tool (agent/steps.py): the
-    model gets a normal result saying so and stops, instead of running the whole plan in a setup or target turn."""
+    model gets a normal result saying so and stops, instead of running the whole plan in a setup or target turn.
+    The calling task is noted as the turn's (context.track_task), so cutting the turn cancels it."""
     async def gated(inp):
         run = CURRENT_RUN.get()
         if run is not None and not steps.allowed(run.step, name):
             return steps.refusal(run.step, name)
+        track_task()
+        if name in OFF_LOOP and run is not None:
+            return await asyncio.to_thread(_run_off_loop, run, fn, inp)
         return await fn(inp)
     gated.__annotations__ = dict(fn.__annotations__)   # NAT reads the input schema from the annotation
     gated.__name__, gated.__doc__ = fn.__name__, fn.__doc__
     return gated
+
+
+def _run_off_loop(run, fn, inp):
+    """A tool's body in a worker thread (the request context comes along: to_thread copies it). A thread cannot be
+    cancelled, so a turn cut meanwhile gets here late: what this call made is dropped, not left in the case's plans."""
+    plans, targets = set(run.plan_ids), set(run.target_ids)
+    try:
+        return asyncio.run(fn(inp))
+    finally:
+        if run.cancelled:
+            STORE.discard(run.plan_ids - plans, run.target_ids - targets)
+            logger.info("cuAlign: turn %s was cut while a tool ran; its result is dropped", run.request_id)

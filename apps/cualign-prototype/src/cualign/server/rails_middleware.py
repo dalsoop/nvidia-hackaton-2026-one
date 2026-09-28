@@ -59,7 +59,7 @@ from nat.data_models.middleware import FunctionMiddlewareBaseConfig
 from nat.middleware.function_middleware import FunctionMiddleware
 
 from cualign.agent import nim_stream_patch
-from cualign.agent.context import CURRENT_RUN, REASONING
+from cualign.agent.context import CURRENT_RUN, REASONING, track_task
 from cualign.agent.overload import is_auth_error, is_overload_error
 from cualign.keys import nvidia_key_available
 from cualign.server.rail_patterns import PII, PRESCRIPTIVE
@@ -459,6 +459,7 @@ class RailsMiddleware(FunctionMiddleware):
         return state, state == "blocked" or (state == "error" and self.fail_closed)
 
     async def function_middleware_invoke(self, *args: Any, call_next, context, **kwargs: Any) -> Any:
+        track_task()   # the workflow's task: cutting the turn (plan_events.cancel) cancels it
         value = args[0] if args else None
         user, state, refusal = await self._check_input(value)
         if not refusal:
@@ -479,6 +480,7 @@ class RailsMiddleware(FunctionMiddleware):
     async def function_middleware_stream(self, *args: Any, call_next, context, **kwargs: Any) -> AsyncIterator[Any]:
         """Holds every chunk until the output verdict (the base class passes each chunk on at once). The planner's
         reasoning goes out meanwhile as progress events (ReasoningRelay)."""
+        track_task()   # the workflow's task: cutting the turn (plan_events.cancel) cancels it
         user, state, refusal = await self._check_input(args[0] if args else None)
         held = []
         if not refusal:

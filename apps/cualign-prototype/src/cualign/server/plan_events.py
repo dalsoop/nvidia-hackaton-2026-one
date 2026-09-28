@@ -1,4 +1,5 @@
 """Attach verified plan selection to NAT's existing chat SSE route."""
+import asyncio
 import json
 import logging
 from uuid import uuid4
@@ -109,9 +110,9 @@ def step_done(run: PlanRun, store=None) -> dict | None:
     """The `step_done` event of a finished turn (None when the step did not get done), recording it in Store.flow:
     setup -> the conditions the turn set (Constraints JSON as in plan_context, plus conditions_ko for display);
     target -> the target the turn made and its summary; stages -> the plan selected (plan_selected carries the rest).
-    A failed or refused turn reports nothing: the screen stays where it was."""
+    A failed, refused or cut turn reports nothing: the screen stays where it was."""
     store = store or STORE
-    if run.error or run.refused:
+    if run.error or run.refused or run.cancelled:
         return None
     if run.step == "setup":
         store.set_flow(run.case_id, "setup", constraints=run.constraints, target_id=None, plan_id=None)
@@ -139,6 +140,35 @@ async def review_skipped(scope, plan_id) -> bool:
     logger.warning("cuAlign: the agent did not call the reviewer for %s; the server reviews it", plan_id)
     await review(plan_id)
     return True
+
+
+# The turn streaming now, per case: 건너뛰기's /replay cuts it (api.replay_recorded) without waiting for it.
+RUNS: dict[str, PlanRun] = {}
+
+
+def cancel(run: PlanRun, why: str) -> bool:
+    """Cut an agent turn: the dentist closed its stream (건너뛰기 aborts the fetch) or asked for the recorded answer.
+    NAT leaves the workflow task running when the client goes (response_helpers.generate_streaming_response), so the
+    tasks the turn noted (context.track_task) are cancelled here, which also closes their NIM requests. Its tools
+    refuse from now on (run.closed), the plans and targets it made are dropped (never offered; left in place they
+    would show in the case's plan list), and its closing events are not sent. Returns False when already cut."""
+    if run.cancelled:
+        return False
+    run.cancelled = run.closed = True
+    me = asyncio.current_task()
+    tasks = [t for t in list(run.tasks) if t is not me and not t.done()]
+    for t in tasks:
+        t.cancel()
+    made = [pid for pid in list(run.plan_ids) if pid != run.base_plan_id]
+    STORE.discard(made, [t for t in list(run.target_ids) if t != run.inherited_target_id])
+    logger.info("cuAlign: turn %s (%s, %s) cancelled — %s; %d workflow task(s) cancelled, %d plan(s) dropped",
+                run.request_id, run.case_id, run.step, why, len(tasks), len(made))
+    return True
+
+
+def cancel_case(case_id: str, why: str) -> bool:
+    run = RUNS.get(case_id)
+    return run is not None and cancel(run, why)
 
 
 class PlanEventsASGI:
@@ -175,21 +205,27 @@ class PlanEventsASGI:
             return await JSONResponse({"detail": "Invalid case, parent plan or constraints" + (f": {why}" if why else "")},
                                       status_code=400)(scope, receive, send)
 
-        replayed = False
+        replayed = finished = False
         async def replay():
             nonlocal replayed
             if not replayed:
                 replayed = True
                 return {"type": "http.request", "body": body, "more_body": False}
-            return await receive()
+            msg = await receive()   # Starlette's StreamingResponse listens here for the client going
+            if msg["type"] == "http.disconnect" and not finished:
+                cancel(run, "the stream was closed")
+            return msg
 
         is_stream = False
         async def wrapped(message):
-            nonlocal is_stream
+            nonlocal is_stream, finished
             if message["type"] == "http.response.start":
                 is_stream = message["status"] == 200 and any(
                     k.lower() == b"content-type" and b"text/event-stream" in v for k, v in message.get("headers", []))
-            if is_stream and message["type"] == "http.response.body" and not message.get("more_body", False):
+            last = message["type"] == "http.response.body" and not message.get("more_body", False)
+            if run.cancelled:   # a cut turn's late events (and its step_done) are not the screen's any more
+                return
+            if is_stream and last:
                 extra = b""
                 common = {"request_id": run.request_id, "case_id": run.case_id}
                 if run.error:
@@ -203,6 +239,8 @@ class PlanEventsASGI:
                                                    **({"text": run.redacted} if run.refused_kind == "pii" else {})})
                 elif run.selected_plan_id:
                     by_server = await review_skipped(scope, run.selected_plan_id)
+                    if run.cancelled:   # cut while the server's own review ran: its plan is gone
+                        return
                     plan = STORE.plan_json(run.selected_plan_id)
                     extra = event("plan_selected", {**common, "schema_version": 1,
                         "plan_id": plan["plan_id"], "parent_plan_id": plan["parent_plan_id"],
@@ -216,11 +254,17 @@ class PlanEventsASGI:
                     extra += event("step_done", {**common, **done})
                 message = {**message, "body": message.get("body", b"") + extra}
             await send(message)
+            finished = finished or last
 
         # Keep context alive through NAT's streaming response, including spawned tasks.
         token = CURRENT_RUN.set(run)
+        RUNS[run.case_id] = run
         try:
             await self.app(scope, replay, wrapped)
         finally:
+            if not finished:   # the response never ended (the client went, or the turn was cut): stop what still runs
+                cancel(run, "the stream ended early")
             run.closed = True
+            if RUNS.get(run.case_id) is run:
+                del RUNS[run.case_id]
             CURRENT_RUN.reset(token)

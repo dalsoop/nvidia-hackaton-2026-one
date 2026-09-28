@@ -51,13 +51,17 @@ class PlanningService:
             self.store._persist(plan_id)
         return self.store.plan_json(plan_id)
 
-    def compare(self, case_id, constraints, allowed=None, parent_plan_id=None):
+    def compare(self, case_id, constraints, allowed=None, parent_plan_id=None, stop=None):
+        """`stop()` true between strategies ends the comparison early (an agent turn cut by 건너뛰기, whose tool runs on
+        in a worker thread: agent/register.py _run_off_loop drops what it made)."""
         self.store.constraints_for(case_id, parent_plan_id)  # validate parent before creating anything
         strategies = list(allowed if allowed is not None else STRATEGIES)
         if not strategies or any(s not in STRATEGIES for s in strategies):
             raise ValueError("choose valid strategies")
         ids = []
         for strategy in strategies_for(strategies, constraints):     # the prescription decides extraction (#56)
+            if stop is not None and stop():
+                break
             tid = self.target(case_id, strategy, constraints)
             ids.append(self.stages(tid, parent_plan_id))
         if not ids:
