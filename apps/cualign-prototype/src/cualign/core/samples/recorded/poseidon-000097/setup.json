@@ -1,0 +1,19 @@
+{
+ "step": "setup",
+ "request": "처방은 제1소구치 14·24 발치입니다. 이 처방으로 단계 계획을 짜 주세요.",
+ "recorded_at": "2026-09-27T23:22:12+00:00",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "constraints": {
+  "extraction": [
+   5,
+   12
+  ],
+  "lock": [],
+  "ipr_exclude": [],
+  "ipr_limit_mm": 0.25,
+  "stage_cap": null,
+  "order": "simultaneous"
+ },
+ "answer_md": "발치 치아 14, 24번 · 고정 치아 없음 · IPR 제외 치아 없음 · IPR 한도 면당 0.25mm · 단계 상한 없음 · 이동 순서 동시. 이대로 목표 배열을 만들까요?",
+ "review": null
+}

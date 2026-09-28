@@ -1,0 +1,20 @@
+{
+ "step": "target",
+ "request": "이대로 목표 배열을 만들어줘.",
+ "recorded_at": "2026-09-27T23:22:12+00:00",
+ "model": "nvidia/nemotron-3-super-120b-a12b",
+ "constraints": {
+  "extraction": [
+   5,
+   12
+  ],
+  "lock": [],
+  "ipr_exclude": [],
+  "ipr_limit_mm": 0.25,
+  "stage_cap": null,
+  "order": "simultaneous"
+ },
+ "answer_md": "발치 전략으로 15.81mm의 공간을 만들어 7.9mm의 치열간격을 해결했습니다. 단계로 나눌까요?",
+ "review": null,
+ "strategy": "extraction"
+}
