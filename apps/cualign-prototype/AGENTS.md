@@ -1,6 +1,6 @@
 # Codex 작업 안내
 
-먼저 `README.md`와 `CONTRIBUTING.md`를 읽는다. 제품 변경은 `docs/PRD.md`, 기술 변경은 `docs/TRD.md`, 파일 위치는 `docs/CODE_MAP.md`를 확인한다.
+먼저 `README.md`와 `CONTRIBUTING.md`를 읽는다. 제품 변경은 `docs/prd.md`, 기술 변경은 `docs/trd.md`, 파일 위치는 `docs/code-map.md`를 확인한다.
 공통 개발·검증 규칙의 정본은 `CONTRIBUTING.md`다. 개인 홈 디렉터리의 스킬·도구·다른 레포를 전제하지 않는다.
 
 - 수정 전에 `git status --short --branch`로 기존 변경을 확인하고 다른 작업자의 변경을 보존한다.

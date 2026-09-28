@@ -8,9 +8,9 @@
 
 1. `README.md`: 실행 방법과 현재 범위
 2. `CONTRIBUTING.md`: 공통 개발·검증 규칙
-3. `docs/PRD.md` · `docs/TRD.md`: 제품 요구사항과 현재 기술 구조·필요한 계약
-4. `docs/CODE_MAP.md` · `docs/NVIDIA_STACK.md`: 파일 위치와 NVIDIA 통합 수준
-5. `docs/DEVELOPMENT.md` · `docs/KNOWN_ISSUES.md`: 작업 후보와 인수 시 알려진 문제
+3. `docs/prd.md` · `docs/trd.md`: 제품 요구사항과 현재 기술 구조·필요한 계약
+4. `docs/code-map.md` · `docs/nvidia-stack.md`: 파일 위치와 NVIDIA 통합 수준
+5. `docs/development.md` · `docs/known-issues.md`: 작업 후보와 인수 시 알려진 문제
 
 ## 기술 개요
 

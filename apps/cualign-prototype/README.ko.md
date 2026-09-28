@@ -9,21 +9,21 @@
 
 ## 먼저 읽기
 
-처음 합류했다면 [개발 시작 안내](docs/DEVELOPMENT.md)에서 읽는 순서·실행 확인·작업 후보를 볼 수 있습니다.
-이 저장소는 개발 기반 PoC이며 완성된 서비스가 아닙니다. 네 기능의 구현·검증 범위는 [작업 기록](docs/ROADMAP.md), 실호출 미검증 항목은 [알려진 문제](docs/KNOWN_ISSUES.md)를 봅니다.
+처음 합류했다면 [개발 시작 안내](docs/development.md)에서 읽는 순서·실행 확인·작업 후보를 볼 수 있습니다.
+이 저장소는 개발 기반 PoC이며 완성된 서비스가 아닙니다. 네 기능의 구현·검증 범위는 [작업 기록](docs/roadmap.md), 실호출 미검증 항목은 [알려진 문제](docs/known-issues.md)를 봅니다.
 
 | 문서 | 무엇을 알 수 있나요? |
 |---|---|
-| [아이디어 소개](docs/OVERVIEW.md) | 스테이징이 무엇인지, 왜 이 문제를 에이전트로 푸는지 |
-| [PRD](docs/PRD.md) | 사용자·문제·제품 목표·예선 범위·수용 기준 |
-| [TRD](docs/TRD.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
-| [코드 안내](docs/CODE_MAP.md) | 각 파일의 역할과 수정할 코드의 위치 |
-| [NVIDIA 활용](docs/NVIDIA_STACK.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |
+| [아이디어 소개](docs/overview.md) | 스테이징이 무엇인지, 왜 이 문제를 에이전트로 푸는지 |
+| [PRD](docs/prd.md) | 사용자·문제·제품 목표·예선 범위·수용 기준 |
+| [TRD](docs/trd.md) | 아키텍처·계산 방식·데이터 계약·현재 한계 |
+| [코드 안내](docs/code-map.md) | 각 파일의 역할과 수정할 코드의 위치 |
+| [NVIDIA 활용](docs/nvidia-stack.md) | NAT·NIM·Guardrails·OpenShell·Skill의 역할과 검증 수준 |
 | [에이전트 워크스페이스](workspace/README.md) | 에이전트 정의(SOUL·AGENTS 등)의 한 곳 모음, 파일별 독자와 독자 과제, OpenClaw 샌드박스 설치법 |
-| [재현 검증](docs/VERIFICATION.md) | 현재 통과한 검사와 아직 확인하지 않은 항목 |
-| [개발 시작 안내](docs/DEVELOPMENT.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
-| [알려진 문제](docs/KNOWN_ISSUES.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |
-| [UI·형상 참고](docs/DESIGN_REFERENCES.md) | 화면·형상 선택에 사용한 관찰과 공개 출처 |
+| [재현 검증](docs/verification.md) | 현재 통과한 검사와 아직 확인하지 않은 항목 |
+| [개발 시작 안내](docs/development.md) | 작업 후보·관련 코드·완료 기준, 팀이 결정할 부분 |
+| [알려진 문제](docs/known-issues.md) | reviewer 오류의 재현 조건·영향과 인수 시 주의점 |
+| [UI·형상 참고](docs/design-references.md) | 화면·형상 선택에 사용한 관찰과 공개 출처 |
 
 ## 예선에서 보여줄 것
 
@@ -51,7 +51,7 @@ uv run cualign plan "발치 없이 12개월 안에, 앞니 먼저" --case modera
 발치는 치아 번호(FDI)로 처방합니다: `uv run cualign plan "14번과 24번 발치로" --case moderate`(소구치 14·15·24·25만).
 번호 없이 "발치 허용"만 적으면 계획하지 않고 번호를 묻습니다. 앱은 발치 치아를 고르지 않습니다.
 `cualign plan`은 제한된 문구를 해석하는 규칙 기반 실행입니다. NIM 에이전트의 대화·도구 선택과 같은 모드가 아닙니다.
-검사 결과는 날짜별로, 실행 환경·범위와 함께 [재현 검증](docs/VERIFICATION.md)에 있습니다.
+검사 결과는 날짜별로, 실행 환경·범위와 함께 [재현 검증](docs/verification.md)에 있습니다.
 
 ### 대화·3D UI
 
@@ -76,7 +76,7 @@ docker run --rm -p 127.0.0.1:8000:8000 --env-file .env cualign:local
 
 이 빌드는 미커밋 변경을 포함하지 않습니다. 키 없는 UI·규칙 폴백만 볼 때는 `--env-file .env`를 생략할 수 있습니다.
 키를 Dockerfile이나 이미지에 넣지 않습니다. 기본 실행 결과는 컨테이너 안에 남으며, 위 `--rm` 실행을 종료하면 사라지므로 필요한 파일은 먼저 다운로드합니다.
-확인한 플랫폼은 Linux arm64이며 다른 플랫폼의 결과는 [검증 기록](docs/VERIFICATION.md)과 구별합니다.
+확인한 플랫폼은 Linux arm64이며 다른 플랫폼의 결과는 [검증 기록](docs/verification.md)과 구별합니다.
 
 ## 어떻게 동작하나요?
 

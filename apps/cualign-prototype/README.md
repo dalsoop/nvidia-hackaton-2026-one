@@ -15,17 +15,17 @@ The design documents in this repository are written in Korean.
 
 | Document | What it covers |
 |---|---|
-| [Overview](docs/OVERVIEW.md) (Korean) | What staging is and why an agent handles it |
-| [PRD](docs/PRD.md) (Korean) | Users, problem, goals, qualifier scope, acceptance criteria |
-| [TRD](docs/TRD.md) (Korean) | Architecture, calculation method, data contracts, current limits |
-| [Code map](docs/CODE_MAP.md) (Korean) | What each file does and where to make a change |
-| [NVIDIA stack](docs/NVIDIA_STACK.md) (Korean) | Roles of NAT, NIM, Guardrails, OpenShell and Skills, and how far each was verified |
+| [Overview](docs/overview.md) (Korean) | What staging is and why an agent handles it |
+| [PRD](docs/prd.md) (Korean) | Users, problem, goals, qualifier scope, acceptance criteria |
+| [TRD](docs/trd.md) (Korean) | Architecture, calculation method, data contracts, current limits |
+| [Code map](docs/code-map.md) (Korean) | What each file does and where to make a change |
+| [NVIDIA stack](docs/nvidia-stack.md) (Korean) | Roles of NAT, NIM, Guardrails, OpenShell and Skills, and how far each was verified |
 | [Agent workspace](workspace/README.md) | Agent definitions (SOUL, AGENTS and the rest) in one place, and how to install them in an OpenClaw sandbox |
-| [Verification](docs/VERIFICATION.md) (Korean) | Checks that passed and items not yet confirmed |
-| [Development guide](docs/DEVELOPMENT.md) (Korean) | Reading order, candidate tasks, done criteria, open team decisions |
-| [Roadmap](docs/ROADMAP.md) (Korean) | Implementation and verification scope of the four features |
-| [Known issues](docs/KNOWN_ISSUES.md) (Korean) | Reviewer errors, how to reproduce them, and what to watch for on handover |
-| [UI and shape references](docs/DESIGN_REFERENCES.md) (Korean) | Observations and public sources behind the UI and geometry choices |
+| [Verification](docs/verification.md) (Korean) | Checks that passed and items not yet confirmed |
+| [Development guide](docs/development.md) (Korean) | Reading order, candidate tasks, done criteria, open team decisions |
+| [Roadmap](docs/roadmap.md) (Korean) | Implementation and verification scope of the four features |
+| [Known issues](docs/known-issues.md) (Korean) | Reviewer errors, how to reproduce them, and what to watch for on handover |
+| [UI and shape references](docs/design-references.md) (Korean) | Observations and public sources behind the UI and geometry choices |
 
 ## What the demo shows
 
@@ -106,7 +106,7 @@ A plan with rule violations or a failed review cannot be approved. The keyless r
 | Agent Skill | Clinical-rules skill the planning agent reads before planning (`workspace/skills/cualign-clinical-rules/`) |
 | NVIDIA skill catalog | `nemotron-policy-generator` generated the safety policy in `guardrails/policy/` offline |
 
-Offline tests check configuration and registration. They do not prove that remote model calls succeed. [NVIDIA_STACK.md](docs/NVIDIA_STACK.md) (Korean) lists the verification level of each component.
+Offline tests check configuration and registration. They do not prove that remote model calls succeed. [nvidia-stack.md](docs/nvidia-stack.md) (Korean) lists the verification level of each component.
 
 ## Repository layout
 
@@ -130,7 +130,7 @@ Offline tests check configuration and registration. They do not prove that remot
 - Passing the rules is not clinical suitability and not dentist approval. Only a plan explicitly approved in the UI can be exported, and an edited plan needs approval again.
 - Guardrails check chat input and output on every path that calls the agent. An answer is held until the output check finishes and is replaced by a refusal if blocked. Raw steps on the `/full` and `/atif` paths are not filtered. When the rails are on, answers matching the list of prescription or confirmation phrases are replaced with a refusal without calling the output rail model. Which identifiers are refused before the model, the advisory content-safety input check and what happens on a check error are listed once in [docs/openshell.md](docs/openshell.md#상태) (Korean).
 - Scan segmentation inference and aligner shell generation are not verified features. The OpenShell server sandbox status is in [docs/openshell.md](docs/openshell.md#상태) (Korean).
-- The reviewer can hit upstream 503 errors from NIM. It stops within its limits and blocks approval. See [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) (Korean).
+- The reviewer can hit upstream 503 errors from NIM. It stops within its limits and blocks approval. See [known-issues.md](docs/known-issues.md) (Korean).
 
 ## Data, licenses and evidence
 

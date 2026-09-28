@@ -38,7 +38,7 @@ Mitigation: Review and scan skill before deployment. <br>
 **Other Properties Related to Output:** [Draft only. A rule failure or a reviewer failure blocks approval. Only the dentist can approve, in the UI. Patient meshes stay on the local computer. Only the calculated plan summaries go to the reviewer model.] <br>
 
 ## Evaluation Tasks: <br>
-SkillSpector static and semantic security scans of the skill folder on 2026-09-22. The two reports are in workspace/skills/. Each scan found one markdown component of 62 lines, and the two results are the same. The reports show the skill on that date. They do not certify the safety of the current file or of the service (docs/NVIDIA_STACK.md, SECURITY.md). <br>
+SkillSpector static and semantic security scans of the skill folder on 2026-09-22. The two reports are in workspace/skills/. Each scan found one markdown component of 62 lines, and the two results are the same. The reports show the skill on that date. They do not certify the safety of the current file or of the service (docs/nvidia-stack.md, SECURITY.md). <br>
 
 ## Evaluation Results: <br>
 | Metric | Value |
