@@ -493,14 +493,19 @@ async def main():
             assert not document_has_plan(await page.evaluate("document.body.className"))
             await page.screenshot(path=str(OUT / "plan-failed.png"))
             await page.unroute("**/api/plans?case_id=poseidon-000131")
-            # POST /api/plan converts the prescription's FDI pairs twice (RulePlanRequest, then ConstraintPatch again) and
-            # answers 400 「not an upper-arch FDI number: 7」 with a prescription in the form (server, #143 follow-up, .report/24).
-            # Until it is fixed the retry runs without the per-contact prescription; put the line back then.
-            await page.evaluate("document.querySelector('#cSurf').value = ''")   # the 조건 pane is not the visible tab here
+            # the retry sends the form as it is, the per-contact prescription in FDI (#57; the double conversion of .report/24
+            # is fixed since #146): the plan that comes back is an IPR plan carrying the same contacts in Universal
+            assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"      # 000131's sample prescription
+            sent = []
+            page.on("request", lambda r: sent.append(r.post_data_json) if r.url.endswith("/api/plan") and r.method == "POST" else None)
             await page.locator("#planFailRetry").click()
             await page.wait_for_function("document.querySelector('#planFail').hidden && document.body.classList.contains('has-plan')", timeout=120000)
             assert await page.locator("#planList .plan-row").count() >= 1
+            assert sent and sent[-1]["ipr_surfaces"] == [[12, 11, 0.4], [11, 21, 0.4], [21, 22, 0.4]], sent
             plan131 = await on_screen()
+            assert await page.evaluate("window.__cualign.state.plan.strategy") in ("ipr", "expansion_ipr")
+            assert await page.evaluate("window.__cualign.state.plan.constraints.ipr_surfaces") == [[7, 8, 0.4], [8, 9, 0.4], [9, 10, 0.4]]
+            assert await page.locator("#cSurf").input_value() == "12-11 0.4, 11-21 0.4, 21-22 0.4"      # shown back in FDI
             await page.unroute("**/api/cases/poseidon-000131/activate")
             # The 3D shows FDI numbers, never Universal (#113): the input-check screen's tooth-number labels.
             # This sample's prescription extracts Universal 5·12 = FDI 14·24.
